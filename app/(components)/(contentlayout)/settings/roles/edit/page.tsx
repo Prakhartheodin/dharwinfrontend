@@ -173,7 +173,6 @@ export default function RolesEditPage() {
   return (
     <Fragment>
       <Seo title="Edit Role" />
-      <Pageheader currentpage="Edit Role" activepage="Roles" mainpage="User Roles" />
       <div className="container w-full max-w-full mx-auto">
         <div className="grid grid-cols-12 gap-6">
           <div className="xl:col-span-12 col-span-12">

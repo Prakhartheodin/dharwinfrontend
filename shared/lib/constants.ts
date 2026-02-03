@@ -19,4 +19,13 @@ export const ROUTES = {
   roles: "/roles/",
   rolesAdd: "/roles/add/",
   rolesEdit: (id: string) => `/roles/edit/?id=${encodeURIComponent(id)}`,
+  // Settings (proper paths)
+  settings: "/settings/",
+  settingsRoles: "/settings/roles/",
+  settingsRolesAdd: "/settings/roles/add/",
+  settingsRolesEdit: (id: string) => `/settings/roles/edit/?id=${encodeURIComponent(id)}`,
+  settingsUsers: "/settings/users/",
+  settingsUsersAdd: "/settings/users/add/",
+  settingsUsersEdit: (id: string) => `/settings/users/edit/?id=${encodeURIComponent(id)}`,
+  settingsPersonalInfo: "/settings/personal-information/",
 } as const;

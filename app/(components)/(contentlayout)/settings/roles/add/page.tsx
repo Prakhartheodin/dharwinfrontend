@@ -82,7 +82,7 @@ export default function RolesAddPage() {
         permissions: permissionStrings,
         status,
       });
-      router.push(ROUTES.roles);
+      router.push(ROUTES.settingsRoles);
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
@@ -97,14 +97,13 @@ export default function RolesAddPage() {
   return (
     <Fragment>
       <Seo title="Create Role" />
-      <Pageheader currentpage="Create Role" activepage="Roles" mainpage="User Roles" />
       <div className="container w-full max-w-full mx-auto">
         <div className="grid grid-cols-12 gap-6">
           <div className="xl:col-span-12 col-span-12">
             <div className="box">
               <div className="box-header flex items-center justify-between flex-wrap gap-4">
                 <div className="box-title">User Roles</div>
-                <Link href={ROUTES.roles} className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]">
+                <Link href={ROUTES.settingsRoles} className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]">
                   <i className="ri-arrow-left-line me-1"></i>Back to User Roles
                 </Link>
               </div>
@@ -220,7 +219,7 @@ export default function RolesAddPage() {
                     })}
                   </div>
                   <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-defaultborder">
-                    <Link href={ROUTES.roles} className="ti-btn ti-btn-light">
+                    <Link href={ROUTES.settingsRoles} className="ti-btn ti-btn-light">
                       Cancel
                     </Link>
                     <button type="submit" disabled={loading} className="ti-btn ti-btn-primary">

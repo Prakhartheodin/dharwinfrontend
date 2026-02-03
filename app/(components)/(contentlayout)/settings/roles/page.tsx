@@ -62,31 +62,40 @@ export default function RolesPage() {
   return (
     <Fragment>
       <Seo title="User Roles" />
-      <Pageheader
-        currentpage="User Roles"
-        activepage="Roles"
-        mainpage="User Roles"
-      />
-      <div className="container w-full max-w-full mx-auto">
-        <div className="grid grid-cols-12 gap-6">
-          <div className="xl:col-span-12 col-span-12">
-            <div className="box">
-              <div className="box-header flex flex-wrap items-center justify-between gap-4">
-                <h5 className="box-title mb-0">User Roles {totalResults}</h5>
-                <Link
-                  href={ROUTES.rolesAdd}
-                  className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem]"
-                >
-                  <i className="ri-add-line me-1 align-middle"></i>Create Role
-                </Link>
-              </div>
-              <div className="box-body">
-                {error && (
-                  <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
-                    {error}
-                  </div>
-                )}
-                <div className="table-responsive overflow-x-auto">
+      <div className="flex items-center justify-between flex-wrap gap-4 mb-4 px-4 pt-4">
+        <h5 className="box-title mb-0">
+          User Roles
+          <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
+            {totalResults}
+          </span>
+        </h5>
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+          >
+            {[10, 25, 50, 100].map((size) => (
+              <option key={size} value={size}>
+                Show {size}
+              </option>
+            ))}
+          </select>
+          <Link
+            href={ROUTES.settingsRolesAdd}
+            className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem]"
+          >
+            <i className="ri-add-line me-1 align-middle"></i>Create Role
+          </Link>
+        </div>
+      </div>
+      <div className="box-body px-4 pb-4">
+        {error && (
+          <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
+            {error}
+          </div>
+        )}
+        <div className="table-responsive overflow-x-auto">
                   <table className="table min-w-full table-bordered border-defaultborder">
                     <thead>
                       <tr className="bg-gray-50 dark:bg-gray-800/50">
@@ -137,7 +146,7 @@ export default function RolesPage() {
                             <td className="px-4 py-2.5 align-middle">
                               <div className="flex items-center justify-center gap-2">
                                 <Link
-                                  href={ROUTES.rolesEdit(role.id)}
+                                  href={ROUTES.settingsRolesEdit(role.id)}
                                   className="ti-btn ti-btn-sm ti-btn-soft-primary !p-1.5"
                                   aria-label={`Edit ${role.name}`}
                                 >
@@ -187,11 +196,7 @@ export default function RolesPage() {
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
         </div>
-      </div>
     </Fragment>
   );
 }
