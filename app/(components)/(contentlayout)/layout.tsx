@@ -6,11 +6,11 @@ import Header from "@/shared/layout-components/header/header"
 import Sidebar from "@/shared/layout-components/sidebar/sidebar"
 import { ThemeChanger } from "@/shared/redux/action"
 import store from "@/shared/redux/store"
-import { Fragment,  useState } from "react"
-import {  connect } from "react-redux"
+import { Fragment, useState } from "react"
+import { connect } from "react-redux"
+import { ProtectedRoute } from "@/shared/components/protected-route"
 
-const Layout = ({children,}:any) => {
-
+const Layout = ({ children }: any) => {
   const [MyclassName, setMyClass] = useState("");
 
   const Bodyclickk = () => {
@@ -27,23 +27,21 @@ const Layout = ({children,}:any) => {
 
   return (
     <>
-
-      
     <Fragment>
-      <div className='page'>
-        <Header/>
-        <Sidebar/>
-        <div className='content'>
-          <div className='main-content'  
-          onClick={Bodyclickk}
-          >
-            {children}
+      <ProtectedRoute>
+        <div className='page'>
+          <Header/>
+          <Sidebar/>
+          <div className='content'>
+            <div className='main-content' onClick={Bodyclickk}>
+              {children}
+            </div>
           </div>
+          <Footer/>
         </div>
-        <Footer/>
-      </div>
-      <Backtotop/>
-      <PrelineScript/>
+        <Backtotop/>
+        <PrelineScript/>
+      </ProtectedRoute>
     </Fragment>
     </>
   )
