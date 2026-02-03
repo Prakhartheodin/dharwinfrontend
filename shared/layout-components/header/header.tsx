@@ -6,8 +6,10 @@ import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
 import Modalsearch from '../modal-search/modalsearch';
 import { basePath } from '@/next.config';
+import { useAuth } from '@/shared/contexts/auth-context';
 
-const Header = ({ local_varaiable, ThemeChanger }:any) => {
+const Header = ({ local_varaiable, ThemeChanger }: any) => {
+  const { user, logout } = useAuth();
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -483,8 +485,8 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
                   <img className="inline-block rounded-full " src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/faces/9.jpg`} width="32" height="32" alt="Image Description" />
                 </button>
                 <div className="md:block hidden dropdown-profile">
-                  <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">Jasen</p>
-                  <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">System Admin</span>
+                  <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">{user?.name ?? user?.email ?? "User"}</p>
+                  <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">{user?.role ?? "User"}</span>
                 </div>
                 <div
                   className="hs-dropdown-menu ti-dropdown-menu !-mt-3 border-0 w-[11rem] !p-0 border-defaultborder hidden main-header-dropdown  pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end"
@@ -510,8 +512,10 @@ const Header = ({ local_varaiable, ThemeChanger }:any) => {
                       className="ti ti-wallet text-[1.125rem] me-2 opacity-[0.7 !inline-flex"></i>Bal: $7,12,950</Link></li>
                     <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/pages/chat/"><i
                       className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support</Link></li>
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/authentication/sign-in/signin-cover/"><i
-                      className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</Link></li>
+                    <li>
+                      <button type="button" onClick={() => logout()} className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex !text-start !border-0 !bg-transparent"><i
+                        className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</button>
+                    </li>
                   </ul>
                 </div>
               </div>

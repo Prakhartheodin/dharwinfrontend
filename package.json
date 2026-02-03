@@ -12,6 +12,7 @@
     "sass-min": "sass ./public/assets/scss/:./public/assets/css/ --style compressed"
   },
   "dependencies": {
+    "axios": "^1.7.0",
     "@emotion/styled": "^11.11.5",
     "@fullcalendar/core": "6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",

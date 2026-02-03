@@ -1,10 +1,5 @@
 {
-  "/(components)/(authenticationlayout)/authentication/sign-in/page": "app/(components)/(authenticationlayout)/authentication/sign-in/page.js",
-  "/(components)/(authenticationlayout)/authentication/sign-in/signin-basic/page": "app/(components)/(authenticationlayout)/authentication/sign-in/signin-basic/page.js",
-  "/(components)/(authenticationlayout)/authentication/sign-in/signin-cover/page": "app/(components)/(authenticationlayout)/authentication/sign-in/signin-cover/page.js",
-  "/(components)/(contentlayout)/dashboards/projects/page": "app/(components)/(contentlayout)/dashboards/projects/page.js",
-  "/(components)/(contentlayout)/pages/email/mail-settings/create-role/page": "app/(components)/(contentlayout)/pages/email/mail-settings/create-role/page.js",
   "/(components)/(contentlayout)/pages/email/mail-settings/page": "app/(components)/(contentlayout)/pages/email/mail-settings/page.js",
-  "/_not-found/page": "app/_not-found/page.js",
-  "/page": "app/page.js"
+  "/(components)/(contentlayout)/roles/page": "app/(components)/(contentlayout)/roles/page.js",
+  "/_not-found/page": "app/_not-found/page.js"
 }

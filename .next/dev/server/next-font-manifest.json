@@ -1,13 +1,8 @@
 {
   "app": {
-    "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page": [],
-    "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/signin-basic/page": [],
-    "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/signin-cover/page": [],
-    "[project]/app/(components)/(contentlayout)/dashboards/projects/page": [],
-    "[project]/app/(components)/(contentlayout)/pages/email/mail-settings/create-role/page": [],
     "[project]/app/(components)/(contentlayout)/pages/email/mail-settings/page": [],
-    "[project]/app/_not-found/page": [],
-    "[project]/app/page": []
+    "[project]/app/(components)/(contentlayout)/roles/page": [],
+    "[project]/app/_not-found/page": []
   },
   "appUsingSizeAdjust": true,
   "pages": {},
