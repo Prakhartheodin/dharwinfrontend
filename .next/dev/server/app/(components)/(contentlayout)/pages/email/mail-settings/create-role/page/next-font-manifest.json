@@ -1,7 +1,7 @@
 {
   "pages": {},
   "app": {
-    "[project]/Desktop/dharwin_boilerplate/app/(components)/(contentlayout)/pages/email/mail-settings/create-role/page": []
+    "[project]/app/(components)/(contentlayout)/pages/email/mail-settings/create-role/page": []
   },
   "appUsingSizeAdjust": true,
   "pagesUsingSizeAdjust": false

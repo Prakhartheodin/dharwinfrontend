@@ -1,7 +1,7 @@
 {
   "pages": {},
   "app": {
-    "[project]/Desktop/dharwin_boilerplate/app/(components)/(contentlayout)/pages/email/mail-settings/page": []
+    "[project]/app/(components)/(contentlayout)/pages/email/mail-settings/page": []
   },
   "appUsingSizeAdjust": true,
   "pagesUsingSizeAdjust": false

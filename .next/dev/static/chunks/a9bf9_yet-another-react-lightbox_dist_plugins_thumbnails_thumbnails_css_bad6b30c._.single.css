@@ -1,0 +1,145 @@
+/* [project]/node_modules/yet-another-react-lightbox/dist/plugins/thumbnails/thumbnails.css [app-client] (css) */
+.yarl__thumbnails {
+  height: 100%;
+  display: flex;
+}
+
+.yarl__thumbnails_bottom, .yarl__thumbnails_end .yarl__thumbnails_track, .yarl__thumbnails_start .yarl__thumbnails_track, .yarl__thumbnails_top {
+  flex-direction: column;
+}
+
+.yarl__thumbnails_wrapper {
+  flex: 1;
+  position: relative;
+}
+
+.yarl__thumbnails_container {
+  background-color: var(--yarl__thumbnails_container_background_color, var(--yarl__color_backdrop, #000));
+  padding: var(--yarl__thumbnails_container_padding, 16px);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.yarl__thumbnails_vignette {
+  pointer-events: none;
+  --yarl__thumbnails_vignette_size: 12%;
+  position: absolute;
+}
+
+@media (min-width: 1200px) {
+  .yarl__thumbnails_vignette {
+    --yarl__thumbnails_vignette_size: 8%;
+  }
+}
+
+@media (min-width: 2000px) {
+  .yarl__thumbnails_vignette {
+    --yarl__thumbnails_vignette_size: 5%;
+  }
+}
+
+.yarl__thumbnails_bottom .yarl__thumbnails_vignette, .yarl__thumbnails_top .yarl__thumbnails_vignette {
+  background: linear-gradient(to right, var(--yarl__color_backdrop, #000) 0, transparent var(--yarl__thumbnails_vignette_size, 12%) calc(100% - var(--yarl__thumbnails_vignette_size, 12%)), var(--yarl__color_backdrop, #000) 100%);
+  height: 100%;
+  left: 0;
+  right: 0;
+}
+
+.yarl__thumbnails_end .yarl__thumbnails_vignette, .yarl__thumbnails_start .yarl__thumbnails_vignette {
+  background: linear-gradient(to bottom, var(--yarl__color_backdrop, #000) 0, transparent var(--yarl__thumbnails_vignette_size, 12%) calc(100% - var(--yarl__thumbnails_vignette_size, 12%)), var(--yarl__color_backdrop, #000) 100%);
+  width: 100%;
+  top: 0;
+  bottom: 0;
+}
+
+.yarl__thumbnails_track {
+  gap: var(--yarl__thumbnails_thumbnail_gap, 16px);
+  outline: none;
+}
+
+.yarl__thumbnails_thumbnail {
+  appearance: none;
+  background: var(--yarl__thumbnails_thumbnail_background, #000);
+  border-color: var(--yarl__thumbnails_thumbnail_border_color, var(--yarl__color_button, #fffc));
+  border-radius: var(--yarl__thumbnails_thumbnail_border_radius, 4px);
+  border-style: var(--yarl__thumbnails_thumbnail_border_style, solid);
+  border-width: var(--yarl__thumbnails_thumbnail_border, 1px);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: content-box;
+  height: var(--yarl__thumbnails_thumbnail_height, 80px);
+  padding: var(--yarl__thumbnails_thumbnail_padding, 4px);
+  width: var(--yarl__thumbnails_thumbnail_width, 120px);
+  outline: none;
+  flex: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.yarl__thumbnails_thumbnail_active {
+  border-color: var(--yarl__thumbnails_thumbnail_active_border_color, var(--yarl__color_button_active, #fff));
+}
+
+.yarl__thumbnails_thumbnail_fadein {
+  animation: yarl__thumbnails_thumbnail_fadein var(--yarl__thumbnails_thumbnail_fadein_duration, .5s) ease-in-out var(--yarl__thumbnails_thumbnail_fadein_delay, 0s) forwards;
+  opacity: 0;
+}
+
+.yarl__thumbnails_thumbnail_fadeout {
+  animation: yarl__thumbnails_thumbnail_fadeout var(--yarl__thumbnails_thumbnail_fadeout_duration, .5s) ease-in-out var(--yarl__thumbnails_thumbnail_fadeout_delay, 0s) forwards;
+  cursor: unset;
+}
+
+.yarl__thumbnails_thumbnail_placeholder {
+  cursor: unset;
+  visibility: hidden;
+}
+
+.yarl__thumbnails_thumbnail:focus {
+  box-shadow: var(--yarl__thumbnails_thumbnail_focus_box_shadow, #000 0 0 0 2px, var(--yarl__color_button, #fffc) 0 0 0 4px);
+}
+
+.yarl__thumbnails_thumbnail:focus:not(:focus-visible) {
+  box-shadow: unset;
+}
+
+.yarl__thumbnails_thumbnail:focus-visible {
+  box-shadow: var(--yarl__thumbnails_thumbnail_focus_box_shadow, #000 0 0 0 2px, var(--yarl__color_button, #fffc) 0 0 0 4px);
+}
+
+.yarl__thumbnails_thumbnail_icon {
+  color: var(--yarl__thumbnails_thumbnail_icon_color, var(--yarl__color_button, #fffc));
+  filter: var(--yarl__thumbnails_thumbnail_icon_filter, drop-shadow(2px 2px 2px #000c));
+  height: var(--yarl__thumbnails_thumbnail_icon_size, 32px);
+  width: var(--yarl__thumbnails_thumbnail_icon_size, 32px);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-50%)translateY(-50%);
+}
+
+@keyframes yarl__thumbnails_thumbnail_fadein {
+  0% {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes yarl__thumbnails_thumbnail_fadeout {
+  0% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+/*# sourceMappingURL=a9bf9_yet-another-react-lightbox_dist_plugins_thumbnails_thumbnails_css_bad6b30c._.single.css.map*/

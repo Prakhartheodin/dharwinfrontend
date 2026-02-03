@@ -1,9 +1,9 @@
 {
-  "[project]/Desktop/dharwin_boilerplate/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)": {
-    "id": "[project]/Desktop/dharwin_boilerplate/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)",
+  "[project]/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)": {
+    "id": "[project]/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)",
     "files": [
-      "static/chunks/39735_6a0bda71._.js",
-      "static/chunks/39735_react-select_dist_react-select_esm_0554266b.js"
+      "static/chunks/node_modules_c2620182._.js",
+      "static/chunks/node_modules_react-select_dist_react-select_esm_2c06f3c0.js"
     ]
   }
 }
