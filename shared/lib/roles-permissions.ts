@@ -16,6 +16,9 @@ export const PERMISSION_SECTIONS: {
       { id: "recruiters", label: "Recruiters" },
       { id: "interviews", label: "Interviews" },
       { id: "offers", label: "Offers" },
+      { id: "pre-boarding", label: "Pre-boarding" },
+      { id: "onboarding", label: "Onboarding" },
+      { id: "analytics", label: "Analytics" },
     ],
   },
   {
@@ -25,6 +28,9 @@ export const PERMISSION_SECTIONS: {
       { id: "emails", label: "Emails" },
       { id: "templates", label: "Templates" },
       { id: "campaigns", label: "Campaigns" },
+      { id: "chats", label: "Chats" },
+      { id: "calling", label: "Calling" },
+      { id: "files-storage", label: "Files Storage" },
     ],
   },
   {
@@ -34,6 +40,11 @@ export const PERMISSION_SECTIONS: {
       { id: "courses", label: "Courses" },
       { id: "modules", label: "Modules" },
       { id: "assessments", label: "Assessments" },
+      { id: "attendance", label: "Attendance Tracking" },
+      { id: "mentors", label: "Mentors" },
+      { id: "students", label: "Students" },
+      { id: "evaluation", label: "Evaluation" },
+      { id: "analytics", label: "Analytics" },
     ],
   },
   {
@@ -43,6 +54,8 @@ export const PERMISSION_SECTIONS: {
       { id: "projects", label: "Projects" },
       { id: "tasks", label: "Tasks" },
       { id: "milestones", label: "Milestones" },
+      { id: "teams", label: "Teams" },
+      { id: "analytics", label: "Analytics" },
     ],
   },
 ];
