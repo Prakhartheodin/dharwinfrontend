@@ -613,7 +613,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 				const newValue = mutation.target.getAttribute('data-nav-layout');
 				if (newValue == 'vertical') {
 					let currentPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
-					currentPath = !currentPath ? '/dashboards/projects' : currentPath;
+					currentPath = !currentPath ? '/dashboard' : currentPath;
 					setMenuUsingUrl(currentPath);
 				} else {
 					closeMenu();
@@ -635,7 +635,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			<aside className="app-sidebar" id="sidebar" onMouseOver={() => Onhover()}
 				onMouseLeave={() => Outhover()}>
 				<div className="main-sidebar-header">
-					<Link href="/dashboards/projects" className="header-logo">
+					<Link href="/dashboard" className="header-logo">
 						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-logo" />
 						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-logo" />
 						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-dark" />
