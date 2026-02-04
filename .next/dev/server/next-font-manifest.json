@@ -1,14 +1,12 @@
 {
   "app": {
-    "[project]/app/(components)/(authenticationlayout)/authentication/register/page": [],
     "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/pre-boarding/page": [],
+    "[project]/app/(components)/(contentlayout)/ats/candidates/page": [],
+    "[project]/app/(components)/(contentlayout)/ats/jobs/page": [],
     "[project]/app/(components)/(contentlayout)/dashboard/page": [],
     "[project]/app/(components)/(contentlayout)/settings/page": [],
     "[project]/app/(components)/(contentlayout)/settings/personal-information/page": [],
     "[project]/app/(components)/(contentlayout)/settings/roles/page": [],
-    "[project]/app/(components)/(contentlayout)/settings/users/add/page": [],
-    "[project]/app/(components)/(contentlayout)/settings/users/edit/page": [],
     "[project]/app/(components)/(contentlayout)/settings/users/page": [],
     "[project]/app/_not-found/page": [],
     "[project]/app/page": []

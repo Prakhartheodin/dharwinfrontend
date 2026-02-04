@@ -3,14 +3,23 @@ import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import Link from 'next/link'
 import React, { Fragment } from 'react'
+import { useSearchParams } from 'next/navigation'
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
 import dynamic from "next/dynamic";
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 const Projects = () => {
+    const searchParams = useSearchParams();
+    const unauthorized = searchParams.get("unauthorized") === "1";
+
     return (
         <Fragment>
             <Seo title={"Projects"} />
+            {unauthorized && (
+                <div className="mb-4 p-4 bg-warning/10 border border-warning/30 text-warning rounded-md text-sm">
+                    You do not have permission to access that page. You have been redirected to the dashboard.
+                </div>
+            )}
             <Pageheader currentpage="Projects" activepage="Dashboards" mainpage="Projects" />
             <div className="grid grid-cols-12 gap-x-6">
                 <div className="xxl:col-span-9 col-span-12">

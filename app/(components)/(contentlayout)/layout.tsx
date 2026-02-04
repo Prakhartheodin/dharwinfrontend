@@ -9,6 +9,7 @@ import store from "@/shared/redux/store"
 import { Fragment, useState } from "react"
 import { connect } from "react-redux"
 import { ProtectedRoute } from "@/shared/components/protected-route"
+import { PermissionGuard } from "@/shared/components/permission-guard"
 
 const Layout = ({ children }: any) => {
   const [MyclassName, setMyClass] = useState("");
@@ -29,18 +30,20 @@ const Layout = ({ children }: any) => {
     <>
     <Fragment>
       <ProtectedRoute>
-        <div className='page'>
-          <Header/>
-          <Sidebar/>
-          <div className='content'>
-            <div className='main-content' onClick={Bodyclickk}>
-              {children}
+        <PermissionGuard>
+          <div className='page'>
+            <Header/>
+            <Sidebar/>
+            <div className='content'>
+              <div className='main-content' onClick={Bodyclickk}>
+                {children}
+              </div>
             </div>
+            <Footer/>
           </div>
-          <Footer/>
-        </div>
-        <Backtotop/>
-        <PrelineScript/>
+          <Backtotop/>
+          <PrelineScript/>
+        </PermissionGuard>
       </ProtectedRoute>
     </Fragment>
     </>
