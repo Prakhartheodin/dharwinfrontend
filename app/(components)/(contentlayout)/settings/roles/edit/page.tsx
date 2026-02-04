@@ -98,11 +98,23 @@ export default function RolesEditPage() {
     e.stopPropagation();
     const section = PERMISSION_SECTIONS.find((s) => s.id === sectionId);
     if (!section || !permissions) return;
-    const full: SectionPermissions = {};
-    section.features.forEach((f) => {
-      full[f.id] = { view: true, create: true, edit: true, delete: true };
+    setPermissions((prev) => {
+      if (!prev) return prev;
+      const currentSection = prev[sectionId] ?? {};
+      const allFull = section.features.every((f) => {
+        const perms = currentSection[f.id];
+        return perms?.view && perms?.create && perms?.edit && perms?.delete;
+      });
+
+      const nextSection: SectionPermissions = {};
+      section.features.forEach((f) => {
+        nextSection[f.id] = allFull
+          ? { view: false, create: false, edit: false, delete: false }
+          : { view: true, create: true, edit: true, delete: true };
+      });
+
+      return { ...prev, [sectionId]: nextSection };
     });
-    setPermissions((prev) => (prev ? { ...prev, [sectionId]: full } : null));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

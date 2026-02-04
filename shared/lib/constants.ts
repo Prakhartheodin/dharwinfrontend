@@ -16,7 +16,8 @@ export const AUTH_ENDPOINTS = {
 export const ROUTES = {
   signIn: "/authentication/sign-in/",
   resetPassword: "/authentication/reset-password/reset-cover/",
-  defaultAfterLogin: "/dashboards/crm/",
+  // After login, send users to the main dashboard, not the CRM dashboard.
+  defaultAfterLogin: "/dashboard/",
   roles: "/roles/",
   rolesAdd: "/roles/add/",
   rolesEdit: (id: string) => `/roles/edit/?id=${encodeURIComponent(id)}`,
