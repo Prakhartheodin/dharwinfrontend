@@ -10,7 +10,7 @@ export default function Home() {
 
   useEffect(() => {
     // Redirect to dashboard by default
-    router.push('/dashboards/projects');
+    router.push('/dashboard');
   }, [router]);
 
   const [passwordshow1, setpasswordshow1] = useState(false);

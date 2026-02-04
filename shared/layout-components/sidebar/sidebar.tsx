@@ -12,6 +12,11 @@ import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
+import {
+	PATH_PERMISSION_PREFIX,
+	hasPermissionForPath,
+	getRequiredPermissionForPath,
+} from "@/shared/lib/route-permissions";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
@@ -20,36 +25,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 
 	const path = usePathname()	
-
-	// Map sidebar paths to specific permission prefixes (module.feature:).
-	const PATH_PERMISSION_PREFIX: Record<string, string> = {
-		// ATS
-		"/ats/jobs": "ats.jobs:",
-		"/ats/candidates": "ats.candidates:",
-		"/ats/recruiters": "ats.recruiters:",
-		"/ats/interviews": "ats.interviews:",
-		"/ats/offers-placement": "ats.offers:",
-		"/ats/pre-boarding": "ats.pre-boarding:",
-		"/ats/onboarding": "ats.onboarding:",
-		"/ats/analytics": "ats.analytics:",
-		// Communication
-		"/pages/email/mail-app": "communication.emails:",
-		"/pages/chat": "communication.chats:",
-		"/communication/calling": "communication.calling:",
-		"/pages/filemanager": "communication.files-storage:",
-		// Training Management
-		"/training/curriculum": "training.courses:",
-		"/training/attendance": "training.attendance:",
-		"/training/mentors": "training.mentors:",
-		"/training/students": "training.students:",
-		"/training/evaluation": "training.evaluation:",
-		"/training/analytics": "training.analytics:",
-		// Project Management
-		"/apps/projects/project-list": "project.projects:",
-		"/task/kanban-board": "project.tasks:",
-		"/pages/team": "project.teams:",
-		"/project-management/analytics": "project.analytics:",
-	};
 
 	// Load permissions for the current user from their roleIds (supports multiple roleIds).
 	useEffect(() => {
@@ -79,17 +54,17 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		loadPermissions();
 	}, [user]);
 
-	const isPathAllowed = (path?: string) => {
+	const isPathAllowed = (menuPath?: string) => {
 		// Until permissions are loaded, hide protected links to avoid flashes
 		// of unauthorized items. Unprotected (no prefix) remain visible.
 		if (!permissionsLoaded) {
-			if (!path || !PATH_PERMISSION_PREFIX[path]) return true;
+			if (!menuPath || !PATH_PERMISSION_PREFIX[menuPath]) return true;
 			return false;
 		}
-		if (!path) return true;
-		const prefix = PATH_PERMISSION_PREFIX[path];
-		if (!prefix) return true;
-		return userPermissions.some((p) => p.startsWith(prefix));
+		if (!menuPath) return true;
+		const requiredPrefix = getRequiredPermissionForPath(menuPath);
+		if (!requiredPrefix) return true;
+		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
 	const filteredMenuItems = useMemo(
