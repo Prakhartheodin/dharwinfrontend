@@ -40,6 +40,11 @@ export default function SettingsUsersEditPage() {
           rolesApi.listRoles({ limit: 100 }),
         ]);
         if (cancelled) return;
+        // Protect primary admin account from being edited
+        if ((userRes.email ?? "").toLowerCase() === "admin@gmail.com") {
+          router.replace(ROUTES.settingsUsers);
+          return;
+        }
         setName(userRes.name ?? "");
         setEmail(userRes.email ?? "");
         setRoleIds(userRes.roleIds ?? []);

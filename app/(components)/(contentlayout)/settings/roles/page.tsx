@@ -122,7 +122,9 @@ export default function RolesPage() {
                           </td>
                         </tr>
                       ) : (
-                        roles.map((role, index) => (
+                        roles.map((role, index) => {
+                          const isAdministratorRole = role.name === "Administrator";
+                          return (
                           <tr key={role.id} className="border-b border-defaultborder">
                             <td className="px-4 py-2.5 align-middle">
                               <input type="checkbox" className="form-check-input" aria-label={`Select ${role.name}`} />
@@ -152,18 +154,20 @@ export default function RolesPage() {
                                 >
                                   <i className="ri-pencil-line text-[1rem]"></i>
                                 </Link>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(role)}
-                                  className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
-                                  aria-label={`Delete ${role.name}`}
-                                >
-                                  <i className="ri-delete-bin-line text-[1rem]"></i>
-                                </button>
+                                {!isAdministratorRole && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(role)}
+                                    className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
+                                    aria-label={`Delete ${role.name}`}
+                                  >
+                                    <i className="ri-delete-bin-line text-[1rem]"></i>
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
-                        ))
+                        )})
                       )}
                     </tbody>
                   </table>

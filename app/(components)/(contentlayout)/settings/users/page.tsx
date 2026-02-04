@@ -146,6 +146,7 @@ export default function SettingsUsersPage() {
                 </tr>
               ) : (
                 users.map((user) => {
+                  const isPrimaryAdmin = user.email === "admin@gmail.com";
                   const permissions = getPermissionsForUser(user);
                   const visible = permissions.slice(0, PERMISSIONS_VISIBLE);
                   const restCount = permissions.length - PERMISSIONS_VISIBLE;
@@ -213,21 +214,25 @@ export default function SettingsUsersPage() {
                           >
                             <i className="ri-eye-line text-[1rem]"></i>
                           </button>
-                          <Link
-                            href={ROUTES.settingsUsersEdit(user.id)}
-                            className="ti-btn ti-btn-sm ti-btn-soft-primary !p-1.5"
-                            aria-label={`Edit ${user.name ?? user.email}`}
-                          >
-                            <i className="ri-pencil-line text-[1rem]"></i>
-                          </Link>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(user)}
-                            className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
-                            aria-label={`Delete ${user.name ?? user.email}`}
-                          >
-                            <i className="ri-delete-bin-line text-[1rem]"></i>
-                          </button>
+                          {!isPrimaryAdmin && (
+                            <>
+                              <Link
+                                href={ROUTES.settingsUsersEdit(user.id)}
+                                className="ti-btn ti-btn-sm ti-btn-soft-primary !p-1.5"
+                                aria-label={`Edit ${user.name ?? user.email}`}
+                              >
+                                <i className="ri-pencil-line text-[1rem]"></i>
+                              </Link>
+                              <button
+                                type="button"
+                                onClick={() => handleDelete(user)}
+                                className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
+                                aria-label={`Delete ${user.name ?? user.email}`}
+                              >
+                                <i className="ri-delete-bin-line text-[1rem]"></i>
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

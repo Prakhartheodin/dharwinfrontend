@@ -1,5 +1,5 @@
 "use client"
-import React, { Fragment, useState, useEffect } from "react";
+import React, { Fragment, useState, useEffect, useMemo } from "react";
 import { connect } from "react-redux";
 import { ThemeChanger } from "../../redux/action";
 import Link from "next/link";
@@ -9,11 +9,99 @@ import SimpleBar from 'simplebar-react';
 import Menuloop from "./menuloop";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuItems } from "./nav";
+import { useAuth } from "@/shared/contexts/auth-context";
+import * as rolesApi from "@/shared/lib/api/roles";
+import type { Role } from "@/shared/lib/types";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
+	const { user } = useAuth();
+	const [userPermissions, setUserPermissions] = useState<string[]>([]);
+	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 
 	const path = usePathname()	
+
+	// Map sidebar paths to specific permission prefixes (module.feature:).
+	const PATH_PERMISSION_PREFIX: Record<string, string> = {
+		// ATS
+		"/ats/jobs": "ats.jobs:",
+		"/ats/candidates": "ats.candidates:",
+		"/ats/recruiters": "ats.recruiters:",
+		"/ats/interviews": "ats.interviews:",
+		"/ats/offers-placement": "ats.offers:",
+		"/ats/pre-boarding": "ats.pre-boarding:",
+		"/ats/onboarding": "ats.onboarding:",
+		"/ats/analytics": "ats.analytics:",
+		// Communication
+		"/pages/email/mail-app": "communication.emails:",
+		"/pages/chat": "communication.chats:",
+		"/communication/calling": "communication.calling:",
+		"/pages/filemanager": "communication.files-storage:",
+		// Training Management
+		"/training/curriculum": "training.courses:",
+		"/training/attendance": "training.attendance:",
+		"/training/mentors": "training.mentors:",
+		"/training/students": "training.students:",
+		"/training/evaluation": "training.evaluation:",
+		"/training/analytics": "training.analytics:",
+		// Project Management
+		"/apps/projects/project-list": "project.projects:",
+		"/task/kanban-board": "project.tasks:",
+		"/pages/team": "project.teams:",
+		"/project-management/analytics": "project.analytics:",
+	};
+
+	// Load permissions for the current user from their roleIds (supports multiple roleIds).
+	useEffect(() => {
+		const loadPermissions = async () => {
+			try {
+				if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
+					setUserPermissions([]);
+					setPermissionsLoaded(true);
+					return;
+				}
+				const res = await rolesApi.listRoles({ limit: 100 });
+				const roles = res.results as Role[];
+				const roleMap = new Map<string, Role>();
+				roles.forEach((r) => roleMap.set(r.id, r));
+				const perms = new Set<string>();
+				(user.roleIds as string[]).forEach((id) => {
+					const role = roleMap.get(id);
+					role?.permissions?.forEach((p) => perms.add(p));
+				});
+				setUserPermissions(Array.from(perms));
+			} catch {
+				setUserPermissions([]);
+			} finally {
+				setPermissionsLoaded(true);
+			}
+		};
+		loadPermissions();
+	}, [user]);
+
+	const isPathAllowed = (path?: string) => {
+		// Until permissions are loaded, hide protected links to avoid flashes
+		// of unauthorized items. Unprotected (no prefix) remain visible.
+		if (!permissionsLoaded) {
+			if (!path || !PATH_PERMISSION_PREFIX[path]) return true;
+			return false;
+		}
+		if (!path) return true;
+		const prefix = PATH_PERMISSION_PREFIX[path];
+		if (!prefix) return true;
+		return userPermissions.some((p) => p.startsWith(prefix));
+	};
+
+	const filteredMenuItems = useMemo(
+		() =>
+			MenuItems.filter(
+				(item: any) =>
+					// Keep section titles, filter link items by permission.
+					item.menutitle || isPathAllowed(item.path)
+			),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[permissionsLoaded, userPermissions]
+	);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {
@@ -654,7 +742,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 							</svg></div>
 
 							<ul className="main-menu" onClick={() => Sideclick()}>
-								{MenuItems.map((levelone: any, index:any) => (
+								{filteredMenuItems.map((levelone: any, index:any) => (
 									<Fragment key={index}>
 										<li className={`${levelone.menutitle ? 'slide__category' : ''} ${levelone.type === 'link' ? 'slide' : ''}
                                                ${levelone.type === 'sub' ? 'slide has-sub' : ''} ${levelone?.active ? 'open' : ''} ${levelone?.selected ? 'active' : ''}`}>
