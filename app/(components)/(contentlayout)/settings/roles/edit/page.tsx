@@ -34,7 +34,7 @@ export default function RolesEditPage() {
 
   useEffect(() => {
     if (!roleId) {
-      router.replace(ROUTES.roles);
+      router.replace(ROUTES.settingsRoles);
       return;
     }
     let cancelled = false;
@@ -122,7 +122,7 @@ export default function RolesEditPage() {
         permissions: permissionStrings,
         status,
       });
-      router.push(ROUTES.roles);
+      router.push(ROUTES.settingsRoles);
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
@@ -158,7 +158,7 @@ export default function RolesEditPage() {
           <div className="box">
             <div className="box-body">
               <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md">{error}</div>
-              <Link href={ROUTES.roles} className="ti-btn ti-btn-primary">
+              <Link href={ROUTES.settingsRoles} className="ti-btn ti-btn-primary">
                 Back to User Roles
               </Link>
             </div>
@@ -179,7 +179,7 @@ export default function RolesEditPage() {
             <div className="box">
               <div className="box-header flex items-center justify-between flex-wrap gap-4">
                 <div className="box-title">User Roles</div>
-                <Link href={ROUTES.roles} className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]">
+                <Link href={ROUTES.settingsRoles} className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]">
                   <i className="ri-arrow-left-line me-1"></i>Back to User Roles
                 </Link>
               </div>
@@ -295,7 +295,7 @@ export default function RolesEditPage() {
                     })}
                   </div>
                   <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-defaultborder">
-                    <Link href={ROUTES.roles} className="ti-btn ti-btn-light">
+                    <Link href={ROUTES.settingsRoles} className="ti-btn ti-btn-light">
                       Cancel
                     </Link>
                     <button type="submit" disabled={loading} className="ti-btn ti-btn-primary">

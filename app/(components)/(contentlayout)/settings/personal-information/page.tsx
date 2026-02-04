@@ -1,16 +1,23 @@
 "use client";
 
-import React, { Fragment, useRef, useState, ChangeEvent } from "react";
+import React, { Fragment, useEffect, useRef, useState, ChangeEvent } from "react";
 import dynamic from "next/dynamic";
 import Seo from "@/shared/layout-components/seo/seo";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import { Countryoptions, Languageoptions } from "@/shared/data/pages/mail/mailsettingdata";
+import { useAuth } from "@/shared/contexts/auth-context";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
 export default function PersonalInformationPage() {
   const [selectedImage, setSelectedImage] = useState<string | null>("../../../assets/images/faces/9.jpg");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { user } = useAuth();
+
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [userName, setUserName] = useState("");
+  const [email, setEmail] = useState("");
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files && e.target.files[0];
@@ -28,6 +35,22 @@ export default function PersonalInformationPage() {
       fileInputRef.current.click();
     }
   };
+
+  useEffect(() => {
+    if (!user) return;
+    const fullName = user.name ?? "";
+    if (fullName) {
+      const [first, ...rest] = fullName.split(" ");
+      setFirstName(first ?? "");
+      setLastName(rest.join(" "));
+    } else {
+      setFirstName("");
+      setLastName("");
+    }
+    const emailVal = user.email ?? "";
+    setEmail(emailVal);
+    setUserName(emailVal);
+  }, [user]);
 
   return (
     <Fragment>
@@ -77,6 +100,8 @@ export default function PersonalInformationPage() {
               className="form-control w-full !rounded-md"
               id="first-name"
               placeholder="First Name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
             />
           </div>
           <div className="xl:col-span-6 col-span-12">
@@ -88,19 +113,23 @@ export default function PersonalInformationPage() {
               className="form-control w-full !rounded-md"
               id="last-name"
               placeholder="Last Name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
             />
           </div>
           <div className="xl:col-span-12 col-span-12">
             <label className="form-label">User Name</label>
             <div className="input-group !flex-nowrap mb-3">
               <span className="input-group-text" id="basic-addon3">
-                user2413@gmail.com
+                {user?.email ?? "—"}
               </span>
               <input
                 type="text"
                 className="form-control w-full rounded-md"
                 id="basic-url"
                 aria-describedby="basic-addon3"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
               />
             </div>
           </div>
@@ -113,10 +142,12 @@ export default function PersonalInformationPage() {
               Email Address :
             </label>
             <input
-              type="text"
+              type="email"
               className="form-control w-full !rounded-md"
               id="email-address"
               placeholder="xyz@gmail.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
           </div>
           <div className="xl:col-span-6 col-span-12">
@@ -165,9 +196,9 @@ export default function PersonalInformationPage() {
             />
           </div>
         </div>
-        <button type="button" className="ti-btn bg-primary text-white m-1">
+        {/* <button type="button" className="ti-btn bg-primary text-white m-1">
           Save
-        </button>
+        </button> */}
       </div>
     </Fragment>
   );

@@ -7,6 +7,7 @@ const BASE_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
  */
 export const AUTH_ENDPOINTS = {
   login: `${BASE_API_URL}/auth/login`,
+  register: `${BASE_API_URL}/auth/register`,
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
   refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
   logout: `${BASE_API_URL}/auth/logout`,

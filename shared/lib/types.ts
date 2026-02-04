@@ -36,3 +36,12 @@ export interface RolesListResponse {
   totalPages: number;
   totalResults: number;
 }
+
+/** Paginated users list response. */
+export interface UsersListResponse {
+  results: User[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
