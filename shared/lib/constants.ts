@@ -8,6 +8,8 @@ const BASE_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
 export const AUTH_ENDPOINTS = {
   login: `${BASE_API_URL}/auth/login`,
   register: `${BASE_API_URL}/auth/register`,
+  /** Public registration – no auth; user created with status pending. */
+  publicRegister: `${BASE_API_URL}/public/register`,
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
   refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
   logout: `${BASE_API_URL}/auth/logout`,
@@ -15,6 +17,8 @@ export const AUTH_ENDPOINTS = {
 
 export const ROUTES = {
   signIn: "/authentication/sign-in/",
+  /** Public registration – no auth required; shareable URL. */
+  register: "/authentication/register/",
   resetPassword: "/authentication/reset-password/reset-cover/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
