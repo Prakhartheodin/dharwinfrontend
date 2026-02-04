@@ -2,6 +2,7 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import React, { Fragment, useState } from "react";
 import { Swiper, SwiperSlide } from "swiper/react";
 import "swiper/css";
@@ -13,6 +14,8 @@ import { ROUTES } from "@/shared/lib/constants";
 import { AxiosError } from "axios";
 
 export default function SignInPage() {
+  const searchParams = useSearchParams();
+  const registeredMessage = searchParams.get("registered") === "1" ? searchParams.get("message") ?? "Registration successful. You can sign in once an administrator activates your account." : null;
   const [passwordshow1, setpasswordshow1] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -56,6 +59,11 @@ export default function SignInPage() {
                 </div>
                 <p className="h5 font-semibold mb-2">Sign In</p>
                 <p className="mb-4 text-[#8c9097] dark:text-white/50 opacity-[0.7] font-normal">Welcome back</p>
+                {registeredMessage && (
+                  <div className="xl:col-span-12 col-span-12 p-4 bg-success/10 border border-success/30 text-success rounded-md text-sm mb-4">
+                    {registeredMessage}
+                  </div>
+                )}
                 <div className="text-center my-[3rem] authentication-barrier">
                   <span>OR</span>
                 </div>
@@ -104,6 +112,10 @@ export default function SignInPage() {
                       {isLoading ? "Signing in…" : "Sign In"}
                     </button>
                   </div>
+                  <p className="xl:col-span-12 col-span-12 text-[0.875rem] text-[#8c9097] dark:text-white/50 text-center mt-2 mb-0">
+                    Don&apos;t have an account?{" "}
+                    <Link href={ROUTES.register} className="text-primary font-medium">Register</Link>
+                  </p>
                 </form>
               </div>
             </div>

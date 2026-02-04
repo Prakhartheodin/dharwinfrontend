@@ -11,16 +11,27 @@ import { AxiosError } from "axios";
 
 const PERMISSIONS_VISIBLE = 3;
 
+const STATUS_OPTIONS = [
+  { value: "", label: "All statuses" },
+  { value: "active", label: "Active" },
+  { value: "pending", label: "Pending" },
+  { value: "disabled", label: "Disabled" },
+  { value: "deleted", label: "Deleted" },
+] as const;
+
 export default function SettingsUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [viewUser, setViewUser] = useState<User | null>(null);
+
+  // Client-side filters (no API calls when these change)
+  const [searchQuery, setSearchQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
 
   const rolesById = useMemo(() => {
     const map = new Map<string, Role>();
@@ -38,17 +49,37 @@ export default function SettingsUsersPage() {
     return Array.from(perms);
   };
 
+  // Filter users in memory by search (name, email), roleIds, and status
+  const filteredUsers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return users.filter((user) => {
+      if (q) {
+        const name = (user.name ?? "").toLowerCase();
+        const email = (user.email ?? "").toLowerCase();
+        if (!name.includes(q) && !email.includes(q)) return false;
+      }
+      if (roleFilter && !(user.roleIds ?? []).includes(roleFilter)) return false;
+      if (statusFilter && (user.status ?? "") !== statusFilter) return false;
+      return true;
+    });
+  }, [users, searchQuery, roleFilter, statusFilter]);
+
+  const totalResults = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalResults / limit));
+  const paginatedUsers = useMemo(
+    () => filteredUsers.slice((page - 1) * limit, page * limit),
+    [filteredUsers, page, limit]
+  );
+
   const fetchUsers = async () => {
     setLoading(true);
     setError("");
     try {
       const [usersRes, rolesRes] = await Promise.all([
-        usersApi.listUsers({ page, limit }),
+        usersApi.listUsers({ limit: 500 }),
         rolesApi.listRoles({ limit: 100 }),
       ]);
-      setUsers(usersRes.results);
-      setTotalPages(usersRes.totalPages);
-      setTotalResults(usersRes.totalResults);
+      setUsers(usersRes.results ?? []);
       setRoles(rolesRes.results ?? []);
     } catch (err) {
       const msg =
@@ -64,7 +95,21 @@ export default function SettingsUsersPage() {
 
   useEffect(() => {
     fetchUsers();
-  }, [page, limit]);
+  }, []);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, roleFilter, statusFilter]);
+
+  const handleClearFilters = () => {
+    setSearchQuery("");
+    setRoleFilter("");
+    setStatusFilter("");
+    setPage(1);
+  };
+
+  const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "" || statusFilter !== "";
 
   const handleDelete = async (user: User) => {
     if (!confirm(`Are you sure you want to delete the user "${user.name ?? user.email}"?`)) return;
@@ -80,7 +125,7 @@ export default function SettingsUsersPage() {
     }
   };
 
-  const start = (page - 1) * limit + 1;
+  const start = totalResults === 0 ? 0 : (page - 1) * limit + 1;
   const end = Math.min(page * limit, totalResults);
 
   return (
@@ -119,6 +164,62 @@ export default function SettingsUsersPage() {
             {error}
           </div>
         )}
+
+        {/* Client-side filters (no API calls) */}
+        <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-wrap items-end gap-3">
+          <div className="flex items-center gap-2 text-defaulttextcolor/80">
+            <i className="ri-filter-3-line text-[1.25rem]"></i>
+            <span className="text-[0.8125rem] font-medium">Filter</span>
+          </div>
+          <div className="min-w-[12rem]">
+            <label htmlFor="users-search" className="form-label !text-[0.75rem] mb-1">Search by name or email</label>
+            <input
+              id="users-search"
+              type="text"
+              className="form-control !py-1.5 !text-[0.8125rem]"
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="min-w-[10rem]">
+            <label htmlFor="users-filter-role" className="form-label !text-[0.75rem] mb-1">Role</label>
+            <select
+              id="users-filter-role"
+              className="form-control form-select !py-1.5 !text-[0.8125rem]"
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+            >
+              <option value="">All roles</option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="min-w-[10rem]">
+            <label htmlFor="users-filter-status" className="form-label !text-[0.75rem] mb-1">Status</label>
+            <select
+              id="users-filter-status"
+              className="form-control form-select !py-1.5 !text-[0.8125rem]"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value || "all"} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          {hasActiveFilters && (
+            <button type="button" onClick={handleClearFilters} className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem]">
+              Clear filters
+            </button>
+          )}
+        </div>
+
         <div className="table-responsive overflow-x-auto">
           <table className="table min-w-full table-bordered border-defaultborder">
             <thead>
@@ -138,14 +239,14 @@ export default function SettingsUsersPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : users.length === 0 ? (
+              ) : paginatedUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                    No users found.
+                    {hasActiveFilters ? "No users match your filters." : "No users found."}
                   </td>
                 </tr>
               ) : (
-                users.map((user) => {
+                paginatedUsers.map((user) => {
                   const isPrimaryAdmin = user.email === "admin@gmail.com";
                   const permissions = getPermissionsForUser(user);
                   const visible = permissions.slice(0, PERMISSIONS_VISIBLE);
@@ -242,7 +343,7 @@ export default function SettingsUsersPage() {
             </tbody>
           </table>
         </div>
-        {!loading && users.length > 0 && (
+        {!loading && (users.length > 0 || hasActiveFilters) && (
           <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-defaultborder">
             <p className="text-[0.8125rem] text-defaulttextcolor/70 mb-0">
               Showing {start} to {end} of {totalResults} entries

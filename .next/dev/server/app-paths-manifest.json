@@ -1,10 +1,10 @@
 {
+  "/(components)/(authenticationlayout)/authentication/register/page": "app/(components)/(authenticationlayout)/authentication/register/page.js",
   "/(components)/(authenticationlayout)/authentication/sign-in/page": "app/(components)/(authenticationlayout)/authentication/sign-in/page.js",
+  "/(components)/(contentlayout)/ats/pre-boarding/page": "app/(components)/(contentlayout)/ats/pre-boarding/page.js",
   "/(components)/(contentlayout)/dashboard/page": "app/(components)/(contentlayout)/dashboard/page.js",
   "/(components)/(contentlayout)/settings/page": "app/(components)/(contentlayout)/settings/page.js",
   "/(components)/(contentlayout)/settings/personal-information/page": "app/(components)/(contentlayout)/settings/personal-information/page.js",
-  "/(components)/(contentlayout)/settings/roles/add/page": "app/(components)/(contentlayout)/settings/roles/add/page.js",
-  "/(components)/(contentlayout)/settings/roles/edit/page": "app/(components)/(contentlayout)/settings/roles/edit/page.js",
   "/(components)/(contentlayout)/settings/roles/page": "app/(components)/(contentlayout)/settings/roles/page.js",
   "/(components)/(contentlayout)/settings/users/add/page": "app/(components)/(contentlayout)/settings/users/add/page.js",
   "/(components)/(contentlayout)/settings/users/edit/page": "app/(components)/(contentlayout)/settings/users/edit/page.js",

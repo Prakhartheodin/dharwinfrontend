@@ -48,7 +48,8 @@ export default function SettingsUsersEditPage() {
         setName(userRes.name ?? "");
         setEmail(userRes.email ?? "");
         setRoleIds(userRes.roleIds ?? []);
-        setStatus(userRes.status ?? "active");
+        const rawStatus = (userRes.status ?? "active").toString().toLowerCase();
+        setStatus(["active", "pending", "disabled", "deleted"].includes(rawStatus) ? rawStatus : "active");
         setRoles(rolesRes.results ?? []);
       } catch (err) {
         if (cancelled) return;
@@ -85,13 +86,16 @@ export default function SettingsUsersEditPage() {
       setError("Email is required.");
       return;
     }
+    const allowedStatuses = ["active", "pending", "disabled", "deleted"] as const;
+    const statusToSend = allowedStatuses.includes(status as (typeof allowedStatuses)[number]) ? status : "active";
+
     setLoading(true);
     try {
       await usersApi.updateUser(userId, {
         name: trimmedName,
         email: trimmedEmail,
         roleIds,
-        status,
+        status: statusToSend,
       });
       router.push(ROUTES.settingsUsers);
     } catch (err) {
@@ -187,6 +191,7 @@ export default function SettingsUsersEditPage() {
                       onChange={(e) => setStatus(e.target.value)}
                     >
                       <option value="active">Active</option>
+                      <option value="pending">Pending</option>
                       <option value="disabled">Disabled</option>
                       <option value="deleted">Deleted</option>
                     </select>
