@@ -1,16 +1,22 @@
 {
   "app": {
+    "[project]/app/(components)/(authenticationlayout)/authentication/register/page": [],
+    "[project]/app/(components)/(authenticationlayout)/authentication/reset-password/page": [],
+    "[project]/app/(components)/(authenticationlayout)/authentication/reset-password/reset-cover/page": [],
     "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/candidates/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/recruiters/page": [],
+    "[project]/app/(components)/(authenticationlayout)/reset-password/page": [],
     "[project]/app/(components)/(contentlayout)/dashboard/page": [],
+    "[project]/app/(components)/(contentlayout)/logs/logs-activity/page": [],
     "[project]/app/(components)/(contentlayout)/settings/page": [],
     "[project]/app/(components)/(contentlayout)/settings/personal-information/page": [],
+    "[project]/app/(components)/(contentlayout)/settings/roles/add/page": [],
     "[project]/app/(components)/(contentlayout)/settings/roles/edit/page": [],
     "[project]/app/(components)/(contentlayout)/settings/roles/page": [],
     "[project]/app/(components)/(contentlayout)/settings/users/edit/page": [],
     "[project]/app/(components)/(contentlayout)/settings/users/page": [],
-    "[project]/app/page": []
+    "[project]/app/_not-found/page": [],
+    "[project]/app/page": [],
+    "[project]/app/reset-password/page": []
   },
   "appUsingSizeAdjust": true,
   "pages": {},

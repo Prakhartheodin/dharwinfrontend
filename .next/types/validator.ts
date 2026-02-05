@@ -93,7 +93,7 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
 // Validate ../../app/(components)/(authenticationlayout)/authentication/reset-password/reset-cover/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/authentication/reset-password/reset-cover">> = Specific
-  const handler = {} as typeof import("../../app/(components)/(authenticationlayout)/authentication/reset-password/reset-cover/page.js")
+  const handler = {} as typeof import("../../app/(components)/(authenticationlayout)/authentication/reset-password/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

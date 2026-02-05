@@ -16,6 +16,7 @@ import {
   type SectionPermissions,
 } from "@/shared/lib/roles-permissions";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
 
 export default function RolesEditPage() {
   const router = useRouter();
@@ -134,6 +135,16 @@ export default function RolesEditPage() {
         permissions: permissionStrings,
         status,
       });
+      await Swal.fire({
+        icon: "success",
+        title: "Role updated",
+        text: `The role "${trimmedName}" has been updated successfully.`,
+        toast: true,
+        position: "top-end",
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
       router.push(ROUTES.settingsRoles);
     } catch (err) {
       const msg =
@@ -141,6 +152,16 @@ export default function RolesEditPage() {
           ? String(err.response.data.message)
           : "Failed to update role.";
       setError(msg);
+      await Swal.fire({
+        icon: "error",
+        title: "Failed to update role",
+        text: msg,
+        toast: true,
+        position: "top-end",
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
     } finally {
       setLoading(false);
     }

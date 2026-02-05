@@ -10,10 +10,11 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
 
 const PASSWORD_MIN_LENGTH = 8;
 
-function getErrorMessage(err: unknown): string {
+function getErrorMessage(err: any): string {
   if (err instanceof AxiosError) {
     const msg = err.response?.data?.message;
     if (typeof msg === "string") return msg;
@@ -55,7 +56,7 @@ export default function SettingsUsersAddPage() {
   }, []);
 
   const handleRoleToggle = (roleId: string) => {
-    setRoleIds((prev) =>
+    setRoleIds((prev: string[]) =>
       prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId]
     );
   };
@@ -94,9 +95,30 @@ export default function SettingsUsersAddPage() {
         isEmailVerified: true,
         ...(roleIds.length > 0 && { roleIds }),
       });
+      await Swal.fire({
+        icon: "success",
+        title: "User created",
+        text: `The user "${trimmedName}" has been created successfully.`,
+        toast: true,
+        position: "top-end",
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
       router.push(ROUTES.settingsUsers);
     } catch (err) {
       setError(getErrorMessage(err));
+      const msg = getErrorMessage(err);
+      await Swal.fire({
+        icon: "error",
+        title: "Failed to create user",
+        text: msg,
+        toast: true,
+        position: "top-end",
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -183,7 +205,7 @@ export default function SettingsUsersAddPage() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowPassword((v) => !v)}
+                        onClick={() => setShowPassword((prev) => !prev)}
                         className="absolute top-1/2 -translate-y-1/2 end-3 p-1 text-defaulttextcolor/70 hover:text-defaulttextcolor"
                         aria-label={showPassword ? "Hide password" : "Show password"}
                       >
@@ -210,7 +232,7 @@ export default function SettingsUsersAddPage() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword((v) => !v)}
+                        onClick={() => setShowConfirmPassword((prev) => !prev)}
                         className="absolute top-1/2 -translate-y-1/2 end-3 p-1 text-defaulttextcolor/70 hover:text-defaulttextcolor"
                         aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                       >

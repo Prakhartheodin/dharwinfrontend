@@ -10,6 +10,7 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
 
 export default function SettingsUsersEditPage() {
   const router = useRouter();
@@ -97,6 +98,16 @@ export default function SettingsUsersEditPage() {
         roleIds,
         status: statusToSend,
       });
+      await Swal.fire({
+        icon: "success",
+        title: "User updated",
+        text: `The user "${trimmedName}" has been updated successfully.`,
+        toast: true,
+        position: "top-end",
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
       router.push(ROUTES.settingsUsers);
     } catch (err) {
       const msg =
@@ -104,6 +115,16 @@ export default function SettingsUsersEditPage() {
           ? String(err.response.data.message)
           : "Failed to update user.";
       setError(msg);
+      await Swal.fire({
+        icon: "error",
+        title: "Failed to update user",
+        text: msg,
+        toast: true,
+        position: "top-end",
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -135,6 +156,12 @@ export default function SettingsUsersEditPage() {
               </div>
               <div className="box-body">
                 <form onSubmit={handleSubmit}>
+                  <div className="mb-6 p-4 bg-primary/10 border border-primary/30 text-primary rounded-md text-sm flex items-start gap-2">
+                    <i className="ri-information-line text-[1.25rem] shrink-0 mt-0" aria-hidden></i>
+                    <p className="mb-0 mt-1 text-defaulttextcolor">
+                      Detailed profile data can be updated by logging in as the user or using the Manage section.
+                    </p>
+                  </div>
                   {error && (
                     <div className="mb-6 p-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
                       {error}

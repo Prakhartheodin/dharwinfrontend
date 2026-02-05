@@ -16,6 +16,7 @@ import {
   type SectionPermissions,
 } from "@/shared/lib/roles-permissions";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
 
 export default function RolesAddPage() {
   const router = useRouter();
@@ -93,6 +94,16 @@ export default function RolesAddPage() {
         permissions: permissionStrings,
         status,
       });
+      await Swal.fire({
+        icon: "success",
+        title: "Role created",
+        text: `The role "${trimmedName}" has been created successfully.`,
+        toast: true,
+        position: "top-end",
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
       router.push(ROUTES.settingsRoles);
     } catch (err) {
       const msg =
@@ -100,6 +111,16 @@ export default function RolesAddPage() {
           ? String(err.response.data.message)
           : "Failed to create role.";
       setError(msg);
+      await Swal.fire({
+        icon: "error",
+        title: "Failed to create role",
+        text: msg,
+        toast: true,
+        position: "top-end",
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      });
     } finally {
       setLoading(false);
     }

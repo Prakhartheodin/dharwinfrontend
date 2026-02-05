@@ -383,17 +383,28 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
             </div>
             <div className="header-content-right">
               {impersonation && (
-                <div className="header-element py-[1rem] md:px-[0.65rem] px-2 flex items-center gap-2">
-                  <span className="text-[0.8125rem] text-warning font-medium">
-                    Viewing as {user?.name ?? user?.email ?? "user"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => stopImpersonation()}
-                    className="ti-btn ti-btn-sm ti-btn-warning !py-1 !px-2 !text-[0.75rem]"
-                  >
-                    Exit impersonation
-                  </button>
+                <div className="header-element py-[0.6rem] md:px-[0.85rem] px-2 flex items-center">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 border border-amber-300 px-3 py-1 shadow-sm">
+                    <span className="inline-flex items-center gap-1 text-[0.75rem] font-medium text-amber-700">
+                      <i className="ri-user-switch-line text-[0.9rem]" aria-hidden></i>
+                      <span
+                        className="truncate max-w-[8rem] md:max-w-[12rem]"
+                        title={user?.name ?? user?.email ?? "user"}
+                      >
+                        Impersonating{" "}
+                        <span className="font-semibold">
+                          {user?.name ?? user?.email ?? "user"}
+                        </span>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stopImpersonation()}
+                      className="ti-btn ti-btn-xs ti-btn-outline-warning !py-0.5 !px-3 !text-[0.7rem] !rounded-full mt-1"
+                    >
+                      Exit
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="header-element py-[1rem] md:px-[0.65rem] px-2 header-search">

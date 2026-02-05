@@ -15,13 +15,18 @@ export const AUTH_ENDPOINTS = {
   logout: `${BASE_API_URL}/auth/logout`,
   impersonate: `${BASE_API_URL}/auth/impersonate`,
   stopImpersonation: `${BASE_API_URL}/auth/stop-impersonation`,
+  changePassword: `${BASE_API_URL}/auth/change-password`,
+  /** Forgot password – request reset link by email (no auth). */
+  forgotPassword: `${BASE_API_URL}/auth/forgot-password`,
+  /** Reset password – use token from email link to set a new password. */
+  resetPassword: `${BASE_API_URL}/auth/reset-password`,
 } as const;
 
 export const ROUTES = {
   signIn: "/authentication/sign-in/",
   /** Public registration – no auth required; shareable URL. */
   register: "/authentication/register/",
-  resetPassword: "/authentication/reset-password/reset-cover/",
+  resetPassword: "/authentication/reset-password/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
   roles: "/roles/",

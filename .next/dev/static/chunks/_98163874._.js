@@ -159,12 +159,20 @@ const TeamsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5
     lineNumber: 31,
     columnNumber: 19
 }, ("TURBOPACK compile-time value", void 0));
+// Logs Icons
+const LogsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
+    className: "bx bx-clipboard side-menu__icon"
+}, void 0, false, {
+    fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
+    lineNumber: 34,
+    columnNumber: 18
+}, ("TURBOPACK compile-time value", void 0));
 const badge = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
     className: "badge !bg-warning/10 !text-warning !py-[0.25rem] !px-[0.45rem] !text-[0.75em] ms-1",
     children: "12"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 34,
+    lineNumber: 37,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge1 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -172,7 +180,7 @@ const badge1 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "New"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 39,
+    lineNumber: 42,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge2 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -180,7 +188,7 @@ const badge2 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "Hot"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 44,
+    lineNumber: 47,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge4 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$compiled$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -188,7 +196,7 @@ const badge4 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "3"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 49,
+    lineNumber: 52,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const MenuItems = [
@@ -410,6 +418,18 @@ const MenuItems = [
         title: "Analytics",
         type: "link",
         path: "/project-management/analytics",
+        active: false,
+        selected: false,
+        dirchange: false
+    },
+    {
+        menutitle: "Logs"
+    },
+    {
+        icon: LogsIcon,
+        title: "Logs Activity",
+        type: "link",
+        path: "/logs/logs-activity",
         active: false,
         selected: false,
         dirchange: false

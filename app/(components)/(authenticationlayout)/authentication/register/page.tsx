@@ -85,10 +85,17 @@ export default function RegisterPage() {
             <div className="xxl:col-span-3 xl:col-span-3 lg:col-span-3 md:col-span-3 sm:col-span-2"></div>
             <div className="xxl:col-span-6 xl:col-span-6 lg:col-span-6 md:col-span-6 sm:col-span-8 col-span-12">
               <div className="p-[3rem]">
-                <div className="mb-4">
-                  <Link aria-label="anchor" href={ROUTES.defaultAfterLogin}>
-                    <img src="../../../assets/images/brand-logos/desktop-logo.png" alt="" className="authentication-brand desktop-logo" />
-                    <img src="../../../assets/images/brand-logos/desktop-dark.png" alt="" className="authentication-brand desktop-dark" />
+                <div className="mb-6">
+                  <Link
+                    aria-label="Dharwin home"
+                    href={ROUTES.defaultAfterLogin}
+                    className="inline-flex items-center gap-3"
+                  >
+                    <img
+                      src="../../../assets/images/logo.png"
+                      alt="Dharwin logo"
+                      className="h-8 w-auto"
+                    />
                   </Link>
                 </div>
                 <p className="h5 font-semibold mb-2">Create account</p>

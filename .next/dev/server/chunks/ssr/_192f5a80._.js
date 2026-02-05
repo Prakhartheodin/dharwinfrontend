@@ -105,31 +105,21 @@ function SignInPage() {
                                         className: "p-[3rem]",
                                         children: [
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
-                                                className: "mb-4",
+                                                className: "mb-6",
                                                 children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$client$2f$app$2d$dir$2f$link$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["default"], {
-                                                    "aria-label": "anchor",
+                                                    "aria-label": "Dharwin home",
                                                     href: __TURBOPACK__imported__module__$5b$project$5d2f$shared$2f$lib$2f$constants$2e$ts__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["ROUTES"].defaultAfterLogin,
-                                                    children: [
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("img", {
-                                                            src: "../../../assets/images/brand-logos/desktop-logo.png",
-                                                            alt: "",
-                                                            className: "authentication-brand desktop-logo"
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                            lineNumber: 56,
-                                                            columnNumber: 21
-                                                        }, this),
-                                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("img", {
-                                                            src: "../../../assets/images/brand-logos/desktop-dark.png",
-                                                            alt: "",
-                                                            className: "authentication-brand desktop-dark"
-                                                        }, void 0, false, {
-                                                            fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                            lineNumber: 57,
-                                                            columnNumber: 21
-                                                        }, this)
-                                                    ]
-                                                }, void 0, true, {
+                                                    className: "inline-flex items-center gap-3",
+                                                    children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("img", {
+                                                        src: "../../../assets/images/logo.png",
+                                                        alt: "Dharwin logo",
+                                                        className: "h-8 w-auto"
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
+                                                        lineNumber: 60,
+                                                        columnNumber: 21
+                                                    }, this)
+                                                }, void 0, false, {
                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
                                                     lineNumber: 55,
                                                     columnNumber: 19
@@ -144,7 +134,7 @@ function SignInPage() {
                                                 children: "Sign In"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 60,
+                                                lineNumber: 67,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -152,7 +142,7 @@ function SignInPage() {
                                                 children: "Welcome back"
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 61,
+                                                lineNumber: 68,
                                                 columnNumber: 17
                                             }, this),
                                             registeredMessage && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -160,7 +150,7 @@ function SignInPage() {
                                                 children: registeredMessage
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 63,
+                                                lineNumber: 70,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -169,12 +159,12 @@ function SignInPage() {
                                                     children: "OR"
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                    lineNumber: 68,
+                                                    lineNumber: 75,
                                                     columnNumber: 19
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 67,
+                                                lineNumber: 74,
                                                 columnNumber: 17
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("form", {
@@ -186,7 +176,7 @@ function SignInPage() {
                                                         children: error
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 72,
+                                                        lineNumber: 79,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -198,7 +188,7 @@ function SignInPage() {
                                                                 children: "Email"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 77,
+                                                                lineNumber: 84,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("input", {
@@ -215,13 +205,13 @@ function SignInPage() {
                                                                 required: true
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 78,
+                                                                lineNumber: 85,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 76,
+                                                        lineNumber: 83,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -238,13 +228,13 @@ function SignInPage() {
                                                                         children: "Forgot password?"
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                        lineNumber: 92,
+                                                                        lineNumber: 99,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 90,
+                                                                lineNumber: 97,
                                                                 columnNumber: 21
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -264,7 +254,7 @@ function SignInPage() {
                                                                         required: true
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                        lineNumber: 95,
+                                                                        lineNumber: 102,
                                                                         columnNumber: 23
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
@@ -277,24 +267,24 @@ function SignInPage() {
                                                                             className: `${passwordshow1 ? "ri-eye-line" : "ri-eye-off-line"} align-middle`
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                            lineNumber: 106,
+                                                                            lineNumber: 113,
                                                                             columnNumber: 25
                                                                         }, this)
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                        lineNumber: 105,
+                                                                        lineNumber: 112,
                                                                         columnNumber: 23
                                                                     }, this)
                                                                 ]
                                                             }, void 0, true, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 94,
+                                                                lineNumber: 101,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 89,
+                                                        lineNumber: 96,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
@@ -306,12 +296,12 @@ function SignInPage() {
                                                             children: isLoading ? "Signing in…" : "Sign In"
                                                         }, void 0, false, {
                                                             fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                            lineNumber: 111,
+                                                            lineNumber: 118,
                                                             columnNumber: 21
                                                         }, this)
                                                     }, void 0, false, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 110,
+                                                        lineNumber: 117,
                                                         columnNumber: 19
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -325,19 +315,19 @@ function SignInPage() {
                                                                 children: "Register"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 117,
+                                                                lineNumber: 124,
                                                                 columnNumber: 21
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 115,
+                                                        lineNumber: 122,
                                                         columnNumber: 19
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 70,
+                                                lineNumber: 77,
                                                 columnNumber: 17
                                             }, this)
                                         ]
@@ -355,7 +345,7 @@ function SignInPage() {
                                     className: "xxl:col-span-3 xl:col-span-3 lg:col-span-3 md:col-span-3 sm:col-span-2"
                                 }, void 0, false, {
                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                    lineNumber: 122,
+                                    lineNumber: 129,
                                     columnNumber: 13
                                 }, this)
                             ]
@@ -408,12 +398,12 @@ function SignInPage() {
                                                                     alt: ""
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                    lineNumber: 134,
+                                                                    lineNumber: 141,
                                                                     columnNumber: 27
                                                                 }, this)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 133,
+                                                                lineNumber: 140,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h6", {
@@ -421,7 +411,7 @@ function SignInPage() {
                                                                 children: "Sign In"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 136,
+                                                                lineNumber: 143,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -429,23 +419,23 @@ function SignInPage() {
                                                                 children: "Lorem ipsum dolor sit amet, consectetur adipisicing elit."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 137,
+                                                                lineNumber: 144,
                                                                 columnNumber: 25
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 132,
+                                                        lineNumber: 139,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                    lineNumber: 131,
+                                                    lineNumber: 138,
                                                     columnNumber: 21
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 130,
+                                                lineNumber: 137,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$swiper$2f$swiper$2d$react$2e$mjs__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["SwiperSlide"], {
@@ -461,12 +451,12 @@ function SignInPage() {
                                                                     alt: ""
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                    lineNumber: 145,
+                                                                    lineNumber: 152,
                                                                     columnNumber: 27
                                                                 }, this)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 144,
+                                                                lineNumber: 151,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h6", {
@@ -474,7 +464,7 @@ function SignInPage() {
                                                                 children: "Sign In"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 147,
+                                                                lineNumber: 154,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -482,23 +472,23 @@ function SignInPage() {
                                                                 children: "Lorem ipsum dolor sit amet, consectetur adipisicing elit."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 148,
+                                                                lineNumber: 155,
                                                                 columnNumber: 25
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 143,
+                                                        lineNumber: 150,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                    lineNumber: 142,
+                                                    lineNumber: 149,
                                                     columnNumber: 21
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 141,
+                                                lineNumber: 148,
                                                 columnNumber: 19
                                             }, this),
                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$swiper$2f$swiper$2d$react$2e$mjs__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["SwiperSlide"], {
@@ -514,12 +504,12 @@ function SignInPage() {
                                                                     alt: ""
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                    lineNumber: 156,
+                                                                    lineNumber: 163,
                                                                     columnNumber: 27
                                                                 }, this)
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 155,
+                                                                lineNumber: 162,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("h6", {
@@ -527,7 +517,7 @@ function SignInPage() {
                                                                 children: "Sign In"
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 158,
+                                                                lineNumber: 165,
                                                                 columnNumber: 25
                                                             }, this),
                                                             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
@@ -535,49 +525,49 @@ function SignInPage() {
                                                                 children: "Lorem ipsum dolor sit amet, consectetur adipisicing elit."
                                                             }, void 0, false, {
                                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                                lineNumber: 159,
+                                                                lineNumber: 166,
                                                                 columnNumber: 25
                                                             }, this)
                                                         ]
                                                     }, void 0, true, {
                                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                        lineNumber: 154,
+                                                        lineNumber: 161,
                                                         columnNumber: 23
                                                     }, this)
                                                 }, void 0, false, {
                                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                    lineNumber: 153,
+                                                    lineNumber: 160,
                                                     columnNumber: 21
                                                 }, this)
                                             }, void 0, false, {
                                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                                lineNumber: 152,
+                                                lineNumber: 159,
                                                 columnNumber: 19
                                             }, this)
                                         ]
                                     }, void 0, true, {
                                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                        lineNumber: 129,
+                                        lineNumber: 136,
                                         columnNumber: 17
                                     }, this)
                                 }, void 0, false, {
                                     fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                    lineNumber: 128,
+                                    lineNumber: 135,
                                     columnNumber: 15
                                 }, this)
                             }, void 0, false, {
                                 fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                                lineNumber: 127,
+                                lineNumber: 134,
                                 columnNumber: 13
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                            lineNumber: 126,
+                            lineNumber: 133,
                             columnNumber: 11
                         }, this)
                     }, void 0, false, {
                         fileName: "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx",
-                        lineNumber: 125,
+                        lineNumber: 132,
                         columnNumber: 9
                     }, this)
                 ]

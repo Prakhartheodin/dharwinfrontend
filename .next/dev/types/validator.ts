@@ -90,6 +90,15 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
   type __Unused = __Check
 }
 
+// Validate ../../../app/(components)/(authenticationlayout)/authentication/reset-password/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/authentication/reset-password">> = Specific
+  const handler = {} as typeof import("../../../app/(components)/(authenticationlayout)/authentication/reset-password/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
 // Validate ../../../app/(components)/(authenticationlayout)/authentication/sign-in/page.tsx
 {
   type __IsExpected<Specific extends AppPageConfig<"/authentication/sign-in">> = Specific
@@ -148,6 +157,15 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
 {
   type __IsExpected<Specific extends AppPageConfig<"/error/error-500">> = Specific
   const handler = {} as typeof import("../../../app/(components)/(authenticationlayout)/error/error-500/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/(components)/(authenticationlayout)/reset-password/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/reset-password">> = Specific
+  const handler = {} as typeof import("../../../app/(components)/(authenticationlayout)/reset-password/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check
@@ -940,6 +958,15 @@ type LayoutConfig<Route extends LayoutRoutes = LayoutRoutes> = {
 {
   type __IsExpected<Specific extends AppPageConfig<"/icons">> = Specific
   const handler = {} as typeof import("../../../app/(components)/(contentlayout)/icons/page.js")
+  type __Check = __IsExpected<typeof handler>
+  // @ts-ignore
+  type __Unused = __Check
+}
+
+// Validate ../../../app/(components)/(contentlayout)/logs/logs-activity/page.tsx
+{
+  type __IsExpected<Specific extends AppPageConfig<"/logs/logs-activity">> = Specific
+  const handler = {} as typeof import("../../../app/(components)/(contentlayout)/logs/logs-activity/page.js")
   type __Check = __IsExpected<typeof handler>
   // @ts-ignore
   type __Unused = __Check

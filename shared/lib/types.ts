@@ -1,4 +1,4 @@
-/** User from backend (login/me). Matches guide: id, email, name, role, roleIds, status. */
+/** User from backend (login/me). Matches guide: id, email, name, role, roleIds, status, createdAt, lastLoginAt. */
 export interface User {
   id: string;
   email: string;
@@ -6,7 +6,18 @@ export interface User {
   role?: string;
   roleIds?: string[];
   status?: string;
+  createdAt?: string;
+  lastLoginAt?: string;
   [key: string]: unknown;
+}
+
+/** Session from GET /v1/auth/me response (sessions array). */
+export interface Session {
+  id: string;
+  userAgent?: string | null;
+  ip?: string | null;
+  createdAt: string;
+  expires: string;
 }
 
 /** Auth API response; frontend ignores tokens and uses cookies. */
@@ -52,6 +63,34 @@ export interface RolesListResponse {
 /** Paginated users list response. */
 export interface UsersListResponse {
   results: User[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+/** Actor object returned in activity logs (id and name only). */
+export interface ActivityLogActor {
+  id: string;
+  name?: string | null;
+}
+
+/** Activity log entry from /v1/activity-logs. */
+export interface ActivityLog {
+  id: string;
+  actor?: ActivityLogActor | null;
+  action: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  metadata?: Record<string, unknown> | null;
+  ip?: string | null;
+  userAgent?: string | null;
+  createdAt: string;
+}
+
+/** Paginated activity logs list response. */
+export interface ActivityLogsListResponse {
+  results: ActivityLog[];
   page: number;
   limit: number;
   totalPages: number;

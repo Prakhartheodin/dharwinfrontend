@@ -9,8 +9,17 @@ import * as usersApi from "@/shared/lib/api/users";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
 
-const PERMISSIONS_VISIBLE = 3;
+function formatDate(isoString: string | undefined): string {
+  if (!isoString) return "—";
+  try {
+    const d = new Date(isoString);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
+}
 
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
@@ -57,6 +66,15 @@ export default function SettingsUsersPage() {
       role?.permissions?.forEach((p) => perms.add(p));
     });
     return Array.from(perms);
+  };
+
+  /** Permission summary for table: "Inherited from Role: X" or "From N roles: A + B". */
+  const getPermissionSummaryFromRoles = (user: User): string => {
+    const ids = user.roleIds ?? [];
+    if (ids.length === 0) return "No roles assigned";
+    const names = ids.map((id) => rolesById.get(id)?.name ?? id).filter(Boolean);
+    if (names.length === 1) return `Inherited from Role: ${names[0]}`;
+    return `From ${names.length} roles: ${names.join(" + ")}`;
   };
 
   // Filter users in memory by search (name, email), roleIds, and status
@@ -122,21 +140,47 @@ export default function SettingsUsersPage() {
   const hasActiveFilters = searchQuery.trim() !== "" || roleFilter !== "" || statusFilter !== "";
 
   const handleDelete = async (user: User) => {
-    if (!confirm(`Are you sure you want to delete the user "${user.name ?? user.email}"?`)) return;
+    const result = await Swal.fire({
+      title: "Delete user?",
+      text: `This will permanently remove "${user.name ?? user.email}" and revoke their access. This action cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Confirm",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#6c757d",
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+
     try {
       await usersApi.deleteUser(user.id);
-      fetchUsers();
+      await fetchUsers();
+      await Swal.fire("User deleted", "The user has been permanently deleted.", "success");
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
           ? String(err.response.data.message)
           : "Failed to delete user.";
-      alert(msg);
+      await Swal.fire("Delete failed", msg, "error");
     }
   };
 
   const handleImpersonate = async (targetUser: User) => {
-    if (!confirm(`Login as "${targetUser.name ?? targetUser.email}"? You will see the app as this user until you exit impersonation.`)) return;
+    const nameOrEmail = targetUser.name ?? targetUser.email ?? "this user";
+    const result = await Swal.fire({
+      title: "Login as user?",
+      text: `You will temporarily enter the system as "${nameOrEmail}". You will only have this user\u2019s permissions and can exit impersonation at any time.`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Confirm",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#0d9488",
+      cancelButtonColor: "#6c757d",
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+
     setImpersonatingUserId(targetUser.id);
     try {
       await startImpersonation(targetUser.id);
@@ -146,7 +190,7 @@ export default function SettingsUsersPage() {
         err instanceof AxiosError && err.response?.data?.message
           ? String(err.response.data.message)
           : "Failed to start impersonation.";
-      alert(msg);
+      await Swal.fire("Impersonation failed", msg, "error");
     } finally {
       setImpersonatingUserId(null);
     }
@@ -253,31 +297,29 @@ export default function SettingsUsersPage() {
               <tr className="bg-gray-50 dark:bg-gray-800/50">
                 <th className="px-4 py-2.5 text-start font-semibold">User Name</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Email</th>
-                <th className="px-4 py-2.5 text-start font-semibold">RoleIds</th>
+                <th className="px-4 py-2.5 text-start font-semibold">Role</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Permissions</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Status</th>
+                <th className="px-4 py-2.5 text-start font-semibold">Date Created</th>
                 <th className="px-4 py-2.5 text-center font-semibold w-24">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                  <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                     Loading...
                   </td>
                 </tr>
               ) : paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                  <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                     {hasActiveFilters ? "No users match your filters." : "No users found."}
                   </td>
                 </tr>
               ) : (
                 paginatedUsers.map((user) => {
                   const isPrimaryAdmin = user.email === "admin@gmail.com";
-                  const permissions = getPermissionsForUser(user);
-                  const visible = permissions.slice(0, PERMISSIONS_VISIBLE);
-                  const restCount = permissions.length - PERMISSIONS_VISIBLE;
                   const roleIds = user.roleIds ?? [];
                   return (
                     <tr key={user.id} className="border-b border-defaultborder">
@@ -301,23 +343,8 @@ export default function SettingsUsersPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 align-middle">
-                        <div className="flex flex-wrap gap-1">
-                          {visible.map((p) => (
-                            <span
-                              key={p}
-                              className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full text-xs font-medium"
-                            >
-                              {p}
-                            </span>
-                          ))}
-                          {restCount > 0 && (
-                            <span className="badge bg-light text-default px-2 py-0.5 rounded-full text-xs">
-                              +{restCount}
-                            </span>
-                          )}
-                          {permissions.length === 0 && "—"}
-                        </div>
+                      <td className="px-4 py-2.5 align-middle text-[0.8125rem] text-defaulttextcolor">
+                        {getPermissionSummaryFromRoles(user)}
                       </td>
                       <td className="px-4 py-2.5 align-middle">
                         <span
@@ -331,6 +358,9 @@ export default function SettingsUsersPage() {
                         >
                           {user.status ?? "—"}
                         </span>
+                      </td>
+                      <td className="px-4 py-2.5 align-middle text-[0.8125rem] text-defaulttextcolor">
+                        {formatDate(user.createdAt)}
                       </td>
                       <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center justify-center gap-2">

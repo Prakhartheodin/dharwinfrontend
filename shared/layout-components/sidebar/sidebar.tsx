@@ -23,36 +23,55 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const { user } = useAuth();
 	const [userPermissions, setUserPermissions] = useState<string[]>([]);
 	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+	const [roles, setRoles] = useState<Role[]>([]);
+	const [isAdministrator, setIsAdministrator] = useState(false);
 
 	const path = usePathname()	
 
-	// Load permissions for the current user from their roleIds (supports multiple roleIds).
+	// Load permissions (and Administrator role flag) for the current user from their roleIds.
 	useEffect(() => {
 		const loadPermissions = async () => {
 			try {
 				if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
 					setUserPermissions([]);
 					setPermissionsLoaded(true);
+					setRoles([]);
+					setIsAdministrator(false);
 					return;
 				}
 				const res = await rolesApi.listRoles({ limit: 100 });
-				const roles = res.results as Role[];
+				const roles = (res.results ?? []) as Role[];
+				setRoles(roles);
 				const roleMap = new Map<string, Role>();
 				roles.forEach((r) => roleMap.set(r.id, r));
 				const perms = new Set<string>();
+				let admin = false;
 				(user.roleIds as string[]).forEach((id) => {
 					const role = roleMap.get(id);
-					role?.permissions?.forEach((p) => perms.add(p));
+					if (!role) return;
+					role.permissions?.forEach((p) => perms.add(p));
+					if (role.name === "Administrator") {
+						admin = true;
+					}
 				});
 				setUserPermissions(Array.from(perms));
+				setIsAdministrator(admin);
 			} catch {
 				setUserPermissions([]);
+				setRoles([]);
+				setIsAdministrator(false);
 			} finally {
 				setPermissionsLoaded(true);
 			}
 		};
 		loadPermissions();
 	}, [user]);
+
+	// Paths that should only be visible to Administrator role users in the sidebar.
+	const ADMIN_ONLY_PATHS = useMemo(
+		() => ["/logs/logs-activity"],
+		[]
+	);
 
 	const isPathAllowed = (menuPath?: string) => {
 		// Until permissions are loaded, hide protected links to avoid flashes
@@ -61,6 +80,12 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			if (!menuPath || !PATH_PERMISSION_PREFIX[menuPath]) return true;
 			return false;
 		}
+
+		// Hide admin-only paths for non-administrator users.
+		if (menuPath && ADMIN_ONLY_PATHS.some((p) => menuPath === p || menuPath.startsWith(p + "/"))) {
+			if (!isAdministrator) return false;
+		}
+
 		if (!menuPath) return true;
 		const requiredPrefix = getRequiredPermissionForPath(menuPath);
 		if (!requiredPrefix) return true;
@@ -69,13 +94,20 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	const filteredMenuItems = useMemo(
 		() =>
-			MenuItems.filter(
-				(item: any) =>
-					// Keep section titles, filter link items by permission.
-					item.menutitle || isPathAllowed(item.path)
-			),
+			MenuItems.filter((item: any) => {
+				// Hide the Logs section title for non-administrators.
+				if (item.menutitle) {
+					if (item.menutitle === "Logs" && !isAdministrator) {
+						return false;
+					}
+					// Keep other section titles.
+					return true;
+				}
+				// Filter link items by permission (and admin-only paths via isPathAllowed).
+				return isPathAllowed(item.path);
+			}),
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[permissionsLoaded, userPermissions]
+		[permissionsLoaded, userPermissions, isAdministrator]
 	);
 
 	function closeMenu() {

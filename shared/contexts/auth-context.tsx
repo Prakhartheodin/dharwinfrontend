@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { setSessionExpiredHandler } from "@/shared/lib/api/client";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
-import type { ImpersonationInfo, User } from "@/shared/lib/types";
+import type { ImpersonationInfo, Session, User } from "@/shared/lib/types";
 
 interface AuthContextValue {
   user: User | null;
   impersonation: ImpersonationInfo | null;
+  sessions: Session[];
   isLoading: boolean;
   isChecked: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -32,6 +33,7 @@ function clearAuthFromLocalStorage() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [impersonation, setImpersonation] = useState<ImpersonationInfo | null>(null);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const router = useRouter();
@@ -42,6 +44,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSessionExpired = useCallback(() => {
     setUser(null);
+
+    // Don't force-redirect away from public auth pages such as
+    // sign-in, register, and reset-password flows.
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname;
+      const publicPaths = [
+        ROUTES.signIn.replace(/\/$/, ""),
+        ROUTES.register.replace(/\/$/, ""),
+        ROUTES.resetPassword.replace(/\/$/, ""),
+        "/reset-password",
+      ];
+      const normalized = path.replace(/\/$/, "") || "/";
+      if (publicPaths.includes(normalized)) {
+        return;
+      }
+    }
+
     router.push(ROUTES.signIn);
   }, [router]);
 
@@ -54,15 +73,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const me = await authApi.getMe();
       if (me) {
-        setUser(me.user);
+        setUser(me.user ?? null);
         setImpersonation(me.impersonation ?? null);
+        setSessions(me.sessions ?? []);
       } else {
         setUser(null);
         setImpersonation(null);
+        setSessions([]);
       }
     } catch {
       setUser(null);
       setImpersonation(null);
+      setSessions([]);
     }
   }, []);
 
@@ -72,16 +94,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const me = await authApi.getMe();
         if (!cancelled && me) {
-          setUser(me.user);
+          setUser(me.user ?? null);
           setImpersonation(me.impersonation ?? null);
+          setSessions(me.sessions ?? []);
         } else if (!cancelled) {
           setUser(null);
           setImpersonation(null);
+          setSessions([]);
         }
       } catch {
         if (!cancelled) {
           setUser(null);
           setImpersonation(null);
+          setSessions([]);
         }
       } finally {
         if (!cancelled) setIsChecked(true);
@@ -113,6 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setUser(null);
       setImpersonation(null);
+      setSessions([]);
       clearAuthFromLocalStorage();
       setIsLoading(false);
       router.push(ROUTES.signIn);
@@ -150,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       impersonation,
+      sessions,
       isLoading,
       isChecked,
       login,
@@ -158,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       startImpersonation,
       stopImpersonation: stopImpersonationAction,
     }),
-    [user, impersonation, isLoading, isChecked, login, logout, checkAuth, startImpersonation, stopImpersonationAction]
+    [user, impersonation, sessions, isLoading, isChecked, login, logout, checkAuth, startImpersonation, stopImpersonationAction]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
