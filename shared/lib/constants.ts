@@ -13,6 +13,8 @@ export const AUTH_ENDPOINTS = {
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
   refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
   logout: `${BASE_API_URL}/auth/logout`,
+  impersonate: `${BASE_API_URL}/auth/impersonate`,
+  stopImpersonation: `${BASE_API_URL}/auth/stop-impersonation`,
 } as const;
 
 export const ROUTES = {

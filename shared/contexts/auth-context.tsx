@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import { setSessionExpiredHandler } from "@/shared/lib/api/client";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
-import type { User } from "@/shared/lib/types";
+import type { ImpersonationInfo, User } from "@/shared/lib/types";
 
 interface AuthContextValue {
   user: User | null;
+  impersonation: ImpersonationInfo | null;
   isLoading: boolean;
   isChecked: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  startImpersonation: (userId: string) => Promise<void>;
+  stopImpersonation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -28,6 +31,7 @@ function clearAuthFromLocalStorage() {
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [impersonation, setImpersonation] = useState<ImpersonationInfo | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const router = useRouter();
@@ -49,9 +53,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const checkAuth = useCallback(async () => {
     try {
       const me = await authApi.getMe();
-      setUser(me);
+      if (me) {
+        setUser(me.user);
+        setImpersonation(me.impersonation ?? null);
+      } else {
+        setUser(null);
+        setImpersonation(null);
+      }
     } catch {
       setUser(null);
+      setImpersonation(null);
     }
   }, []);
 
@@ -60,9 +71,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const me = await authApi.getMe();
-        if (!cancelled) setUser(me);
+        if (!cancelled && me) {
+          setUser(me.user);
+          setImpersonation(me.impersonation ?? null);
+        } else if (!cancelled) {
+          setUser(null);
+          setImpersonation(null);
+        }
       } catch {
-        if (!cancelled) setUser(null);
+        if (!cancelled) {
+          setUser(null);
+          setImpersonation(null);
+        }
       } finally {
         if (!cancelled) setIsChecked(true);
       }
@@ -92,22 +112,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await authApi.logout();
     } finally {
       setUser(null);
+      setImpersonation(null);
       clearAuthFromLocalStorage();
       setIsLoading(false);
       router.push(ROUTES.signIn);
     }
   }, [router]);
 
+  const startImpersonation = useCallback(
+    async (userId: string) => {
+      setIsLoading(true);
+      try {
+        const res = await authApi.impersonate(userId);
+        setUser(res.user);
+        setImpersonation(res.impersonation);
+        router.push(ROUTES.defaultAfterLogin);
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [router]
+  );
+
+  const stopImpersonationAction = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await authApi.stopImpersonation();
+      setUser(res.user);
+      setImpersonation(null);
+      router.refresh();
+    } finally {
+      setIsLoading(false);
+    }
+  }, [router]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
+      impersonation,
       isLoading,
       isChecked,
       login,
       logout,
       checkAuth,
+      startImpersonation,
+      stopImpersonation: stopImpersonationAction,
     }),
-    [user, isLoading, isChecked, login, logout, checkAuth]
+    [user, impersonation, isLoading, isChecked, login, logout, checkAuth, startImpersonation, stopImpersonationAction]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

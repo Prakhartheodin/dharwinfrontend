@@ -9,7 +9,7 @@ import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
-  const { user, logout } = useAuth();
+  const { user, impersonation, logout, stopImpersonation } = useAuth();
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -382,7 +382,20 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
               </div>
             </div>
             <div className="header-content-right">
-
+              {impersonation && (
+                <div className="header-element py-[1rem] md:px-[0.65rem] px-2 flex items-center gap-2">
+                  <span className="text-[0.8125rem] text-warning font-medium">
+                    Viewing as {user?.name ?? user?.email ?? "user"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => stopImpersonation()}
+                    className="ti-btn ti-btn-sm ti-btn-warning !py-1 !px-2 !text-[0.75rem]"
+                  >
+                    Exit impersonation
+                  </button>
+                </div>
+              )}
               <div className="header-element py-[1rem] md:px-[0.65rem] px-2 header-search">
                 <button aria-label="button" type="button" data-hs-overlay="#search-modal"
                   className="inline-flex flex-shrink-0 justify-center items-center gap-2  rounded-full font-medium focus:ring-offset-0 focus:ring-offset-white transition-all text-xs dark:bg-bgdark dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10">

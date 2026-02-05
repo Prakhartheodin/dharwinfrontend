@@ -147,22 +147,32 @@ export default function RolesPage() {
                             </td>
                             <td className="px-4 py-2.5 align-middle">
                               <div className="flex items-center justify-center gap-2">
-                                <Link
-                                  href={ROUTES.settingsRolesEdit(role.id)}
-                                  className="ti-btn ti-btn-sm ti-btn-soft-primary !p-1.5"
-                                  aria-label={`Edit ${role.name}`}
-                                >
-                                  <i className="ri-pencil-line text-[1rem]"></i>
-                                </Link>
-                                {!isAdministratorRole && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(role)}
-                                    className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
-                                    aria-label={`Delete ${role.name}`}
+                                <div className="hs-tooltip ti-main-tooltip">
+                                  <Link
+                                    href={ROUTES.settingsRolesEdit(role.id)}
+                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info inline-flex items-center justify-center"
+                                    aria-label={`Edit ${role.name}`}
                                   >
-                                    <i className="ri-delete-bin-line text-[1rem]"></i>
-                                  </button>
+                                    <i className="ri-pencil-line"></i>
+                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                      Edit User
+                                    </span>
+                                  </Link>
+                                </div>
+                                {!isAdministratorRole && (
+                                  <div className="hs-tooltip ti-main-tooltip">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDelete(role)}
+                                      className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                                      aria-label={`Delete ${role.name}`}
+                                    >
+                                      <i className="ri-delete-bin-line"></i>
+                                      <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                        Delete User
+                                      </span>
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </td>

@@ -18,6 +18,18 @@ export interface AuthResponse {
   };
 }
 
+/** Impersonation info from POST /v1/auth/impersonate or GET /v1/auth/me. */
+export interface ImpersonationInfo {
+  impersonationId?: string;
+  by: string;
+  startedAt: string;
+}
+
+/** Response from POST /v1/auth/impersonate. */
+export interface ImpersonateResponse extends AuthResponse {
+  impersonation: ImpersonationInfo;
+}
+
 /** Role from /v1/roles API. */
 export interface Role {
   id: string;

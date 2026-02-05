@@ -3,6 +3,7 @@
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
 import * as rolesApi from "@/shared/lib/api/roles";
@@ -20,6 +21,7 @@ const STATUS_OPTIONS = [
 ] as const;
 
 export default function SettingsUsersPage() {
+  const { user: currentUser, startImpersonation, isLoading: authLoading } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [page, setPage] = useState(1);
@@ -27,6 +29,7 @@ export default function SettingsUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [viewUser, setViewUser] = useState<User | null>(null);
+  const [impersonatingUserId, setImpersonatingUserId] = useState<string | null>(null);
 
   // Client-side filters (no API calls when these change)
   const [searchQuery, setSearchQuery] = useState("");
@@ -38,6 +41,13 @@ export default function SettingsUsersPage() {
     roles.forEach((r) => map.set(r.id, r));
     return map;
   }, [roles]);
+
+  /** Current user has Administrator role (by role name in roleIds). */
+  const isAdministrator = useMemo(() => {
+    if (!currentUser) return false;
+    const ids = currentUser.roleIds ?? [];
+    return ids.some((id) => rolesById.get(id)?.name === "Administrator");
+  }, [currentUser, rolesById]);
 
   const getPermissionsForUser = (user: User): string[] => {
     const ids = user.roleIds ?? [];
@@ -122,6 +132,23 @@ export default function SettingsUsersPage() {
           ? String(err.response.data.message)
           : "Failed to delete user.";
       alert(msg);
+    }
+  };
+
+  const handleImpersonate = async (targetUser: User) => {
+    if (!confirm(`Login as "${targetUser.name ?? targetUser.email}"? You will see the app as this user until you exit impersonation.`)) return;
+    setImpersonatingUserId(targetUser.id);
+    try {
+      await startImpersonation(targetUser.id);
+    } catch (err) {
+      setImpersonatingUserId(null);
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : "Failed to start impersonation.";
+      alert(msg);
+    } finally {
+      setImpersonatingUserId(null);
     }
   };
 
@@ -307,31 +334,64 @@ export default function SettingsUsersPage() {
                       </td>
                       <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setViewUser(user)}
-                            className="ti-btn ti-btn-sm ti-btn-soft-success !p-1.5"
-                            aria-label={`View ${user.name ?? user.email}`}
-                          >
-                            <i className="ri-eye-line text-[1rem]"></i>
-                          </button>
+                          <div className="hs-tooltip ti-main-tooltip">
+                            <button
+                              type="button"
+                              onClick={() => setViewUser(user)}
+                              className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                              aria-label={`View ${user.name ?? user.email}`}
+                            >
+                              <i className="ri-eye-line"></i>
+                              <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                View
+                              </span>
+                            </button>
+                          </div>
+                          {isAdministrator &&
+                            currentUser?.id !== user.id &&
+                            user.status === "active" && (
+                              <div className="hs-tooltip ti-main-tooltip">
+                                <button
+                                  type="button"
+                                  onClick={() => handleImpersonate(user)}
+                                  disabled={authLoading || impersonatingUserId === user.id}
+                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                                  aria-label={`Login as ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-login-box-line"></i>
+                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                    Login as
+                                  </span>
+                                </button>
+                              </div>
+                            )}
                           {!isPrimaryAdmin && (
                             <>
-                              <Link
-                                href={ROUTES.settingsUsersEdit(user.id)}
-                                className="ti-btn ti-btn-sm ti-btn-soft-primary !p-1.5"
-                                aria-label={`Edit ${user.name ?? user.email}`}
-                              >
-                                <i className="ri-pencil-line text-[1rem]"></i>
-                              </Link>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(user)}
-                                className="ti-btn ti-btn-sm ti-btn-soft-danger !p-1.5"
-                                aria-label={`Delete ${user.name ?? user.email}`}
-                              >
-                                <i className="ri-delete-bin-line text-[1rem]"></i>
-                              </button>
+                              <div className="hs-tooltip ti-main-tooltip">
+                                <Link
+                                  href={ROUTES.settingsUsersEdit(user.id)}
+                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info inline-flex items-center justify-center"
+                                  aria-label={`Edit ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-pencil-line"></i>
+                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                    Edit User
+                                  </span>
+                                </Link>
+                              </div>
+                              <div className="hs-tooltip ti-main-tooltip">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(user)}
+                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                                  aria-label={`Delete ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-delete-bin-line"></i>
+                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                    Delete User
+                                  </span>
+                                </button>
+                              </div>
                             </>
                           )}
                         </div>
