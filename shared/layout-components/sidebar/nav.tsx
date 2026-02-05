@@ -30,6 +30,9 @@ const ProjectsIcon = <i className="bx bx-folder-open side-menu__icon"></i>;
 const TaskIcon = <i className="bx bx-task side-menu__icon"></i>;
 const TeamsIcon = <i className="bx bx-group side-menu__icon"></i>;
 
+// Logs Icons
+const LogsIcon = <i className="bx bx-clipboard side-menu__icon"></i>;
+
 const badge = (
   <span className="badge !bg-warning/10 !text-warning !py-[0.25rem] !px-[0.45rem] !text-[0.75em] ms-1">
     12
@@ -300,5 +303,19 @@ export const MenuItems: any = [
         active: false,
         selected: false,
         dirchange: false, 
+  },
+
+  {
+    menutitle: "Logs",
+  },
+
+  {
+    icon: LogsIcon,
+    title: "Logs Activity",
+    type: "link",
+    path: "/logs/logs-activity",
+    active: false,
+    selected: false,
+    dirchange: false,
   },
 ];

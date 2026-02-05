@@ -1,31 +1,58 @@
 "use client";
 
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import { ROUTES } from "@/shared/lib/constants";
 import * as rolesApi from "@/shared/lib/api/roles";
+import * as usersApi from "@/shared/lib/api/users";
 import type { Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
+
+function formatDate(isoString: string | undefined): string {
+  if (!isoString) return "—";
+  try {
+    const d = new Date(isoString);
+    return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "—";
+  }
+}
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
+  const [users, setUsers] = useState<{ id: string; roleIds?: string[] }[]>([]);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [viewRole, setViewRole] = useState<Role | null>(null);
+
+  const userCountByRoleId = useMemo(() => {
+    const map = new Map<string, number>();
+    users.forEach((u) => {
+      (u.roleIds ?? []).forEach((roleId) => {
+        map.set(roleId, (map.get(roleId) ?? 0) + 1);
+      });
+    });
+    return map;
+  }, [users]);
 
   const fetchRoles = async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await rolesApi.listRoles({ page, limit });
-      setRoles(res.results);
-      setTotalPages(res.totalPages);
-      setTotalResults(res.totalResults);
+      const [rolesRes, usersRes] = await Promise.all([
+        rolesApi.listRoles({ page, limit }),
+        usersApi.listUsers({ limit: 500 }),
+      ]);
+      setRoles(rolesRes.results);
+      setTotalPages(rolesRes.totalPages);
+      setTotalResults(rolesRes.totalResults);
+      setUsers(usersRes.results ?? []);
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
@@ -33,6 +60,7 @@ export default function RolesPage() {
           : "Failed to load roles.";
       setError(msg);
       setRoles([]);
+      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -43,21 +71,36 @@ export default function RolesPage() {
   }, [page, limit]);
 
   const handleDelete = async (role: Role) => {
-    if (!confirm(`Are you sure you want to delete the role "${role.name}"?`)) return;
+    const result = await Swal.fire({
+      title: "Delete role?",
+      text: `This will permanently delete the role "${role.name}". Users assigned this role will no longer inherit its permissions. This action cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Confirm",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#6c757d",
+      reverseButtons: true,
+    });
+    if (!result.isConfirmed) return;
+
     try {
       await rolesApi.deleteRole(role.id);
-      fetchRoles();
+      await fetchRoles();
+      await Swal.fire("Role deleted", "The role has been permanently deleted.", "success");
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
           ? String(err.response.data.message)
           : "Failed to delete role.";
-      alert(msg);
+      await Swal.fire("Delete failed", msg, "error");
     }
   };
 
   const start = (page - 1) * limit + 1;
   const end = Math.min(page * limit, totalResults);
+
+  const PERMISSIONS_VISIBLE = 3;
 
   return (
     <Fragment>
@@ -103,21 +146,23 @@ export default function RolesPage() {
                           <input type="checkbox" className="form-check-input" readOnly aria-label="Select all" />
                         </th>
                         <th className="px-4 py-2.5 text-start font-semibold">S.no.</th>
-                        <th className="px-4 py-2.5 text-start font-semibold">Role Type</th>
+                        <th className="px-4 py-2.5 text-start font-semibold">Role</th>
                         <th className="px-4 py-2.5 text-start font-semibold">Permissions</th>
+                        <th className="px-4 py-2.5 text-start font-semibold">Date Created</th>
+                        <th className="px-4 py-2.5 text-center font-semibold">Total Users</th>
                         <th className="px-4 py-2.5 text-center font-semibold w-24">Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                          <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                             Loading...
                           </td>
                         </tr>
                       ) : roles.length === 0 ? (
                         <tr>
-                          <td colSpan={5} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                          <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                             No roles found.
                           </td>
                         </tr>
@@ -132,21 +177,51 @@ export default function RolesPage() {
                             <td className="px-4 py-2.5 align-middle">{start + index}</td>
                             <td className="px-4 py-2.5 align-middle font-medium">{role.name}</td>
                             <td className="px-4 py-2.5 align-middle">
-                              <div className="flex flex-wrap gap-1">
-                                {role.permissions?.length
-                                  ? role.permissions.map((p) => (
+                              <div className="flex flex-wrap gap-1 items-center">
+                                {!role.permissions?.length ? (
+                                  <span className="text-[0.8125rem] text-defaulttextcolor/60 italic">No permissions assigned</span>
+                                ) : (
+                                  <>
+                                    {role.permissions.slice(0, PERMISSIONS_VISIBLE).map((p) => (
                                       <span
                                         key={p}
                                         className="inline-flex items-center px-2 py-0.5 rounded-md text-[0.75rem] font-medium bg-primary/10 text-primary border border-primary/20"
                                       >
                                         {p}
                                       </span>
-                                    ))
-                                  : "—"}
+                                    ))}
+                                    {role.permissions.length > PERMISSIONS_VISIBLE && (
+                                      <span className="text-[0.75rem] text-defaulttextcolor/70 font-medium">
+                                        +{role.permissions.length - PERMISSIONS_VISIBLE} more
+                                      </span>
+                                    )}
+                                  </>
+                                )}
                               </div>
+                            </td>
+                            <td className="px-4 py-2.5 align-middle text-[0.8125rem] text-defaulttextcolor">
+                              {formatDate(role.createdAt)}
+                            </td>
+                            <td className="px-4 py-2.5 align-middle text-center">
+                              <span className="text-[0.8125rem] font-medium">
+                                {userCountByRoleId.get(role.id) ?? 0}
+                              </span>
                             </td>
                             <td className="px-4 py-2.5 align-middle">
                               <div className="flex items-center justify-center gap-2">
+                                <div className="hs-tooltip ti-main-tooltip">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewRole(role)}
+                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                                    aria-label={`View ${role.name}`}
+                                  >
+                                    <i className="ri-eye-line"></i>
+                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                      View
+                                    </span>
+                                  </button>
+                                </div>
                                 <div className="hs-tooltip ti-main-tooltip">
                                   <Link
                                     href={ROUTES.settingsRolesEdit(role.id)}
@@ -211,6 +286,109 @@ export default function RolesPage() {
                   </div>
                 )}
         </div>
+
+        {/* Role details modal */}
+        {viewRole && (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="role-detail-title"
+            onClick={() => setViewRole(null)}
+          >
+            <div
+              className="ti-modal-box w-full max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-defaultborder max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="ti-modal-content flex flex-col max-h-[90vh]">
+                <div className="ti-modal-header flex items-center justify-between px-4 py-3 border-b border-defaultborder shrink-0">
+                  <h6 id="role-detail-title" className="modal-title text-[1rem] font-semibold mb-0">
+                    Role Details
+                  </h6>
+                  <button
+                    type="button"
+                    onClick={() => setViewRole(null)}
+                    className="!text-[1.25rem] !font-semibold text-defaulttextcolor hover:text-default"
+                    aria-label="Close"
+                  >
+                    <i className="ri-close-line"></i>
+                  </button>
+                </div>
+                <div className="ti-modal-body px-4 py-4 overflow-y-auto">
+                  <dl className="space-y-4">
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Role Name</dt>
+                      <dd className="text-[0.9375rem] font-medium">{viewRole.name ?? "—"}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Permissions</dt>
+                      <dd className="text-[0.9375rem]">
+                        {!viewRole.permissions?.length ? (
+                          <span className="text-defaulttextcolor/60 italic">No permissions assigned.</span>
+                        ) : (
+                          <div className="flex flex-wrap gap-1">
+                            {viewRole.permissions.map((p) => (
+                              <span
+                                key={p}
+                                className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full text-xs font-medium"
+                              >
+                                {p}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Date Created</dt>
+                      <dd className="text-[0.9375rem]">{formatDate(viewRole.createdAt)}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Total Users</dt>
+                      <dd className="text-[0.9375rem]">{userCountByRoleId.get(viewRole.id) ?? 0}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Status</dt>
+                      <dd>
+                        <span
+                          className={`badge rounded-full text-[0.75rem] ${
+                            viewRole.status === "active"
+                              ? "bg-success/10 text-success border border-success/30"
+                              : viewRole.status === "inactive"
+                                ? "bg-warning/10 text-warning border border-warning/30"
+                                : "bg-default/10 text-default"
+                          }`}
+                        >
+                          {viewRole.status ?? "—"}
+                        </span>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Role ID</dt>
+                      <dd className="text-[0.8125rem] font-mono text-defaulttextcolor/80 break-all">{viewRole.id}</dd>
+                    </div>
+                  </dl>
+                </div>
+                <div className="ti-modal-footer flex items-center justify-end gap-2 px-4 py-3 border-t border-defaultborder shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setViewRole(null)}
+                    className="ti-btn ti-btn-light"
+                  >
+                    Close
+                  </button>
+                  <Link
+                    href={ROUTES.settingsRolesEdit(viewRole.id)}
+                    className="ti-btn ti-btn-primary"
+                    onClick={() => setViewRole(null)}
+                  >
+                    Edit Role
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </Fragment>
   );
 }
