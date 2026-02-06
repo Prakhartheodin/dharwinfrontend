@@ -5,6 +5,7 @@ import React, { Fragment, useMemo, useState, useEffect } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import { Range, getTrackBackground } from "react-range"
+import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 
 // Mock data for jobs
 const JOBS_DATA = [
@@ -375,6 +376,7 @@ interface BookmarkNote {
 }
 
 const Jobs = () => {
+  const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [bookmarkedJobs, setBookmarkedJobs] = useState<Set<string>>(new Set())
   const [previewJob, setPreviewJob] = useState<any>(null)
@@ -566,12 +568,13 @@ const Jobs = () => {
     return badges[tier] || badges['medium']
   }
 
-  // Define columns
+  // Define columns (checkbox column only when user can delete)
   const columns = useMemo(
-    () => [
-      {
+    () => {
+      const checkboxColumn = {
         Header: 'All',
         accessor: 'checkbox',
+        id: 'checkbox',
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <input
@@ -582,7 +585,8 @@ const Jobs = () => {
             aria-label={`Select ${row.original.jobTitle}`}
           />
         ),
-      },
+      }
+      const restColumns = [
       {
         Header: 'Job Title',
         accessor: 'jobTitle',
@@ -663,20 +667,22 @@ const Jobs = () => {
         accessor: 'id',
         disableSortBy: true,
         Cell: ({ row }: any) => (
-          <div className="flex items-center gap-2">
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-              >
-                <i className="ri-pencil-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Edit Job
-                </span>
-              </button>
-            </div>
+          <div className="flex items-center justify-center gap-2">
+            {canEdit && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <Link
+                  href={`/ats/jobs/edit/${row.original.id}`}
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
+                >
+                  <i className="ri-pencil-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Edit Job
+                  </span>
+                </Link>
+              </div>
+            )}
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
@@ -708,8 +714,10 @@ const Jobs = () => {
           </div>
         ),
       },
-    ],
-    [selectedRows, bookmarkedJobs]
+    ]
+      return canDelete ? [checkboxColumn, ...restColumns] : restColumns
+    },
+    [selectedRows, bookmarkedJobs, canDelete, canEdit]
   )
 
   // Filter data based on filter state
@@ -962,6 +970,22 @@ const Jobs = () => {
   const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
   const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
 
+  if (!permissionsLoading && !canView) {
+    return (
+      <Fragment>
+        <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
+          <div className="xl:col-span-12 col-span-12">
+            <div className="box custom-box">
+              <div className="box-body">
+                <p className="text-default mb-0">You don&apos;t have permission to view this page.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Fragment>
+    )
+  }
+
   return (
     <Fragment>
   
@@ -1119,12 +1143,14 @@ const Jobs = () => {
                     </li>
                   </ul>
                 </div>
-                <Link
-                  href="/ats/jobs/create"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                >
-                  <i className="ri-add-line font-semibold align-middle"></i>Create Job
-                </Link>
+                {canCreate && (
+                  <Link
+                    href="/ats/jobs/create"
+                    className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  >
+                    <i className="ri-add-line font-semibold align-middle"></i>Create Job
+                  </Link>
+                )}
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
@@ -1175,12 +1201,14 @@ const Jobs = () => {
                   )}
                 </button>
               
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
-                >
-                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
-                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  >
+                    <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
+                  </button>
+                )}
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
@@ -1201,7 +1229,7 @@ const Jobs = () => {
                               zIndex: 10
                             }}
                           >
-                            {column.id === 'select' ? (
+                            {column.id === 'checkbox' ? (
                               <input
                                 className="form-check-input"
                                 type="checkbox"
