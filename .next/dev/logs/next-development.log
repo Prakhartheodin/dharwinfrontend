@@ -1836,3 +1836,1324 @@ app/globals.scss 20:9  root stylesheet
 
 
 
+[00:11:11.957] Server  LOG     ✓ Compiled in 3s
+[00:11:45.602] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:45.602] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:45.603] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:45.603] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:45.603] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:45.604] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:45.681] Server  LOG     ✓ Compiled in 2.7s
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.090] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.091] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.092] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.093] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.093] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.093] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.094] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.094] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.094] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.094] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.094] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.095] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.095] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.095] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:11:46.096] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:11:46.123] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:11:50.557] Server  LOG     ✓ Compiled in 2.6s
+[00:11:57.140] Server  LOG     ✓ Compiled in 2.7s
+[00:11:57.245] Browser ERROR   ./app/(components)/(contentlayout)/ats/jobs/page.tsx:716:5
+Parsing ecmascript source code failed
+  714 |       },
+  715 |     ],
+> 716 |     [selectedRows, bookmarkedJobs]
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  717 |   )
+  718 |
+  719 |   // Filter data based on filter state
+
+'const' declarations must be initialized
+
+Import traces:
+  Client Component Browser:
+    ./app/(components)/(contentlayout)/ats/jobs/page.tsx [Client Component Browser]
+    ./app/(components)/(contentlayout)/ats/jobs/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./app/(components)/(contentlayout)/ats/jobs/page.tsx [Client Component SSR]
+    ./app/(components)/(contentlayout)/ats/jobs/page.tsx [Server Component]
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:12:11.366] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:12:18.013] Server  LOG     ✓ Compiled in 2.8s
+[00:12:25.831] Server  LOG     ✓ Compiled in 2.6s
+[00:12:35.805] Server  LOG     ✓ Compiled in 2.6s
+[00:13:41.299] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:41.299] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:41.299] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:41.300] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:41.300] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:41.300] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:13:41.328] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:41.328] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:41.328] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:41.328] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:41.329] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:41.329] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:13:41.557] Browser WARN    Detected `scroll-behavior: smooth` on the `<html>` element. To disable smooth scrolling during route transitions, add `data-scroll-behavior="smooth"` to your <html> element. Learn more: https://nextjs.org/docs/messages/missing-data-scroll-behavior
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:45.703] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:47.274] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:13:51.892] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:51.893] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:51.893] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:51.893] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:51.893] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:51.893] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: 8 repetitive deprecation warnings omitted.
+Run in verbose mode to see all warnings.
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 15, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:15:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+15 | @import 'swiper/css';
+
+
+app/globals.scss 16:9  root stylesheet
+
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 16, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:16:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+16 | @import 'swiper/css/pagination';
+
+
+app/globals.scss 17:9  root stylesheet
+
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 17, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:17:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+17 | @import 'swiper/css/navigation';
+
+
+app/globals.scss 18:9  root stylesheet
+
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 18, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:18:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+18 | @import 'swiper/css/effect-coverflow';
+
+
+app/globals.scss 19:9  root stylesheet
+
+
+
+[00:13:51.914] Server  WARN    ⚠ ./app/globals.scss
+Issue while running loader
+SassWarning: Deprecation Warning on line 19, column 8 of file:///Applications/The%20Odin/dharwin_new/uat.dharwin.frontend/app/globals.scss:19:8:
+Sass @import rules are deprecated and will be removed in Dart Sass 3.0.0.
+
+More info and automated migrator: https://sass-lang.com/d/import
+
+19 | @import 'swiper/css/thumbs';
+
+
+app/globals.scss 20:9  root stylesheet
+
+
+
