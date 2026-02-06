@@ -8,6 +8,14 @@ export const PERMISSION_SECTIONS: {
   features: { id: string; label: string }[];
 }[] = [
   {
+    id: "settings",
+    label: "Settings",
+    features: [
+      { id: "roles", label: "User Roles" },
+      { id: "users", label: "Users" },
+    ],
+  },
+  {
     id: "ats",
     label: "ATS",
     features: [
@@ -57,6 +65,11 @@ export const PERMISSION_SECTIONS: {
       { id: "teams", label: "Teams" },
       { id: "analytics", label: "Analytics" },
     ],
+  },
+  {
+    id: "logs",
+    label: "Logs",
+    features: [{ id: "activity", label: "Logs Activity" }],
   },
 ];
 

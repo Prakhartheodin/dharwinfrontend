@@ -92,23 +92,36 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
-	const filteredMenuItems = useMemo(
-		() =>
-			MenuItems.filter((item: any) => {
-				// Hide the Logs section title for non-administrators.
-				if (item.menutitle) {
-					if (item.menutitle === "Logs" && !isAdministrator) {
-						return false;
+	const filteredMenuItems = useMemo(() => {
+		// Build a menu where section titles are only kept
+		// if they have at least one visible child link.
+		const result: any[] = [];
+
+		for (let i = 0; i < MenuItems.length; i++) {
+			const item: any = MenuItems[i];
+
+			if (item.menutitle) {
+				// Look ahead until the next section title to see
+				// whether any link is allowed.
+				let hasAllowedChild = false;
+				for (let j = i + 1; j < MenuItems.length; j++) {
+					const next: any = MenuItems[j];
+					if (next.menutitle) break;
+					if (isPathAllowed(next.path)) {
+						hasAllowedChild = true;
+						break;
 					}
-					// Keep other section titles.
-					return true;
 				}
-				// Filter link items by permission (and admin-only paths via isPathAllowed).
-				return isPathAllowed(item.path);
-			}),
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-		[permissionsLoaded, userPermissions, isAdministrator]
-	);
+				if (hasAllowedChild) {
+					result.push(item);
+				}
+			} else if (isPathAllowed(item.path)) {
+				result.push(item);
+			}
+		}
+
+		return result;
+	}, [permissionsLoaded, userPermissions, isAdministrator]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {
