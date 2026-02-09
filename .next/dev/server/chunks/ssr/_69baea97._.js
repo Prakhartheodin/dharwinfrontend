@@ -109,32 +109,46 @@ const TrainingCurriculumIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__
     lineNumber: 22,
     columnNumber: 32
 }, ("TURBOPACK compile-time value", void 0));
+const CategoriesIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
+    className: "bx bx-grid-alt side-menu__icon"
+}, void 0, false, {
+    fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
+    lineNumber: 23,
+    columnNumber: 24
+}, ("TURBOPACK compile-time value", void 0));
+const TrainingModulesIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
+    className: "bx bx-list-ul side-menu__icon"
+}, void 0, false, {
+    fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
+    lineNumber: 24,
+    columnNumber: 29
+}, ("TURBOPACK compile-time value", void 0));
 const AttendanceTrackingIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-clipboard side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 23,
+    lineNumber: 25,
     columnNumber: 32
 }, ("TURBOPACK compile-time value", void 0));
 const MentorsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-user-voice side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 24,
+    lineNumber: 26,
     columnNumber: 21
 }, ("TURBOPACK compile-time value", void 0));
 const StudentsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-group side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 25,
+    lineNumber: 27,
     columnNumber: 22
 }, ("TURBOPACK compile-time value", void 0));
 const EvaluationIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-edit-alt side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 26,
+    lineNumber: 28,
     columnNumber: 24
 }, ("TURBOPACK compile-time value", void 0));
 // Project Management Icons
@@ -142,21 +156,21 @@ const ProjectsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$projec
     className: "bx bx-folder-open side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 29,
+    lineNumber: 31,
     columnNumber: 22
 }, ("TURBOPACK compile-time value", void 0));
 const TaskIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-task side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 30,
+    lineNumber: 32,
     columnNumber: 18
 }, ("TURBOPACK compile-time value", void 0));
 const TeamsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("i", {
     className: "bx bx-group side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 31,
+    lineNumber: 33,
     columnNumber: 19
 }, ("TURBOPACK compile-time value", void 0));
 // Logs Icons
@@ -164,7 +178,7 @@ const LogsIcon = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d
     className: "bx bx-clipboard side-menu__icon"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 34,
+    lineNumber: 36,
     columnNumber: 18
 }, ("TURBOPACK compile-time value", void 0));
 const badge = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -172,7 +186,7 @@ const badge = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$
     children: "12"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 37,
+    lineNumber: 39,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge1 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -180,7 +194,7 @@ const badge1 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "New"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 42,
+    lineNumber: 44,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge2 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -188,7 +202,7 @@ const badge2 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "Hot"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 47,
+    lineNumber: 49,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const badge4 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$dist$2f$server$2f$route$2d$modules$2f$app$2d$page$2f$vendored$2f$ssr$2f$react$2d$jsx$2d$dev$2d$runtime$2e$js__$5b$app$2d$ssr$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
@@ -196,7 +210,7 @@ const badge4 = /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f
     children: "3"
 }, void 0, false, {
     fileName: "[project]/shared/layout-components/sidebar/nav.tsx",
-    lineNumber: 52,
+    lineNumber: 54,
     columnNumber: 3
 }, ("TURBOPACK compile-time value", void 0));
 const MenuItems = [
@@ -332,11 +346,31 @@ const MenuItems = [
     {
         icon: TrainingCurriculumIcon,
         title: "Training Curriculum",
-        type: "link",
+        type: "sub",
         path: "/training/curriculum",
         active: false,
         selected: false,
-        dirchange: false
+        dirchange: false,
+        children: [
+            {
+                icon: CategoriesIcon,
+                title: "Categories",
+                type: "link",
+                path: "/training/curriculum/categories",
+                active: false,
+                selected: false,
+                dirchange: false
+            },
+            {
+                icon: TrainingModulesIcon,
+                title: "Training Modules",
+                type: "link",
+                path: "/training/curriculum/modules",
+                active: false,
+                selected: false,
+                dirchange: false
+            }
+        ]
     },
     {
         icon: AttendanceTrackingIcon,

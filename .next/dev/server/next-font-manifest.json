@@ -1,10 +1,14 @@
 {
   "app": {
     "[project]/app/(components)/(authenticationlayout)/authentication/sign-in/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/candidates/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/jobs/page": [],
-    "[project]/app/(components)/(contentlayout)/ats/recruiters/page": [],
-    "[project]/app/(components)/(contentlayout)/dashboard/page": []
+    "[project]/app/(components)/(contentlayout)/dashboard/page": [],
+    "[project]/app/(components)/(contentlayout)/training/curriculum/categories/page": [],
+    "[project]/app/(components)/(contentlayout)/training/curriculum/modules/create/page": [],
+    "[project]/app/(components)/(contentlayout)/training/curriculum/modules/page": [],
+    "[project]/app/(components)/(contentlayout)/training/curriculum/page": [],
+    "[project]/app/(components)/(contentlayout)/training/mentors/page": [],
+    "[project]/app/(components)/(contentlayout)/training/students/page": [],
+    "[project]/app/_not-found/page": []
   },
   "appUsingSizeAdjust": true,
   "pages": {},

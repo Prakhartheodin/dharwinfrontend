@@ -20,6 +20,8 @@ const FilesStorageIcon = <i className="bx bx-folder side-menu__icon"></i>;
 
 // Training Management Icons
 const TrainingCurriculumIcon = <i className="bx bx-book-open side-menu__icon"></i>;
+const CategoriesIcon = <i className="bx bx-grid-alt side-menu__icon"></i>;
+const TrainingModulesIcon = <i className="bx bx-list-ul side-menu__icon"></i>;
 const AttendanceTrackingIcon = <i className="bx bx-clipboard side-menu__icon"></i>;
 const MentorsIcon = <i className="bx bx-user-voice side-menu__icon"></i>;
 const StudentsIcon = <i className="bx bx-group side-menu__icon"></i>;
@@ -204,11 +206,31 @@ export const MenuItems: any = [
       {
     icon: TrainingCurriculumIcon,
     title: "Training Curriculum",
-            type: "link",
+            type: "sub",
     path: "/training/curriculum",
             active: false,
             selected: false,
-            dirchange: false, 
+            dirchange: false,
+            children: [
+              {
+                icon: CategoriesIcon,
+                title: "Categories",
+                type: "link",
+                path: "/training/curriculum/categories",
+                active: false,
+                selected: false,
+                dirchange: false,
+              },
+              {
+                icon: TrainingModulesIcon,
+                title: "Training Modules",
+                type: "link",
+                path: "/training/curriculum/modules",
+                active: false,
+                selected: false,
+                dirchange: false,
+              },
+            ],
           },
 
           {
