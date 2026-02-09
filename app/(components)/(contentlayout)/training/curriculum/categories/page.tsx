@@ -2,33 +2,77 @@
 
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { useTable, useSortBy, usePagination } from 'react-table'
+import Swal from 'sweetalert2'
+import { AxiosError } from 'axios'
+import * as categoriesApi from '@/shared/lib/api/categories'
+import type { Category } from '@/shared/lib/api/categories'
 
-interface Category {
-  id: string
+interface CategoryRow extends Category {
+  courses: number
   categoryName: string
   dateCreated: string
-  courses: number
 }
 
-const CATEGORIES_DATA: Category[] = [
-  { id: '1', categoryName: 'Technical Skills', dateCreated: '2024-01-15', courses: 12 },
-  { id: '2', categoryName: 'Leadership & Management', dateCreated: '2024-01-18', courses: 8 },
-  { id: '3', categoryName: 'Compliance & Safety', dateCreated: '2024-01-20', courses: 5 },
-  { id: '4', categoryName: 'Soft Skills', dateCreated: '2024-01-22', courses: 15 },
-  { id: '5', categoryName: 'Product Knowledge', dateCreated: '2024-01-25', courses: 6 },
-  { id: '6', categoryName: 'Sales & Marketing', dateCreated: '2024-02-01', courses: 9 },
-  { id: '7', categoryName: 'Customer Service', dateCreated: '2024-02-05', courses: 7 },
-  { id: '8', categoryName: 'Onboarding', dateCreated: '2024-02-10', courses: 4 },
-]
-
 const TrainingCategories = () => {
-  const [categories, setCategories] = useState<Category[]>(CATEGORIES_DATA)
+  const [categories, setCategories] = useState<CategoryRow[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [showCategoryModal, setShowCategoryModal] = useState(false)
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [editingCategory, setEditingCategory] = useState<CategoryRow | null>(null)
   const [categoryName, setCategoryName] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [sortBy, setSortBy] = useState<string>('createdAt:desc')
+
+  const fetchCategories = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: categoriesApi.ListCategoriesParams = {
+        page: currentPage,
+        limit: pageSize,
+        sortBy,
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+      }
+      const response = await categoriesApi.listCategories(params)
+      
+      const formattedCategories: CategoryRow[] = response.results.map((cat) => ({
+        ...cat,
+        categoryName: cat.name,
+        dateCreated: new Date(cat.createdAt).toISOString().split('T')[0],
+        courses: 0, // API doesn't provide courses count, set to 0 for now
+      }))
+      
+      setCategories(formattedCategories)
+      setTotalResults(response.totalResults)
+      setTotalPages(response.totalPages)
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to load categories.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to load categories',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [currentPage, pageSize, sortBy, searchQuery])
+
+  useEffect(() => {
+    fetchCategories()
+  }, [fetchCategories])
 
   const handleRowSelect = (id: string) => {
     const next = new Set(selectedRows)
@@ -45,22 +89,99 @@ const TrainingCategories = () => {
   const isAllSelected = categories.length > 0 && selectedRows.size === categories.length
   const isIndeterminate = selectedRows.size > 0 && selectedRows.size < categories.length
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this category?')) {
-      setCategories((prev) => prev.filter((c) => c.id !== id))
-      setSelectedRows((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
+  const handleDelete = async (id: string) => {
+    const result = await Swal.fire({
+      title: 'Delete Category?',
+      text: 'Are you sure you want to delete this category?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete it!',
+    })
+
+    if (result.isConfirmed) {
+      try {
+        await categoriesApi.deleteCategory(id)
+        await Swal.fire({
+          icon: 'success',
+          title: 'Category deleted',
+          text: 'The category has been deleted successfully.',
+          toast: true,
+          position: 'top-end',
+          timer: 3000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+        await fetchCategories()
+        setSelectedRows((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+      } catch (err) {
+        const msg =
+          err instanceof AxiosError && err.response?.data?.message
+            ? String(err.response.data.message)
+            : 'Failed to delete category.'
+        await Swal.fire({
+          icon: 'error',
+          title: 'Failed to delete category',
+          text: msg,
+          toast: true,
+          position: 'top-end',
+          timer: 4000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      }
     }
   }
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedRows.size === 0) return
-    if (confirm(`Are you sure you want to delete ${selectedRows.size} category(ies)?`)) {
-      setCategories((prev) => prev.filter((c) => !selectedRows.has(c.id)))
-      setSelectedRows(new Set())
+    
+    const result = await Swal.fire({
+      title: 'Delete Categories?',
+      text: `Are you sure you want to delete ${selectedRows.size} category(ies)?`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete them!',
+    })
+
+    if (result.isConfirmed) {
+      try {
+        await Promise.all(Array.from(selectedRows).map((id) => categoriesApi.deleteCategory(id)))
+        await Swal.fire({
+          icon: 'success',
+          title: 'Categories deleted',
+          text: `${selectedRows.size} category(ies) have been deleted successfully.`,
+          toast: true,
+          position: 'top-end',
+          timer: 3000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+        setSelectedRows(new Set())
+        await fetchCategories()
+      } catch (err) {
+        const msg =
+          err instanceof AxiosError && err.response?.data?.message
+            ? String(err.response.data.message)
+            : 'Failed to delete categories.'
+        await Swal.fire({
+          icon: 'error',
+          title: 'Failed to delete categories',
+          text: msg,
+          toast: true,
+          position: 'top-end',
+          timer: 4000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      }
     }
   }
 
@@ -70,33 +191,87 @@ const TrainingCategories = () => {
     setShowCategoryModal(true)
   }
 
-  const openEditModal = (cat: Category) => {
+  const openEditModal = (cat: CategoryRow) => {
     setEditingCategory(cat)
-    setCategoryName(cat.categoryName)
+    setCategoryName(cat.name)
     setShowCategoryModal(true)
   }
 
-  const handleSaveCategory = () => {
+  const handleSaveCategory = async () => {
     const name = categoryName.trim()
-    if (!name) return
-    if (editingCategory) {
-      setCategories((prev) =>
-        prev.map((c) => (c.id === editingCategory.id ? { ...c, categoryName: name } : c))
-      )
-    } else {
-      setCategories((prev) => [
-        ...prev,
-        {
-          id: String(Date.now()),
-          categoryName: name,
-          dateCreated: new Date().toISOString().split('T')[0],
-          courses: 0,
-        },
-      ])
+    if (!name) {
+      await Swal.fire({
+        icon: 'error',
+        title: 'Validation Error',
+        text: 'Category name is required.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      return
     }
-    setShowCategoryModal(false)
-    setCategoryName('')
-    setEditingCategory(null)
+
+    try {
+      if (editingCategory) {
+        await categoriesApi.updateCategory(editingCategory.id, { name })
+        await Swal.fire({
+          icon: 'success',
+          title: 'Category updated',
+          text: `The category "${name}" has been updated successfully.`,
+          toast: true,
+          position: 'top-end',
+          timer: 3000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      } else {
+        await categoriesApi.createCategory({ name })
+        await Swal.fire({
+          icon: 'success',
+          title: 'Category created',
+          text: `The category "${name}" has been created successfully.`,
+          toast: true,
+          position: 'top-end',
+          timer: 3000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      }
+      setShowCategoryModal(false)
+      setCategoryName('')
+      setEditingCategory(null)
+      await fetchCategories()
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : editingCategory
+          ? 'Failed to update category.'
+          : 'Failed to create category.'
+      await Swal.fire({
+        icon: 'error',
+        title: editingCategory ? 'Failed to update category' : 'Failed to create category',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    }
+  }
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    setCurrentPage(1)
+    fetchCategories()
+  }
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize)
+    setCurrentPage(1)
   }
 
   const handleImportExcel = () => {
@@ -134,9 +309,8 @@ const TrainingCategories = () => {
         Header: 'S.no.',
         accessor: 'sno',
         disableSortBy: true,
-        Cell: ({ row, state }: any) => {
-          const { pageIndex, pageSize } = state
-          return pageIndex * pageSize + row.index + 1
+        Cell: ({ row }: any) => {
+          return (currentPage - 1) * pageSize + row.index + 1
         },
       },
       {
@@ -190,17 +364,18 @@ const TrainingCategories = () => {
         ),
       },
     ],
-    [selectedRows]
+    [selectedRows, currentPage, pageSize]
   )
 
   const tableInstance: any = useTable(
     {
       columns,
       data: categories,
+      manualPagination: true,
+      pageCount: totalPages,
       initialState: { pageIndex: 0, pageSize: 10 },
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
@@ -208,19 +383,14 @@ const TrainingCategories = () => {
     getTableBodyProps,
     headerGroups,
     prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    pageOptions,
-    gotoPage,
-    pageCount,
-    setPageSize,
   } = tableInstance
 
-  const { pageIndex, pageSize } = state
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage)
+  }
+
+  const startIndex = (currentPage - 1) * pageSize + 1
+  const endIndex = Math.min(currentPage * pageSize, totalResults)
 
   return (
     <Fragment>
@@ -233,14 +403,29 @@ const TrainingCategories = () => {
               <div className="box-title">
                 Categories
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-                  {categories.length}
+                  {totalResults}
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
+                <form onSubmit={handleSearch} className="flex items-center gap-2 me-2">
+                  <input
+                    type="text"
+                    className="form-control !w-auto !py-1 !px-4 !text-[0.75rem]"
+                    placeholder="Search categories..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"
+                  >
+                    <i className="ri-search-line"></i>
+                  </button>
+                </form>
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -295,126 +480,150 @@ const TrainingCategories = () => {
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
-                  <thead>
-                    {headerGroups.map((headerGroup: any) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={headerGroup.getHeaderGroupProps().key}>
-                        {headerGroup.headers.map((column: any) => (
-                          <th
-                            {...column.getHeaderProps(column.getSortByToggleProps?.() || column.getHeaderProps())}
-                            scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                            key={column.getHeaderProps().key}
-                            style={{ position: 'sticky', top: 0, zIndex: 10 }}
-                          >
-                            {column.id === 'checkbox' ? (
-                              <input
-                                className="form-check-input"
-                                type="checkbox"
-                                checked={isAllSelected}
-                                ref={(input) => {
-                                if (input) input.indeterminate = isIndeterminate
-                              }}
-                                onChange={handleSelectAll}
-                                aria-label="Select all"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="tabletitle">{column.render('Header')}</span>
-                                {column.isSorted && (
-                                  <span>
-                                    {column.isSortedDesc ? <i className="ri-arrow-down-s-line text-[0.875rem]"></i> : <i className="ri-arrow-up-s-line text-[0.875rem]"></i>}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody {...getTableBodyProps()}>
-                    {page.map((row: any) => {
-                      prepareRow(row)
-                      return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.getRowProps().key}>
-                          {row.cells.map((cell: any) => (
-                            <td {...cell.getCellProps()} key={cell.getCellProps().key}>
-                              {cell.render('Cell')}
-                            </td>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-defaulttextcolor/70">Loading categories...</div>
+                </div>
+              ) : categories.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-defaulttextcolor/70">No categories found.</div>
+                </div>
+              ) : (
+                <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+                  <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
+                    <thead>
+                      {headerGroups.map((headerGroup: any) => (
+                        <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={headerGroup.getHeaderGroupProps().key}>
+                          {headerGroup.headers.map((column: any) => (
+                            <th
+                              {...column.getHeaderProps(column.getSortByToggleProps?.() || column.getHeaderProps())}
+                              scope="col"
+                              className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
+                              key={column.getHeaderProps().key}
+                              style={{ position: 'sticky', top: 0, zIndex: 10 }}
+                            >
+                              {column.id === 'checkbox' ? (
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={isAllSelected}
+                                  ref={(input) => {
+                                  if (input) input.indeterminate = isIndeterminate
+                                }}
+                                  onChange={handleSelectAll}
+                                  aria-label="Select all"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="tabletitle">{column.render('Header')}</span>
+                                  {column.isSorted && (
+                                    <span>
+                                      {column.isSortedDesc ? <i className="ri-arrow-down-s-line text-[0.875rem]"></i> : <i className="ri-arrow-up-s-line text-[0.875rem]"></i>}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </th>
                           ))}
                         </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                      ))}
+                    </thead>
+                    <tbody {...getTableBodyProps()}>
+                      {categories.map((category: CategoryRow, index: number) => {
+                        const row = { original: category, index }
+                        return (
+                          <tr className="border-b border-gray-300 dark:border-gray-600" key={category.id}>
+                            {columns.map((col: any, colIndex: number) => {
+                              const cellValue = col.Cell 
+                                ? col.Cell({ row, column: col })
+                                : category[col.accessor as keyof CategoryRow]
+                              return (
+                                <td key={colIndex}>
+                                  {cellValue}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, categories.length)} of {categories.length} entries{' '}
+                  Showing {startIndex} to {endIndex} of {totalResults} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
                   <nav aria-label="Page navigation" className="pagination-style-4">
                     <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
-                        <button className="page-link px-3 py-[0.375rem]" onClick={() => previousPage()} disabled={!canPreviousPage}>
+                      <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link px-3 py-[0.375rem]" 
+                          onClick={() => handlePageChange(currentPage - 1)} 
+                          disabled={currentPage === 1}
+                        >
                           Prev
                         </button>
                       </li>
-                      {pageOptions.length <= 7
-                        ? pageOptions.map((p: number) => (
-                            <li key={p} className={`page-item ${pageIndex === p ? 'active' : ''}`}>
-                              <button className="page-link px-3 py-[0.375rem]" onClick={() => gotoPage(p)}>
-                                {p + 1}
+                      {totalPages <= 7
+                        ? Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                            <li key={p} className={`page-item ${currentPage === p ? 'active' : ''}`}>
+                              <button className="page-link px-3 py-[0.375rem]" onClick={() => handlePageChange(p)}>
+                                {p}
                               </button>
                             </li>
                           ))
                         : (
                           <>
-                            {pageIndex > 2 && (
+                            {currentPage > 2 && (
                               <>
                                 <li className="page-item">
-                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => gotoPage(0)}>1</button>
+                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => handlePageChange(1)}>1</button>
                                 </li>
-                                {pageIndex > 3 && (
+                                {currentPage > 3 && (
                                   <li className="page-item disabled">
                                     <span className="page-link px-3 py-[0.375rem]">...</span>
                                   </li>
                                 )}
                               </>
                             )}
-                            {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
-                              let pageNum = pageIndex < 3 ? i : pageIndex > pageCount - 4 ? pageCount - 5 + i : pageIndex - 2 + i
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                              let pageNum = currentPage < 3 ? i + 1 : currentPage > totalPages - 3 ? totalPages - 4 + i : currentPage - 2 + i
+                              if (pageNum < 1 || pageNum > totalPages) return null
                               return (
-                                <li key={pageNum} className={`page-item ${pageIndex === pageNum ? 'active' : ''}`}>
-                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => gotoPage(pageNum)}>
-                                    {pageNum + 1}
+                                <li key={pageNum} className={`page-item ${currentPage === pageNum ? 'active' : ''}`}>
+                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => handlePageChange(pageNum)}>
+                                    {pageNum}
                                   </button>
                                 </li>
                               )
                             })}
-                            {pageIndex < pageCount - 3 && (
+                            {currentPage < totalPages - 2 && (
                               <>
-                                {pageIndex < pageCount - 4 && (
+                                {currentPage < totalPages - 3 && (
                                   <li className="page-item disabled">
                                     <span className="page-link px-3 py-[0.375rem]">...</span>
                                   </li>
                                 )}
                                 <li className="page-item">
-                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => gotoPage(pageCount - 1)}>
-                                    {pageCount}
+                                  <button className="page-link px-3 py-[0.375rem]" onClick={() => handlePageChange(totalPages)}>
+                                    {totalPages}
                                   </button>
                                 </li>
                               </>
                             )}
                           </>
                         )}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
-                        <button className="page-link px-3 py-[0.375rem] text-primary" onClick={() => nextPage()} disabled={!canNextPage}>
+                      <li className={`page-item ${currentPage >= totalPages ? 'disabled' : ''}`}>
+                        <button 
+                          className="page-link px-3 py-[0.375rem] text-primary" 
+                          onClick={() => handlePageChange(currentPage + 1)} 
+                          disabled={currentPage >= totalPages}
+                        >
                           Next
                         </button>
                       </li>
@@ -447,6 +656,12 @@ const TrainingCategories = () => {
                 placeholder="Enter category name"
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveCategory()
+                  }
+                }}
               />
             </div>
             <div className="ti-modal-footer px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">

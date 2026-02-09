@@ -42242,6 +42242,10 @@ h5 {
   top: 100%;
 }
 
+.-right-2 {
+  right: -.5rem;
+}
+
 .\!z-\[1000\] {
   z-index: 1000 !important;
 }
@@ -42300,10 +42304,6 @@ h5 {
 
 .z-\[9\] {
   z-index: 9;
-}
-
-.z-\[90\] {
-  z-index: 90;
 }
 
 .order-1 {
@@ -43261,6 +43261,10 @@ h5 {
 
 .h-px {
   height: 1px;
+}
+
+.h-32 {
+  height: 8rem;
 }
 
 .max-h-0 {
@@ -80402,6 +80406,10 @@ th.text-center {
 
   .xl\:grid-cols-5 {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .xl\:grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .xl\:gap-6 {

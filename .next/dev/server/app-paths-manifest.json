@@ -1,11 +1,11 @@
 {
-  "/(components)/(authenticationlayout)/authentication/sign-in/page": "app/(components)/(authenticationlayout)/authentication/sign-in/page.js",
-  "/(components)/(contentlayout)/dashboard/page": "app/(components)/(contentlayout)/dashboard/page.js",
+  "/(components)/(contentlayout)/ats/candidates/page": "app/(components)/(contentlayout)/ats/candidates/page.js",
+  "/(components)/(contentlayout)/settings/page": "app/(components)/(contentlayout)/settings/page.js",
+  "/(components)/(contentlayout)/settings/roles/add/page": "app/(components)/(contentlayout)/settings/roles/add/page.js",
+  "/(components)/(contentlayout)/settings/roles/page": "app/(components)/(contentlayout)/settings/roles/page.js",
   "/(components)/(contentlayout)/training/curriculum/categories/page": "app/(components)/(contentlayout)/training/curriculum/categories/page.js",
   "/(components)/(contentlayout)/training/curriculum/modules/create/page": "app/(components)/(contentlayout)/training/curriculum/modules/create/page.js",
   "/(components)/(contentlayout)/training/curriculum/modules/page": "app/(components)/(contentlayout)/training/curriculum/modules/page.js",
-  "/(components)/(contentlayout)/training/curriculum/page": "app/(components)/(contentlayout)/training/curriculum/page.js",
-  "/(components)/(contentlayout)/training/mentors/page": "app/(components)/(contentlayout)/training/mentors/page.js",
-  "/(components)/(contentlayout)/training/students/page": "app/(components)/(contentlayout)/training/students/page.js",
-  "/_not-found/page": "app/_not-found/page.js"
+  "/(components)/(contentlayout)/training/students/add/page": "app/(components)/(contentlayout)/training/students/add/page.js",
+  "/(components)/(contentlayout)/training/students/page": "app/(components)/(contentlayout)/training/students/page.js"
 }
