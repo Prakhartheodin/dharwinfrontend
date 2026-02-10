@@ -9,7 +9,6 @@ import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import * as studentsApi from '@/shared/lib/api/students'
 import type { Student } from '@/shared/lib/api/students'
-import { getStudentProfilePictureUrl } from '@/shared/lib/api/students'
 
 // Mock data for students
 const STUDENTS_DATA = [
@@ -389,7 +388,7 @@ const Students = () => {
     return {
       id: student.id,
       name: student.user?.name || 'Unknown',
-      displayPicture: getStudentProfilePictureUrl(student.profileImageUrl) || '/assets/images/faces/1.jpg',
+      displayPicture: student.profileImageUrl || '/assets/images/faces/1.jpg',
       phone: student.phone || '',
       email: student.user?.email || '',
       skills: student.skills || [],
@@ -2333,7 +2332,7 @@ const Students = () => {
                   {/* Student Header */}
                   <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
                     <img
-                      src={getStudentProfilePictureUrl(viewStudent.profileImageUrl) || '/assets/images/faces/1.jpg'}
+                      src={viewStudent.profileImageUrl || '/assets/images/faces/1.jpg'}
                       alt={viewStudent.user?.name || 'Student'}
                       className="w-20 h-20 rounded-full object-cover border-2 border-primary/30"
                       onError={(e) => {

@@ -101,46 +101,8 @@ export interface UpdateStudentPayload {
   skills?: string[];
   documents?: StudentDocument[];
   bio?: string;
+  profileImageUrl?: string;
   status?: string;
-}
-
-/**
- * Build full URL for student profile picture using profileImageUrl from the API
- * and NEXT_PUBLIC_API_URL from env (e.g. http://localhost:3000/v1).
- * Use in img src; with cookie auth, same-origin or CORS credentials will send the cookie.
- */
-export function getStudentProfilePictureUrl(profileImageUrl: string | null | undefined): string {
-  if (!profileImageUrl?.trim()) return "";
-  const apiBase = (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_API_URL ?? "" : "").replace(/\/$/, "");
-  const path = profileImageUrl.startsWith("/") ? profileImageUrl : `/${profileImageUrl}`;
-  return apiBase ? `${apiBase}${path}` : path;
-}
-
-/**
- * Upload profile picture for a student.
- * POST multipart/form-data with field name "file".
- * Returns updated student; use data.profileImageUrl to display.
- */
-export async function uploadStudentProfilePicture(studentId: string, file: File): Promise<Student> {
-  const formData = new FormData();
-  formData.append("file", file);
-  // Strip Content-Type so axios/browser sets multipart/form-data with boundary
-  // (apiClient defaults to application/json which would break FormData)
-  const { data } = await apiClient.post<{ success?: boolean; message?: string; data: Student }>(
-    `/training/students/${studentId}/profile-picture`,
-    formData,
-    {
-      transformRequest: [
-        (data, headers) => {
-          if (headers && typeof headers === "object") delete headers["Content-Type"];
-          return data;
-        },
-      ],
-    }
-  );
-  const payload = data as { data?: Student };
-  if (payload?.data) return payload.data;
-  return data as unknown as Student;
 }
 
 export async function updateStudent(studentId: string, payload: UpdateStudentPayload): Promise<Student> {

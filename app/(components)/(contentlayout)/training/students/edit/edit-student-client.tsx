@@ -9,7 +9,6 @@ import { AxiosError } from 'axios'
 import * as studentsApi from '@/shared/lib/api/students'
 import * as usersApi from '@/shared/lib/api/users'
 import type { Student, StudentEducation, StudentExperience, StudentAddress, StudentDocument } from '@/shared/lib/api/students'
-import { getStudentProfilePictureUrl } from '@/shared/lib/api/students'
 
 function getErrorMessage(err: any): string {
   if (err instanceof AxiosError) {
@@ -51,11 +50,9 @@ const EditStudentClient = () => {
   const [status, setStatus] = useState<string>('active')
 
   const [loading, setLoading] = useState(false)
-  const [uploadingPicture, setUploadingPicture] = useState(false)
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string>('')
-  const profilePictureInputRef = React.useRef<HTMLInputElement>(null)
 
   // Fetch student data
   useEffect(() => {
@@ -193,44 +190,6 @@ const EditStudentClient = () => {
     }
   }
 
-  // Profile picture upload
-  const handleProfilePictureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadingPicture(true)
-    setError('')
-    try {
-      const updated = await studentsApi.uploadStudentProfilePicture(studentId, file)
-      setProfileImageUrl(updated.profileImageUrl ?? '')
-      await Swal.fire({
-        icon: 'success',
-        title: 'Photo updated',
-        text: 'Profile picture has been updated.',
-        toast: true,
-        position: 'top-end',
-        timer: 3000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-    } catch (err) {
-      const msg = getErrorMessage(err)
-      setError(msg)
-      await Swal.fire({
-        icon: 'error',
-        title: 'Upload failed',
-        text: msg,
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-    } finally {
-      setUploadingPicture(false)
-      e.target.value = ''
-    }
-  }
-
   // Documents handlers
   const addDocument = () => {
     setDocuments([
@@ -313,6 +272,7 @@ const EditStudentClient = () => {
         ...(skills.length > 0 && { skills }),
         ...(documents.length > 0 && { documents }),
         ...(bio && { bio }),
+        ...(profileImageUrl && { profileImageUrl }),
         status,
       })
 
@@ -870,42 +830,19 @@ const EditStudentClient = () => {
                       />
                     </div>
 
-                    {/* Profile picture */}
+                    {/* Profile Image URL */}
                     <div className="mb-6">
-                      <label className="form-label block mb-2">Profile Picture</label>
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex-shrink-0">
-                          <img
-                            src={getStudentProfilePictureUrl(profileImageUrl) || '/assets/images/faces/1.jpg'}
-                            alt="Profile"
-                            className="w-24 h-24 rounded-full object-cover border-2 border-defaultborder"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                            }}
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <input
-                            ref={profilePictureInputRef}
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp,image/gif"
-                            className="hidden"
-                            onChange={handleProfilePictureChange}
-                            disabled={uploadingPicture}
-                          />
-                          <button
-                            type="button"
-                            className="ti-btn ti-btn-light ti-btn-sm"
-                            onClick={() => profilePictureInputRef.current?.click()}
-                            disabled={uploadingPicture}
-                          >
-                            {uploadingPicture ? 'Uploading...' : (profileImageUrl ? 'Change photo' : 'Upload photo')}
-                          </button>
-                          <p className="text-[0.75rem] text-defaulttextcolor/70 mb-0">
-                            JPEG, PNG, WebP or GIF. Use this to set or change the profile picture.
-                          </p>
-                        </div>
-                      </div>
+                      <label htmlFor="student-profile-image" className="form-label">
+                        Profile Image URL
+                      </label>
+                      <input
+                        id="student-profile-image"
+                        type="url"
+                        className="form-control"
+                        placeholder="https://example.com/image.jpg"
+                        value={profileImageUrl}
+                        onChange={(e) => setProfileImageUrl(e.target.value)}
+                      />
                     </div>
                   </div>
 
