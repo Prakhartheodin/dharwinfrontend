@@ -1,3 +1,0 @@
-module.exports=[489487,a=>{"use strict";var b=a.i(187924),c=a.i(572131);a.s(["default",0,({title:a})=>((0,c.useEffect)(()=>{document.title=`Dharwin Business Solutions - ${a}`},[]),(0,b.jsx)(b.Fragment,{}))])},884850,a=>{"use strict";var b=a.i(334494);a.s(["Autoplay",()=>b.default])},937413,a=>{"use strict";var b=a.i(113597);a.s(["EffectFade",()=>b.default])}];
-
-//# sourceMappingURL=_a84cd335._.js.map

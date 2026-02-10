@@ -1,3 +1,0 @@
-module.exports=[738783,(a,b,c)=>{"use strict";b.exports=a.r(342602).vendored["react-ssr"].ReactServerDOMTurbopackClient},224361,(a,b,c)=>{b.exports=a.x("util",()=>require("util"))},814747,(a,b,c)=>{b.exports=a.x("path",()=>require("path"))},68063,(a,b,c)=>{"use strict";Object.defineProperty(c,"__esModule",{value:!0});var d={getDeploymentId:function(){return f},getDeploymentIdQueryOrEmptyString:function(){return g}};for(var e in d)Object.defineProperty(c,e,{enumerable:!0,get:d[e]});function f(){return!1}function g(){return""}},808232,(a,b,c)=>{b.exports={output:"export",reactStrictMode:!0,trailingSlash:!0,basePath:"",assetPrefix:"",images:{loader:"imgix",path:"/"},typescript:{ignoreBuildErrors:!0}}}];
-
-//# sourceMappingURL=%5Broot-of-the-server%5D__80c4f3c1._.js.map

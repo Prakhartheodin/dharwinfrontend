@@ -1,9 +1,0 @@
-{
-  "[project]/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)": {
-    "id": "[project]/node_modules/react-select/dist/react-select.esm.js [app-client] (ecmascript, next/dynamic entry)",
-    "files": [
-      "static/chunks/node_modules_c2620182._.js",
-      "static/chunks/node_modules_react-select_dist_react-select_esm_e607ec7f.js"
-    ]
-  }
-}
