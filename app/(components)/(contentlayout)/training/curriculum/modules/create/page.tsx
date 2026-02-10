@@ -3,15 +3,10 @@
 import React, { Fragment, useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import * as categoriesApi from '@/shared/lib/api/categories'
-import * as studentsApi from '@/shared/lib/api/students'
-import * as mentorsApi from '@/shared/lib/api/mentors'
-import * as modulesApi from '@/shared/lib/api/curriculum-modules'
-import Swal from 'sweetalert2'
-import { AxiosError } from 'axios'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -51,13 +46,43 @@ type ModuleFormData = {
   playlist: PlaylistItem[]
 }
 
-type CategoryOption = { value: string; label: string }
+const CATEGORY_OPTIONS = [
+  { value: 'cat-1', label: 'Technical Skills' },
+  { value: 'cat-2', label: 'Leadership & Soft Skills' },
+  { value: 'cat-3', label: 'Product & Design' },
+]
 
 type PersonOption = {
   value: string
   label: string
   avatar: string
 }
+
+const STUDENT_OPTIONS: PersonOption[] = [
+  { value: 's1', label: 'Emma Wilson', avatar: '/assets/images/faces/1.jpg' },
+  { value: 's2', label: 'James Brown', avatar: '/assets/images/faces/2.jpg' },
+  { value: 's3', label: 'Olivia Davis', avatar: '/assets/images/faces/4.jpg' },
+  { value: 's4', label: 'Liam Miller', avatar: '/assets/images/faces/5.jpg' },
+  { value: 's5', label: 'Ava Garcia', avatar: '/assets/images/faces/6.jpg' },
+  { value: 's6', label: 'Noah Martinez', avatar: '/assets/images/faces/7.jpg' },
+  { value: 's7', label: 'Sophia Anderson', avatar: '/assets/images/faces/8.jpg' },
+  { value: 's8', label: 'Ethan Thomas', avatar: '/assets/images/faces/9.jpg' },
+  { value: 's9', label: 'Isabella Jackson', avatar: '/assets/images/faces/10.jpg' },
+  { value: 's10', label: 'Mason White', avatar: '/assets/images/faces/11.jpg' },
+]
+
+const MENTOR_OPTIONS: PersonOption[] = [
+  { value: 'm1', label: 'Alex', avatar: '/assets/images/faces/2.jpg' },
+  { value: 'm2', label: 'Sam', avatar: '/assets/images/faces/8.jpg' },
+  { value: 'm3', label: 'Jordan', avatar: '/assets/images/faces/12.jpg' },
+  { value: 'm4', label: 'Casey', avatar: '/assets/images/faces/10.jpg' },
+  { value: 'm5', label: 'Morgan', avatar: '/assets/images/faces/5.jpg' },
+  { value: 'm6', label: 'Riley', avatar: '/assets/images/faces/9.jpg' },
+  { value: 'm7', label: 'Quinn', avatar: '/assets/images/faces/11.jpg' },
+  { value: 'm8', label: 'Taylor', avatar: '/assets/images/faces/3.jpg' },
+  { value: 'm9', label: 'Jamie', avatar: '/assets/images/faces/13.jpg' },
+  { value: 'm10', label: 'Drew', avatar: '/assets/images/faces/6.jpg' },
+]
 
 function CheckboxDropdown({
   options,
@@ -157,8 +182,6 @@ function CheckboxDropdown({
   )
 }
 
-const AVATAR_PLACEHOLDER = '/assets/images/faces/1.jpg'
-
 const CreateModule = () => {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<'info' | 'playlist'>('info')
@@ -171,61 +194,6 @@ const CreateModule = () => {
     mentorIds: [],
     playlist: [],
   })
-
-  const [categoryOptions, setCategoryOptions] = useState<CategoryOption[]>([])
-  const [studentOptions, setStudentOptions] = useState<PersonOption[]>([])
-  const [mentorOptions, setMentorOptions] = useState<PersonOption[]>([])
-  const [optionsLoading, setOptionsLoading] = useState(true)
-  const [optionsError, setOptionsError] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    setOptionsLoading(true)
-    setOptionsError('')
-    Promise.all([
-      categoriesApi.listCategories({ limit: 500 }).then((r) => r.results),
-      studentsApi.listStudents({ limit: 500 }).then((r) =>
-        r.results.map((s) => ({
-          value: s.id,
-          label: s.user?.name ?? 'Unknown',
-          avatar: s.profileImageUrl
-            ? studentsApi.getStudentProfilePictureUrl(s.profileImageUrl) || AVATAR_PLACEHOLDER
-            : AVATAR_PLACEHOLDER,
-        })),
-      ),
-      mentorsApi.listMentors({ limit: 500 }).then((r) =>
-        r.results.map((m) => ({
-          value: m.id,
-          label: m.user?.name ?? 'Unknown',
-          avatar: m.profileImageUrl
-            ? mentorsApi.getMentorProfilePictureUrl(m.profileImageUrl) || AVATAR_PLACEHOLDER
-            : AVATAR_PLACEHOLDER,
-        })),
-      ),
-    ])
-      .then(([categories, students, mentors]) => {
-        if (cancelled) return
-        setCategoryOptions(
-          categories.map((c) => ({ value: c.id, label: c.name })),
-        )
-        setStudentOptions(students)
-        setMentorOptions(mentors)
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setOptionsError(err?.response?.data?.message ?? err?.message ?? 'Failed to load options')
-          setCategoryOptions([])
-          setStudentOptions([])
-          setMentorOptions([])
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setOptionsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
   const [coverImagePreview, setCoverImagePreview] = useState<string>('')
@@ -288,10 +256,6 @@ const CreateModule = () => {
   const [videoDragOverId, setVideoDragOverId] = useState<string | null>(null)
   const [pdfDragOverId, setPdfDragOverId] = useState<string | null>(null)
   const pdfFilesRef = useRef<Record<string, File>>({})
-  const videoFilesRef = useRef<Record<string, File>>({})
-  const [videoPreviewModal, setVideoPreviewModal] = useState<{ itemId: string; url: string } | null>(
-    null,
-  )
 
   const getYoutubeVideoId = (url: string): string | null => {
     if (!url?.trim()) return null
@@ -321,8 +285,6 @@ const CreateModule = () => {
   }
 
   const handleRemovePlaylistItem = (id: string) => {
-    delete videoFilesRef.current[id]
-    delete pdfFilesRef.current[id]
     handleInputChange(
       'playlist',
       formData.playlist.filter((item) => item.id !== id),
@@ -423,33 +385,10 @@ const CreateModule = () => {
   }
 
   const processPlaylistVideoFile = (itemId: string, file: File | null) => {
-    // Accept any file here; backend will validate type. Some browsers may not
-    // populate file.type reliably (e.g. drag & drop), so we only check presence.
-    if (!file) return
-
-    // Store file so we can show details (name, size) later
-    videoFilesRef.current[itemId] = file
-
+    if (!file || !file.type.startsWith('video/')) return
     const url = URL.createObjectURL(file)
     handlePlaylistItemChange(itemId, 'videoPreview', url)
     handlePlaylistItemChange(itemId, 'source', file.name)
-
-    // Try to auto-fill duration (in minutes) once metadata is loaded
-    try {
-      const video = document.createElement('video')
-      video.preload = 'metadata'
-      video.src = url
-      video.onloadedmetadata = () => {
-        if (!Number.isNaN(video.duration) && video.duration > 0) {
-          const minutes = Math.round(video.duration / 60)
-          if (minutes > 0) {
-            handlePlaylistItemChange(itemId, 'duration', String(minutes))
-          }
-        }
-      }
-    } catch {
-      // Non‑critical enhancement; ignore errors here
-    }
   }
 
   const processPlaylistPdfFile = (itemId: string, file: File | null) => {
@@ -558,115 +497,12 @@ const CreateModule = () => {
     reader.readAsText(file)
   }
 
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState('')
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    setSubmitError('')
-
-    const trimmedName = formData.name.trim()
-    if (!trimmedName) {
-      setSubmitError('Module name is required.')
-      return
-    }
-    if (!formData.categoryId) {
-      setSubmitError('Category is required.')
-      return
-    }
-    if (!formData.shortDescription.trim()) {
-      setSubmitError('Short description is required.')
-      return
-    }
-    if (!coverImageFile) {
-      setSubmitError('Cover image is required.')
-      return
-    }
-
-    // Build playlist payload for API (order, type, title, duration, type-specific)
-    const playlistPayload = formData.playlist.map((item, index) => {
-      const base: Record<string, unknown> = {
-        order: index + 1,
-        type: item.type,
-        title: item.title || '',
-        duration: item.duration || undefined,
-      }
-      if (item.type === 'youtube' || item.type === 'test') {
-        base.sourceUrl = item.source || undefined
-      }
-      if (item.type === 'blog') {
-        base.blogContent = item.blogContent || undefined
-      }
-      if (item.type === 'quiz' && item.quizData?.length) {
-        base.quizData = item.quizData.map((q) => ({
-          question: q.question,
-          multipleCorrect: q.multipleCorrect ?? false,
-          options: (q.options ?? []).map((o) => ({ text: o.text, correct: o.correct })),
-        }))
-      }
-      // video and pdf: no sourceUrl in payload; files sent via playlistItemFiles
-      return base
-    })
-
-    // Collect video/PDF files in playlist order (same order as video/pdf items)
-    const playlistItemFiles: File[] = []
-    for (const item of formData.playlist) {
-      if (item.type === 'video') {
-        const file = videoFilesRef.current[item.id]
-        if (file) playlistItemFiles.push(file)
-      } else if (item.type === 'pdf') {
-        const file = pdfFilesRef.current[item.id]
-        if (file) playlistItemFiles.push(file)
-      }
-    }
-
-    const formDataToSend = new FormData()
-    formDataToSend.append('categoryId', formData.categoryId)
-    formDataToSend.append('name', trimmedName)
-    formDataToSend.append('shortDescription', formData.shortDescription.trim())
-    formDataToSend.append('studentIds', JSON.stringify(formData.studentIds))
-    formDataToSend.append('mentorIds', JSON.stringify(formData.mentorIds))
-    formDataToSend.append('playlist', JSON.stringify(playlistPayload))
-    formDataToSend.append('coverImage', coverImageFile)
-    playlistItemFiles.forEach((file) => {
-      formDataToSend.append('playlistItemFiles', file)
-    })
-
-    setSubmitting(true)
-    try {
-      await modulesApi.createModule(formDataToSend)
-      await Swal.fire({
-        icon: 'success',
-        title: 'Module created',
-        text: `"${trimmedName}" has been created successfully.`,
-        toast: true,
-        position: 'top-end',
-        timer: 3000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-      router.push('/training/curriculum/modules')
-    } catch (err) {
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : err instanceof Error
-            ? err.message
-            : 'Failed to create module.'
-      setSubmitError(msg)
-      await Swal.fire({
-        icon: 'error',
-        title: 'Create failed',
-        text: msg,
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-    } finally {
-      setSubmitting(false)
-    }
+    // Here you would typically send the data to your API
+    // For now, we'll just navigate back to the modules list
+    console.log('Module data:', formData)
+    router.push('/training/curriculum/modules')
   }
 
   return (
@@ -721,11 +557,6 @@ const CreateModule = () => {
 
                 {activeTab === 'info' && (
                   <div id="info-panel" role="tabpanel" aria-labelledby="info-tab">
-                    {optionsError && (
-                      <div className="mb-4 p-3 rounded-md border border-danger/30 bg-danger/5 text-danger text-sm">
-                        {optionsError}
-                      </div>
-                    )}
                     <div className="grid grid-cols-12 gap-4">
                       {/* Category Selection */}
                       <div className="xl:col-span-6 col-span-12">
@@ -734,15 +565,12 @@ const CreateModule = () => {
                         </label>
                         <Select
                           id="category"
-                          value={categoryOptions.find((opt) => opt.value === formData.categoryId) || null}
-                          onChange={(v: unknown) =>
-                            handleCategoryChange(v as { value: string; label: string } | null)
-                          }
-                          options={categoryOptions}
+                          value={CATEGORY_OPTIONS.find((opt) => opt.value === formData.categoryId) || null}
+                          onChange={handleCategoryChange}
+                          options={CATEGORY_OPTIONS}
                           classNamePrefix="Select2"
-                          placeholder={optionsLoading ? 'Loading categories...' : 'Select Category'}
+                          placeholder="Select Category"
                           menuPlacement="auto"
-                          isDisabled={optionsLoading}
                         />
                       </div>
 
@@ -846,8 +674,8 @@ const CreateModule = () => {
                       <div className="xl:col-span-6 col-span-12">
                         <CheckboxDropdown
                           label="Students"
-                          placeholder={optionsLoading ? 'Loading students...' : 'Select students'}
-                          options={studentOptions}
+                          placeholder="Select students"
+                          options={STUDENT_OPTIONS}
                           selectedIds={formData.studentIds}
                           onChange={(ids) => handleInputChange('studentIds', ids)}
                         />
@@ -857,8 +685,8 @@ const CreateModule = () => {
                       <div className="xl:col-span-6 col-span-12">
                         <CheckboxDropdown
                           label="Mentors Assigned"
-                          placeholder={optionsLoading ? 'Loading mentors...' : 'Select mentors'}
-                          options={mentorOptions}
+                          placeholder="Select mentors"
+                          options={MENTOR_OPTIONS}
                           selectedIds={formData.mentorIds}
                           onChange={(ids) => handleInputChange('mentorIds', ids)}
                         />
@@ -981,71 +809,77 @@ const CreateModule = () => {
                           {item.type === 'video' && (
                             <div className="mt-4">
                               <label className="form-label">Video file</label>
-                              <div
-                                onDrop={(e) => {
-                                  e.preventDefault()
-                                  setVideoDragOverId(null)
-                                  processPlaylistVideoFile(item.id, e.dataTransfer.files?.[0] ?? null)
-                                }}
-                                onDragOver={(e) => {
-                                  e.preventDefault()
-                                  setVideoDragOverId(item.id)
-                                }}
-                                onDragLeave={() => setVideoDragOverId(null)}
-                                onClick={() =>
-                                  document.getElementById(`playlist-video-input-${item.id}`)?.click()
-                                }
-                                className={`rounded-lg border-2 border-dashed min-h-[140px] flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
-                                  videoDragOverId === item.id
-                                    ? 'border-primary bg-primary/5'
-                                    : 'border-defaultborder hover:border-primary/50'
-                                }`}
-                              >
-                                <input
-                                  id={`playlist-video-input-${item.id}`}
-                                  type="file"
-                                  accept="video/*"
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const f = e.target.files?.[0]
-                                    if (f) processPlaylistVideoFile(item.id, f)
-                                    e.target.value = ''
+                              {item.videoPreview ? (
+                                <div className="relative rounded-lg border border-defaultborder overflow-hidden bg-black/5 dark:bg-white/5 group max-w-md">
+                                  <video
+                                    src={item.videoPreview}
+                                    controls
+                                    className="w-full max-h-48 object-contain block"
+                                  />
+                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <label className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] !mb-0 cursor-pointer">
+                                      <i className="ri-upload-cloud-line me-1" />
+                                      Change
+                                      <input
+                                        type="file"
+                                        accept="video/*"
+                                        className="hidden"
+                                        onChange={(e) => {
+                                          const f = e.target.files?.[0]
+                                          if (f) processPlaylistVideoFile(item.id, f)
+                                          e.target.value = ''
+                                        }}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
+                                      onClick={() => {
+                                        if (item.videoPreview) URL.revokeObjectURL(item.videoPreview)
+                                        handlePlaylistItemChange(item.id, 'videoPreview', '')
+                                        handlePlaylistItemChange(item.id, 'source', '')
+                                      }}
+                                    >
+                                      <i className="ri-delete-bin-line" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  onDrop={(e) => {
+                                    e.preventDefault()
+                                    setVideoDragOverId(null)
+                                    processPlaylistVideoFile(item.id, e.dataTransfer.files?.[0] ?? null)
                                   }}
-                                />
-                                <span className="text-primary text-2xl">
-                                  <i className="ri-video-add-line" />
-                                </span>
-                                <span className="text-[0.8125rem] text-[#8c9097] dark:text-white/50">
-                                  Drag and drop video or click to upload
-                                </span>
-                              </div>
-
-                              {videoFilesRef.current[item.id] && (
-                                <div className="mt-2 border border-dashed border-defaultborder bg-black/5 dark:bg-white/5 px-3 py-2 text-[0.75rem] text-[#8c9097] dark:text-white/50 flex flex-wrap items-center gap-3 rounded-md">
-                                  <span className="font-semibold text-defaulttextcolor text-[0.8rem]">
-                                    {videoFilesRef.current[item.id].name}
-                                  </span>
-                                  <span>
-                                    {(videoFilesRef.current[item.id].size / (1024 * 1024)).toFixed(2)} MB
-                                  </span>
-                                  {item.duration && (
-                                    <span>
-                                      Approx. duration: {item.duration} min
-                                    </span>
-                                  )}
-                                  <button
-                                    type="button"
-                                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] !mb-0"
-                                    onClick={() => {
-                                      const file = videoFilesRef.current[item.id]
-                                      if (!file) return
-                                      const url = URL.createObjectURL(file)
-                                      setVideoPreviewModal({ itemId: item.id, url })
+                                  onDragOver={(e) => {
+                                    e.preventDefault()
+                                    setVideoDragOverId(item.id)
+                                  }}
+                                  onDragLeave={() => setVideoDragOverId(null)}
+                                  onClick={() => document.getElementById(`playlist-video-input-${item.id}`)?.click()}
+                                  className={`rounded-lg border-2 border-dashed min-h-[140px] flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
+                                    videoDragOverId === item.id
+                                      ? 'border-primary bg-primary/5'
+                                      : 'border-defaultborder hover:border-primary/50'
+                                  }`}
+                                >
+                                  <input
+                                    id={`playlist-video-input-${item.id}`}
+                                    type="file"
+                                    accept="video/*"
+                                    className="hidden"
+                                    onChange={(e) => {
+                                      const f = e.target.files?.[0]
+                                      if (f) processPlaylistVideoFile(item.id, f)
+                                      e.target.value = ''
                                     }}
-                                  >
-                                    <i className="ri-play-line me-1" />
-                                    Preview
-                                  </button>
+                                  />
+                                  <span className="text-primary text-2xl">
+                                    <i className="ri-video-add-line" />
+                                  </span>
+                                  <span className="text-[0.8125rem] text-[#8c9097] dark:text-white/50">
+                                    Drag and drop video or click to upload
+                                  </span>
                                 </div>
                               )}
                             </div>
@@ -1233,11 +1067,6 @@ const CreateModule = () => {
                   </div>
                 )}
               </div>
-              {submitError && (
-                <div className="p-3 rounded-md border border-danger/30 bg-danger/5 text-danger text-sm">
-                  {submitError}
-                </div>
-              )}
               <div className="box-footer flex justify-end gap-2 pt-4 border-t border-defaultborder">
                 <Link
                   href="/training/curriculum/modules"
@@ -1248,53 +1077,14 @@ const CreateModule = () => {
                 <button
                   type="submit"
                   className="ti-btn ti-btn-primary-full"
-                  disabled={submitting}
                 >
-                  {submitting ? 'Creating...' : 'Create Module'}
+                  Create Module
                 </button>
               </div>
             </form>
           </div>
         </div>
       </div>
-
-      {/* Video preview modal */}
-      {videoPreviewModal && (
-        <div
-          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4"
-          onClick={() => {
-            URL.revokeObjectURL(videoPreviewModal.url)
-            setVideoPreviewModal(null)
-          }}
-        >
-          <div
-            className="bg-bodybg border border-defaultborder rounded-lg shadow-xl max-w-3xl w-full p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <h5 className="font-semibold mb-0">Preview Video</h5>
-              <button
-                type="button"
-                className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"
-                onClick={() => {
-                  URL.revokeObjectURL(videoPreviewModal.url)
-                  setVideoPreviewModal(null)
-                }}
-              >
-                <i className="ri-close-line" />
-              </button>
-            </div>
-            <div className="aspect-video w-full bg-black/80 rounded-md flex items-center justify-center overflow-hidden">
-              <video
-                src={videoPreviewModal.url}
-                controls
-                autoPlay
-                className="w-full h-full object-contain"
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Quiz builder modal */}
       {quizModalItemId && quizModalItem && (
