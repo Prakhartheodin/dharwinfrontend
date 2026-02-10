@@ -90,6 +90,25 @@ export async function getMentor(mentorId: string): Promise<Mentor> {
   return data;
 }
 
+/**
+ * Build full URL for mentor profile picture using profileImageUrl from the API
+ * and NEXT_PUBLIC_API_URL from env.
+ */
+export function getMentorProfilePictureUrl(
+  profileImageUrl: string | null | undefined
+): string {
+  if (!profileImageUrl?.trim()) return "";
+  const apiBase = (
+    typeof window !== "undefined"
+      ? process.env.NEXT_PUBLIC_API_URL ?? ""
+      : ""
+  ).replace(/\/$/, "");
+  const path = profileImageUrl.startsWith("/")
+    ? profileImageUrl
+    : `/${profileImageUrl}`;
+  return apiBase ? `${apiBase}${path}` : path;
+}
+
 export interface UpdateMentorPayload {
   phone?: string;
   dateOfBirth?: string;
