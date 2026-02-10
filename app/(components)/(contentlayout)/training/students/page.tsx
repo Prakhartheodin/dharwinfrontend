@@ -1,10 +1,14 @@
 "use client"
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import { Range, getTrackBackground } from "react-range"
+import Swal from 'sweetalert2'
+import { AxiosError } from 'axios'
+import * as studentsApi from '@/shared/lib/api/students'
+import type { Student } from '@/shared/lib/api/students'
 
 // Mock data for students
 const STUDENTS_DATA = [
@@ -195,6 +199,19 @@ const getExperienceRanges = () => {
 
 const experienceRangesConst = getExperienceRanges()
 
+// Interface for display purposes (mapped from User)
+interface StudentRow {
+  id: string
+  name: string
+  displayPicture: string
+  phone: string
+  email: string
+  skills: string[]
+  education: string
+  experience: number
+  bio: string
+}
+
 // Note type for student notes
 interface StudentNote {
   id: string
@@ -206,9 +223,13 @@ interface StudentNote {
 }
 
 const Students = () => {
+  const [students, setStudents] = useState<StudentRow[]>([])
+  const [loading, setLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [studentNotes, setStudentNotes] = useState<StudentNote[]>([])
   const [previewStudent, setPreviewStudent] = useState<any>(null)
+  const [viewStudent, setViewStudent] = useState<studentsApi.Student | null>(null)
+  const [viewStudentLoading, setViewStudentLoading] = useState(false)
   const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareStudent, setShareStudent] = useState<any>(null)
@@ -216,6 +237,12 @@ const Students = () => {
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [sortBy, setSortBy] = useState<string>('createdAt:desc')
   
   const [filters, setFilters] = useState<FilterState>({
     name: [],
@@ -239,6 +266,39 @@ const Students = () => {
       newSelected.add(id)
     }
     setSelectedRows(newSelected)
+  }
+
+  // Handle view student - fetch full details and open modal
+  const handleViewStudent = async (studentId: string) => {
+    setViewStudentLoading(true)
+    try {
+      const student = await studentsApi.getStudent(studentId)
+      setViewStudent(student)
+      // Trigger modal via Preline's trigger button
+      setTimeout(() => {
+        const trigger = document.getElementById('view-student-modal-trigger')
+        if (trigger) {
+          trigger.click()
+        }
+      }, 100)
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to load student details.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to load student',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      setViewStudentLoading(false)
+    }
   }
 
   // Handle add note - open notes sidebar
@@ -284,18 +344,243 @@ const Students = () => {
     setStudentNotes(studentNotes.filter(note => note.id !== noteId))
   }
 
+  // Helper function to map Student API response to StudentRow format
+  const mapStudentToRow = useCallback((student: Student): StudentRow => {
+    // Format education from array to string
+    const educationStr = student.education && student.education.length > 0
+      ? student.education.map(edu => {
+          const parts = []
+          if (edu.degree) parts.push(edu.degree)
+          if (edu.institution) parts.push(edu.institution)
+          if (edu.endDate) {
+            try {
+              const year = new Date(edu.endDate).getFullYear()
+              if (!isNaN(year)) {
+                parts.push(`(${year})`)
+              }
+            } catch (e) {
+              // Invalid date, skip year
+            }
+          }
+          return parts.join(' - ')
+        }).filter(Boolean).join(', ')
+      : ''
+
+    // Calculate experience from experience array
+    const experienceYears = student.experience && student.experience.length > 0
+      ? student.experience.reduce((total, exp) => {
+          if (exp.startDate && exp.endDate) {
+            try {
+              const start = new Date(exp.startDate)
+              const end = new Date(exp.endDate)
+              if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+                const years = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 365)
+                return total + Math.max(0, years)
+              }
+            } catch (e) {
+              // Invalid date, skip
+            }
+          }
+          return total
+        }, 0)
+      : 0
+
+    return {
+      id: student.id,
+      name: student.user?.name || 'Unknown',
+      displayPicture: student.profileImageUrl || '/assets/images/faces/1.jpg',
+      phone: student.phone || '',
+      email: student.user?.email || '',
+      skills: student.skills || [],
+      education: educationStr,
+      experience: Math.round(experienceYears),
+      bio: student.bio || '',
+    }
+  }, [])
+
+  // Use ref to store fetchStudents to avoid circular dependencies
+  const fetchStudentsRef = useRef<() => Promise<void>>()
+
+  // Fetch students from Students API
+  const fetchStudents = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params: studentsApi.ListStudentsParams = {
+        page: currentPage,
+        limit: pageSize,
+        sortBy,
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+      }
+      
+      const response = await studentsApi.listStudents(params)
+      
+      const mappedStudents = response.results.map(mapStudentToRow)
+      setStudents(mappedStudents)
+      setTotalResults(response.totalResults)
+      setTotalPages(response.totalPages)
+    } catch (err) {
+      console.error('Error fetching students:', err)
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+          ? err.message
+          : 'Failed to load students.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to load students',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      setStudents([])
+      setTotalResults(0)
+      setTotalPages(0)
+    } finally {
+      setLoading(false)
+    }
+  }, [currentPage, pageSize, sortBy, searchQuery, mapStudentToRow])
+
+  // Update ref when fetchStudents changes
+  useEffect(() => {
+    fetchStudentsRef.current = fetchStudents
+  }, [fetchStudents])
+
+  useEffect(() => {
+    fetchStudents()
+  }, [fetchStudents])
+
+  // Delete a single student
+  const handleDelete = useCallback(async (id: string) => {
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: "You won't be able to revert this!",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Yes, delete it!',
+    })
+
+    if (!result.isConfirmed) return
+
+    try {
+      await studentsApi.deleteStudent(id)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Deleted!',
+        text: 'Student has been deleted.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      setSelectedRows((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(id)
+        return newSet
+      })
+      // Trigger refetch using ref to avoid circular dependency
+      if (fetchStudentsRef.current) {
+        await fetchStudentsRef.current()
+      }
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to delete student.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to delete student',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    }
+  }, [])
+
+  // Delete selected students
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedRows.size === 0) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'No selection',
+        text: 'Please select at least one student to delete.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      return
+    }
+
+    const result = await Swal.fire({
+      title: 'Are you sure?',
+      text: `You are about to delete ${selectedRows.size} student(s). This action cannot be undone!`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: `Yes, delete ${selectedRows.size} student(s)!`,
+    })
+
+    if (!result.isConfirmed) return
+
+    try {
+      await Promise.all(Array.from(selectedRows).map((id) => studentsApi.deleteStudent(id)))
+      await Swal.fire({
+        icon: 'success',
+        title: 'Deleted!',
+        text: `${selectedRows.size} student(s) have been deleted.`,
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      setSelectedRows(new Set())
+      // Trigger refetch using ref to avoid circular dependency
+      if (fetchStudentsRef.current) {
+        await fetchStudentsRef.current()
+      }
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to delete students.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to delete students',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    }
+  }, [selectedRows])
+
   // Get student details for the notes sidebar
   const getStudentDetails = () => {
     if (!notesStudentId) return null
-    return STUDENTS_DATA.find(student => student.id === notesStudentId)
+    return students.find(student => student.id === notesStudentId)
   }
 
-  // Generate public URL for student
+  // Generate public URL for student (edit page with query param for static export)
   const getStudentPublicUrl = (studentId: string) => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/training/students/${studentId}`
+      return `${window.location.origin}/training/students/edit/?id=${encodeURIComponent(studentId)}`
     }
-    return `https://example.com/training/students/${studentId}`
+    return `https://example.com/training/students/edit/?id=${encodeURIComponent(studentId)}`
   }
 
   // Export student documents
@@ -525,6 +810,22 @@ const Students = () => {
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
+                onClick={() => handleViewStudent(row.original.id)}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                title="View Student"
+                disabled={viewStudentLoading}
+              >
+                <i className="ri-eye-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  View Student
+                </span>
+              </button>
+            </div>
+            <div className="hs-tooltip ti-main-tooltip">
+              <Link
+                href={`/training/students/edit/?id=${encodeURIComponent(row.original.id)}`}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="Edit Student"
               >
@@ -534,7 +835,7 @@ const Students = () => {
                   role="tooltip">
                   Edit Student
                 </span>
-              </button>
+              </Link>
             </div>
             <div className="hs-tooltip ti-main-tooltip">
               <button
@@ -608,16 +909,30 @@ const Students = () => {
                 </li>
               </ul>
             </div>
+            <div className="hs-tooltip ti-main-tooltip">
+              <button
+                type="button"
+                onClick={() => handleDelete(row.original.id)}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+              >
+                <i className="ri-delete-bin-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  Delete
+                </span>
+              </button>
+            </div>
           </div>
         ),
       },
     ],
-    [selectedRows]
+    [selectedRows, handleDelete]
   )
 
-  // Filter data based on filter state
+  // Filter data based on filter state (client-side filtering on current page)
   const filteredData = useMemo(() => {
-    return STUDENTS_DATA.filter((student) => {
+    return students.filter((student) => {
       // Name filter (array)
       if (filters.name.length > 0 && !filters.name.some(name => 
         student.name.toLowerCase().includes(name.toLowerCase())
@@ -656,26 +971,26 @@ const Students = () => {
       
       return true
     })
-  }, [filters])
+  }, [students, filters])
 
   const data = useMemo(() => filteredData, [filteredData])
 
-  // Get unique values for dropdown filters
+  // Get unique values for dropdown filters (from current page data)
   const allSkills = useMemo(() => {
     const skillSet = new Set<string>()
-    STUDENTS_DATA.forEach(student => {
+    students.forEach(student => {
       student.skills?.forEach(skill => skillSet.add(skill))
     })
     return Array.from(skillSet).sort()
-  }, [])
+  }, [students])
 
   const allEducation = useMemo(() => {
-    return [...new Set(STUDENTS_DATA.map(student => student.education))].sort()
-  }, [])
+    return [...new Set(students.map(student => student.education).filter(Boolean))].sort()
+  }, [students])
 
   const allNames = useMemo(() => {
-    return [...new Set(STUDENTS_DATA.map(student => student.name))].sort()
-  }, [])
+    return [...new Set(students.map(student => student.name))].sort()
+  }, [students])
 
   // Filter options based on search terms
   const filteredNames = useMemo(() => {
@@ -752,31 +1067,17 @@ const Students = () => {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      manualPagination: true, // We're using API pagination
+      manualSortBy: true, // We're using API sorting
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
     getTableProps,
     getTableBodyProps,
     headerGroups,
-    prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    pageOptions,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
   } = tableInstance
-
-  const { pageIndex, pageSize } = state
 
   // Handle sort selection
   const handleSortChange = (sortOption: string) => {
@@ -784,30 +1085,31 @@ const Students = () => {
     
     switch(sortOption) {
       case 'name-asc':
-        setSortBy([{ id: 'studentInfo', desc: false }])
+        setSortBy('createdAt:asc') // API format: field:direction
         break
       case 'name-desc':
-        setSortBy([{ id: 'studentInfo', desc: true }])
+        setSortBy('createdAt:desc')
         break
       case 'skills-asc':
-        setSortBy([{ id: 'skills', desc: false }])
+        setSortBy('createdAt:asc')
         break
       case 'skills-desc':
-        setSortBy([{ id: 'skills', desc: true }])
+        setSortBy('createdAt:desc')
         break
       case 'education-asc':
-        setSortBy([{ id: 'education', desc: false }])
+        setSortBy('createdAt:asc')
         break
       case 'education-desc':
-        setSortBy([{ id: 'education', desc: true }])
+        setSortBy('createdAt:desc')
         break
       case 'clear-sort':
-        setSortBy([])
+        setSortBy('createdAt:desc')
         setSelectedSort('')
         break
       default:
-        setSortBy([])
+        setSortBy('createdAt:desc')
     }
+    setCurrentPage(1) // Reset to first page when sorting changes
   }
 
   // Handle select all checkbox - select ALL rows in filtered dataset
@@ -842,7 +1144,10 @@ const Students = () => {
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setCurrentPage(1)
+                  }}
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -986,6 +1291,8 @@ const Students = () => {
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedRows.size === 0}
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
                 </button>
@@ -1042,20 +1349,64 @@ const Students = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any) => {
-                      prepareRow(row)
-                      return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                          {row.cells.map((cell: any) => {
-                            return (
-                              <td {...cell.getCellProps()} key={Math.random()}>
+                    {loading ? (
+                      <tr>
+                        <td colSpan={columns.length} className="text-center py-8">
+                          <div className="flex flex-col items-center justify-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
+                            <span className="text-gray-600 dark:text-gray-400">Loading students...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredData.length === 0 ? (
+                      <tr>
+                        <td colSpan={columns.length} className="text-center py-8">
+                          <div className="flex flex-col items-center justify-center">
+                            <i className="ri-inbox-line text-4xl text-gray-400 mb-2"></i>
+                            <span className="text-gray-600 dark:text-gray-400">No students found</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredData.map((student) => {
+                        const row = {
+                          original: student,
+                          getRowProps: () => ({}),
+                          cells: columns.map((col: any) => ({
+                            render: (type: string) => {
+                              if (type === 'Cell') {
+                                if (col.id === 'checkbox') {
+                                  return (
+                                    <input
+                                      className="form-check-input"
+                                      type="checkbox"
+                                      checked={selectedRows.has(student.id)}
+                                      onChange={() => handleRowSelect(student.id)}
+                                      aria-label={`Select ${student.name}`}
+                                    />
+                                  )
+                                }
+                                if (col.Cell) {
+                                  return col.Cell({ row: { original: student } })
+                                }
+                                return student[col.accessor as keyof StudentRow]
+                              }
+                              return null
+                            },
+                            getCellProps: () => ({})
+                          }))
+                        }
+                        return (
+                          <tr className="border-b border-gray-300 dark:border-gray-600" key={student.id}>
+                            {row.cells.map((cell: any, idx: number) => (
+                              <td key={idx}>
                                 {cell.render('Cell')}
                               </td>
-                            )
-                          })}
-                        </tr>
-                      )
-                    })}
+                            ))}
+                          </tr>
+                        )
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -1063,82 +1414,82 @@ const Students = () => {
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
+                  Showing {(currentPage - 1) * pageSize + 1} to {Math.min(currentPage * pageSize, totalResults)} of {totalResults} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
                   <nav aria-label="Page navigation" className="pagination-style-4">
                     <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
+                      <li className={`page-item ${currentPage === 1 ? 'disabled' : ''}`}>
                         <button
                           className="page-link px-3 py-[0.375rem]"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
+                          onClick={() => setCurrentPage(currentPage - 1)}
+                          disabled={currentPage === 1}
                         >
                           Prev
                         </button>
                       </li>
-                      {pageOptions.length <= 7 ? (
+                      {totalPages <= 7 ? (
                         // Show all pages if 7 or fewer
-                        pageOptions.map((page: number) => (
+                        Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
                           <li
                             key={page}
-                            className={`page-item ${pageIndex === page ? 'active' : ''}`}
+                            className={`page-item ${currentPage === page ? 'active' : ''}`}
                           >
                             <button
                               className="page-link px-3 py-[0.375rem]"
-                              onClick={() => gotoPage(page)}
+                              onClick={() => setCurrentPage(page)}
                             >
-                              {page + 1}
+                              {page}
                             </button>
                           </li>
                         ))
                       ) : (
                         // Show smart pagination for more pages
                         <>
-                          {pageIndex > 2 && (
+                          {currentPage > 2 && (
                             <>
                               <li className="page-item">
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(0)}
+                                  onClick={() => setCurrentPage(1)}
                                 >
                                   1
                                 </button>
                               </li>
-                              {pageIndex > 3 && (
+                              {currentPage > 3 && (
                                 <li className="page-item disabled">
                                   <span className="page-link px-3 py-[0.375rem]">...</span>
                                 </li>
                               )}
                             </>
                           )}
-                          {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
+                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                             let pageNum
-                            if (pageIndex < 3) {
-                              pageNum = i
-                            } else if (pageIndex > pageCount - 4) {
-                              pageNum = pageCount - 5 + i
+                            if (currentPage < 3) {
+                              pageNum = i + 1
+                            } else if (currentPage > totalPages - 3) {
+                              pageNum = totalPages - 4 + i
                             } else {
-                              pageNum = pageIndex - 2 + i
+                              pageNum = currentPage - 2 + i
                             }
                             return (
                               <li
                                 key={pageNum}
-                                className={`page-item ${pageIndex === pageNum ? 'active' : ''}`}
+                                className={`page-item ${currentPage === pageNum ? 'active' : ''}`}
                               >
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageNum)}
+                                  onClick={() => setCurrentPage(pageNum)}
                                 >
-                                  {pageNum + 1}
+                                  {pageNum}
                                 </button>
                               </li>
                             )
                           })}
-                          {pageIndex < pageCount - 3 && (
+                          {currentPage < totalPages - 2 && (
                             <>
-                              {pageIndex < pageCount - 4 && (
+                              {currentPage < totalPages - 3 && (
                                 <li className="page-item disabled">
                                   <span className="page-link px-3 py-[0.375rem]">...</span>
                                 </li>
@@ -1146,20 +1497,20 @@ const Students = () => {
                               <li className="page-item">
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageCount - 1)}
+                                  onClick={() => setCurrentPage(totalPages)}
                                 >
-                                  {pageCount}
+                                  {totalPages}
                                 </button>
                               </li>
                             </>
                           )}
                         </>
                       )}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
+                      <li className={`page-item ${currentPage === totalPages || totalPages === 0 ? 'disabled' : ''}`}>
                         <button
                           className="page-link px-3 py-[0.375rem] text-primary"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
+                          onClick={() => setCurrentPage(currentPage + 1)}
+                          disabled={currentPage === totalPages || totalPages === 0}
                         >
                           Next
                         </button>
@@ -1933,6 +2284,273 @@ const Students = () => {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hidden trigger button for view student modal (needed for Preline) */}
+      <button 
+        id="view-student-modal-trigger"
+        type="button"
+        style={{ display: 'none' }}
+        data-hs-overlay="#view-student-modal"
+      ></button>
+
+      {/* View Student Detailed Modal */}
+      <div 
+        id="view-student-modal" 
+        className="hs-overlay hidden ti-modal"
+      >
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-4xl lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title flex items-center gap-2">
+                <i className="ri-eye-line text-primary"></i>
+                Student Details
+              </h6>
+              <button 
+                type="button" 
+                className="hs-dropdown-toggle ti-modal-close-btn" 
+                data-hs-overlay="#view-student-modal"
+                onClick={() => setViewStudent(null)}
+              >
+                <span className="sr-only">Close</span>
+                <svg className="w-3.5 h-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z" fill="currentColor"/>
+                </svg>
+              </button>
+            </div>
+            <div className="ti-modal-body">
+              {viewStudentLoading ? (
+                <div className="text-center py-8">
+                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="mt-4 text-gray-500 dark:text-gray-400">Loading student details...</p>
+                </div>
+              ) : viewStudent ? (
+                <div className="space-y-6">
+                  {/* Student Header */}
+                  <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
+                    <img
+                      src={viewStudent.profileImageUrl || '/assets/images/faces/1.jpg'}
+                      alt={viewStudent.user?.name || 'Student'}
+                      className="w-20 h-20 rounded-full object-cover border-2 border-primary/30"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
+                      }}
+                    />
+                    <div className="flex-1">
+                      <h6 className="font-bold text-gray-800 dark:text-white text-xl mb-1">{viewStudent.user?.name || 'Unknown'}</h6>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
+                        <span className="flex items-center gap-1">
+                          <i className="ri-mail-line"></i>
+                          {viewStudent.user?.email || 'N/A'}
+                        </span>
+                        {viewStudent.phone && (
+                          <span className="flex items-center gap-1">
+                            <i className="ri-phone-line"></i>
+                            {viewStudent.phone}
+                          </span>
+                        )}
+                        <span className="flex items-center gap-1">
+                          <i className="ri-user-settings-line"></i>
+                          Status: <span className="font-semibold capitalize">{viewStudent.status}</span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Personal Information */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {viewStudent.dateOfBirth && (
+                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Date of Birth</div>
+                        <div className="font-semibold text-gray-800 dark:text-white">
+                          {new Date(viewStudent.dateOfBirth).toLocaleDateString()}
+                        </div>
+                      </div>
+                    )}
+                    {viewStudent.gender && (
+                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gender</div>
+                        <div className="font-semibold text-gray-800 dark:text-white capitalize">{viewStudent.gender}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Address */}
+                  {viewStudent.address && (viewStudent.address.street || viewStudent.address.city || viewStudent.address.state || viewStudent.address.country) && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-map-pin-line text-primary"></i>
+                        Address
+                      </h6>
+                      <div className="text-sm text-gray-700 dark:text-gray-300">
+                        {[
+                          viewStudent.address.street,
+                          viewStudent.address.city,
+                          viewStudent.address.state,
+                          viewStudent.address.zipCode,
+                          viewStudent.address.country
+                        ].filter(Boolean).join(', ')}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Education */}
+                  {viewStudent.education && viewStudent.education.length > 0 && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-graduation-cap-line text-primary"></i>
+                        Education
+                      </h6>
+                      <div className="space-y-3">
+                        {viewStudent.education.map((edu, index) => (
+                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
+                            <div className="font-semibold text-gray-800 dark:text-white">
+                              {edu.degree || 'N/A'} {edu.institution && `- ${edu.institution}`}
+                            </div>
+                            {edu.fieldOfStudy && (
+                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Field: {edu.fieldOfStudy}</div>
+                            )}
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {edu.startDate && new Date(edu.startDate).toLocaleDateString()} - {' '}
+                              {edu.isCurrent ? 'Present' : (edu.endDate ? new Date(edu.endDate).toLocaleDateString() : 'N/A')}
+                            </div>
+                            {edu.description && (
+                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{edu.description}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Work Experience */}
+                  {viewStudent.experience && viewStudent.experience.length > 0 && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-briefcase-line text-primary"></i>
+                        Work Experience
+                      </h6>
+                      <div className="space-y-3">
+                        {viewStudent.experience.map((exp, index) => (
+                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
+                            <div className="font-semibold text-gray-800 dark:text-white">
+                              {exp.title || 'N/A'} {exp.company && `at ${exp.company}`}
+                            </div>
+                            {exp.location && (
+                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                                <i className="ri-map-pin-line"></i> {exp.location}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              {exp.startDate && new Date(exp.startDate).toLocaleDateString()} - {' '}
+                              {exp.isCurrent ? 'Present' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString() : 'N/A')}
+                            </div>
+                            {exp.description && (
+                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{exp.description}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Skills */}
+                  {viewStudent.skills && viewStudent.skills.length > 0 && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-tools-line text-primary"></i>
+                        Skills
+                      </h6>
+                      <div className="flex flex-wrap gap-2">
+                        {viewStudent.skills.map((skill, index) => (
+                          <span
+                            key={index}
+                            className="badge bg-primary/10 text-primary border border-primary/30 px-3 py-1 rounded-md text-sm font-medium"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Documents */}
+                  {viewStudent.documents && viewStudent.documents.length > 0 && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-file-line text-primary"></i>
+                        Documents
+                      </h6>
+                      <div className="space-y-2">
+                        {viewStudent.documents.map((doc, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-black/20 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <i className="ri-file-text-line text-primary"></i>
+                              <div>
+                                <div className="font-medium text-gray-800 dark:text-white">{doc.name}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">{doc.type}</div>
+                              </div>
+                            </div>
+                            {doc.fileUrl && (
+                              <a
+                                href={doc.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="ti-btn ti-btn-sm ti-btn-primary"
+                              >
+                                <i className="ri-external-link-line"></i>
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Bio */}
+                  {viewStudent.bio && (
+                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                        <i className="ri-file-text-line text-primary"></i>
+                        Bio
+                      </h6>
+                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                        {viewStudent.bio}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center py-4 text-gray-500">No student selected</div>
+              )}
+            </div>
+            <div className="ti-modal-footer">
+              <button 
+                type="button" 
+                className="ti-btn ti-btn-light" 
+                data-hs-overlay="#view-student-modal"
+                onClick={() => setViewStudent(null)}
+              >
+                Close
+              </button>
+              {viewStudent && (
+                <Link
+                  href={`/training/students/edit/?id=${encodeURIComponent(viewStudent.id)}`}
+                  className="ti-btn ti-btn-primary"
+                  onClick={() => {
+                    const trigger = document.getElementById('view-student-modal-trigger')
+                    if (trigger) {
+                      trigger.click()
+                    }
+                  }}
+                >
+                  <i className="ri-pencil-line me-1"></i>
+                  Edit Student
+                </Link>
+              )}
             </div>
           </div>
         </div>

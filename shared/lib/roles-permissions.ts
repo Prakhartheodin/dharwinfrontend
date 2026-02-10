@@ -46,6 +46,7 @@ export const PERMISSION_SECTIONS: {
     label: "Training Management",
     features: [
       { id: "courses", label: "Courses" },
+      { id: "categories", label: "Categories" },
       { id: "modules", label: "Modules" },
       { id: "assessments", label: "Assessments" },
       { id: "attendance", label: "Attendance Tracking" },

@@ -102,3 +102,217 @@ export async function resetPassword(payload: ResetPasswordPayload): Promise<void
     { password }
   );
 }
+
+/** Student registration payload - creates User + Student profile automatically */
+export interface RegisterStudentPayload {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: 'male' | 'female' | 'other';
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+  education?: Array<{
+    degree?: string;
+    institution?: string;
+    fieldOfStudy?: string;
+    startDate?: string;
+    endDate?: string | null;
+    isCurrent?: boolean;
+    description?: string;
+  }>;
+  experience?: Array<{
+    title?: string;
+    company?: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string | null;
+    isCurrent?: boolean;
+    description?: string;
+  }>;
+  skills?: string[];
+  documents?: Array<{
+    name: string;
+    type: string;
+    fileUrl?: string;
+    fileKey?: string;
+  }>;
+  bio?: string;
+  profileImageUrl?: string;
+}
+
+/** Student registration response - includes user, student, and optionally tokens */
+export interface RegisterStudentResponse {
+  user: User;
+  student: {
+    id: string;
+    user: string;
+    phone?: string | null;
+    dateOfBirth?: string | null;
+    gender?: string | null;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      country?: string;
+    } | null;
+    education?: Array<{
+      degree?: string;
+      institution?: string;
+      fieldOfStudy?: string;
+      startDate?: string;
+      endDate?: string | null;
+      isCurrent?: boolean;
+      description?: string;
+    }>;
+    experience?: Array<{
+      title?: string;
+      company?: string;
+      location?: string;
+      startDate?: string;
+      endDate?: string | null;
+      isCurrent?: boolean;
+      description?: string;
+    }>;
+    skills?: string[];
+    documents?: Array<{
+      name: string;
+      type: string;
+      fileUrl?: string;
+      fileKey?: string;
+    }>;
+    bio?: string | null;
+    profileImageUrl?: string | null;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  tokens?: {
+    access: { token: string; expires: string };
+    refresh: { token: string; expires: string };
+  };
+}
+
+/**
+ * Register student (POST /v1/auth/register-student).
+ * Creates User + Student profile automatically.
+ * Admin registration (with auth): isEmailVerified=true, no tokens
+ * Self-registration (no auth): isEmailVerified=false, tokens issued
+ */
+export async function registerStudent(payload: RegisterStudentPayload): Promise<RegisterStudentResponse> {
+  const { data } = await apiClient.post<RegisterStudentResponse>(AUTH_ENDPOINTS.registerStudent, payload);
+  return data;
+}
+
+/** Mentor registration payload - creates User + Mentor profile automatically */
+export interface RegisterMentorPayload {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+  dateOfBirth?: string;
+  gender?: 'male' | 'female' | 'other';
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+  };
+  expertise?: Array<{
+    area?: string;
+    level?: string;
+    yearsOfExperience?: number;
+    description?: string;
+  }>;
+  experience?: Array<{
+    title?: string;
+    company?: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string | null;
+    isCurrent?: boolean;
+    description?: string;
+  }>;
+  certifications?: Array<{
+    name: string;
+    issuer: string;
+    issueDate?: string;
+    expiryDate?: string;
+    credentialId?: string;
+    credentialUrl?: string;
+  }>;
+  skills?: string[];
+  bio?: string;
+  profileImageUrl?: string;
+}
+
+/** Mentor registration response - includes user, mentor, and optionally tokens */
+export interface RegisterMentorResponse {
+  user: User;
+  mentor: {
+    id: string;
+    user: string;
+    phone?: string | null;
+    dateOfBirth?: string | null;
+    gender?: string | null;
+    address?: {
+      street?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      country?: string;
+    } | null;
+    expertise?: Array<{
+      area?: string;
+      level?: string;
+      yearsOfExperience?: number;
+      description?: string;
+    }>;
+    experience?: Array<{
+      title?: string;
+      company?: string;
+      location?: string;
+      startDate?: string;
+      endDate?: string | null;
+      isCurrent?: boolean;
+      description?: string;
+    }>;
+    certifications?: Array<{
+      name: string;
+      issuer: string;
+      issueDate?: string;
+      expiryDate?: string;
+      credentialId?: string;
+      credentialUrl?: string;
+    }>;
+    skills?: string[];
+    bio?: string | null;
+    profileImageUrl?: string | null;
+    status: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  tokens?: {
+    access: { token: string; expires: string };
+    refresh: { token: string; expires: string };
+  };
+}
+
+/**
+ * Register mentor (POST /v1/auth/register-mentor).
+ * Creates User + Mentor profile automatically.
+ * Admin registration (with auth): isEmailVerified=true, no tokens
+ * Self-registration (no auth): isEmailVerified=false, tokens issued
+ */
+export async function registerMentor(payload: RegisterMentorPayload): Promise<RegisterMentorResponse> {
+  const { data } = await apiClient.post<RegisterMentorResponse>(AUTH_ENDPOINTS.registerMentor, payload);
+  return data;
+}
