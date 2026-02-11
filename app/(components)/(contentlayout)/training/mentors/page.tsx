@@ -35,6 +35,13 @@ const Mentors = () => {
   const [totalPages, setTotalPages] = useState(0)
   const [sortBy, setSortBy] = useState<string>('createdAt:desc')
 
+  // Profile image modal state
+  const [profileImageMentor, setProfileImageMentor] = useState<MentorRow | null>(null)
+  const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null)
+  const [profileImageLoading, setProfileImageLoading] = useState(false)
+  const [profileImageUploading, setProfileImageUploading] = useState(false)
+  const [profileImageError, setProfileImageError] = useState<string | null>(null)
+
   // Helper function to map Mentor API response to MentorRow format
   const mapMentorToRow = useCallback((mentor: Mentor): MentorRow => {
     // Format expertise from array to string
@@ -167,6 +174,88 @@ const Mentors = () => {
       })
     } finally {
       setViewMentorLoading(false)
+    }
+  }
+
+  const openProfileImageModal = useCallback(
+    async (mentor: MentorRow) => {
+      setProfileImageMentor(mentor)
+      setProfileImageUrl(null)
+      setProfileImageError(null)
+      setProfileImageLoading(true)
+
+      try {
+        const info = await mentorsApi.getMentorProfileImage(mentor.id)
+        setProfileImageUrl(info?.url ?? null)
+      } catch (err) {
+        // 404 or other errors – just log and keep placeholder
+        console.error('Failed to fetch profile image URL', err)
+      } finally {
+        setProfileImageLoading(false)
+      }
+
+      // Open modal via hidden trigger (Preline)
+      setTimeout(() => {
+        const trigger = document.getElementById('mentor-profile-image-modal-trigger')
+        if (trigger) {
+          trigger.click()
+        }
+      }, 50)
+    },
+    []
+  )
+
+  const handleProfileImageFileChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file || !profileImageMentor) return
+
+    setProfileImageUploading(true)
+    setProfileImageError(null)
+
+    try {
+      await mentorsApi.uploadMentorProfileImage(profileImageMentor.id, file)
+
+      // Refresh image URL
+      const info = await mentorsApi.getMentorProfileImage(profileImageMentor.id)
+      setProfileImageUrl(info?.url ?? null)
+
+      // Optionally refresh mentors list to reflect any backend changes
+      if (fetchMentorsRef.current) {
+        await fetchMentorsRef.current()
+      }
+
+      await Swal.fire({
+        icon: 'success',
+        title: 'Profile image updated',
+        text: `The profile image for "${profileImageMentor.name}" has been updated.`,
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } catch (err) {
+      console.error('Failed to upload profile image', err)
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to upload profile image. Please try again.'
+      setProfileImageError(msg)
+      await Swal.fire({
+        icon: 'error',
+        title: 'Profile image upload failed',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      setProfileImageUploading(false)
+      e.target.value = ''
     }
   }
 
@@ -353,10 +442,11 @@ const Mentors = () => {
               <img
                 src={mentor.displayPicture}
                 alt={mentor.name}
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-10 h-10 rounded-full object-cover cursor-pointer"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
                 }}
+                onClick={() => openProfileImageModal(mentor)}
               />
               <div className="flex-1 min-w-0">
                 <div
@@ -1046,6 +1136,115 @@ const Mentors = () => {
                   Edit Mentor
                 </Link>
               )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Hidden trigger for profile image modal */}
+      <button
+        id="mentor-profile-image-modal-trigger"
+        type="button"
+        style={{ display: 'none' }}
+        data-hs-overlay="#mentor-profile-image-modal"
+      ></button>
+
+      {/* Mentor profile image modal */}
+      <div
+        id="mentor-profile-image-modal"
+        className="hs-overlay hidden ti-modal"
+        tabIndex={-1}
+      >
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="modal-title text-[1rem] font-semibold text-default dark:text-defaulttextcolor/70">
+                {profileImageMentor
+                  ? `Profile Image – ${profileImageMentor.name}`
+                  : 'Profile Image'}
+              </h6>
+              <button
+                type="button"
+                className="hs-dropdown-toggle !text-[1rem] !font-semibold"
+                data-hs-overlay="#mentor-profile-image-modal"
+                onClick={() => {
+                  setProfileImageMentor(null)
+                  setProfileImageUrl(null)
+                  setProfileImageError(null)
+                }}
+              >
+                <span className="sr-only">Close</span>
+                <i className="ri-close-line"></i>
+              </button>
+            </div>
+            <div className="ti-modal-body px-6 space-y-4">
+              {profileImageLoading ? (
+                <p className="text-sm text-defaulttextcolor/70 mb-0">
+                  Loading current profile image...
+                </p>
+              ) : profileImageUrl ? (
+                <div className="flex flex-col items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={profileImageUrl}
+                    alt={profileImageMentor?.name || 'Profile image'}
+                    className="w-24 h-24 rounded-full object-cover border border-defaultborder"
+                  />
+                  <p className="text-xs text-defaulttextcolor/60 mb-0">
+                    This preview URL is temporary and may expire; refresh to get a new one.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-defaulttextcolor/70 mb-0">
+                  No profile image has been uploaded for this mentor yet.
+                </p>
+              )}
+
+              {profileImageError && (
+                <div className="p-2 rounded border border-danger/20 bg-danger/5 text-danger text-xs">
+                  {profileImageError}
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="mentor-profile-image-file"
+                  className="form-label text-sm font-medium"
+                >
+                  {profileImageUrl ? 'Change picture' : 'Add picture'}
+                </label>
+                <input
+                  id="mentor-profile-image-file"
+                  type="file"
+                  accept="image/*"
+                  className="form-control"
+                  onChange={handleProfileImageFileChange}
+                  disabled={profileImageUploading || !profileImageMentor}
+                />
+                <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
+                  Allowed types: PNG, JPG, JPEG. The image is uploaded securely and stored on the
+                  file storage backend.
+                </p>
+                {profileImageUploading && (
+                  <p className="text-[0.75rem] text-primary mt-1 mb-0">
+                    Uploading profile image...
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="ti-modal-footer">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light align-middle"
+                data-hs-overlay="#mentor-profile-image-modal"
+                onClick={() => {
+                  setProfileImageMentor(null)
+                  setProfileImageUrl(null)
+                  setProfileImageError(null)
+                }}
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

@@ -90,6 +90,11 @@ export async function getMentor(mentorId: string): Promise<Mentor> {
   return data;
 }
 
+export interface MentorProfileImageInfo {
+  url: string;
+  mimeType: string;
+}
+
 export interface UpdateMentorPayload {
   phone?: string;
   dateOfBirth?: string;
@@ -111,4 +116,45 @@ export async function updateMentor(mentorId: string, payload: UpdateMentorPayloa
 
 export async function deleteMentor(mentorId: string): Promise<void> {
   await apiClient.delete(`/training/mentors/${mentorId}`);
+}
+
+/**
+ * Upload or replace a mentor's profile image.
+ * Expects backend endpoint: POST /v1/training/mentors/:mentorId/profile-image
+ */
+export async function uploadMentorProfileImage(mentorId: string, file: File): Promise<Mentor> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const { data } = await apiClient.post<Mentor>(
+    `/training/mentors/${mentorId}/profile-image`,
+    formData,
+    {
+      // Let Axios set the correct multipart boundary; overriding default JSON header.
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+
+  return data;
+}
+
+/**
+ * Get a short-lived presigned URL for viewing the mentor's profile image.
+ * GET /v1/training/mentors/:mentorId/profile-image with Accept: application/json
+ */
+export async function getMentorProfileImage(
+  mentorId: string
+): Promise<MentorProfileImageInfo | null> {
+  const { data } = await apiClient.get<{ success?: boolean; data?: MentorProfileImageInfo }>(
+    `/training/mentors/${mentorId}/profile-image`,
+    {
+      headers: { Accept: "application/json" },
+    }
+  );
+
+  if (!data || (data.success === false && !data.data)) {
+    return null;
+  }
+
+  return data.data ?? null;
 }
