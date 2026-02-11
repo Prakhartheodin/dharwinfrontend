@@ -91,6 +91,11 @@ export async function getStudent(studentId: string): Promise<Student> {
   return data;
 }
 
+export interface StudentProfileImageInfo {
+  url: string;
+  mimeType: string;
+}
+
 export interface UpdateStudentPayload {
   phone?: string;
   dateOfBirth?: string;
@@ -108,6 +113,47 @@ export interface UpdateStudentPayload {
 export async function updateStudent(studentId: string, payload: UpdateStudentPayload): Promise<Student> {
   const { data } = await apiClient.patch<Student>(`/training/students/${studentId}`, payload);
   return data;
+}
+
+/**
+ * Upload or replace a student's profile image.
+ * Expects backend endpoint: POST /v1/training/students/:studentId/profile-image
+ */
+export async function uploadStudentProfileImage(studentId: string, file: File): Promise<Student> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const { data } = await apiClient.post<Student>(
+    `/training/students/${studentId}/profile-image`,
+    formData,
+    {
+      // Let Axios set the correct multipart boundary; overriding default JSON header.
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+
+  return data;
+}
+
+/**
+ * Get a short-lived presigned URL for viewing the student's profile image.
+ * GET /v1/training/students/:studentId/profile-image with Accept: application/json
+ */
+export async function getStudentProfileImage(
+  studentId: string
+): Promise<StudentProfileImageInfo | null> {
+  const { data } = await apiClient.get<{ success?: boolean; data?: StudentProfileImageInfo }>(
+    `/training/students/${studentId}/profile-image`,
+    {
+      headers: { Accept: "application/json" },
+    }
+  );
+
+  if (!data || (data.success === false && !data.data)) {
+    return null;
+  }
+
+  return data.data ?? null;
 }
 
 export async function deleteStudent(studentId: string): Promise<void> {
