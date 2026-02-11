@@ -53,8 +53,6 @@ const EditStudentClient = () => {
   const [fetching, setFetching] = useState(true)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string>('')
-  const [profileImageFile, setProfileImageFile] = useState<File | null>(null)
-  const [uploadingProfileImage, setUploadingProfileImage] = useState(false)
 
   // Fetch student data
   useEffect(() => {
@@ -215,102 +213,7 @@ const EditStudentClient = () => {
     setDocuments(updated)
   }
 
-  const handleProfileImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !studentId) return
-
-    // Basic client-side validation for profile image
-    const allowedTypes = ['image/jpeg', 'image/png']
-    const maxSizeBytes = 5 * 1024 * 1024 // 5 MB
-
-    if (!allowedTypes.includes(file.type)) {
-      setError('Profile image must be a JPEG or PNG file.')
-      await Swal.fire({
-        icon: 'error',
-        title: 'Invalid file type',
-        text: 'Profile image must be a JPEG or PNG file.',
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-      e.target.value = ''
-      return
-    }
-
-    if (file.size > maxSizeBytes) {
-      setError('Profile image must be smaller than 5 MB.')
-      await Swal.fire({
-        icon: 'error',
-        title: 'File too large',
-        text: 'Profile image must be smaller than 5 MB.',
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-      e.target.value = ''
-      return
-    }
-
-    setProfileImageFile(file)
-    setUploadingProfileImage(true)
-    setError('')
-
-    try {
-      // 1. Get presigned upload URL from backend
-      const uploadInfo = await studentsApi.getStudentProfileImageUploadUrl(studentId, {
-        fileName: file.name,
-        contentType: file.type || 'application/octet-stream',
-      })
-
-      // 2. Upload directly to S3 using the presigned URL
-      const uploadResponse = await fetch(uploadInfo.url, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-        },
-        body: file,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Failed to upload image (status ${uploadResponse.status}).`)
-      }
-
-      // 3. Store the S3 key on the student; this will be sent in the PATCH request
-      setProfileImageUrl(uploadInfo.key)
-
-      await Swal.fire({
-        icon: 'success',
-        title: 'Profile image uploaded',
-        text: 'The profile image has been uploaded successfully. Remember to save the student to persist changes.',
-        toast: true,
-        position: 'top-end',
-        timer: 3000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-    } catch (err: any) {
-      const msg =
-        err instanceof Error ? err.message : 'Failed to upload profile image. Please try again.'
-      setError(msg)
-      await Swal.fire({
-        icon: 'error',
-        title: 'Profile image upload failed',
-        text: msg,
-        toast: true,
-        position: 'top-end',
-        timer: 4000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      })
-      setProfileImageFile(null)
-    } finally {
-      setUploadingProfileImage(false)
-    }
-  }
+  // Profile image is currently read-only from the student's existing data.
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -936,16 +839,8 @@ const EditStudentClient = () => {
                       </label>
                       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
                         <div className="flex items-center gap-4">
-                          <div className="h-16 w-16 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden flex items-center justify-center text-xs text-defaulttextcolor/60">
-                            {profileImageUrl ? (
-                              // We don't know if profileImageUrl is a full URL or an S3 key.
-                              // If it looks like a URL, use it directly; otherwise, show initials-style placeholder.
-                              <span className="px-2 text-center break-all">
-                                Img
-                              </span>
-                            ) : (
-                              <span>No image</span>
-                            )}
+                          <div className="h-16 w-16 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center text-xs text-defaulttextcolor/60">
+                            {profileImageUrl ? 'Image set' : 'No image'}
                           </div>
                           {profileImageUrl && (
                             <div className="text-xs text-defaulttextcolor/70 max-w-xs break-all">
@@ -954,26 +849,6 @@ const EditStudentClient = () => {
                                 {profileImageUrl}
                               </div>
                             </div>
-                          )}
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <input
-                            id="student-profile-image"
-                            type="file"
-                            accept="image/jpeg,image/png"
-                            className="form-control"
-                            onChange={handleProfileImageFileChange}
-                            disabled={uploadingProfileImage}
-                          />
-                          <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-                            Allowed types: JPEG, PNG. Max size: 5 MB. The image is uploaded to secure
-                            storage using a presigned URL, and its reference is saved on the student
-                            when you update the profile.
-                          </p>
-                          {uploadingProfileImage && (
-                            <p className="text-[0.75rem] text-primary mt-1 mb-0">
-                              Uploading profile image...
-                            </p>
                           )}
                         </div>
                       </div>

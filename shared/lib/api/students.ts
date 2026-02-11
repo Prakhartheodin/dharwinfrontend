@@ -105,29 +105,6 @@ export interface UpdateStudentPayload {
   status?: string;
 }
 
-export interface GetProfileImageUploadUrlPayload {
-  fileName: string;
-  contentType: string;
-}
-
-export interface GetProfileImageUploadUrlResponse {
-  bucket: string;
-  key: string;
-  url: string;
-  expiresIn: number;
-}
-
-export async function getStudentProfileImageUploadUrl(
-  studentId: string,
-  payload: GetProfileImageUploadUrlPayload
-): Promise<GetProfileImageUploadUrlResponse> {
-  const { data } = await apiClient.post<GetProfileImageUploadUrlResponse>(
-    `/training/students/${studentId}/profile-image/upload-url`,
-    payload
-  );
-  return data;
-}
-
 export async function updateStudent(studentId: string, payload: UpdateStudentPayload): Promise<Student> {
   const { data } = await apiClient.patch<Student>(`/training/students/${studentId}`, payload);
   return data;
