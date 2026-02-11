@@ -831,28 +831,6 @@ const EditStudentClient = () => {
                         onChange={(e) => setBio(e.target.value)}
                       />
                     </div>
-
-                    {/* Profile Image */}
-                    <div className="mb-6">
-                      <label htmlFor="student-profile-image" className="form-label">
-                        Profile Image
-                      </label>
-                      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                        <div className="flex items-center gap-4">
-                          <div className="h-16 w-16 rounded-full bg-gray-200 dark:bg-gray-800 flex items-center justify-center text-xs text-defaulttextcolor/60">
-                            {profileImageUrl ? 'Image set' : 'No image'}
-                          </div>
-                          {profileImageUrl && (
-                            <div className="text-xs text-defaulttextcolor/70 max-w-xs break-all">
-                              <div className="font-medium mb-1">Current image reference</div>
-                              <div className="truncate" title={profileImageUrl}>
-                                {profileImageUrl}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
                   </div>
 
                   {/* Form Actions */}
