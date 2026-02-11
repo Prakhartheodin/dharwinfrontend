@@ -46,7 +46,6 @@ const EditMentorClient = () => {
   const [skills, setSkills] = useState<string[]>([])
   const [currentSkill, setCurrentSkill] = useState('')
   const [bio, setBio] = useState('')
-  const [profileImageUrl, setProfileImageUrl] = useState('')
   const [status, setStatus] = useState<string>('active')
 
   const [loading, setLoading] = useState(false)
@@ -92,7 +91,6 @@ const EditMentorClient = () => {
         setCertifications(mentor.certifications ?? [])
         setSkills(mentor.skills ?? [])
         setBio(mentor.bio ?? '')
-        setProfileImageUrl(mentor.profileImageUrl ?? '')
         setStatus(mentor.status ?? 'active')
       } catch (err) {
         if (cancelled) return
@@ -270,7 +268,6 @@ const EditMentorClient = () => {
         ...(certificationsArray.length > 0 && { certifications: certificationsArray }),
         ...(skills.length > 0 && { skills }),
         ...(bio && { bio }),
-        ...(profileImageUrl && { profileImageUrl }),
         status,
       })
 
@@ -798,21 +795,6 @@ const EditMentorClient = () => {
                       rows={5}
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
-                    />
-                  </div>
-
-                  {/* Profile Image URL */}
-                  <div className="mb-8">
-                    <label htmlFor="mentor-profile-image" className="form-label">
-                      Profile Image URL
-                    </label>
-                    <input
-                      id="mentor-profile-image"
-                      type="url"
-                      className="form-control"
-                      placeholder="https://example.com/profile.jpg"
-                      value={profileImageUrl}
-                      onChange={(e) => setProfileImageUrl(e.target.value)}
                     />
                   </div>
 
