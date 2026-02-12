@@ -804,7 +804,7 @@ const TrainingModules = () => {
             </div>
           </div>
         </div>
-      </div>
+      </div> 
 
       {loading ? (
         <div className="box custom-box text-center py-12">
