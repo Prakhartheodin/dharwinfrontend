@@ -133,6 +133,21 @@ function appendIdArray(formData: FormData, field: string, values?: string[]): vo
   values.forEach((value) => formData.append(`${field}[]`, value));
 }
 
+function appendFileUploadMeta(
+  formData: FormData,
+  base: string,
+  field: "videoFile" | "pdfDocument",
+  file?: FileUpload
+): void {
+  if (!file) return;
+  formData.append(`${base}[${field}][key]`, file.key);
+  formData.append(`${base}[${field}][url]`, file.url);
+  formData.append(`${base}[${field}][originalName]`, file.originalName);
+  formData.append(`${base}[${field}][size]`, String(file.size));
+  formData.append(`${base}[${field}][mimeType]`, file.mimeType);
+  formData.append(`${base}[${field}][uploadedAt]`, file.uploadedAt);
+}
+
 /**
  * Append playlist as bracket-notation fields so backend parses array/object types in multipart.
  */
@@ -151,6 +166,12 @@ function appendPlaylistToFormData(
     formData.append(`${base}[order]`, String(item.order ?? index));
 
     switch (item.contentType) {
+      case "upload-video":
+        appendFileUploadMeta(formData, base, "videoFile", item.videoFile);
+        break;
+      case "pdf-document":
+        appendFileUploadMeta(formData, base, "pdfDocument", item.pdfDocument);
+        break;
       case "youtube-link":
         if (item.youtubeUrl != null) formData.append(`${base}[youtubeUrl]`, item.youtubeUrl);
         break;

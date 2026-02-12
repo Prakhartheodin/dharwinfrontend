@@ -40,6 +40,9 @@ type PlaylistItem = {
   duration?: string
   blogContent?: string
   videoPreview?: string
+  videoMeta?: trainingModulesApi.FileUpload
+  pdfPreview?: string
+  pdfMeta?: trainingModulesApi.FileUpload
   quizData?: QuizQuestion[]
 }
 
@@ -206,6 +209,7 @@ const CreateModule = () => {
         formItem.type = 'video'
         formItem.videoPreview = apiItem.videoFile?.url ?? ''
         formItem.source = apiItem.videoFile?.originalName ?? ''
+        formItem.videoMeta = apiItem.videoFile
         break
       case 'youtube-link':
         formItem.type = 'youtube'
@@ -214,6 +218,8 @@ const CreateModule = () => {
       case 'pdf-document':
         formItem.type = 'pdf'
         formItem.source = apiItem.pdfDocument?.originalName ?? ''
+        formItem.pdfPreview = apiItem.pdfDocument?.url ?? ''
+        formItem.pdfMeta = apiItem.pdfDocument
         break
       case 'blog':
         formItem.type = 'blog'
@@ -396,6 +402,7 @@ const CreateModule = () => {
 
   const [quizModalItemId, setQuizModalItemId] = useState<string | null>(null)
   const [videoDragOverId, setVideoDragOverId] = useState<string | null>(null)
+  const [videoPreviewItemId, setVideoPreviewItemId] = useState<string | null>(null)
   const [pdfDragOverId, setPdfDragOverId] = useState<string | null>(null)
   const pdfFilesRef = useRef<Record<string, File>>({})
   const videoFilesRef = useRef<Record<string, File>>({})
@@ -404,6 +411,13 @@ const CreateModule = () => {
     if (!url?.trim()) return null
     const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
     return m ? m[1] : null
+  }
+
+  const formatFileSize = (sizeInBytes: number): string => {
+    if (sizeInBytes < 1024) return `${sizeInBytes} B`
+    if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`
+    if (sizeInBytes < 1024 * 1024 * 1024) return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`
+    return `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
   }
 
   const handleAddPlaylistItem = () => {
@@ -415,23 +429,29 @@ const CreateModule = () => {
       duration: '',
       blogContent: '',
       videoPreview: '',
+      videoMeta: undefined,
+      pdfPreview: '',
+      pdfMeta: undefined,
       quizData: [],
     }
-    handleInputChange('playlist', [...formData.playlist, newItem])
+    setFormData((prev) => ({
+      ...prev,
+      playlist: [...prev.playlist, newItem],
+    }))
   }
 
   const handlePlaylistItemChange = (id: string, field: keyof PlaylistItem, value: any) => {
-    handleInputChange(
-      'playlist',
-      formData.playlist.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
-    )
+    setFormData((prev) => ({
+      ...prev,
+      playlist: prev.playlist.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    }))
   }
 
   const handleRemovePlaylistItem = (id: string) => {
-    handleInputChange(
-      'playlist',
-      formData.playlist.filter((item) => item.id !== id),
-    )
+    setFormData((prev) => ({
+      ...prev,
+      playlist: prev.playlist.filter((item) => item.id !== id),
+    }))
   }
 
   const quizModalItem = quizModalItemId
@@ -528,24 +548,41 @@ const CreateModule = () => {
   }
 
   const processPlaylistVideoFile = (itemId: string, file: File | null) => {
-    if (!file || !file.type.startsWith('video/')) return
+    if (!file) return
+    const looksLikeVideo =
+      file.type.startsWith('video/') ||
+      /\.(mp4|mov|avi|mkv|webm|m4v)$/i.test(file.name)
+    if (!looksLikeVideo) return
     videoFilesRef.current[itemId] = file
     const url = URL.createObjectURL(file)
     handlePlaylistItemChange(itemId, 'videoPreview', url)
     handlePlaylistItemChange(itemId, 'source', file.name)
+    setVideoPreviewItemId(itemId)
   }
 
   const processPlaylistPdfFile = (itemId: string, file: File | null) => {
     if (!file) return
-    const isPdf = file.type === 'application/pdf'
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
     if (!isPdf) return
     pdfFilesRef.current[itemId] = file
+    const url = URL.createObjectURL(file)
     handlePlaylistItemChange(itemId, 'source', file.name)
+    handlePlaylistItemChange(itemId, 'pdfPreview', url)
   }
 
   const removePlaylistPdfFile = (itemId: string) => {
     delete pdfFilesRef.current[itemId]
+    const current = formData.playlist.find((item) => item.id === itemId)
+    if (current?.pdfPreview?.startsWith('blob:')) {
+      URL.revokeObjectURL(current.pdfPreview)
+    }
     handlePlaylistItemChange(itemId, 'source', '')
+    handlePlaylistItemChange(itemId, 'pdfPreview', '')
+  }
+
+  const openPdfPreview = (item: PlaylistItem) => {
+    if (!item.pdfPreview) return
+    window.open(item.pdfPreview, '_blank', 'noopener,noreferrer')
   }
 
   const downloadQuizTemplate = () => {
@@ -676,6 +713,18 @@ const CreateModule = () => {
         }
 
         switch (playlistItem.contentType) {
+          case 'upload-video':
+            // Keep existing uploaded file metadata on edit if no new file selected.
+            if (!videoFilesRef.current[item.id] && item.videoMeta) {
+              playlistItem.videoFile = item.videoMeta
+            }
+            break
+          case 'pdf-document':
+            // Keep existing uploaded file metadata on edit if no new file selected.
+            if (!pdfFilesRef.current[item.id] && item.pdfMeta) {
+              playlistItem.pdfDocument = item.pdfMeta
+            }
+            break
           case 'youtube-link':
             playlistItem.youtubeUrl = item.source
             break
@@ -1133,40 +1182,71 @@ const CreateModule = () => {
                             <div className="mt-4">
                               <label className="form-label">Video file</label>
                               {item.videoPreview ? (
-                                <div className="relative rounded-lg border border-defaultborder overflow-hidden bg-black/5 dark:bg-white/5 group max-w-md">
-                                  <video
-                                    src={item.videoPreview}
-                                    controls
-                                    className="w-full max-h-48 object-contain block"
-                                  />
-                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <label className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] !mb-0 cursor-pointer">
-                                      <i className="ri-upload-cloud-line me-1" />
-                                      Change
-                                      <input
-                                        type="file"
-                                        accept="video/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                          const f = e.target.files?.[0]
-                                          if (f) processPlaylistVideoFile(item.id, f)
-                                          e.target.value = ''
+                                <div className="rounded-lg border border-defaultborder bg-black/5 dark:bg-white/5 p-3 max-w-md">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <div className="font-semibold text-[0.8125rem] truncate">
+                                        {item.source || 'Selected video'}
+                                      </div>
+                                      <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                                        {videoFilesRef.current[item.id]
+                                          ? `${formatFileSize(videoFilesRef.current[item.id].size)} • ${
+                                              videoFilesRef.current[item.id].type || 'video'
+                                            }`
+                                          : 'Existing uploaded video'}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] !mb-0"
+                                        onClick={() =>
+                                          setVideoPreviewItemId(
+                                            videoPreviewItemId === item.id ? null : item.id,
+                                          )
+                                        }
+                                      >
+                                        <i className="ri-play-line me-1" />
+                                        {videoPreviewItemId === item.id ? 'Hide Preview' : 'Preview Video'}
+                                      </button>
+                                      <label className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] !mb-0 cursor-pointer">
+                                        <i className="ri-upload-cloud-line me-1" />
+                                        Change
+                                        <input
+                                          type="file"
+                                          accept="video/*"
+                                          className="hidden"
+                                          onChange={(e) => {
+                                            const f = e.target.files?.[0]
+                                            if (f) processPlaylistVideoFile(item.id, f)
+                                            e.target.value = ''
+                                          }}
+                                        />
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
+                                        onClick={() => {
+                                          if (item.videoPreview) URL.revokeObjectURL(item.videoPreview)
+                                          delete videoFilesRef.current[item.id]
+                                          if (videoPreviewItemId === item.id) setVideoPreviewItemId(null)
+                                          handlePlaylistItemChange(item.id, 'videoPreview', '')
+                                          handlePlaylistItemChange(item.id, 'source', '')
                                         }}
-                                      />
-                                    </label>
-                                    <button
-                                      type="button"
-                                      className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
-                                      onClick={() => {
-                                        if (item.videoPreview) URL.revokeObjectURL(item.videoPreview)
-                                        delete videoFilesRef.current[item.id]
-                                        handlePlaylistItemChange(item.id, 'videoPreview', '')
-                                        handlePlaylistItemChange(item.id, 'source', '')
-                                      }}
-                                    >
-                                      <i className="ri-delete-bin-line" />
-                                    </button>
+                                      >
+                                        <i className="ri-delete-bin-line" />
+                                      </button>
+                                    </div>
                                   </div>
+                                  {videoPreviewItemId === item.id && (
+                                    <div className="mt-3 rounded-md border border-defaultborder overflow-hidden">
+                                      <video
+                                        src={item.videoPreview}
+                                        controls
+                                        className="w-full max-h-56 object-contain block"
+                                      />
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
                                 <div
@@ -1247,7 +1327,7 @@ const CreateModule = () => {
                           {item.type === 'pdf' && (
                             <div className="mt-4">
                               <label className="form-label">PDF document</label>
-                              {item.source && pdfFilesRef.current[item.id] ? (
+                              {item.source ? (
                                 <div className="relative rounded-lg border border-defaultborder p-4 bg-black/5 dark:bg-white/5 flex items-center gap-4 max-w-md">
                                   <span className="flex items-center justify-center w-12 h-12 rounded-lg bg-danger/10 text-danger text-2xl">
                                     <i className="ri-file-pdf-line" />
@@ -1257,10 +1337,21 @@ const CreateModule = () => {
                                       {item.source}
                                     </div>
                                     <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                                      {(pdfFilesRef.current[item.id].size / 1024).toFixed(1)} KB
+                                      {pdfFilesRef.current[item.id]
+                                        ? `${(pdfFilesRef.current[item.id].size / 1024).toFixed(1)} KB`
+                                        : 'Existing uploaded document'}
                                     </div>
                                   </div>
                                   <div className="flex gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] !mb-0"
+                                      onClick={() => openPdfPreview(item)}
+                                      disabled={!item.pdfPreview}
+                                    >
+                                      <i className="ri-eye-line me-1" />
+                                      Preview PDF
+                                    </button>
                                     <label className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] !mb-0 cursor-pointer">
                                       <i className="ri-upload-cloud-line me-1" />
                                       Change
