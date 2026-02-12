@@ -21,6 +21,25 @@ const SORT_OPTIONS = [
   { value: 'createdAt:asc', label: 'Oldest' },
 ]
 
+const contentTypeMeta: Record<
+  PlaylistItem['contentType'],
+  { label: string; icon: string; color: string }
+> = {
+  'upload-video': { label: 'Uploaded Video', icon: 'ri-video-line', color: 'text-primary' },
+  'youtube-link': { label: 'YouTube', icon: 'ri-youtube-line', color: 'text-danger' },
+  'pdf-document': { label: 'PDF / Document', icon: 'ri-file-pdf-line', color: 'text-danger' },
+  blog: { label: 'Blog', icon: 'ri-article-line', color: 'text-info' },
+  quiz: { label: 'Quiz', icon: 'ri-questionnaire-line', color: 'text-warning' },
+  test: { label: 'Test', icon: 'ri-file-list-3-line', color: 'text-success' },
+}
+
+function formatDateTime(value?: string): string {
+  if (!value) return '-'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '-'
+  return d.toLocaleString()
+}
+
 interface ModuleSummary {
   videos: number
   pdfs: number
@@ -69,9 +88,276 @@ function SummaryBadges({ summary }: { summary: ModuleSummary }) {
 interface TrainingModuleCardProps {
   module: ApiTrainingModule
   onDelete: (moduleId: string) => void
+  onView: (moduleId: string) => void
 }
 
-function TrainingModuleCard({ module: m, onDelete }: TrainingModuleCardProps) {
+interface ModuleDetailModalProps {
+  open: boolean
+  moduleData: ApiTrainingModule | null
+  loading: boolean
+  error: string | null
+  onClose: () => void
+}
+
+function ModuleDetailModal({ open, moduleData, loading, error, onClose }: ModuleDetailModalProps) {
+  const sortedPlaylist = useMemo(
+    () => [...(moduleData?.playlist ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [moduleData?.playlist],
+  )
+  const summary = useMemo(() => calculateSummary(moduleData?.playlist ?? []), [moduleData?.playlist])
+
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-[96vw] max-w-6xl max-h-[92vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+          <h5 className="font-semibold mb-0 text-[1rem]">Module Details</h5>
+          <button type="button" className="ti-btn ti-btn-light !py-1 !px-2" onClick={onClose}>
+            <i className="ri-close-line text-lg" />
+          </button>
+        </div>
+
+        <div className="p-5 overflow-y-auto flex-1 min-h-0">
+          {loading ? (
+            <div className="text-center py-10 text-[#8c9097] dark:text-white/50">Loading module details...</div>
+          ) : error ? (
+            <div className="text-center py-10 text-danger">{error}</div>
+          ) : !moduleData ? (
+            <div className="text-center py-10 text-[#8c9097] dark:text-white/50">Module not found.</div>
+          ) : (
+            <>
+              <div className="box custom-box overflow-hidden mb-4">
+                <div className="relative h-56 bg-defaultborder">
+                  <img
+                    src={moduleData.coverImage?.url || '/assets/images/media/team-covers/1.jpg'}
+                    alt={moduleData.moduleName}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/45" />
+                  <div className="absolute inset-0 p-5 flex flex-col justify-end text-white">
+                    <h2 className="text-xl font-semibold mb-1">{moduleData.moduleName}</h2>
+                    <p className="text-white/90 text-[0.875rem] mb-2 line-clamp-2">{moduleData.shortDescription}</p>
+                    <div className="flex flex-wrap gap-2 text-[0.75rem]">
+                      <span className="px-2 py-1 rounded bg-white/20">Status: {moduleData.status}</span>
+                      <span className="px-2 py-1 rounded bg-white/20">{moduleData.playlist?.length ?? 0} lessons</span>
+                      <span className="px-2 py-1 rounded bg-white/20">{summary.videos} videos</span>
+                      <span className="px-2 py-1 rounded bg-white/20">{summary.quiz} quizzes</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="box-body">
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {(moduleData.categories ?? []).map((category) => (
+                      <span
+                        key={category.id}
+                        className="inline-flex items-center px-2.5 py-1 rounded-md bg-primary/10 text-primary text-[0.75rem]"
+                      >
+                        {category.name}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-12 gap-3 text-[0.8125rem]">
+                    <div className="xl:col-span-6 col-span-12 text-[#8c9097] dark:text-white/50">
+                      Created: <span className="text-defaulttextcolor">{formatDateTime(moduleData.createdAt)}</span>
+                    </div>
+                    <div className="xl:col-span-6 col-span-12 text-[#8c9097] dark:text-white/50">
+                      Updated: <span className="text-defaulttextcolor">{formatDateTime(moduleData.updatedAt)}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-12 gap-4">
+                <div className="xl:col-span-8 col-span-12">
+                  <div className="box custom-box">
+                    <div className="box-header">
+                      <div className="box-title">Curriculum</div>
+                    </div>
+                    <div className="box-body">
+                      {sortedPlaylist.length === 0 ? (
+                        <div className="text-center py-8 text-[#8c9097] dark:text-white/50">No playlist content yet.</div>
+                      ) : (
+                        <div className="space-y-3">
+                          {sortedPlaylist.map((item, index) => {
+                            const meta = contentTypeMeta[item.contentType]
+                            const quizQuestions = item.contentType === 'quiz' ? item.quiz?.questions ?? [] : []
+                            return (
+                              <div
+                                key={item._id ?? item.id ?? `${item.title}-${index}`}
+                                className="border border-defaultborder rounded-md p-3 bg-white/60 dark:bg-black/20"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[0.75rem]">
+                                      {index + 1}
+                                    </span>
+                                    <div>
+                                      <div className="font-semibold">{item.title || `Lesson ${index + 1}`}</div>
+                                      <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                                        <i className={`${meta.icon} me-1 ${meta.color}`} />
+                                        {meta.label}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="text-[0.75rem] px-2 py-1 rounded bg-black/5 dark:bg-white/5">
+                                    {item.duration ?? 0} min
+                                  </span>
+                                </div>
+
+                                {item.contentType === 'upload-video' && item.videoFile?.url && (
+                                  <video
+                                    src={item.videoFile.url}
+                                    controls
+                                    className="w-full max-h-60 rounded border border-defaultborder"
+                                  />
+                                )}
+                                {item.contentType === 'youtube-link' && item.youtubeUrl && (
+                                  <a
+                                    href={item.youtubeUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary text-[0.875rem] underline"
+                                  >
+                                    Open YouTube video
+                                  </a>
+                                )}
+                                {item.contentType === 'pdf-document' && item.pdfDocument?.url && (
+                                  <a
+                                    href={item.pdfDocument.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary text-[0.875rem] underline"
+                                  >
+                                    Preview PDF document
+                                  </a>
+                                )}
+                                {item.contentType === 'blog' && item.blogContent && (
+                                  <div
+                                    className="prose prose-sm max-w-none dark:prose-invert mt-2"
+                                    dangerouslySetInnerHTML={{ __html: item.blogContent }}
+                                  />
+                                )}
+                                {item.contentType === 'quiz' && (
+                                  <div className="mt-2">
+                                    <div className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-2">
+                                      {quizQuestions.length} question{quizQuestions.length === 1 ? '' : 's'}
+                                    </div>
+                                    <div className="space-y-3">
+                                      {quizQuestions.map((q, qIdx) => (
+                                        <div key={`${q.questionText}-${qIdx}`} className="rounded border border-defaultborder p-3">
+                                          <div className="font-medium text-[0.875rem] mb-2">{qIdx + 1}. {q.questionText}</div>
+                                          <div className="space-y-1">
+                                            {(q.options ?? []).map((opt, oi) => (
+                                              <div key={`${opt.text}-${oi}`} className="text-[0.8125rem] flex items-center gap-2">
+                                                <i
+                                                  className={
+                                                    opt.isCorrect
+                                                      ? 'ri-checkbox-circle-line text-success'
+                                                      : 'ri-checkbox-blank-circle-line text-[#8c9097]'
+                                                  }
+                                                />
+                                                <span>{opt.text}</span>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {item.contentType === 'test' && item.testLinkOrReference && (
+                                  <a
+                                    href={item.testLinkOrReference}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary text-[0.875rem] underline"
+                                  >
+                                    Open test / assessment link
+                                  </a>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xl:col-span-4 col-span-12 space-y-4">
+                  <div className="box custom-box">
+                    <div className="box-header">
+                      <div className="box-title">This Module Includes</div>
+                    </div>
+                    <div className="box-body text-[0.875rem] space-y-2">
+                      <div><i className="ri-play-circle-line me-2 text-primary" />{summary.videos} video items</div>
+                      <div><i className="ri-file-pdf-line me-2 text-danger" />{summary.pdfs + summary.blogs} docs/blogs</div>
+                      <div><i className="ri-questionnaire-line me-2 text-warning" />{summary.quiz} quizzes</div>
+                      <div><i className="ri-file-list-3-line me-2 text-success" />{summary.tests} tests</div>
+                      <div><i className="ri-user-line me-2 text-info" />{moduleData.students?.length ?? 0} students</div>
+                      <div><i className="ri-user-star-line me-2 text-info" />{moduleData.mentorsAssigned?.length ?? 0} mentors</div>
+                    </div>
+                  </div>
+
+                  <div className="box custom-box">
+                    <div className="box-header">
+                      <div className="box-title">Students</div>
+                    </div>
+                    <div className="box-body space-y-2 max-h-56 overflow-auto">
+                      {(moduleData.students ?? []).length === 0 ? (
+                        <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">No students assigned.</div>
+                      ) : (
+                        (moduleData.students ?? []).map((s) => (
+                          <div key={s.id} className="text-[0.8125rem]">
+                            {s.user?.name || 'Unknown'} <span className="text-[#8c9097]">({s.user?.email || '-'})</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="box custom-box">
+                    <div className="box-header">
+                      <div className="box-title">Mentors</div>
+                    </div>
+                    <div className="box-body space-y-2 max-h-56 overflow-auto">
+                      {(moduleData.mentorsAssigned ?? []).length === 0 ? (
+                        <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">No mentors assigned.</div>
+                      ) : (
+                        (moduleData.mentorsAssigned ?? []).map((m) => (
+                          <div key={m.id} className="text-[0.8125rem]">
+                            {m.user?.name || 'Unknown'} <span className="text-[#8c9097]">({m.user?.email || '-'})</span>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
+          {moduleData?.id ? (
+            <Link href={`/training/curriculum/modules/edit?id=${moduleData.id}`} className="ti-btn ti-btn-primary !mb-0">
+              Edit Module
+            </Link>
+          ) : null}
+          <button type="button" className="ti-btn ti-btn-light !mb-0" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TrainingModuleCard({ module: m, onDelete, onView }: TrainingModuleCardProps) {
   const summary = calculateSummary(m.playlist || [])
   const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -130,6 +416,24 @@ function TrainingModuleCard({ module: m, onDelete }: TrainingModuleCardProps) {
     }
   }
 
+  const closeDropdown = () => {
+    if (!dropdownRef.current) return
+    const menu = dropdownRef.current.querySelector('.hs-dropdown-menu') as HTMLElement
+    const button = dropdownRef.current.querySelector('button') as HTMLElement
+    if (menu) {
+      menu.classList.add('hidden')
+      menu.style.cssText = 'opacity: 0 !important; pointer-events: none !important; display: none !important;'
+    }
+    if (button) {
+      button.setAttribute('aria-expanded', 'false')
+    }
+  }
+
+  const handleView = () => {
+    closeDropdown()
+    onView(m.id)
+  }
+
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -175,12 +479,13 @@ function TrainingModuleCard({ module: m, onDelete }: TrainingModuleCardProps) {
       </div>
       <div className="box-header items-center !justify-start flex-wrap !flex pt-3">
         <div className="flex-grow min-w-0">
-          <Link
-            href={`/training/curriculum/modules/${m.id}`}
-            className="font-semibold text-[.875rem] block text-truncate"
+          <button
+            type="button"
+            onClick={handleView}
+            className="font-semibold text-[.875rem] block text-truncate text-start hover:text-primary"
           >
             {m.moduleName}
-          </Link>
+          </button>
           <span className="text-[#8c9097] dark:text-white/50 block text-[0.75rem]">
             <strong className="text-defaulttextcolor">{m.students?.length || 0}</strong> students enrolled
           </span>
@@ -200,9 +505,9 @@ function TrainingModuleCard({ module: m, onDelete }: TrainingModuleCardProps) {
             aria-labelledby={`dropdown-menu-${m.id}`}
           >
             <li>
-              <Link className="ti-dropdown-item" href={`/training/curriculum/modules/${m.id}`}>
+              <button type="button" className="ti-dropdown-item w-full text-left" onClick={handleView}>
                 <i className="ri-eye-line align-middle me-1 inline-flex" /> View
-              </Link>
+              </button>
             </li>
             <li>
               <Link className="ti-dropdown-item" href={`/training/curriculum/modules/edit?id=${m.id}`}>
@@ -263,6 +568,10 @@ const TrainingModules = () => {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [pageSize] = useState(100) // Fetch many modules at once
+  const [detailModalOpen, setDetailModalOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [selectedModuleDetail, setSelectedModuleDetail] = useState<ApiTrainingModule | null>(null)
 
   const fetchModules = useCallback(async () => {
     setLoading(true)
@@ -348,6 +657,33 @@ const TrainingModules = () => {
     }
   }
 
+  const handleView = useCallback(async (moduleId: string) => {
+    setDetailModalOpen(true)
+    setDetailLoading(true)
+    setDetailError(null)
+    setSelectedModuleDetail(null)
+
+    try {
+      const moduleData = await trainingModulesApi.getTrainingModule(moduleId)
+      setSelectedModuleDetail(moduleData)
+    } catch (err) {
+      console.error('Error fetching module detail:', err)
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+            ? err.message
+            : 'Failed to load module details.'
+      setDetailError(msg)
+    } finally {
+      setDetailLoading(false)
+    }
+  }, [])
+
+  const closeDetailModal = useCallback(() => {
+    setDetailModalOpen(false)
+  }, [])
+
   const toggleCategory = (categoryId: string) => {
     setCollapsedCategoryIds((prev) => {
       const next = new Set(prev)
@@ -409,6 +745,19 @@ const TrainingModules = () => {
     }))
   }, [categoriesWithModules, sortValue])
 
+  useEffect(() => {
+    if (!detailModalOpen) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeDetailModal()
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [detailModalOpen, closeDetailModal])
+
   return (
     <Fragment>
       <Seo title="Training Modules" />
@@ -427,7 +776,10 @@ const TrainingModules = () => {
                   </Link>
                   <Select
                     value={sortValue}
-                    onChange={(v: { value: string; label: string } | null) => v && setSortValue(v)}
+                    onChange={(v) => {
+                      const option = v as { value: string; label: string } | null
+                      if (option) setSortValue(option)
+                    }}
                     options={SORT_OPTIONS}
                     className="!w-40"
                     menuPlacement="auto"
@@ -487,7 +839,7 @@ const TrainingModules = () => {
                       key={m.id}
                       className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
                     >
-                      <TrainingModuleCard module={m} onDelete={handleDelete} />
+                      <TrainingModuleCard module={m} onDelete={handleDelete} onView={handleView} />
                     </div>
                   ))}
                 </div>
@@ -537,6 +889,14 @@ const TrainingModules = () => {
           </ul>
         </nav>
       )}
+
+      <ModuleDetailModal
+        open={detailModalOpen}
+        moduleData={selectedModuleDetail}
+        loading={detailLoading}
+        error={detailError}
+        onClose={closeDetailModal}
+      />
     </Fragment>
   )
 }
