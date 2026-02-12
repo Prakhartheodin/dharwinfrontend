@@ -1,12 +1,18 @@
 "use client"
 
-import React, { Fragment, useState, useRef, useEffect } from 'react'
+import React, { Fragment, useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
+import Swal from 'sweetalert2'
+import { AxiosError } from 'axios'
+import * as trainingModulesApi from '@/shared/lib/api/training-modules'
+import * as categoriesApi from '@/shared/lib/api/categories'
+import * as studentsApi from '@/shared/lib/api/students'
+import * as mentorsApi from '@/shared/lib/api/mentors'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -27,6 +33,7 @@ type QuizQuestion = {
 
 type PlaylistItem = {
   id: string
+  backendId?: string
   type: PlaylistItemType
   title: string
   source: string
@@ -37,7 +44,7 @@ type PlaylistItem = {
 }
 
 type ModuleFormData = {
-  categoryId: string
+  categoryIds: string[]
   name: string
   coverImage: string
   shortDescription: string
@@ -46,43 +53,11 @@ type ModuleFormData = {
   playlist: PlaylistItem[]
 }
 
-const CATEGORY_OPTIONS = [
-  { value: 'cat-1', label: 'Technical Skills' },
-  { value: 'cat-2', label: 'Leadership & Soft Skills' },
-  { value: 'cat-3', label: 'Product & Design' },
-]
-
 type PersonOption = {
   value: string
   label: string
   avatar: string
 }
-
-const STUDENT_OPTIONS: PersonOption[] = [
-  { value: 's1', label: 'Emma Wilson', avatar: '/assets/images/faces/1.jpg' },
-  { value: 's2', label: 'James Brown', avatar: '/assets/images/faces/2.jpg' },
-  { value: 's3', label: 'Olivia Davis', avatar: '/assets/images/faces/4.jpg' },
-  { value: 's4', label: 'Liam Miller', avatar: '/assets/images/faces/5.jpg' },
-  { value: 's5', label: 'Ava Garcia', avatar: '/assets/images/faces/6.jpg' },
-  { value: 's6', label: 'Noah Martinez', avatar: '/assets/images/faces/7.jpg' },
-  { value: 's7', label: 'Sophia Anderson', avatar: '/assets/images/faces/8.jpg' },
-  { value: 's8', label: 'Ethan Thomas', avatar: '/assets/images/faces/9.jpg' },
-  { value: 's9', label: 'Isabella Jackson', avatar: '/assets/images/faces/10.jpg' },
-  { value: 's10', label: 'Mason White', avatar: '/assets/images/faces/11.jpg' },
-]
-
-const MENTOR_OPTIONS: PersonOption[] = [
-  { value: 'm1', label: 'Alex', avatar: '/assets/images/faces/2.jpg' },
-  { value: 'm2', label: 'Sam', avatar: '/assets/images/faces/8.jpg' },
-  { value: 'm3', label: 'Jordan', avatar: '/assets/images/faces/12.jpg' },
-  { value: 'm4', label: 'Casey', avatar: '/assets/images/faces/10.jpg' },
-  { value: 'm5', label: 'Morgan', avatar: '/assets/images/faces/5.jpg' },
-  { value: 'm6', label: 'Riley', avatar: '/assets/images/faces/9.jpg' },
-  { value: 'm7', label: 'Quinn', avatar: '/assets/images/faces/11.jpg' },
-  { value: 'm8', label: 'Taylor', avatar: '/assets/images/faces/3.jpg' },
-  { value: 'm9', label: 'Jamie', avatar: '/assets/images/faces/13.jpg' },
-  { value: 'm10', label: 'Drew', avatar: '/assets/images/faces/6.jpg' },
-]
 
 function CheckboxDropdown({
   options,
@@ -184,9 +159,12 @@ function CheckboxDropdown({
 
 const CreateModule = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const moduleId = searchParams.get('id')
+  const isEditMode = Boolean(moduleId)
   const [activeTab, setActiveTab] = useState<'info' | 'playlist'>('info')
   const [formData, setFormData] = useState<ModuleFormData>({
-    categoryId: '',
+    categoryIds: [],
     name: '',
     coverImage: '',
     shortDescription: '',
@@ -197,8 +175,167 @@ const CreateModule = () => {
 
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
   const [coverImagePreview, setCoverImagePreview] = useState<string>('')
+  const [existingCoverImageUrl, setExistingCoverImageUrl] = useState<string>('')
   const [coverImageDragOver, setCoverImageDragOver] = useState(false)
   const coverImageInputRef = useRef<HTMLInputElement>(null)
+
+  // API data
+  const [categoryOptions, setCategoryOptions] = useState<{ value: string; label: string }[]>([])
+  const [studentOptions, setStudentOptions] = useState<PersonOption[]>([])
+  const [mentorOptions, setMentorOptions] = useState<PersonOption[]>([])
+  const [loading, setLoading] = useState(false)
+  const [fetchingData, setFetchingData] = useState(true)
+  const [fetchingModule, setFetchingModule] = useState(false)
+
+  const convertApiPlaylistToForm = useCallback((apiItem: trainingModulesApi.PlaylistItem): PlaylistItem => {
+    const backendId = (apiItem as { _id?: string; id?: string })._id ?? apiItem.id
+    const formItem: PlaylistItem = {
+      id: backendId ?? `playlist-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      backendId,
+      type: 'video',
+      title: apiItem.title,
+      source: '',
+      duration: String(apiItem.duration ?? 0),
+      blogContent: '',
+      videoPreview: '',
+      quizData: [],
+    }
+
+    switch (apiItem.contentType) {
+      case 'upload-video':
+        formItem.type = 'video'
+        formItem.videoPreview = apiItem.videoFile?.url ?? ''
+        formItem.source = apiItem.videoFile?.originalName ?? ''
+        break
+      case 'youtube-link':
+        formItem.type = 'youtube'
+        formItem.source = apiItem.youtubeUrl ?? ''
+        break
+      case 'pdf-document':
+        formItem.type = 'pdf'
+        formItem.source = apiItem.pdfDocument?.originalName ?? ''
+        break
+      case 'blog':
+        formItem.type = 'blog'
+        formItem.blogContent = apiItem.blogContent ?? ''
+        break
+      case 'quiz': {
+        formItem.type = 'quiz'
+        const questions = apiItem.quiz?.questions ?? apiItem.quizData?.questions ?? []
+        formItem.quizData = questions.map((q: trainingModulesApi.QuizQuestionShape, qi: number) => ({
+          id: `q-${backendId ?? 'quiz'}-${qi}`,
+          question: q.questionText,
+          options: (q.options ?? []).map((o: trainingModulesApi.QuizOptionShape, oi: number) => ({
+            id: `o-${backendId ?? 'quiz'}-${qi}-${oi}`,
+            text: o.text,
+            correct: o.isCorrect,
+          })),
+          multipleCorrect: q.allowMultipleAnswers ?? false,
+        }))
+        break
+      }
+      case 'test':
+        formItem.type = 'test'
+        formItem.source = apiItem.testLinkOrReference ?? ''
+        break
+      default:
+        break
+    }
+
+    return formItem
+  }, [])
+
+  useEffect(() => {
+    if (!isEditMode || !moduleId) return
+
+    const fetchModule = async () => {
+      setFetchingModule(true)
+      try {
+        const module = await trainingModulesApi.getTrainingModule(moduleId)
+        setFormData({
+          categoryIds: module.categories?.map((c: { id: string }) => c.id) ?? [],
+          name: module.moduleName,
+          coverImage: module.coverImage?.url ?? '',
+          shortDescription: module.shortDescription,
+          studentIds: module.students?.map((s: { id: string }) => s.id) ?? [],
+          mentorIds: module.mentorsAssigned?.map((m: { id: string }) => m.id) ?? [],
+          playlist: (module.playlist ?? []).map(convertApiPlaylistToForm),
+        })
+
+        if (module.coverImage?.url) {
+          setExistingCoverImageUrl(module.coverImage.url)
+          setCoverImagePreview(module.coverImage.url)
+        }
+      } catch (err) {
+        console.error('Error fetching module:', err)
+        await Swal.fire({
+          icon: 'error',
+          title: 'Failed to load module',
+          text: 'Could not load module data. Please try again.',
+          toast: true,
+          position: 'top-end',
+          timer: 4000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+        router.push('/training/curriculum/modules')
+      } finally {
+        setFetchingModule(false)
+      }
+    }
+
+    fetchModule()
+  }, [convertApiPlaylistToForm, isEditMode, moduleId, router])
+
+  // Fetch categories, students, and mentors
+  useEffect(() => {
+    const fetchData = async () => {
+      setFetchingData(true)
+      try {
+        // Fetch categories
+        const categoriesRes = await categoriesApi.listCategories({ limit: 100 })
+        setCategoryOptions(
+          categoriesRes.results.map((cat) => ({ value: cat.id, label: cat.name }))
+        )
+
+        // Fetch students
+        const studentsRes = await studentsApi.listStudents({ limit: 100 })
+        setStudentOptions(
+          studentsRes.results.map((s) => ({
+            value: s.id,
+            label: s.user?.name || 'Unknown',
+            avatar: '/assets/images/faces/1.jpg', // Default avatar
+          }))
+        )
+
+        // Fetch mentors
+        const mentorsRes = await mentorsApi.listMentors({ limit: 100 })
+        setMentorOptions(
+          mentorsRes.results.map((m) => ({
+            value: m.id,
+            label: m.user?.name || 'Unknown',
+            avatar: '/assets/images/faces/1.jpg', // Default avatar
+          }))
+        )
+      } catch (err) {
+        console.error('Error fetching data:', err)
+        await Swal.fire({
+          icon: 'error',
+          title: 'Failed to load data',
+          text: 'Could not load categories, students, or mentors. Please refresh the page.',
+          toast: true,
+          position: 'top-end',
+          timer: 4000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      } finally {
+        setFetchingData(false)
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const handleInputChange = (field: keyof ModuleFormData, value: any) => {
     setFormData((prev) => ({
@@ -243,19 +380,25 @@ const CreateModule = () => {
 
   const handleCoverImageRemove = () => {
     setCoverImageFile(null)
-    setCoverImagePreview('')
-    handleInputChange('coverImage', '')
+    if (isEditMode && existingCoverImageUrl) {
+      setCoverImagePreview(existingCoverImageUrl)
+      handleInputChange('coverImage', existingCoverImageUrl)
+    } else {
+      setCoverImagePreview('')
+      handleInputChange('coverImage', '')
+    }
     if (coverImageInputRef.current) coverImageInputRef.current.value = ''
   }
 
   const handleCategoryChange = (option: { value: string; label: string } | null) => {
-    handleInputChange('categoryId', option?.value || '')
+    handleInputChange('categoryIds', option ? [option.value] : [])
   }
 
   const [quizModalItemId, setQuizModalItemId] = useState<string | null>(null)
   const [videoDragOverId, setVideoDragOverId] = useState<string | null>(null)
   const [pdfDragOverId, setPdfDragOverId] = useState<string | null>(null)
   const pdfFilesRef = useRef<Record<string, File>>({})
+  const videoFilesRef = useRef<Record<string, File>>({})
 
   const getYoutubeVideoId = (url: string): string | null => {
     if (!url?.trim()) return null
@@ -386,6 +529,7 @@ const CreateModule = () => {
 
   const processPlaylistVideoFile = (itemId: string, file: File | null) => {
     if (!file || !file.type.startsWith('video/')) return
+    videoFilesRef.current[itemId] = file
     const url = URL.createObjectURL(file)
     handlePlaylistItemChange(itemId, 'videoPreview', url)
     handlePlaylistItemChange(itemId, 'source', file.name)
@@ -497,22 +641,169 @@ const CreateModule = () => {
     reader.readAsText(file)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Here you would typically send the data to your API
-    // For now, we'll just navigate back to the modules list
-    console.log('Module data:', formData)
-    router.push('/training/curriculum/modules')
+    setLoading(true)
+
+    try {
+      // Validate required fields
+      if (!formData.name.trim()) {
+        throw new Error('Module name is required')
+      }
+      if (!formData.shortDescription.trim()) {
+        throw new Error('Short description is required')
+      }
+      if (!isEditMode && !coverImageFile) {
+        throw new Error('Cover image is required')
+      }
+      if (!formData.categoryIds || formData.categoryIds.length === 0) {
+        throw new Error('Category is required')
+      }
+
+      // Map playlist items to API format (playlist sent as JSON; quizData included)
+      const playlistItems: trainingModulesApi.PlaylistItem[] = formData.playlist.map((item, index) => {
+        const playlistItem: trainingModulesApi.PlaylistItem = {
+          _id: item.backendId,
+          contentType: item.type === 'video' ? 'upload-video' :
+                       item.type === 'youtube' ? 'youtube-link' :
+                       item.type === 'pdf' ? 'pdf-document' :
+                       item.type === 'blog' ? 'blog' :
+                       item.type === 'quiz' ? 'quiz' :
+                       'test',
+          title: item.title,
+          duration: parseInt(item.duration || '0', 10) || 0,
+          order: index,
+        }
+
+        switch (playlistItem.contentType) {
+          case 'youtube-link':
+            playlistItem.youtubeUrl = item.source
+            break
+          case 'blog':
+            playlistItem.blogContent = item.blogContent || ''
+            break
+          case 'test':
+            playlistItem.testLinkOrReference = item.source
+            break
+          case 'quiz': {
+            if (item.quizData && item.quizData.length > 0) {
+              const itemLabel = item.title?.trim() || `Playlist item ${index + 1}`
+              const sanitizedQuestions = item.quizData
+                .map((q, qIndex) => {
+                const questionText = (q.question || '').trim()
+                if (!questionText) return null
+
+                const sanitizedOptions = (q.options || [])
+                  .map((opt) => ({
+                    text: (opt.text || '').trim(),
+                    isCorrect: Boolean(opt.correct),
+                  }))
+                  .filter((opt) => opt.text.length > 0)
+
+                if (sanitizedOptions.length === 0) return null
+
+                return {
+                  questionText,
+                  allowMultipleAnswers: Boolean(q.multipleCorrect),
+                  options: sanitizedOptions,
+                }
+              })
+                .filter((q): q is trainingModulesApi.QuizQuestionShape => q !== null)
+
+              if (sanitizedQuestions.length === 0) {
+                throw new Error(`${itemLabel}: Add at least 1 valid question with non-empty options`)
+              }
+
+              playlistItem.quizData = {
+                questions: sanitizedQuestions,
+              }
+            }
+            break
+          }
+        }
+
+        return playlistItem
+      })
+
+      // Collect file uploads for playlist items
+      const playlistVideoFiles: { index: number; file: File }[] = []
+      const playlistPdfFiles: { index: number; file: File }[] = []
+
+      formData.playlist.forEach((item, index) => {
+        if (item.type === 'video' && videoFilesRef.current[item.id]) {
+          playlistVideoFiles.push({ index, file: videoFilesRef.current[item.id] })
+        }
+        if (item.type === 'pdf' && pdfFilesRef.current[item.id]) {
+          playlistPdfFiles.push({ index, file: pdfFilesRef.current[item.id] })
+        }
+      })
+
+      // Create module payload
+      const payload: trainingModulesApi.UpdateTrainingModulePayload = {
+        moduleName: formData.name,
+        shortDescription: formData.shortDescription,
+        categories: formData.categoryIds,
+        students: formData.studentIds,
+        mentorsAssigned: formData.mentorIds,
+        status: 'draft',
+        coverImage: coverImageFile ?? undefined,
+        playlist: playlistItems,
+        playlistVideoFiles,
+        playlistPdfFiles,
+      }
+
+      if (isEditMode && moduleId) {
+        await trainingModulesApi.updateTrainingModule(moduleId, payload)
+      } else {
+        await trainingModulesApi.createTrainingModule(payload as trainingModulesApi.CreateTrainingModulePayload)
+      }
+
+      await Swal.fire({
+        icon: 'success',
+        title: isEditMode ? 'Module updated' : 'Module created',
+        text: isEditMode
+          ? 'The training module has been updated successfully.'
+          : 'The training module has been created successfully.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+
+      router.push('/training/curriculum/modules')
+    } catch (err) {
+      console.error(`Error ${isEditMode ? 'updating' : 'creating'} module:`, err)
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+          ? err.message
+          : `Failed to ${isEditMode ? 'update' : 'create'} module. Please try again.`
+      
+      await Swal.fire({
+        icon: 'error',
+        title: `Failed to ${isEditMode ? 'update' : 'create'} module`,
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <Fragment>
-      <Seo title="Create Training Module" />
+      <Seo title={isEditMode ? 'Edit Training Module' : 'Create Training Module'} />
       <div className="grid grid-cols-12 gap-6">
         <div className="xl:col-span-12 col-span-12">
           <div className="box custom-box">
             <div className="box-header flex items-center justify-between flex-wrap gap-4">
-              <div className="box-title">Create New Training Module</div>
+              <div className="box-title">{isEditMode ? 'Edit Training Module' : 'Create New Training Module'}</div>
               <Link
                 href="/training/curriculum/modules"
                 className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"
@@ -520,6 +811,11 @@ const CreateModule = () => {
                 <i className="ri-arrow-left-line me-1" /> Back to Modules
               </Link>
             </div>
+            {fetchingModule ? (
+              <div className="box-body flex items-center justify-center py-12">
+                <span className="text-[#8c9097] dark:text-white/50">Loading module...</span>
+              </div>
+            ) : (
             <form onSubmit={handleSubmit}>
               <div className="box-body">
                 <div className="border-b border-gray-200 dark:border-defaultborder/10 mb-6">
@@ -563,15 +859,24 @@ const CreateModule = () => {
                         <label htmlFor="category" className="form-label">
                           Category <span className="text-danger">*</span>
                         </label>
-                        <Select
-                          id="category"
-                          value={CATEGORY_OPTIONS.find((opt) => opt.value === formData.categoryId) || null}
-                          onChange={handleCategoryChange}
-                          options={CATEGORY_OPTIONS}
-                          classNamePrefix="Select2"
-                          placeholder="Select Category"
-                          menuPlacement="auto"
-                        />
+                        {fetchingData ? (
+                          <div className="form-control flex items-center justify-center py-2">
+                            <span className="text-[#8c9097] dark:text-white/50 text-sm">Loading categories...</span>
+                          </div>
+                        ) : (
+                          <Select
+                            id="category"
+                            value={categoryOptions.find((opt) => formData.categoryIds.includes(opt.value)) || null}
+                            onChange={(option: unknown) =>
+                              handleCategoryChange(option as { value: string; label: string } | null)
+                            }
+                            options={categoryOptions}
+                            classNamePrefix="Select2"
+                            placeholder="Select Category"
+                            menuPlacement="auto"
+                            isDisabled={fetchingData}
+                          />
+                        )}
                       </div>
 
                       {/* Module Name */}
@@ -593,7 +898,7 @@ const CreateModule = () => {
                       {/* Cover Image – Drag & Drop Preview */}
                       <div className="xl:col-span-12 col-span-12">
                         <label className="form-label">
-                          Cover Image <span className="text-danger">*</span>
+                          Cover Image {!isEditMode && <span className="text-danger">*</span>}
                         </label>
                         <input
                           ref={coverImageInputRef}
@@ -672,24 +977,42 @@ const CreateModule = () => {
 
                       {/* Students */}
                       <div className="xl:col-span-6 col-span-12">
-                        <CheckboxDropdown
-                          label="Students"
-                          placeholder="Select students"
-                          options={STUDENT_OPTIONS}
-                          selectedIds={formData.studentIds}
-                          onChange={(ids) => handleInputChange('studentIds', ids)}
-                        />
+                        {fetchingData ? (
+                          <div>
+                            <label className="form-label block mb-1">Students</label>
+                            <div className="form-control flex items-center justify-center py-2">
+                              <span className="text-[#8c9097] dark:text-white/50 text-sm">Loading students...</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <CheckboxDropdown
+                            label="Students"
+                            placeholder="Select students"
+                            options={studentOptions}
+                            selectedIds={formData.studentIds}
+                            onChange={(ids) => handleInputChange('studentIds', ids)}
+                          />
+                        )}
                       </div>
 
                       {/* Mentors Assigned */}
                       <div className="xl:col-span-6 col-span-12">
-                        <CheckboxDropdown
-                          label="Mentors Assigned"
-                          placeholder="Select mentors"
-                          options={MENTOR_OPTIONS}
-                          selectedIds={formData.mentorIds}
-                          onChange={(ids) => handleInputChange('mentorIds', ids)}
-                        />
+                        {fetchingData ? (
+                          <div>
+                            <label className="form-label block mb-1">Mentors Assigned</label>
+                            <div className="form-control flex items-center justify-center py-2">
+                              <span className="text-[#8c9097] dark:text-white/50 text-sm">Loading mentors...</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <CheckboxDropdown
+                            label="Mentors Assigned"
+                            placeholder="Select mentors"
+                            options={mentorOptions}
+                            selectedIds={formData.mentorIds}
+                            onChange={(ids) => handleInputChange('mentorIds', ids)}
+                          />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -836,6 +1159,7 @@ const CreateModule = () => {
                                       className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] !mb-0"
                                       onClick={() => {
                                         if (item.videoPreview) URL.revokeObjectURL(item.videoPreview)
+                                        delete videoFilesRef.current[item.id]
                                         handlePlaylistItemChange(item.id, 'videoPreview', '')
                                         handlePlaylistItemChange(item.id, 'source', '')
                                       }}
@@ -1077,11 +1401,13 @@ const CreateModule = () => {
                 <button
                   type="submit"
                   className="ti-btn ti-btn-primary-full"
+                  disabled={loading || fetchingData || fetchingModule}
                 >
-                  Create Module
+                  {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Module' : 'Create Module')}
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       </div>
@@ -1202,6 +1528,9 @@ const CreateModule = () => {
                     <div className="text-[0.75rem] font-semibold text-[#8c9097] dark:text-white/50 mb-2">
                       Options
                     </div>
+                    <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-2">
+                      Tick the checkbox to mark an option as correct.
+                    </p>
                     <div className="space-y-2">
                       {q.options.map((opt) => (
                         <div
@@ -1221,7 +1550,7 @@ const CreateModule = () => {
                                 e.target.checked,
                               )
                             }
-                            title="Correct answer"
+                            title="Mark as correct answer"
                           />
                           <input
                             type="text"
@@ -1238,6 +1567,11 @@ const CreateModule = () => {
                               )
                             }
                           />
+                          {opt.correct && (
+                            <span className="text-success text-[0.75rem] font-medium shrink-0">
+                              Correct
+                            </span>
+                          )}
                           <button
                             type="button"
                             className="ti-btn ti-btn-light !py-0.5 !px-1.5 shrink-0"
