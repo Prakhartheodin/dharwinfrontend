@@ -13,6 +13,8 @@ interface TiptapEditorProps {
   onChange?: (html: string) => void
   editable?: boolean
   className?: string
+  /** Enable browser spellcheck (red underlines for typos in real time). Default true. */
+  spellCheck?: boolean
 }
 
 const TiptapEditor: React.FC<TiptapEditorProps> = ({
@@ -20,10 +22,16 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
   placeholder = 'Start typing...',
   onChange,
   editable = true,
-  className = ''
+  className = '',
+  spellCheck = true,
 }) => {
   const editor = useEditor({
     immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        spellcheck: spellCheck ? 'true' : 'false',
+      },
+    },
     extensions: [
       StarterKit.configure({
         heading: {

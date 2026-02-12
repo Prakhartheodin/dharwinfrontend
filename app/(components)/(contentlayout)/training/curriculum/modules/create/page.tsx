@@ -3,6 +3,7 @@
 import React, { Fragment, useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
@@ -16,7 +17,206 @@ import * as mentorsApi from '@/shared/lib/api/mentors'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
+const blogGeneratorLogger = {
+  info: (msg: string, data?: Record<string, unknown>) => {
+    console.log('[BlogGenerator]', msg, data ?? '')
+  },
+  warn: (msg: string, data?: Record<string, unknown>) => {
+    console.warn('[BlogGenerator]', msg, data ?? '')
+  },
+  error: (msg: string, err?: unknown) => {
+    console.error('[BlogGenerator]', msg, err)
+  },
+}
+
+function toSimpleHtml(text: string): string {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
+    .join('')
+}
+
+async function generateBlogFromGemini(params: {
+  apiKey: string
+  mode: 'enhance' | 'generate'
+  existingContent?: string
+  title?: string
+  keywords?: string
+  wordCount?: number
+  format?: BlogFormat
+}): Promise<string> {
+  const { apiKey, mode, existingContent = '', title = '', keywords = '', wordCount = 500, format = 'neutral' } = params
+  blogGeneratorLogger.info('generateBlogFromGemini start', { mode, title: title.slice(0, 50), wordCount, format })
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0.8,
+      topP: 0.95,
+      topK: 64,
+      maxOutputTokens: 8192,
+    },
+  })
+  if (mode === 'enhance') {
+    const text = (existingContent || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!text) throw new Error('No content to enhance. Type something or use Generate from title & keywords.')
+    blogGeneratorLogger.info('enhance: calling Gemini', { inputLength: text.length })
+    const prompt = `You are an expert editor. Improve and expand this blog content. Keep the same topic. Keep the tone ${format}. Return only the enhanced blog text, no meta commentary. Use clear paragraphs.\n\n---\n${text}`
+    const result = await model.generateContent(prompt)
+    const output = result.response.text()
+    const html = toSimpleHtml(output)
+    blogGeneratorLogger.info('enhance: done', { outputLength: output.length, htmlLength: html.length })
+    return html
+  }
+  if (mode === 'generate') {
+    if (!title.trim()) throw new Error('Blog title is required.')
+    blogGeneratorLogger.info('generate: calling Gemini', { title: title.slice(0, 80) })
+    const prompt = `Generate a comprehensive, engaging blog post with the following details:
+- Title: ${title}
+- Keywords to incorporate: ${keywords || 'general interest'}
+- Approximate length: ${wordCount} words
+- Tone: ${format}
+
+Make the content original, informative, and suitable for an online audience. Write in a ${format} tone. Use clear paragraphs. Return only the blog body text, no title or meta commentary.`
+    const result = await model.generateContent(prompt)
+    const output = result.response.text()
+    const html = toSimpleHtml(output)
+    blogGeneratorLogger.info('generate: done', { outputLength: output.length, htmlLength: html.length })
+    return html
+  }
+  blogGeneratorLogger.error('generateBlogFromGemini: invalid mode', { mode })
+  throw new Error('Invalid mode')
+}
+
+/** Generate one blog from a theme (for multi-blog: AI creates a distinct title + content for this variation). */
+async function generateBlogWithThemeFromGemini(params: {
+  apiKey: string
+  theme: string
+  index: number
+  total: number
+  keywords?: string
+  wordCount?: number
+  format?: BlogFormat
+}): Promise<{ title: string; content: string }> {
+  const { apiKey, theme, index, total, keywords = '', wordCount = 500, format = 'neutral' } = params
+  blogGeneratorLogger.info('generateBlogWithThemeFromGemini start', { theme: theme.slice(0, 50), index: index + 1, total, format })
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0.8,
+      topP: 0.95,
+      topK: 64,
+      maxOutputTokens: 8192,
+    },
+  })
+  const prompt = `You are writing blog ${index + 1} of ${total} on the same overall theme.
+Theme: ${theme}
+Keywords to incorporate: ${keywords || 'general interest'}
+Approximate length: ${wordCount} words
+Tone: ${format}
+
+Create a distinct, specific title for this blog (do not repeat the theme word-for-word), then write the full post in a ${format} tone. Reply in this exact format:
+- First line: TITLE: your blog title here
+- Then a blank line
+- Then the full blog body in clear paragraphs (no extra labels).
+
+Return only those two parts: the TITLE line and the body.`
+  const result = await model.generateContent(prompt)
+  const output = result.response.text()
+  const titleMatch = output.match(/TITLE:\s*(.+?)(?:\n|$)/i)
+  const title = titleMatch ? titleMatch[1].trim() : `Blog ${index + 1}`
+  const bodyStart = output.indexOf('\n\n')
+  const body = bodyStart >= 0 ? output.slice(bodyStart).trim() : output.replace(/^TITLE:.*/i, '').trim()
+  const content = toSimpleHtml(body)
+  blogGeneratorLogger.info('generateBlogWithThemeFromGemini done', { index: index + 1, total, title: title.slice(0, 50), contentLength: content.length })
+  return { title, content }
+}
+
+export type BlogSuggestionEdit = {
+  original: string
+  suggested: string
+  reason: string
+}
+
+/** Real-time suggestions: minimal edits only (typos, spelling, small improvements). Returns per-edit so user can accept/ignore each. */
+async function getBlogSuggestionsFromGemini(params: {
+  apiKey: string
+  content: string
+  format: BlogFormat
+}): Promise<{ edits: BlogSuggestionEdit[] }> {
+  const { apiKey, content, format } = params
+  const plain = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  if (!plain) return { edits: [] }
+  blogGeneratorLogger.info('getBlogSuggestionsFromGemini start', { format, contentLength: plain.length })
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.5-flash',
+    generationConfig: {
+      temperature: 0.3,
+      topP: 0.95,
+      topK: 40,
+      maxOutputTokens: 8192,
+    },
+  })
+  const prompt = `You are an expert editor. Suggest only MINUTE, targeted improvements: fix typos, spelling, and obvious grammar; suggest small word-choice or clarity improvements. Do NOT rewrite whole sentences or change every phrase. Keep the tone ${format}.
+
+Return ONLY a single JSON object, no other text:
+{"edits": [{"original": "exact phrase as it appears in the text", "suggested": "replacement", "reason": "spelling"}]}
+
+Rules:
+- Each "original" must be an exact substring of the user's text (copy it character-for-character).
+- Make 2-8 small edits maximum. Prefer quality over quantity.
+- reason: one short word like "spelling", "grammar", "clarity", "word choice".
+- Escape quotes in JSON strings (use \\" for quotes inside strings).
+
+Input text:
+
+---
+${plain}
+---`
+  const result = await model.generateContent(prompt)
+  const output = result.response.text()
+  try {
+    const raw = output.replace(/```json\s?/gi, '').replace(/```\s?/g, '').trim()
+    const parsed = JSON.parse(raw) as { edits?: Array<{ original?: string; suggested?: string; reason?: string }> }
+    const edits: BlogSuggestionEdit[] = (Array.isArray(parsed.edits) ? parsed.edits : [])
+      .filter((e) => typeof e.original === 'string' && typeof e.suggested === 'string')
+      .map((e) => ({
+        original: String(e.original),
+        suggested: String(e.suggested),
+        reason: typeof e.reason === 'string' ? e.reason : 'improvement',
+      }))
+    blogGeneratorLogger.info('getBlogSuggestionsFromGemini done', { editsCount: edits.length })
+    return { edits }
+  } catch {
+    blogGeneratorLogger.warn('getBlogSuggestionsFromGemini: JSON parse failed', { outputSlice: output.slice(0, 200) })
+    return { edits: [] }
+  }
+}
+
 type PlaylistItemType = 'video' | 'youtube' | 'quiz' | 'pdf' | 'blog' | 'test'
+
+export type BlogFormat =
+  | 'expressive'
+  | 'assertive'
+  | 'professional'
+  | 'casual'
+  | 'informative'
+  | 'persuasive'
+  | 'neutral'
+
+const BLOG_FORMAT_OPTIONS: { value: BlogFormat; label: string }[] = [
+  { value: 'neutral', label: 'Neutral' },
+  { value: 'expressive', label: 'Expressive' },
+  { value: 'assertive', label: 'Assertive' },
+  { value: 'professional', label: 'Professional' },
+  { value: 'casual', label: 'Casual' },
+  { value: 'informative', label: 'Informative' },
+  { value: 'persuasive', label: 'Persuasive' },
+]
 
 type QuizOption = {
   id: string
@@ -39,6 +239,7 @@ type PlaylistItem = {
   source: string
   duration?: string
   blogContent?: string
+  blogFormat?: BlogFormat
   videoPreview?: string
   videoMeta?: trainingModulesApi.FileUpload
   pdfPreview?: string
@@ -137,11 +338,11 @@ function CheckboxDropdown({
           ))}
         </div>
       )}
-      {/* Visible list for this course */}
+      {/* Visible list for this module */}
       {selected.length > 0 && (
         <div className="mt-2 p-3 rounded-md border border-defaultborder bg-black/5 dark:bg-white/5">
           <div className="text-[0.75rem] font-semibold text-[#8c9097] dark:text-white/50 mb-2">
-            Selected for this course
+            Selected for this module
           </div>
           <div className="flex flex-wrap gap-2">
             {selected.map((person) => (
@@ -401,11 +602,32 @@ const CreateModule = () => {
   }
 
   const [quizModalItemId, setQuizModalItemId] = useState<string | null>(null)
+  const [blogAiItemId, setBlogAiItemId] = useState<string | null>(null)
+  const [blogAiEnhancingId, setBlogAiEnhancingId] = useState<string | null>(null)
+  const [blogAiLoading, setBlogAiLoading] = useState(false)
+  const [blogAiGenerateTitle, setBlogAiGenerateTitle] = useState('')
+  const [blogAiGenerateKeywords, setBlogAiGenerateKeywords] = useState('')
+  const [blogAiWordCount, setBlogAiWordCount] = useState(500)
+  const [blogAiNumberOfBlogs, setBlogAiNumberOfBlogs] = useState(1)
+  const [blogAiTitleMode, setBlogAiTitleMode] = useState<'single' | 'separate'>('single')
+  const [blogAiTitlesText, setBlogAiTitlesText] = useState('')
+  const [blogAiGenerateFormat, setBlogAiGenerateFormat] = useState<BlogFormat>('neutral')
+  const [blogSuggestionsByItem, setBlogSuggestionsByItem] = useState<
+    Record<string, { status: 'idle' | 'loading' | 'done'; edits: BlogSuggestionEdit[] }>
+  >({})
   const [videoDragOverId, setVideoDragOverId] = useState<string | null>(null)
   const [videoPreviewItemId, setVideoPreviewItemId] = useState<string | null>(null)
   const [pdfDragOverId, setPdfDragOverId] = useState<string | null>(null)
   const pdfFilesRef = useRef<Record<string, File>>({})
   const videoFilesRef = useRef<Record<string, File>>({})
+  const formDataRef = useRef(formData)
+  formDataRef.current = formData
+  const suggestionTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const blogContentRef = useRef<Record<string, string>>({})
+  const pendingSuggestionContentRef = useRef<Record<string, string>>({})
+  const [videoPreviewModal, setVideoPreviewModal] = useState<{ itemId: string; url: string } | null>(
+    null,
+  )
 
   const getYoutubeVideoId = (url: string): string | null => {
     if (!url?.trim()) return null
@@ -457,6 +679,290 @@ const CreateModule = () => {
   const quizModalItem = quizModalItemId
     ? formData.playlist.find((i) => i.id === quizModalItemId)
     : null
+
+  const blogAiItem = blogAiItemId ? formData.playlist.find((i) => i.id === blogAiItemId) : null
+
+  const stripHtml = (html: string) => (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+
+  const scheduleBlogSuggestionCheck = (itemId: string, html: string) => {
+    blogContentRef.current[itemId] = html
+    const t = suggestionTimerRef.current[itemId]
+    if (t) clearTimeout(t)
+    suggestionTimerRef.current[itemId] = setTimeout(() => {
+      delete suggestionTimerRef.current[itemId]
+      const content = blogContentRef.current[itemId] ?? ''
+      const plainLen = stripHtml(content).length
+      if (plainLen < 40) return
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
+      if (!apiKey) return
+      const item = formDataRef.current.playlist.find((p) => p.id === itemId)
+      if (!item || item.type !== 'blog') return
+      const format = (item.blogFormat ?? 'neutral') as BlogFormat
+      setBlogSuggestionsByItem((prev) => ({
+        ...prev,
+        [itemId]: { status: 'loading', edits: [] },
+      }))
+      pendingSuggestionContentRef.current[itemId] = content
+      getBlogSuggestionsFromGemini({ apiKey, content, format })
+        .then((result) => {
+          if (pendingSuggestionContentRef.current[itemId] !== content) return
+          const spellingReasons = ['spelling', 'typo', 'typos']
+          const isSpellingEdit = (e: BlogSuggestionEdit) =>
+            spellingReasons.includes(e.reason.toLowerCase())
+          const spellingEdits = result.edits.filter(isSpellingEdit)
+          const otherEdits = result.edits.filter((e) => !isSpellingEdit(e))
+          let newContent = content
+          spellingEdits.forEach((edit) => {
+            const idx = newContent.indexOf(edit.original)
+            if (idx !== -1) {
+              newContent =
+                newContent.slice(0, idx) +
+                edit.suggested +
+                newContent.slice(idx + edit.original.length)
+            }
+          })
+          if (spellingEdits.length > 0 && newContent !== content) {
+            handleInputChange(
+              'playlist',
+              formDataRef.current.playlist.map((p) =>
+                p.id === itemId && p.type === 'blog'
+                  ? { ...p, blogContent: newContent }
+                  : p,
+              ),
+            )
+            blogContentRef.current[itemId] = newContent
+          }
+          setBlogSuggestionsByItem((prev) => ({
+            ...prev,
+            [itemId]: { status: 'done', edits: otherEdits },
+          }))
+        })
+        .catch((err) => {
+          blogGeneratorLogger.error('Blog suggestions failed', err)
+          setBlogSuggestionsByItem((prev) => ({
+            ...prev,
+            [itemId]: { status: 'idle', edits: [] },
+          }))
+        })
+    }, 1200)
+  }
+
+  const handleBlogAcceptEdit = (itemId: string, editIndex: number, currentContent: string) => {
+    const state = blogSuggestionsByItem[itemId]
+    if (!state || state.status !== 'done' || !state.edits[editIndex]) return
+    const edit = state.edits[editIndex]
+    const idx = currentContent.indexOf(edit.original)
+    if (idx === -1) {
+      setBlogSuggestionsByItem((prev) => ({
+        ...prev,
+        [itemId]: {
+          ...prev[itemId],
+          edits: prev[itemId].edits.filter((_, i) => i !== editIndex),
+        },
+      }))
+      return
+    }
+    const newContent =
+      currentContent.slice(0, idx) +
+      edit.suggested +
+      currentContent.slice(idx + edit.original.length)
+    handlePlaylistItemChange(itemId, 'blogContent', newContent)
+    blogContentRef.current[itemId] = newContent
+    setBlogSuggestionsByItem((prev) => {
+      const nextEdits = prev[itemId].edits.filter((_, i) => i !== editIndex)
+      return {
+        ...prev,
+        [itemId]: {
+          status: nextEdits.length === 0 ? 'idle' : 'done',
+          edits: nextEdits,
+        },
+      }
+    })
+  }
+
+  const handleBlogIgnoreEdit = (itemId: string, editIndex: number) => {
+    setBlogSuggestionsByItem((prev) => {
+      const nextEdits = prev[itemId].edits.filter((_, i) => i !== editIndex)
+      return {
+        ...prev,
+        [itemId]: {
+          status: nextEdits.length === 0 ? 'idle' : 'done',
+          edits: nextEdits,
+        },
+      }
+    })
+  }
+
+  const handleBlogEnhanceWithAi = async (itemId: string) => {
+    const item = formData.playlist.find((i) => i.id === itemId)
+    if (!item || item.type !== 'blog') {
+      blogGeneratorLogger.warn('handleBlogEnhanceWithAi: item not found or not blog', { itemId })
+      return
+    }
+    const hasContent = stripHtml(item.blogContent ?? '').length > 0
+    blogGeneratorLogger.info('Enhance with AI clicked', { itemId, hasContent })
+    if (hasContent) {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
+      if (!apiKey) {
+        blogGeneratorLogger.error('NEXT_PUBLIC_GEMINI_API_KEY not set')
+        alert('NEXT_PUBLIC_GEMINI_API_KEY is not configured. Add it to .env.local.')
+        return
+      }
+      setBlogAiEnhancingId(itemId)
+      setBlogAiLoading(true)
+      try {
+        const content = await generateBlogFromGemini({
+          apiKey,
+          mode: 'enhance',
+          existingContent: item.blogContent ?? '',
+          format: (item.blogFormat ?? 'neutral') as BlogFormat,
+        })
+        handlePlaylistItemChange(itemId, 'blogContent', content)
+        blogGeneratorLogger.info('Enhance completed', { itemId, contentLength: content.length })
+      } catch (e) {
+        blogGeneratorLogger.error('Enhance failed', e)
+        alert(e instanceof Error ? e.message : 'Failed to enhance blog')
+      } finally {
+        setBlogAiLoading(false)
+        setBlogAiEnhancingId(null)
+      }
+    } else {
+      blogGeneratorLogger.info('Opening generate modal (empty content)', { itemId })
+      setBlogAiItemId(itemId)
+      setBlogAiGenerateTitle('')
+      setBlogAiGenerateKeywords('')
+      setBlogAiWordCount(500)
+      setBlogAiGenerateFormat((item.blogFormat ?? 'neutral') as BlogFormat)
+    }
+  }
+
+  const handleBlogGenerateFromTitle = async () => {
+    if (!blogAiItemId || !blogAiItem) {
+      blogGeneratorLogger.warn('handleBlogGenerateFromTitle: no blogAiItemId or blogAiItem')
+      return
+    }
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
+    if (!apiKey) {
+      blogGeneratorLogger.error('NEXT_PUBLIC_GEMINI_API_KEY not set')
+      alert('NEXT_PUBLIC_GEMINI_API_KEY is not configured. Add it to .env.local.')
+      return
+    }
+    const numBlogs = Math.min(10, Math.max(1, blogAiNumberOfBlogs))
+    const titlesFromLines =
+      blogAiTitleMode === 'separate'
+        ? blogAiTitlesText
+            .split('\n')
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, numBlogs)
+        : []
+
+    if (blogAiTitleMode === 'single' && !blogAiGenerateTitle.trim()) {
+      alert('Enter a theme or title.')
+      return
+    }
+    if (blogAiTitleMode === 'separate' && titlesFromLines.length < numBlogs) {
+      alert(`Enter at least ${numBlogs} title(s), one per line.`)
+      return
+    }
+
+    blogGeneratorLogger.info('Generate blogs start', {
+      numBlogs,
+      titleMode: blogAiTitleMode,
+      theme: blogAiTitleMode === 'single' ? blogAiGenerateTitle.slice(0, 50) : undefined,
+      titlesCount: blogAiTitleMode === 'separate' ? titlesFromLines.length : undefined,
+      wordCount: blogAiWordCount,
+    })
+
+    setBlogAiLoading(true)
+    try {
+      const results: { title: string; content: string }[] = []
+
+      if (blogAiTitleMode === 'single') {
+        for (let i = 0; i < numBlogs; i++) {
+          blogGeneratorLogger.info('Generating blog (theme)', { index: i + 1, total: numBlogs })
+          const result = await generateBlogWithThemeFromGemini({
+            apiKey,
+            theme: blogAiGenerateTitle,
+            index: i,
+            total: numBlogs,
+            keywords: blogAiGenerateKeywords,
+            wordCount: blogAiWordCount,
+            format: blogAiGenerateFormat,
+          })
+          results.push(result)
+        }
+      } else {
+        for (let i = 0; i < numBlogs; i++) {
+          const title = titlesFromLines[i] || `Blog ${i + 1}`
+          blogGeneratorLogger.info('Generating blog (separate title)', { index: i + 1, total: numBlogs, title: title.slice(0, 50) })
+          const content = await generateBlogFromGemini({
+            apiKey,
+            mode: 'generate',
+            title,
+            keywords: blogAiGenerateKeywords,
+            wordCount: blogAiWordCount,
+            format: blogAiGenerateFormat,
+          })
+          results.push({ title, content })
+        }
+      }
+
+      const currentIndex = formData.playlist.findIndex((p) => p.id === blogAiItemId)
+      if (currentIndex < 0) {
+        blogGeneratorLogger.error('Current blog item not found in playlist', { blogAiItemId })
+        return
+      }
+
+      const [first, ...rest] = results
+      const updatedFirst: PlaylistItem = {
+        ...blogAiItem,
+        title: first.title,
+        blogContent: first.content,
+        blogFormat: blogAiGenerateFormat,
+      }
+      const newItems: PlaylistItem[] = rest.map((r) => ({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type: 'blog' as const,
+        title: r.title,
+        source: '',
+        duration: '',
+        blogContent: r.content,
+        blogFormat: blogAiGenerateFormat,
+        videoPreview: '',
+        quizData: [],
+      }))
+
+      const newPlaylist = [
+        ...formData.playlist.slice(0, currentIndex),
+        updatedFirst,
+        ...newItems,
+        ...formData.playlist.slice(currentIndex + 1),
+      ]
+      handleInputChange('playlist', newPlaylist)
+
+      blogGeneratorLogger.info('Generate blogs completed', {
+        numBlogs,
+        playlistLengthBefore: formData.playlist.length,
+        playlistLengthAfter: newPlaylist.length,
+        newItemTitles: results.map((r) => r.title.slice(0, 40)),
+      })
+
+      setBlogAiItemId(null)
+      setBlogAiGenerateTitle('')
+      setBlogAiGenerateKeywords('')
+      setBlogAiWordCount(500)
+      setBlogAiNumberOfBlogs(1)
+      setBlogAiTitleMode('single')
+      setBlogAiTitlesText('')
+      setBlogAiGenerateFormat('neutral')
+    } catch (e) {
+      blogGeneratorLogger.error('Generate blogs failed', e)
+      alert(e instanceof Error ? e.message : 'Failed to generate blog')
+    } finally {
+      setBlogAiLoading(false)
+    }
+  }
 
   const updateQuizData = (itemId: string, quizData: QuizQuestion[]) => {
     handlePlaylistItemChange(itemId, 'quizData', quizData)
@@ -881,7 +1387,7 @@ const CreateModule = () => {
                       aria-controls="info-panel"
                     >
                       <i className="ri-file-text-line" />
-                      Course Info
+                      Module Info
                     </button>
                     <button
                       type="button"
@@ -1071,10 +1577,10 @@ const CreateModule = () => {
                   <div id="playlist-panel" role="tabpanel" aria-labelledby="playlist-tab">
                     <div className="flex items-center justify-between mb-4">
                       <div>
-                        <h5 className="font-semibold mb-1">Course Playlist</h5>
+                        <h5 className="font-semibold mb-1">Playlist</h5>
                         <p className="text-[#8c9097] dark:text-white/50 text-[0.8125rem] mb-0">
                           Add items like uploaded videos, YouTube links, quizzes, PDFs, etc. The
-                          order here will be used as the course flow.
+                          order here will be used as the module flow.
                         </p>
                       </div>
                       <button
@@ -1091,7 +1597,7 @@ const CreateModule = () => {
                       <div className="border border-dashed border-defaultborder rounded-md p-4 text-center text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
                         No playlist items yet. Click{' '}
                         <span className="font-semibold">Add Item</span> to start building the
-                        course.
+                        module.
                       </div>
                     )}
 
@@ -1418,16 +1924,114 @@ const CreateModule = () => {
 
                           {item.type === 'blog' && (
                             <div className="mt-4">
-                              <label className="form-label">Blog content</label>
+                              <div className="flex items-center justify-between gap-2 mb-2">
+                                <label className="form-label mb-0">Blog content</label>
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] inline-flex items-center gap-1.5"
+                                  onClick={() => handleBlogEnhanceWithAi(item.id)}
+                                  disabled={blogAiLoading}
+                                >
+                                  {blogAiLoading && (blogAiItemId === item.id || blogAiEnhancingId === item.id) ? (
+                                    <>
+                                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                      Generating...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <i className="ri-magic-line text-[1rem]" />
+                                      Enhance with AI
+                                    </>
+                                  )}
+                                </button>
+                              </div>
                               <div className="border border-defaultborder rounded-md overflow-hidden">
                                 <TiptapEditor
                                   content={item.blogContent ?? ''}
-                                  placeholder="Write your blog post..."
-                                  onChange={(html) =>
+                                  placeholder="Write your blog post or click Enhance with AI to generate from a title and keywords..."
+                                  onChange={(html) => {
                                     handlePlaylistItemChange(item.id, 'blogContent', html)
-                                  }
+                                    scheduleBlogSuggestionCheck(item.id, html)
+                                  }}
                                 />
                               </div>
+                              {(() => {
+                                const suggestion = blogSuggestionsByItem[item.id]
+                                if (!suggestion) return null
+                                if (suggestion.status === 'loading') {
+                                  return (
+                                    <div className="mt-2 flex items-center gap-2 text-[0.8125rem] text-[#6a6f73] dark:text-white/50">
+                                      <span className="inline-block w-3.5 h-3.5 border-2 border-defaultborder border-t-primary rounded-full animate-spin" />
+                                      Checking spelling and style…
+                                    </div>
+                                  )
+                                }
+                                if (suggestion.status === 'done') {
+                                  return (
+                                    <div className="mt-2 p-3 rounded-md border border-defaultborder bg-black/5 dark:bg-white/5">
+                                      <div className="font-medium text-[0.8125rem] mb-2">
+                                        AI suggestions – choose what to apply
+                                      </div>
+                                      {suggestion.edits.length > 0 ? (
+                                        <div className="space-y-3">
+                                          {suggestion.edits.map((edit, i) => (
+                                            <div
+                                              key={i}
+                                              className="flex flex-wrap items-center gap-2 text-[0.8125rem]"
+                                            >
+                                              <span
+                                                className="inline-flex items-center px-2 py-1 rounded-md bg-danger/15 text-danger border border-danger/30"
+                                                title="Current text"
+                                              >
+                                                {edit.original}
+                                              </span>
+                                              <i className="ri-arrow-right-line text-[#8c9097] dark:text-white/50" />
+                                              <span
+                                                className="inline-flex items-center px-2 py-1 rounded-md bg-success/15 text-success border border-success/30"
+                                                title="Suggestion"
+                                              >
+                                                {edit.suggested}
+                                              </span>
+                                              {edit.reason && (
+                                                <span className="text-[#8c9097] dark:text-white/50 italic">
+                                                  ({edit.reason})
+                                                </span>
+                                              )}
+                                              <span className="flex gap-1 ml-1">
+                                                <button
+                                                  type="button"
+                                                  className="ti-btn ti-btn-primary !py-0.5 !px-1.5 !text-[0.7rem]"
+                                                  onClick={() =>
+                                                    handleBlogAcceptEdit(
+                                                      item.id,
+                                                      i,
+                                                      item.blogContent ?? '',
+                                                    )
+                                                  }
+                                                >
+                                                  Accept
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  className="ti-btn ti-btn-light !py-0.5 !px-1.5 !text-[0.7rem]"
+                                                  onClick={() => handleBlogIgnoreEdit(item.id, i)}
+                                                >
+                                                  Ignore
+                                                </button>
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/50">
+                                          No suggestions. Text looks good.
+                                        </p>
+                                      )}
+                                    </div>
+                                  )
+                                }
+                                return null
+                              })()}
                             </div>
                           )}
 
@@ -1698,6 +2302,195 @@ const CreateModule = () => {
                 onClick={() => setQuizModalItemId(null)}
               >
                 Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blog: Generate from title & keywords (when content is empty) */}
+      {blogAiItemId && blogAiItem && blogAiItem.type === 'blog' && !stripHtml(blogAiItem.blogContent ?? '').length && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => {
+            setBlogAiItemId(null)
+            setBlogAiGenerateTitle('')
+            setBlogAiGenerateKeywords('')
+            setBlogAiWordCount(500)
+            setBlogAiNumberOfBlogs(1)
+            setBlogAiTitleMode('single')
+            setBlogAiTitlesText('')
+            setBlogAiGenerateFormat('neutral')
+          }}
+        >
+          <div
+            className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+              <h5 className="font-semibold mb-0 flex items-center gap-2">
+                <i className="ri-magic-line text-primary" />
+                Generate blog with AI
+              </h5>
+              <button
+                type="button"
+                className="ti-btn ti-btn-light !py-1 !px-2"
+                onClick={() => {
+                  setBlogAiItemId(null)
+                  setBlogAiGenerateTitle('')
+                  setBlogAiGenerateKeywords('')
+                  setBlogAiWordCount(500)
+                  setBlogAiNumberOfBlogs(1)
+                  setBlogAiTitleMode('single')
+                  setBlogAiTitlesText('')
+                  setBlogAiGenerateFormat('neutral')
+                }}
+              >
+                <i className="ri-close-line text-lg" />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/50">
+                Generate one or more blogs. Use a single theme (AI will create a distinct title per blog) or enter each title yourself.
+              </p>
+              <div>
+                <label className="form-label">Blog tone</label>
+                <select
+                  className="form-control w-full max-w-xs"
+                  value={blogAiGenerateFormat}
+                  onChange={(e) => setBlogAiGenerateFormat(e.target.value as BlogFormat)}
+                >
+                  {BLOG_FORMAT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">Number of blogs</label>
+                <input
+                  type="number"
+                  className="form-control w-24"
+                  min={1}
+                  max={10}
+                  value={blogAiNumberOfBlogs}
+                  onChange={(e) => setBlogAiNumberOfBlogs(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+                />
+              </div>
+              <div>
+                <label className="form-label">Title mode</label>
+                <div className="flex gap-4">
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="blogAiTitleMode"
+                      checked={blogAiTitleMode === 'single'}
+                      onChange={() => setBlogAiTitleMode('single')}
+                      className="form-check-input"
+                    />
+                    <span className="text-[0.8125rem]">Single theme (AI varies title for each blog)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="blogAiTitleMode"
+                      checked={blogAiTitleMode === 'separate'}
+                      onChange={() => setBlogAiTitleMode('separate')}
+                      className="form-check-input"
+                    />
+                    <span className="text-[0.8125rem]">Separate title per blog</span>
+                  </label>
+                </div>
+              </div>
+              {blogAiTitleMode === 'single' ? (
+                <div>
+                  <label className="form-label">Theme / base title *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Introduction to React Hooks"
+                    value={blogAiGenerateTitle}
+                    onChange={(e) => setBlogAiGenerateTitle(e.target.value)}
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="form-label">Blog titles (one per line) *</label>
+                  <textarea
+                    className="form-control"
+                    rows={Math.min(10, Math.max(2, blogAiNumberOfBlogs))}
+                    placeholder={'First blog title\nSecond blog title\n...'}
+                    value={blogAiTitlesText}
+                    onChange={(e) => setBlogAiTitlesText(e.target.value)}
+                  />
+                  <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50 mt-1">
+                    Enter at least {blogAiNumberOfBlogs} title(s), one per line.
+                  </p>
+                </div>
+              )}
+              <div>
+                <label className="form-label">Keywords (comma-separated)</label>
+                <textarea
+                  className="form-control"
+                  rows={2}
+                  placeholder="e.g. React, hooks, useState, useEffect"
+                  value={blogAiGenerateKeywords}
+                  onChange={(e) => setBlogAiGenerateKeywords(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="form-label">Approx. word count per blog</label>
+                <input
+                  type="number"
+                  className="form-control w-32"
+                  min={100}
+                  max={2000}
+                  step={100}
+                  value={blogAiWordCount}
+                  onChange={(e) => setBlogAiWordCount(Number(e.target.value) || 500)}
+                />
+              </div>
+            </div>
+            <div className="p-4 border-t border-defaultborder flex justify-end gap-2">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light"
+                onClick={() => {
+                  setBlogAiItemId(null)
+                  setBlogAiGenerateTitle('')
+                  setBlogAiGenerateKeywords('')
+                  setBlogAiWordCount(500)
+                  setBlogAiNumberOfBlogs(1)
+                  setBlogAiTitleMode('single')
+                  setBlogAiTitlesText('')
+                  setBlogAiGenerateFormat('neutral')
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary-full"
+                onClick={handleBlogGenerateFromTitle}
+                disabled={
+                  blogAiLoading ||
+                  (blogAiTitleMode === 'single' && !blogAiGenerateTitle.trim()) ||
+                  (blogAiTitleMode === 'separate' &&
+                    blogAiTitlesText.split('\n').map((s) => s.trim()).filter(Boolean).length < blogAiNumberOfBlogs)
+                }
+              >
+                {blogAiLoading ? (
+                  <>
+                    <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin me-1.5" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-magic-line me-1" />
+                    Generate blog
+                  </>
+                )}
               </button>
             </div>
           </div>

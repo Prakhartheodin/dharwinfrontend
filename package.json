@@ -12,13 +12,13 @@
     "sass-min": "sass ./public/assets/scss/:./public/assets/css/ --style compressed"
   },
   "dependencies": {
-    "axios": "^1.7.0",
     "@emotion/styled": "^11.11.5",
     "@fullcalendar/core": "6.1.20",
     "@fullcalendar/daygrid": "^6.1.20",
     "@fullcalendar/interaction": "^6.1.20",
     "@fullcalendar/react": "^6.1.20",
     "@fullcalendar/timegrid": "^6.1.20",
+    "@google/generative-ai": "^0.24.1",
     "@material/slider": "^14.0.0",
     "@mui/icons-material": "^5.15.15",
     "@mui/material": "^5.15.15",
@@ -37,6 +37,7 @@
     "@types/react-simple-maps": "^3.0.4",
     "apexcharts": "^4.0.0",
     "autoprefixer": "^10.4.19",
+    "axios": "^1.7.0",
     "chart.js": "^4.4.2",
     "date-fns": "^3.6.0",
     "echarts": "^5.5.0",

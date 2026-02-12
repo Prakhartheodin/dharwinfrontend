@@ -1,6 +1,7 @@
 
 /**@type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig = {
   output: "export",
   reactStrictMode: true,
@@ -15,6 +16,12 @@ const nextConfig = {
   },
   typescript: {
     ignoreBuildErrors: true,
+  },
+  // In dev, proxy /api/v1 to backend so cookies are same-origin and survive refresh
+  async rewrites() {
+    if (isProd) return [];
+    const backend = process.env.NEXT_PUBLIC_API_BACKEND_URL || "http://localhost:3000";
+    return [{ source: "/api/v1/:path*", destination: `${backend}/v1/:path*` }];
   },
 };
 

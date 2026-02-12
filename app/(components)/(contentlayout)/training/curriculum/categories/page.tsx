@@ -322,7 +322,7 @@ const TrainingCategories = () => {
         accessor: 'dateCreated',
       },
       {
-        Header: 'Courses',
+        Header: 'Modules',
         accessor: 'courses',
         Cell: ({ row }: any) => (
           <span className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full text-xs font-medium">

@@ -1,32 +1,32 @@
-@import "../public/assets/css/style.css";
+@use "../public/assets/css/style.css" as *;
 
- //Packages css
- @import "filepond/dist/filepond.min.css"; //file pond css
- @import "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css"; //dependencies plugin css for react file pond package
- @import "react-datepicker/dist/react-datepicker.css"; //(datepicker)
- 
-@import 'react-range-slider-input/dist/style.css'; //(rangeslider)
+// Packages css
+@use "filepond/dist/filepond.min.css" as *; // file pond css
+@use "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" as *; // dependencies plugin css for react file pond package
+@use "react-datepicker/dist/react-datepicker.css" as *; // (datepicker)
 
-@import "@simonwep/pickr/dist/themes/classic.min.css";
-@import "@simonwep/pickr/dist/themes/monolith.min.css";
-@import "@simonwep/pickr/dist/themes/nano.min.css";
+@use "react-range-slider-input/dist/style.css" as *; // (rangeslider)
 
-@import "simplebar-react/dist/simplebar.min.css";
+@use "@simonwep/pickr/dist/themes/classic.min.css" as *;
+@use "@simonwep/pickr/dist/themes/monolith.min.css" as *;
+@use "@simonwep/pickr/dist/themes/nano.min.css" as *;
 
-@import 'swiper/css';
-@import 'swiper/css/pagination';
-@import 'swiper/css/navigation';
-@import 'swiper/css/effect-coverflow';
-@import 'swiper/css/thumbs';
-@import 'swiper/css/effect-flip';
-@import 'swiper/css/effect-fade';
-@import 'swiper/css/effect-cube';
-@import "swiper/css/effect-cards"; // swiper effect-cards
-@import "swiper/css/zoom"; //Swipper Zoom css
-@import 'swiper/css/scrollbar';
-@import 'swiper/css/free-mode';
+@use "simplebar-react/dist/simplebar.min.css" as *;
 
-@import "react-color-palette/css";
+@use "swiper/css" as *;
+@use "swiper/css/pagination" as *;
+@use "swiper/css/navigation" as *;
+@use "swiper/css/effect-coverflow" as *;
+@use "swiper/css/thumbs" as *;
+@use "swiper/css/effect-flip" as *;
+@use "swiper/css/effect-fade" as *;
+@use "swiper/css/effect-cube" as *;
+@use "swiper/css/effect-cards" as *; // swiper effect-cards
+@use "swiper/css/zoom" as *; // Swiper Zoom css
+@use "swiper/css/scrollbar" as *;
+@use "swiper/css/free-mode" as *;
+
+@use "react-color-palette/css" as *;
 
   @media (max-width: 991.98px) {
     [data-toggled="open"] {
