@@ -230,6 +230,9 @@ const Students = () => {
   const [previewStudent, setPreviewStudent] = useState<any>(null)
   const [viewStudent, setViewStudent] = useState<studentsApi.Student | null>(null)
   const [viewStudentLoading, setViewStudentLoading] = useState(false)
+  const [usersWithoutProfile, setUsersWithoutProfile] = useState<studentsApi.UserWithoutStudentProfile[]>([])
+  const [loadingUsersWithoutProfile, setLoadingUsersWithoutProfile] = useState(false)
+  const [creatingProfileForUserId, setCreatingProfileForUserId] = useState<string | null>(null)
   const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareStudent, setShareStudent] = useState<any>(null)
@@ -541,6 +544,58 @@ const Students = () => {
   useEffect(() => {
     fetchStudents()
   }, [fetchStudents])
+
+  const fetchUsersWithoutProfile = useCallback(async () => {
+    setLoadingUsersWithoutProfile(true)
+    try {
+      const res = await studentsApi.getUsersWithoutStudentProfile()
+      setUsersWithoutProfile(res.results ?? [])
+    } catch {
+      setUsersWithoutProfile([])
+    } finally {
+      setLoadingUsersWithoutProfile(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUsersWithoutProfile()
+  }, [fetchUsersWithoutProfile])
+
+  const handleCreateStudentFromUser = useCallback(async (userId: string) => {
+    setCreatingProfileForUserId(userId)
+    try {
+      await studentsApi.createStudentFromUser(userId)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Profile created',
+        text: 'This user will now appear in course assignment.',
+        toast: true,
+        position: 'top-end',
+        timer: 3000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      await fetchUsersWithoutProfile()
+      if (fetchStudentsRef.current) await fetchStudentsRef.current()
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to create student profile.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Failed to create profile',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } finally {
+      setCreatingProfileForUserId(null)
+    }
+  }, [fetchUsersWithoutProfile])
 
   // Delete a single student
   const handleDelete = useCallback(async (id: string) => {
@@ -1219,7 +1274,32 @@ const Students = () => {
   return (
     <Fragment>
       <Seo title="Students" />
-  
+
+      {!loadingUsersWithoutProfile && usersWithoutProfile.length > 0 && (
+        <div className="mb-4 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
+          <p className="text-[0.875rem] font-medium text-defaulttextcolor dark:text-white mb-2">
+            The following users have the <strong>Student</strong> role but no Training student profile. They will not appear in course assignment until you create a profile.
+          </p>
+          <ul className="list-none p-0 m-0 flex flex-wrap gap-2">
+            {usersWithoutProfile.map((u) => (
+              <li key={u.id} className="inline-flex items-center gap-2 rounded-md bg-bodybg dark:bg-white/10 border border-defaultborder px-3 py-2">
+                <span className="text-[0.8125rem] text-defaulttextcolor dark:text-white">
+                  {u.name} ({u.email})
+                </span>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-sm ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+                  onClick={() => handleCreateStudentFromUser(u.id)}
+                  disabled={creatingProfileForUserId === u.id}
+                >
+                  {creatingProfileForUserId === u.id ? 'Creating…' : 'Create student profile'}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">

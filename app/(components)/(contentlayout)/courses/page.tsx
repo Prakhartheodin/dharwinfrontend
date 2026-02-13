@@ -2,12 +2,28 @@
 
 import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useState, useMemo } from "react"
+import React, { Fragment, useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { MY_COURSES } from "@/shared/data/training/courses-data"
-import type { Course } from "@/shared/data/training/courses-data"
+import {
+  getMyStudent,
+  listStudentCourses,
+  mapStudentCourseToCard,
+  type StudentCourseListItem,
+} from "@/shared/lib/api/student-courses"
 
 const COURSES_PER_PAGE = 9
+const PLACEHOLDER_IMAGE = "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400&h=220&fit=crop"
+
+export type CourseCardItem = {
+  id: string
+  title: string
+  instructor: string
+  thumbnail: string
+  progress: number
+  category?: string
+  status?: string
+  rating?: number
+}
 
 export default function CandidateCoursesPage() {
   const [searchQuery, setSearchQuery] = useState("")
@@ -20,17 +36,60 @@ export default function CandidateCoursesPage() {
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
-  const categories = useMemo(() => {
-    const set = new Set(MY_COURSES.map((c) => c.category).filter(Boolean))
-    return Array.from(set) as string[]
-  }, [])
-  const instructors = useMemo(() => {
-    const set = new Set(MY_COURSES.map((c) => c.instructor))
-    return Array.from(set)
+  const [courses, setCourses] = useState<CourseCardItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [noStudent, setNoStudent] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      setNoStudent(false)
+      try {
+        const student = await getMyStudent()
+        if (cancelled) return
+        const res = await listStudentCourses(student.id, { limit: 200 })
+        if (cancelled) return
+        const mapped = res.results.map((item: StudentCourseListItem) => {
+          const c = mapStudentCourseToCard(item)
+          return {
+            ...c,
+            thumbnail: c.thumbnail || PLACEHOLDER_IMAGE,
+            rating: undefined,
+          } as CourseCardItem
+        })
+        setCourses(mapped)
+      } catch (e: unknown) {
+        if (cancelled) return
+        const err = e as { response?: { status?: number } }
+        if (err.response?.status === 404) {
+          setNoStudent(true)
+          setCourses([])
+        } else {
+          setError(err instanceof Error ? err.message : "Failed to load courses")
+          setCourses([])
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
   }, [])
 
+  const categories = useMemo(() => {
+    const set = new Set(courses.map((c) => c.category).filter(Boolean))
+    return Array.from(set) as string[]
+  }, [courses])
+  const instructors = useMemo(() => {
+    const set = new Set(courses.map((c) => c.instructor))
+    return Array.from(set)
+  }, [courses])
+
   const filteredCourses = useMemo(() => {
-    let list = [...MY_COURSES]
+    let list = [...courses]
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       list = list.filter(
@@ -47,7 +106,7 @@ export default function CandidateCoursesPage() {
     if (sortBy === "recent") list = [...list].reverse()
     if (sortBy === "title") list = [...list].sort((a, b) => a.title.localeCompare(b.title))
     return list
-  }, [searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
+  }, [courses, searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE))
   const paginatedCourses = useMemo(() => {
@@ -169,6 +228,31 @@ export default function CandidateCoursesPage() {
         </div>
       </div>
 
+      {loading && (
+        <div className="flex justify-center py-12">
+          <div className="ti-btn ti-btn-primary ti-btn-loading">Loading courses...</div>
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-danger dark:text-danger mb-6">
+          {error}
+        </div>
+      )}
+      {noStudent && !loading && (
+        <div className="rounded-lg border border-defaultborder bg-bodybg dark:bg-white/5 px-4 py-6 text-center text-[#6a6f73] dark:text-white/60 mb-6">
+          You don&apos;t have a student profile yet. Contact your administrator to get access to courses.
+        </div>
+      )}
+      {!loading && !error && !noStudent && filteredCourses.length === 0 && (
+        <div className="rounded-lg border border-defaultborder bg-bodybg dark:bg-white/5 px-4 py-10 text-center mb-6">
+          <p className="text-[#6a6f73] dark:text-white/60 text-[0.9375rem] mb-1">
+            {courses.length === 0
+              ? "No courses assigned yet. Contact your administrator to get access to courses."
+              : "No courses match your filters. Try changing filters or search."}
+          </p>
+        </div>
+      )}
+      {!loading && !error && !noStudent && filteredCourses.length > 0 && (
       <section className="grid grid-cols-12 gap-4 xl:gap-6 mb-6">
         {paginatedCourses.map((course) => (
           <CourseCard
@@ -180,8 +264,9 @@ export default function CandidateCoursesPage() {
           />
         ))}
       </section>
+      )}
 
-      {totalPages > 1 && (
+      {!loading && !error && !noStudent && totalPages > 1 && (
         <div className="flex justify-center items-center gap-2 pt-6">
           <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="ti-btn ti-btn-sm ti-btn-outline-secondary !min-w-[2rem]">
             <i className="ti ti-chevron-left" />
@@ -198,23 +283,30 @@ export default function CandidateCoursesPage() {
   )
 }
 
+/** Valid MongoDB ObjectId (24 hex chars) – required for course detail/learn URLs. */
+function isValidCourseId(id: string): boolean {
+  return typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id.trim())
+}
+
 function CourseCard({
   course,
   menuOpen,
   onMenuToggle,
   onMenuClose,
 }: {
-  course: Course
+  course: CourseCardItem
   menuOpen: boolean
   onMenuToggle: () => void
   onMenuClose: () => void
 }) {
   const router = useRouter()
-  const detailHref = `/courses/${course.id}/`
+  const canNavigate = isValidCourseId(course.id)
+  const detailHref = canNavigate ? `/courses/${course.id}/` : "/courses/"
   const openCourse = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     e.preventDefault()
-    router.push(detailHref)
+    if (canNavigate) router.push(detailHref)
+    else router.push("/courses/")
   }
   return (
     <div className="xl:col-span-4 lg:col-span-4 md:col-span-6 col-span-12 relative group">
@@ -222,7 +314,7 @@ function CourseCard({
         role="button"
         tabIndex={0}
         onClick={openCourse}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); router.push(detailHref); } }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (canNavigate) router.push(detailHref); else router.push("/courses/"); } }}
         className="bg-bodybg dark:bg-white/5 border border-defaultborder dark:border-white/10 h-full rounded-lg overflow-hidden shadow-sm hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5 transition-all cursor-pointer"
       >
         <div className="relative w-full aspect-[40/22] bg-defaultborder/20 overflow-hidden">
