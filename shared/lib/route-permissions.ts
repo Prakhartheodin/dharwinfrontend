@@ -8,6 +8,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // ATS
   "/ats/jobs": "ats.jobs:",
   "/ats/candidates": "ats.candidates:",
+  "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",
   "/ats/offers-placement": "ats.offers:",
@@ -67,4 +68,23 @@ export function hasPermissionForPath(
   requiredPrefix: string
 ): boolean {
   return userPermissions.some((p) => p.startsWith(requiredPrefix));
+}
+
+/** Permission prefix for the candidate-only courses section. */
+export const COURSES_PERMISSION_PREFIX = "candidate.courses:";
+
+/**
+ * Returns true if the user can access the /courses section:
+ * - has any permission starting with candidate.courses:, OR
+ * - has a role whose name is "Candidate" or "candidate" (so candidates see Courses even without that permission).
+ */
+export function canAccessCourses(
+  userPermissions: string[],
+  roleNames: string[]
+): boolean {
+  if (hasPermissionForPath(userPermissions, COURSES_PERMISSION_PREFIX)) return true;
+  const hasCandidateRole = roleNames.some(
+    (name) => name?.toLowerCase() === "candidate"
+  );
+  return hasCandidateRole;
 }

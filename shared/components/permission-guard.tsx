@@ -5,6 +5,8 @@ import { ROUTES } from "@/shared/lib/constants";
 import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
+  canAccessCourses,
+  COURSES_PERMISSION_PREFIX,
 } from "@/shared/lib/route-permissions";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -30,17 +32,19 @@ export function PermissionGuard({
   const router = useRouter();
   const { user } = useAuth();
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const [roleNames, setRoleNames] = useState<string[]>([]);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
   const targetRedirect =
     redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
 
-  // Load permissions from user's roleIds
+  // Load permissions and role names from user's roleIds
   useEffect(() => {
     const load = async () => {
       if (!user?.roleIds?.length) {
         setUserPermissions([]);
+        setRoleNames([]);
         setPermissionsLoaded(true);
         return;
       }
@@ -49,12 +53,17 @@ export function PermissionGuard({
         const roles = (res.results ?? []) as Role[];
         const roleMap = new Map(roles.map((r) => [r.id, r]));
         const perms = new Set<string>();
+        const names: string[] = [];
         (user.roleIds as string[]).forEach((id) => {
-          roleMap.get(id)?.permissions?.forEach((p) => perms.add(p));
+          const role = roleMap.get(id);
+          role?.permissions?.forEach((p) => perms.add(p));
+          if (role?.name) names.push(role.name);
         });
         setUserPermissions(Array.from(perms));
+        setRoleNames(names);
       } catch {
         setUserPermissions([]);
+        setRoleNames([]);
       } finally {
         setPermissionsLoaded(true);
       }
@@ -73,8 +82,13 @@ export function PermissionGuard({
       setAllowed(true);
       return;
     }
+    // Courses: allow if user has candidate.courses:* OR has Candidate role
+    if (required === COURSES_PERMISSION_PREFIX) {
+      setAllowed(canAccessCourses(userPermissions, roleNames));
+      return;
+    }
     setAllowed(hasPermissionForPath(userPermissions, required));
-  }, [permissionsLoaded, pathname, userPermissions]);
+  }, [permissionsLoaded, pathname, userPermissions, roleNames]);
 
   // Redirect when not allowed
   useEffect(() => {

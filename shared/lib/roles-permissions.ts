@@ -16,6 +16,13 @@ export const PERMISSION_SECTIONS: {
     ],
   },
   {
+    id: "candidate",
+    label: "Candidate",
+    features: [
+      { id: "courses", label: "Courses" },
+    ],
+  },
+  {
     id: "ats",
     label: "ATS",
     features: [

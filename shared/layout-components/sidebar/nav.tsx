@@ -96,6 +96,16 @@ export const MenuItems: any = [
       },
 
       {
+    icon: TrainingCurriculumIcon,
+    title: "Courses",
+        type: "link",
+    path: "/courses",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
     icon: RecruitersIcon,
     title: "Recruiters",
         type: "link",

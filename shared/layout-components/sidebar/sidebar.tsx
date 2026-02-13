@@ -16,6 +16,8 @@ import {
 	PATH_PERMISSION_PREFIX,
 	hasPermissionForPath,
 	getRequiredPermissionForPath,
+	canAccessCourses,
+	COURSES_PERMISSION_PREFIX,
 } from "@/shared/lib/route-permissions";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
@@ -73,6 +75,14 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		[]
 	);
 
+	const roleNames = useMemo(() => {
+		if (!user?.roleIds?.length || !roles.length) return [];
+		const roleMap = new Map(roles.map((r) => [r.id, r]));
+		return (user.roleIds as string[])
+			.map((id) => roleMap.get(id)?.name)
+			.filter((n): n is string => Boolean(n));
+	}, [user?.roleIds, roles]);
+
 	const isPathAllowed = (menuPath?: string) => {
 		// Until permissions are loaded, hide protected links to avoid flashes
 		// of unauthorized items. Unprotected (no prefix) remain visible.
@@ -89,6 +99,10 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		if (!menuPath) return true;
 		const requiredPrefix = getRequiredPermissionForPath(menuPath);
 		if (!requiredPrefix) return true;
+		// Courses: allow if user has candidate.courses:* OR has Candidate role
+		if (requiredPrefix === COURSES_PERMISSION_PREFIX) {
+			return canAccessCourses(userPermissions, roleNames);
+		}
 		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
