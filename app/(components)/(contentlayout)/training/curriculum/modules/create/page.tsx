@@ -3,7 +3,6 @@
 import React, { Fragment, useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
@@ -14,6 +13,8 @@ import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import * as categoriesApi from '@/shared/lib/api/categories'
 import * as studentsApi from '@/shared/lib/api/students'
 import * as mentorsApi from '@/shared/lib/api/mentors'
+import * as blogApi from '@/shared/lib/api/blog'
+import type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -29,173 +30,7 @@ const blogGeneratorLogger = {
   },
 }
 
-function toSimpleHtml(text: string): string {
-  return text
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .map((p) => `<p>${p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`)
-    .join('')
-}
-
-async function generateBlogFromGemini(params: {
-  apiKey: string
-  mode: 'enhance' | 'generate'
-  existingContent?: string
-  title?: string
-  keywords?: string
-  wordCount?: number
-  format?: BlogFormat
-}): Promise<string> {
-  const { apiKey, mode, existingContent = '', title = '', keywords = '', wordCount = 500, format = 'neutral' } = params
-  blogGeneratorLogger.info('generateBlogFromGemini start', { mode, title: title.slice(0, 50), wordCount, format })
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0.8,
-      topP: 0.95,
-      topK: 64,
-      maxOutputTokens: 8192,
-    },
-  })
-  if (mode === 'enhance') {
-    const text = (existingContent || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-    if (!text) throw new Error('No content to enhance. Type something or use Generate from title & keywords.')
-    blogGeneratorLogger.info('enhance: calling Gemini', { inputLength: text.length })
-    const prompt = `You are an expert editor. Improve and expand this blog content. Keep the same topic. Keep the tone ${format}. Return only the enhanced blog text, no meta commentary. Use clear paragraphs.\n\n---\n${text}`
-    const result = await model.generateContent(prompt)
-    const output = result.response.text()
-    const html = toSimpleHtml(output)
-    blogGeneratorLogger.info('enhance: done', { outputLength: output.length, htmlLength: html.length })
-    return html
-  }
-  if (mode === 'generate') {
-    if (!title.trim()) throw new Error('Blog title is required.')
-    blogGeneratorLogger.info('generate: calling Gemini', { title: title.slice(0, 80) })
-    const prompt = `Generate a comprehensive, engaging blog post with the following details:
-- Title: ${title}
-- Keywords to incorporate: ${keywords || 'general interest'}
-- Approximate length: ${wordCount} words
-- Tone: ${format}
-
-Make the content original, informative, and suitable for an online audience. Write in a ${format} tone. Use clear paragraphs. Return only the blog body text, no title or meta commentary.`
-    const result = await model.generateContent(prompt)
-    const output = result.response.text()
-    const html = toSimpleHtml(output)
-    blogGeneratorLogger.info('generate: done', { outputLength: output.length, htmlLength: html.length })
-    return html
-  }
-  blogGeneratorLogger.error('generateBlogFromGemini: invalid mode', { mode })
-  throw new Error('Invalid mode')
-}
-
-/** Generate one blog from a theme (for multi-blog: AI creates a distinct title + content for this variation). */
-async function generateBlogWithThemeFromGemini(params: {
-  apiKey: string
-  theme: string
-  index: number
-  total: number
-  keywords?: string
-  wordCount?: number
-  format?: BlogFormat
-}): Promise<{ title: string; content: string }> {
-  const { apiKey, theme, index, total, keywords = '', wordCount = 500, format = 'neutral' } = params
-  blogGeneratorLogger.info('generateBlogWithThemeFromGemini start', { theme: theme.slice(0, 50), index: index + 1, total, format })
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0.8,
-      topP: 0.95,
-      topK: 64,
-      maxOutputTokens: 8192,
-    },
-  })
-  const prompt = `You are writing blog ${index + 1} of ${total} on the same overall theme.
-Theme: ${theme}
-Keywords to incorporate: ${keywords || 'general interest'}
-Approximate length: ${wordCount} words
-Tone: ${format}
-
-Create a distinct, specific title for this blog (do not repeat the theme word-for-word), then write the full post in a ${format} tone. Reply in this exact format:
-- First line: TITLE: your blog title here
-- Then a blank line
-- Then the full blog body in clear paragraphs (no extra labels).
-
-Return only those two parts: the TITLE line and the body.`
-  const result = await model.generateContent(prompt)
-  const output = result.response.text()
-  const titleMatch = output.match(/TITLE:\s*(.+?)(?:\n|$)/i)
-  const title = titleMatch ? titleMatch[1].trim() : `Blog ${index + 1}`
-  const bodyStart = output.indexOf('\n\n')
-  const body = bodyStart >= 0 ? output.slice(bodyStart).trim() : output.replace(/^TITLE:.*/i, '').trim()
-  const content = toSimpleHtml(body)
-  blogGeneratorLogger.info('generateBlogWithThemeFromGemini done', { index: index + 1, total, title: title.slice(0, 50), contentLength: content.length })
-  return { title, content }
-}
-
-export type BlogSuggestionEdit = {
-  original: string
-  suggested: string
-  reason: string
-}
-
-/** Real-time suggestions: minimal edits only (typos, spelling, small improvements). Returns per-edit so user can accept/ignore each. */
-async function getBlogSuggestionsFromGemini(params: {
-  apiKey: string
-  content: string
-  format: BlogFormat
-}): Promise<{ edits: BlogSuggestionEdit[] }> {
-  const { apiKey, content, format } = params
-  const plain = (content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!plain) return { edits: [] }
-  blogGeneratorLogger.info('getBlogSuggestionsFromGemini start', { format, contentLength: plain.length })
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: {
-      temperature: 0.3,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 8192,
-    },
-  })
-  const prompt = `You are an expert editor. Suggest only MINUTE, targeted improvements: fix typos, spelling, and obvious grammar; suggest small word-choice or clarity improvements. Do NOT rewrite whole sentences or change every phrase. Keep the tone ${format}.
-
-Return ONLY a single JSON object, no other text:
-{"edits": [{"original": "exact phrase as it appears in the text", "suggested": "replacement", "reason": "spelling"}]}
-
-Rules:
-- Each "original" must be an exact substring of the user's text (copy it character-for-character).
-- Make 2-8 small edits maximum. Prefer quality over quantity.
-- reason: one short word like "spelling", "grammar", "clarity", "word choice".
-- Escape quotes in JSON strings (use \\" for quotes inside strings).
-
-Input text:
-
----
-${plain}
----`
-  const result = await model.generateContent(prompt)
-  const output = result.response.text()
-  try {
-    const raw = output.replace(/```json\s?/gi, '').replace(/```\s?/g, '').trim()
-    const parsed = JSON.parse(raw) as { edits?: Array<{ original?: string; suggested?: string; reason?: string }> }
-    const edits: BlogSuggestionEdit[] = (Array.isArray(parsed.edits) ? parsed.edits : [])
-      .filter((e) => typeof e.original === 'string' && typeof e.suggested === 'string')
-      .map((e) => ({
-        original: String(e.original),
-        suggested: String(e.suggested),
-        reason: typeof e.reason === 'string' ? e.reason : 'improvement',
-      }))
-    blogGeneratorLogger.info('getBlogSuggestionsFromGemini done', { editsCount: edits.length })
-    return { edits }
-  } catch {
-    blogGeneratorLogger.warn('getBlogSuggestionsFromGemini: JSON parse failed', { outputSlice: output.slice(0, 200) })
-    return { edits: [] }
-  }
-}
+export type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 
 type PlaylistItemType = 'video' | 'youtube' | 'quiz' | 'pdf' | 'blog' | 'test'
 
@@ -693,8 +528,6 @@ const CreateModule = () => {
       const content = blogContentRef.current[itemId] ?? ''
       const plainLen = stripHtml(content).length
       if (plainLen < 40) return
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-      if (!apiKey) return
       const item = formDataRef.current.playlist.find((p) => p.id === itemId)
       if (!item || item.type !== 'blog') return
       const format = (item.blogFormat ?? 'neutral') as BlogFormat
@@ -703,7 +536,7 @@ const CreateModule = () => {
         [itemId]: { status: 'loading', edits: [] },
       }))
       pendingSuggestionContentRef.current[itemId] = content
-      getBlogSuggestionsFromGemini({ apiKey, content, format })
+      blogApi.getBlogSuggestions({ content, format })
         .then((result) => {
           if (pendingSuggestionContentRef.current[itemId] !== content) return
           const spellingReasons = ['spelling', 'typo', 'typos']
@@ -802,17 +635,10 @@ const CreateModule = () => {
     const hasContent = stripHtml(item.blogContent ?? '').length > 0
     blogGeneratorLogger.info('Enhance with AI clicked', { itemId, hasContent })
     if (hasContent) {
-      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-      if (!apiKey) {
-        blogGeneratorLogger.error('NEXT_PUBLIC_GEMINI_API_KEY not set')
-        alert('NEXT_PUBLIC_GEMINI_API_KEY is not configured. Add it to .env.local.')
-        return
-      }
       setBlogAiEnhancingId(itemId)
       setBlogAiLoading(true)
       try {
-        const content = await generateBlogFromGemini({
-          apiKey,
+        const content = await blogApi.generateBlog({
           mode: 'enhance',
           existingContent: item.blogContent ?? '',
           format: (item.blogFormat ?? 'neutral') as BlogFormat,
@@ -839,12 +665,6 @@ const CreateModule = () => {
   const handleBlogGenerateFromTitle = async () => {
     if (!blogAiItemId || !blogAiItem) {
       blogGeneratorLogger.warn('handleBlogGenerateFromTitle: no blogAiItemId or blogAiItem')
-      return
-    }
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-    if (!apiKey) {
-      blogGeneratorLogger.error('NEXT_PUBLIC_GEMINI_API_KEY not set')
-      alert('NEXT_PUBLIC_GEMINI_API_KEY is not configured. Add it to .env.local.')
       return
     }
     const numBlogs = Math.min(10, Math.max(1, blogAiNumberOfBlogs))
@@ -881,8 +701,7 @@ const CreateModule = () => {
       if (blogAiTitleMode === 'single') {
         for (let i = 0; i < numBlogs; i++) {
           blogGeneratorLogger.info('Generating blog (theme)', { index: i + 1, total: numBlogs })
-          const result = await generateBlogWithThemeFromGemini({
-            apiKey,
+          const result = await blogApi.generateBlogFromTheme({
             theme: blogAiGenerateTitle,
             index: i,
             total: numBlogs,
@@ -896,8 +715,7 @@ const CreateModule = () => {
         for (let i = 0; i < numBlogs; i++) {
           const title = titlesFromLines[i] || `Blog ${i + 1}`
           blogGeneratorLogger.info('Generating blog (separate title)', { index: i + 1, total: numBlogs, title: title.slice(0, 50) })
-          const content = await generateBlogFromGemini({
-            apiKey,
+          const content = await blogApi.generateBlog({
             mode: 'generate',
             title,
             keywords: blogAiGenerateKeywords,
