@@ -3,7 +3,8 @@
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig = {
-  output: "export",
+  // Static export only for production build; in dev, dynamic routes (e.g. /courses/[id]) work without pre-generation
+  ...(isProd ? { output: "export" } : {}),
   reactStrictMode: true,
   trailingSlash: true,
   // basePath: isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
