@@ -65,6 +65,12 @@ export interface Student {
   updatedAt: string;
 }
 
+export interface UserWithoutStudentProfile {
+  id: string;
+  name: string;
+  email: string;
+}
+
 export interface StudentsListResponse {
   results: Student[];
   page: number;
@@ -88,6 +94,22 @@ export async function listStudents(params?: ListStudentsParams): Promise<Student
 
 export async function getStudent(studentId: string): Promise<Student> {
   const { data } = await apiClient.get<Student>(`/training/students/${studentId}`);
+  return data;
+}
+
+export interface UsersWithoutStudentProfileResponse {
+  results: UserWithoutStudentProfile[];
+}
+
+export async function getUsersWithoutStudentProfile(): Promise<UsersWithoutStudentProfileResponse> {
+  const { data } = await apiClient.get<UsersWithoutStudentProfileResponse>(
+    "/training/students/users-without-profile"
+  );
+  return data;
+}
+
+export async function createStudentFromUser(userId: string): Promise<Student> {
+  const { data } = await apiClient.post<Student>("/training/students/from-user", { userId });
   return data;
 }
 

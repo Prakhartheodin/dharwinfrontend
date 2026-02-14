@@ -8,7 +8,14 @@ import { Range, getTrackBackground } from "react-range"
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import * as studentsApi from '@/shared/lib/api/students'
-import type { Student } from '@/shared/lib/api/students'
+import type {
+  Student,
+  UserWithoutStudentProfile,
+} from '@/shared/lib/api/students'
+import {
+  createStudentFromUser,
+  getUsersWithoutStudentProfile,
+} from '@/shared/lib/api/students'
 
 // Mock data for students
 const STUDENTS_DATA = [
@@ -230,7 +237,7 @@ const Students = () => {
   const [previewStudent, setPreviewStudent] = useState<any>(null)
   const [viewStudent, setViewStudent] = useState<studentsApi.Student | null>(null)
   const [viewStudentLoading, setViewStudentLoading] = useState(false)
-  const [usersWithoutProfile, setUsersWithoutProfile] = useState<studentsApi.UserWithoutStudentProfile[]>([])
+  const [usersWithoutProfile, setUsersWithoutProfile] = useState<UserWithoutStudentProfile[]>([])
   const [loadingUsersWithoutProfile, setLoadingUsersWithoutProfile] = useState(false)
   const [creatingProfileForUserId, setCreatingProfileForUserId] = useState<string | null>(null)
   const [notesStudentId, setNotesStudentId] = useState<string | null>(null)
@@ -548,7 +555,7 @@ const Students = () => {
   const fetchUsersWithoutProfile = useCallback(async () => {
     setLoadingUsersWithoutProfile(true)
     try {
-      const res = await studentsApi.getUsersWithoutStudentProfile()
+      const res = await getUsersWithoutStudentProfile()
       setUsersWithoutProfile(res.results ?? [])
     } catch {
       setUsersWithoutProfile([])
@@ -564,7 +571,7 @@ const Students = () => {
   const handleCreateStudentFromUser = useCallback(async (userId: string) => {
     setCreatingProfileForUserId(userId)
     try {
-      await studentsApi.createStudentFromUser(userId)
+      await createStudentFromUser(userId)
       await Swal.fire({
         icon: 'success',
         title: 'Profile created',
@@ -1275,7 +1282,7 @@ const Students = () => {
     <Fragment>
       <Seo title="Students" />
 
-      {!loadingUsersWithoutProfile && usersWithoutProfile.length > 0 && (
+      {/* {!loadingUsersWithoutProfile && usersWithoutProfile.length > 0 && (
         <div className="mb-4 rounded-lg border border-warning/30 bg-warning/5 px-4 py-3">
           <p className="text-[0.875rem] font-medium text-defaulttextcolor dark:text-white mb-2">
             The following users have the <strong>Student</strong> role but no Training student profile. They will not appear in course assignment until you create a profile.
@@ -1298,7 +1305,7 @@ const Students = () => {
             ))}
           </ul>
         </div>
-      )}
+      )} */}
 
       <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
