@@ -638,13 +638,18 @@ const CreateModule = () => {
       setBlogAiEnhancingId(itemId)
       setBlogAiLoading(true)
       try {
-        const content = await blogApi.generateBlog({
-          mode: 'enhance',
-          existingContent: item.blogContent ?? '',
-          format: (item.blogFormat ?? 'neutral') as BlogFormat,
-        })
-        handlePlaylistItemChange(itemId, 'blogContent', content)
-        blogGeneratorLogger.info('Enhance completed', { itemId, contentLength: content.length })
+        await blogApi.generateBlogStream(
+          {
+            mode: 'enhance',
+            existingContent: item.blogContent ?? '',
+            format: (item.blogFormat ?? 'neutral') as BlogFormat,
+          },
+          {
+            onChunk: (textSoFar) => handlePlaylistItemChange(itemId, 'blogContent', textSoFar),
+            onDone: (html) => handlePlaylistItemChange(itemId, 'blogContent', html),
+          }
+        )
+        blogGeneratorLogger.info('Enhance completed (stream)', { itemId })
       } catch (e) {
         blogGeneratorLogger.error('Enhance failed', e)
         alert(e instanceof Error ? e.message : 'Failed to enhance blog')
@@ -715,14 +720,32 @@ const CreateModule = () => {
         for (let i = 0; i < numBlogs; i++) {
           const title = titlesFromLines[i] || `Blog ${i + 1}`
           blogGeneratorLogger.info('Generating blog (separate title)', { index: i + 1, total: numBlogs, title: title.slice(0, 50) })
-          const content = await blogApi.generateBlog({
-            mode: 'generate',
-            title,
-            keywords: blogAiGenerateKeywords,
-            wordCount: blogAiWordCount,
-            format: blogAiGenerateFormat,
-          })
-          results.push({ title, content })
+          const useStream = numBlogs === 1
+          if (useStream) {
+            const content = await blogApi.generateBlogStream(
+              {
+                mode: 'generate',
+                title,
+                keywords: blogAiGenerateKeywords,
+                wordCount: blogAiWordCount,
+                format: blogAiGenerateFormat,
+              },
+              {
+                onChunk: (textSoFar) => handlePlaylistItemChange(blogAiItemId!, 'blogContent', textSoFar),
+                onDone: (html) => handlePlaylistItemChange(blogAiItemId!, 'blogContent', html),
+              }
+            )
+            results.push({ title, content })
+          } else {
+            const content = await blogApi.generateBlog({
+              mode: 'generate',
+              title,
+              keywords: blogAiGenerateKeywords,
+              wordCount: blogAiWordCount,
+              format: blogAiGenerateFormat,
+            })
+            results.push({ title, content })
+          }
         }
       }
 

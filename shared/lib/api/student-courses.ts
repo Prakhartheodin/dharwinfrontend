@@ -185,6 +185,30 @@ export async function updateLastAccessed(
   return data as { progress: ProgressRef; [key: string]: unknown };
 }
 
+/** Quiz submit: answers and timeSpent (seconds). Backend marks item complete only when score >= 90%. */
+export interface QuizSubmitAnswer {
+  questionIndex: number;
+  selectedOptions: number[];
+}
+
+export interface QuizSubmitResponse {
+  score?: { totalQuestions: number; correctAnswers: number; percentage: number; totalPoints: number; maxPoints: number };
+  [key: string]: unknown;
+}
+
+export async function submitQuizAttempt(
+  studentId: string,
+  moduleId: string,
+  playlistItemId: string,
+  body: { answers: QuizSubmitAnswer[]; timeSpent?: number }
+): Promise<QuizSubmitResponse> {
+  const { data } = await apiClient.post<QuizSubmitResponse>(
+    `/training/students/${studentId}/courses/${moduleId}/quizzes/${playlistItemId}/submit`,
+    body
+  );
+  return data;
+}
+
 /** Map API list item to a minimal course shape for list/card UI (first page: course list only). */
 export function mapStudentCourseToCard(item: StudentCourseListItem): {
   id: string;
@@ -309,6 +333,7 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
     id: (p as PlaylistItemWithProgress).playlistItemId ?? String(i),
     title: p.title ?? `Item ${i + 1}`,
     duration: p.duration != null ? `${p.duration} min` : undefined,
+    isCompleted: (p as PlaylistItemWithProgress).isCompleted,
   }));
   const courseSections = [
     { id: "default", title: "Course content", lectures },
