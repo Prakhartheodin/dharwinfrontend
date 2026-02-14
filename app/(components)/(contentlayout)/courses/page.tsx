@@ -181,7 +181,7 @@ export default function CandidateCoursesPage() {
             className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white"
           >
             {instructorFilter || "Instructor"}
-            <i className="ti ti-chevron-down text-[0.875rem]" />
+            <i className="ti ti-chevron-down text-[0.875rem]" /> 
           </button>
           {openFilter === "instructor" && (
             <>
