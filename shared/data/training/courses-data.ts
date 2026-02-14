@@ -6,6 +6,7 @@ export interface CourseLesson {
   id: string
   title: string
   duration?: string
+  isCompleted?: boolean
 }
 
 /** Section in "Course content" accordion (e.g. Day 1 - Module name) */

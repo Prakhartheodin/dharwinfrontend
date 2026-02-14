@@ -52,6 +52,11 @@ export default function CourseDetailClient({ course }: { course: Course }) {
     [sections]
   )
 
+  const totalCompleted = useMemo(
+    () => sections.reduce((acc, s) => acc + s.lectures.filter((l) => l.isCompleted).length, 0),
+    [sections]
+  )
+
   const toggleSection = (id: string) => {
     setExpandedSections((prev) => {
       const next = new Set(prev)
@@ -266,13 +271,16 @@ export default function CourseDetailClient({ course }: { course: Course }) {
             </section>
           )}
 
-          {/* Course content accordion */}
-          {sections.length > 0 && (
+          {/* Course content accordion - sections/lectures from API (course.courseSections or course.lessons) */}
+          {sections.length > 0 && totalLectures > 0 && (
             <section className="mb-8">
               <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                 <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white">Course content</h2>
                 <span className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60">
-                  {sections.length} section{sections.length !== 1 ? "s" : ""} • {totalLectures} lecture{totalLectures !== 1 ? "s" : ""} • {totalDuration} total length
+                  {totalLectures} lecture{totalLectures !== 1 ? "s" : ""} • {totalDuration}
+                  {totalCompleted > 0 && (
+                    <span className="text-emerald-600 dark:text-emerald-400 ml-1">• {totalCompleted}/{totalLectures} completed</span>
+                  )}
                 </span>
               </div>
               <button
@@ -286,6 +294,7 @@ export default function CourseDetailClient({ course }: { course: Course }) {
                 {sections.map((sec) => {
                   const open = isExpanded(sec.id)
                   const secLectures = sec.lectures.length
+                  const secCompleted = sec.lectures.filter((l) => l.isCompleted).length
                   const secDuration = sec.lectures.reduce((acc, l) => {
                     const d = l.duration
                     if (!d) return acc
@@ -310,17 +319,29 @@ export default function CourseDetailClient({ course }: { course: Course }) {
                         </span>
                         <span className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 shrink-0">
                           {secLectures} lecture{secLectures !== 1 ? "s" : ""} • {durStr}
+                          {secCompleted > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400"> • {secCompleted}/{secLectures} done</span>
+                          )}
                         </span>
                       </button>
                       {open && (
                         <ul className="bg-bodybg dark:bg-black/20 py-1">
                           {sec.lectures.map((lec, i) => (
                             <li key={lec.id} className="flex items-center justify-between gap-4 px-4 pl-10 py-2.5 text-[0.875rem] text-defaulttextcolor dark:text-white border-t border-[#e4e8eb] dark:border-white/10">
-                              <span className="flex items-center gap-2">
-                                <i className="ti ti-player-play text-[0.75rem] text-[#6a6f73] dark:text-white/50" />
-                                {lec.title}
+                              <span className="flex items-center gap-2 min-w-0">
+                                {lec.isCompleted ? (
+                                  <i className="ti ti-circle-check-filled text-[0.875rem] text-emerald-600 dark:text-emerald-400 shrink-0" aria-label="Completed" />
+                                ) : (
+                                  <i className="ti ti-player-play text-[0.75rem] text-[#6a6f73] dark:text-white/50 shrink-0" />
+                                )}
+                                <span className="truncate">{lec.title}</span>
                               </span>
-                              {lec.duration && <span className="text-[0.8125rem] text-[#6a6f73] dark:text-white/50 shrink-0">{lec.duration}</span>}
+                              <span className="flex items-center gap-2 shrink-0">
+                                {lec.isCompleted && (
+                                  <span className="text-[0.75rem] font-medium text-emerald-600 dark:text-emerald-400">Completed</span>
+                                )}
+                                {lec.duration && <span className="text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{lec.duration}</span>}
+                              </span>
                             </li>
                           ))}
                         </ul>

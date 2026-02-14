@@ -16,9 +16,22 @@ function isValidModuleId(id: string): boolean {
 
 export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
   const [course, setCourse] = useState<Course | null>(null);
+  const [studentId, setStudentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const loadCourse = React.useCallback(async () => {
+    const id = (moduleId ?? "").trim();
+    if (!id || !isValidModuleId(id) || !studentId) return;
+    try {
+      const detail = await getStudentCourse(studentId, id);
+      const mapped = mapStudentCourseDetailToCourse(detail) as Course;
+      setCourse(mapped);
+    } catch {
+      // Keep current course on refresh error
+    }
+  }, [moduleId, studentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +48,7 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
       try {
         const student = await getMyStudent();
         if (cancelled) return;
+        setStudentId(student.id);
         const detail = await getStudentCourse(student.id, id);
         if (cancelled) return;
         const mapped = mapStudentCourseDetailToCourse(detail) as Course;
@@ -90,5 +104,14 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
     );
   }
 
-  return <CourseLearnClient course={course} />;
+  if (!studentId) return null;
+
+  return (
+    <CourseLearnClient
+      course={course}
+      studentId={studentId}
+      moduleId={moduleId}
+      onProgressUpdate={loadCourse}
+    />
+  );
 }
