@@ -3,7 +3,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
 
-const baseURL = process.env.NEXT_PUBLIC_API_URL ?? "";
+// Use env URL (e.g. http://localhost:3000/v1) or in browser fallback to same-origin proxy from next.config rewrites
+const baseURL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? "/api/v1" : "");
 
 export const apiClient = axios.create({
   baseURL,

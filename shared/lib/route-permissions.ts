@@ -73,6 +73,9 @@ export function hasPermissionForPath(
 /** Permission prefix for the candidate-only courses section. */
 export const COURSES_PERMISSION_PREFIX = "candidate.courses:";
 
+/** Permission prefix for attendance tracking. */
+export const ATTENDANCE_PERMISSION_PREFIX = "training.attendance:";
+
 /**
  * Returns true if the user can access the /courses section:
  * - has any permission starting with candidate.courses:, OR
@@ -87,4 +90,34 @@ export function canAccessCourses(
     (name) => name?.toLowerCase() === "candidate"
   );
   return hasCandidateRole;
+}
+
+/**
+ * Returns true if the user can access Attendance Tracking (punch in/out in their portal or admin view):
+ * - has any permission starting with training.attendance:, OR
+ * - has students.read / students.manage (admin), OR
+ * - has a role whose name is "Student" (so students see Attendance in their portal like Courses).
+ */
+export function canAccessAttendance(
+  userPermissions: string[],
+  roleNames: string[]
+): boolean {
+  if (hasPermissionForPath(userPermissions, ATTENDANCE_PERMISSION_PREFIX)) return true;
+  if (userPermissions.some((p) => p.startsWith("training.attendance") || p.startsWith("students.read") || p.startsWith("students.manage"))) return true;
+  const hasStudentRole = roleNames.some(
+    (name) => name?.toLowerCase() === "student"
+  );
+  return hasStudentRole;
+}
+
+/**
+ * Returns true if the user should see only the candidate/student portal menu (Dashboard, Courses, Attendance only).
+ */
+export function isCandidateOnlyNav(
+  roleNames: string[],
+  isAdministrator: boolean
+): boolean {
+  if (isAdministrator) return false;
+  const hasStudentRole = roleNames.some((name) => name?.toLowerCase() === "student");
+  return hasStudentRole;
 }

@@ -103,6 +103,28 @@ export async function resetPassword(payload: ResetPasswordPayload): Promise<void
   );
 }
 
+/** Single candidate invitation: email + full onboarding URL (frontend builds URL with token/expiry). */
+export interface SendCandidateInvitationPayload {
+  email: string;
+  onboardUrl: string;
+}
+
+/** Bulk: array of { email, onboardUrl }. Max 50. */
+export interface SendCandidateInvitationBulkPayload {
+  invitations: SendCandidateInvitationPayload[];
+}
+
+/**
+ * Send preboarding/onboarding invitation email(s) (POST /v1/auth/send-candidate-invitation). Auth required.
+ * Single: body { email, onboardUrl }. Bulk: body { invitations: [{ email, onboardUrl }, ...] }.
+ */
+export async function sendCandidateInvitation(
+  payload: SendCandidateInvitationPayload | SendCandidateInvitationBulkPayload
+): Promise<{ message: string; email?: string; results?: { successful: unknown[]; failed: unknown[]; total: number } }> {
+  const { data } = await apiClient.post(AUTH_ENDPOINTS.sendCandidateInvitation, payload);
+  return data;
+}
+
 /** Student registration payload - creates User + Student profile automatically */
 export interface RegisterStudentPayload {
   name: string;

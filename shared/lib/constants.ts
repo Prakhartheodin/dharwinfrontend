@@ -14,6 +14,8 @@ export const AUTH_ENDPOINTS = {
   registerMentor: `${BASE_API_URL}/auth/register-mentor`,
   /** Public registration – no auth; user created with status pending. */
   publicRegister: `${BASE_API_URL}/public/register`,
+  /** Public candidate onboarding – no auth; creates User + Candidate for ATS list. */
+  publicRegisterCandidate: `${BASE_API_URL}/public/register-candidate`,
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
   refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
   logout: `${BASE_API_URL}/auth/logout`,
@@ -24,6 +26,8 @@ export const AUTH_ENDPOINTS = {
   forgotPassword: `${BASE_API_URL}/auth/forgot-password`,
   /** Reset password – use token from email link to set a new password. */
   resetPassword: `${BASE_API_URL}/auth/reset-password`,
+  /** Send candidate onboarding/preboarding invitation(s). Auth required. Single: { email, onboardUrl }. Bulk: { invitations: [{ email, onboardUrl }] }. */
+  sendCandidateInvitation: `${BASE_API_URL}/auth/send-candidate-invitation`,
 } as const;
 
 export const ROUTES = {
@@ -45,4 +49,15 @@ export const ROUTES = {
   settingsUsersAdd: "/settings/users/add/",
   settingsUsersEdit: (id: string) => `/settings/users/edit/?id=${encodeURIComponent(id)}`,
   settingsPersonalInfo: "/settings/personal-information/",
+  // Settings > Attendance
+  settingsAttendance: "/settings/attendance/",
+  settingsAttendanceWeekOff: "/settings/attendance/week-off/",
+  settingsAttendanceHolidays: "/settings/attendance/holidays/",
+  settingsAttendanceAssignHolidays: "/settings/attendance/assign-holidays/",
+  settingsAttendanceCandidateGroups: "/settings/attendance/candidate-groups/",
+  settingsAttendanceManageShifts: "/settings/attendance/manage-shifts/",
+  settingsAttendanceAssignShift: "/settings/attendance/assign-shift/",
+  settingsAttendanceAssignLeave: "/settings/attendance/assign-leave/",
+  settingsAttendanceLeaveRequests: "/settings/attendance/leave-requests/",
+  settingsAttendanceBackdated: "/settings/attendance/backdated-attendance-requests/",
 } as const;

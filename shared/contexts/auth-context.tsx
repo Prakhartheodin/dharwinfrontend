@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleSessionExpired = useCallback(() => {
     setUser(null);
 
-    // Don't force-redirect away from public auth pages such as
-    // sign-in, register, and reset-password flows.
+    // Don't force-redirect away from public auth pages (sign-in, register,
+    // reset-password) or the public candidate onboarding link from preboarding emails.
     if (typeof window !== "undefined") {
       const path = window.location.pathname;
       const publicPaths = [
@@ -54,6 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ROUTES.register.replace(/\/$/, ""),
         ROUTES.resetPassword.replace(/\/$/, ""),
         "/reset-password",
+        "/candidate-onboard",
       ];
       const normalized = path.replace(/\/$/, "") || "/";
       if (publicPaths.includes(normalized)) {
