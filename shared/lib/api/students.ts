@@ -61,6 +61,19 @@ export interface Student {
   bio?: string | null;
   profileImageUrl?: string | null;
   status: string;
+  weekOff?: string[];
+  holidays?: string[];
+  /** Populated when fetching a single student (e.g. for attendance detail). */
+  shift?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+    description?: string;
+    timezone?: string;
+    startTime?: string;
+    endTime?: string;
+    isActive?: boolean;
+  } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -180,4 +193,92 @@ export async function getStudentProfileImage(
 
 export async function deleteStudent(studentId: string): Promise<void> {
   await apiClient.delete(`/training/students/${studentId}`);
+}
+
+/** Valid week-off day names for attendance calendar */
+export const WEEK_OFF_DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+export interface WeekOffUpdateResponse {
+  success: boolean;
+  message: string;
+  data?: { updatedCount: number; students?: Student[] };
+}
+
+/**
+ * Update week-off calendar for multiple students (requires students.manage).
+ */
+export async function updateWeekOffCalendar(
+  studentIds: string[],
+  weekOff: string[]
+): Promise<WeekOffUpdateResponse> {
+  const { data } = await apiClient.post<WeekOffUpdateResponse>("/training/students/week-off", {
+    studentIds,
+    weekOff,
+  });
+  return data;
+}
+
+export interface ImportWeekOffEntry {
+  email: string;
+  weekOff: string[];
+  notes?: string;
+}
+
+export interface ImportWeekOffResponse {
+  success: boolean;
+  message: string;
+  data: { updatedCount: number; skipped: { email: string; reason: string }[] };
+}
+
+/**
+ * Bulk import week-off by candidate email (e.g. from Excel). POST /training/students/week-off/import
+ */
+export async function importWeekOffBulk(
+  entries: ImportWeekOffEntry[]
+): Promise<ImportWeekOffResponse> {
+  const { data } = await apiClient.post<ImportWeekOffResponse>(
+    "/training/students/week-off/import",
+    { entries }
+  );
+  return data;
+}
+
+export interface StudentWeekOffResponse {
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  weekOff: string[];
+}
+
+/**
+ * Get week-off days for a student.
+ */
+export async function getStudentWeekOff(studentId: string): Promise<StudentWeekOffResponse> {
+  const { data } = await apiClient.get<StudentWeekOffResponse>(
+    `/training/students/${studentId}/week-off`
+  );
+  return data;
+}
+
+/**
+ * Assign shift to multiple students.
+ * POST /training/students/assign-shift
+ */
+export async function assignShiftToStudents(
+  studentIds: string[],
+  shiftId: string
+): Promise<{ success: boolean; message?: string; data?: { updatedCount: number } }> {
+  const { data } = await apiClient.post<{ success: boolean; message?: string; data?: { updatedCount: number } }>(
+    "/training/students/assign-shift",
+    { studentIds, shiftId }
+  );
+  return data;
 }

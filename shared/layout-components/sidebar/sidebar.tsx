@@ -17,7 +17,10 @@ import {
 	hasPermissionForPath,
 	getRequiredPermissionForPath,
 	canAccessCourses,
+	canAccessAttendance,
 	COURSES_PERMISSION_PREFIX,
+	ATTENDANCE_PERMISSION_PREFIX,
+	isCandidateOnlyNav,
 } from "@/shared/lib/route-permissions";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
@@ -103,10 +106,55 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		if (requiredPrefix === COURSES_PERMISSION_PREFIX) {
 			return canAccessCourses(userPermissions, roleNames);
 		}
+		// Attendance: allow if user has training.attendance / students.* OR has Student role (portal)
+		if (requiredPrefix === ATTENDANCE_PERMISSION_PREFIX) {
+			return canAccessAttendance(userPermissions, roleNames);
+		}
 		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
+	const isCandidateNav = useMemo(
+		() => isCandidateOnlyNav(roleNames, isAdministrator),
+		[roleNames, isAdministrator]
+	);
+
 	const filteredMenuItems = useMemo(() => {
+		// For candidates (Student role, non-admin): show Dashboard, Courses, and Attendance only.
+		if (permissionsLoaded && isCandidateNav) {
+			const dashboardItem = MenuItems.find((m: any) => m.path === "/dashboard");
+			const coursesItem = MenuItems.find((m: any) => m.path === "/courses");
+			const attendanceItem = MenuItems.find(
+				(m: any) => m.path === "/training/attendance"
+			);
+			const out: any[] = [];
+			if (dashboardItem) {
+				out.push({ menutitle: "MAIN" });
+				out.push({
+					...dashboardItem,
+					active: false,
+					selected: false,
+				});
+			}
+			if (coursesItem) {
+				out.push({ menutitle: "ATS" });
+				out.push({
+					...coursesItem,
+					active: false,
+					selected: false,
+				});
+			}
+			if (attendanceItem) {
+				out.push({ menutitle: "ATTENDANCE" });
+				out.push({
+					...attendanceItem,
+					title: "Attendance",
+					active: false,
+					selected: false,
+				});
+			}
+			if (out.length > 0) return out;
+		}
+
 		// Build a menu where section titles are only kept
 		// if they have at least one visible child link.
 		const result: any[] = [];

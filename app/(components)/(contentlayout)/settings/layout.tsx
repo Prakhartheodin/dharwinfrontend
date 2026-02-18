@@ -8,9 +8,10 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 
-function getActiveTab(pathname: string): "roles" | "users" | "personal-information" | null {
+function getActiveTab(pathname: string): "roles" | "users" | "attendance" | "personal-information" | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
   if (pathname.startsWith("/settings/users")) return "users";
+  if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
   return null;
 }
@@ -47,15 +48,15 @@ export default function SettingsLayout({
     checkAdmin();
   }, [user]);
 
-  // If user is not admin, block direct access to roles/users paths and redirect
+  // If user is not admin, block direct access to roles/users/attendance paths and redirect
   useEffect(() => {
     if (isAdmin === null) return;
-    if (!isAdmin && (activeTab === "roles" || activeTab === "users")) {
+    if (!isAdmin && (activeTab === "roles" || activeTab === "users" || activeTab === "attendance")) {
       router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [isAdmin, activeTab, router]);
 
-  const tabClass = (tab: "roles" | "users" | "personal-information") =>
+  const tabClass = (tab: "roles" | "users" | "attendance" | "personal-information") =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
         ? "bg-primary/10 text-primary"
@@ -88,6 +89,13 @@ export default function SettingsLayout({
                       aria-current={activeTab === "users" ? "page" : undefined}
                     >
                       Users
+                    </Link>
+                    <Link
+                      href={ROUTES.settingsAttendance}
+                      className={tabClass("attendance")}
+                      aria-current={activeTab === "attendance" ? "page" : undefined}
+                    >
+                      Attendance
                     </Link>
                   </>
                 )}

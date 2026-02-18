@@ -6,7 +6,9 @@ import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
   canAccessCourses,
+  canAccessAttendance,
   COURSES_PERMISSION_PREFIX,
+  ATTENDANCE_PERMISSION_PREFIX,
 } from "@/shared/lib/route-permissions";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -85,6 +87,11 @@ export function PermissionGuard({
     // Courses: allow if user has candidate.courses:* OR has Candidate role
     if (required === COURSES_PERMISSION_PREFIX) {
       setAllowed(canAccessCourses(userPermissions, roleNames));
+      return;
+    }
+    // Attendance: allow if user has training.attendance:* / students.read|manage OR has Student role
+    if (required === ATTENDANCE_PERMISSION_PREFIX) {
+      setAllowed(canAccessAttendance(userPermissions, roleNames));
       return;
     }
     setAllowed(hasPermissionForPath(userPermissions, required));

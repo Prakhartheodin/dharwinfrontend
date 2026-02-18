@@ -9,6 +9,7 @@ const RecruitersIcon = <i className="bx bx-user-check side-menu__icon"></i>;
 const InterviewsIcon = <i className="bx bx-calendar-check side-menu__icon"></i>;
 const OffersPlacementIcon = <i className="bx bx-badge-check side-menu__icon"></i>;
 const PreBoardingIcon = <i className="bx bx-user-plus side-menu__icon"></i>;
+const ShareCandidateFormIcon = <i className="bx bx-share-alt side-menu__icon"></i>;
 const OnboardingIcon = <i className="bx bx-log-in-circle side-menu__icon"></i>;
 const AnalyticsIcon = <i className="bx bx-bar-chart-alt-2 side-menu__icon"></i>;
 
@@ -138,11 +139,31 @@ export const MenuItems: any = [
       {
     icon: PreBoardingIcon,
     title: "Pre-boarding",
-        type: "link",
+        type: "sub",
     path: "/ats/pre-boarding",
         active: false,
         selected: false,
-        dirchange: false, 
+        dirchange: false,
+        children: [
+          {
+            icon: PreBoardingIcon,
+            title: "Pre-boarding",
+            type: "link",
+            path: "/ats/pre-boarding",
+            active: false,
+            selected: false,
+            dirchange: false,
+          },
+          {
+            icon: ShareCandidateFormIcon,
+            title: "Share candidate form",
+            type: "link",
+            path: "/ats/share-candidate-form",
+            active: false,
+            selected: false,
+            dirchange: false,
+          },
+        ],
       },
 
       {

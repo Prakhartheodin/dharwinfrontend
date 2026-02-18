@@ -56,6 +56,30 @@ export async function publicRegisterUser(payload: PublicRegisterPayload): Promis
   return data;
 }
 
+export interface PublicRegisterCandidatePayload {
+  name: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+}
+
+export interface PublicRegisterCandidateResponse {
+  user: User;
+  candidate: { _id: string; fullName: string; email: string; [key: string]: unknown };
+  message: string;
+}
+
+/** Public candidate onboarding – POST /v1/public/register-candidate. Creates User (pending) + Candidate so they appear in ATS list. */
+export async function publicRegisterCandidate(
+  payload: PublicRegisterCandidatePayload
+): Promise<PublicRegisterCandidateResponse> {
+  const { data } = await apiClient.post<PublicRegisterCandidateResponse>(
+    AUTH_ENDPOINTS.publicRegisterCandidate,
+    payload
+  );
+  return data;
+}
+
 export interface UpdateUserPayload {
   name?: string;
   email?: string;

@@ -1,180 +1,47 @@
 "use client"
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useCallback, useMemo, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import { Range, getTrackBackground } from "react-range"
+import {
+  listCandidates,
+  createCandidate as createCandidateApi,
+  mapCandidateToDisplay,
+  getCandidate,
+  getCandidateDocuments,
+  getDocumentDownloadUrl,
+  addSalarySlipToCandidate,
+  updateSalarySlip,
+  deleteSalarySlip,
+  shareCandidateProfile,
+  exportCandidateProfile,
+  exportAllCandidates,
+  resendVerificationEmail,
+  addNoteToCandidate,
+  addFeedbackToCandidate,
+  deleteCandidate,
+  uploadDocument,
+  assignRecruiterToCandidate,
+  updateJoiningDate,
+  updateResignDate,
+  updateWeekOff,
+  getCandidateWeekOff,
+  assignShiftToCandidates,
+  verifyDocument,
+  getDocumentStatus,
+  type CandidateDocument,
+} from '@/shared/lib/api/candidates'
+import { listUsers } from '@/shared/lib/api/users'
+import { getAllShifts } from '@/shared/lib/api/shifts'
+import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
+import Swal from 'sweetalert2'
+import { useRouter } from 'next/navigation'
 
-// Mock data for candidates
-const CANDIDATES_DATA = [
-  {
-    id: '1',
-    name: 'John Anderson',
-    displayPicture: '/assets/images/faces/1.jpg',
-    phone: '+1 (555) 123-4567',
-    email: 'john.anderson@example.com',
-    skills: ['React', 'Node.js', 'TypeScript', 'AWS', 'MongoDB'],
-    education: 'BS Computer Science - Stanford University (2018)',
-    experience: 6,
-    bio: 'Experienced full-stack developer with 6+ years in building scalable web applications. Passionate about clean code and modern technologies.',
-  },
-  {
-    id: '2',
-    name: 'Sarah Johnson',
-    displayPicture: '/assets/images/faces/2.jpg',
-    phone: '+1 (555) 234-5678',
-    email: 'sarah.johnson@example.com',
-    skills: ['Product Management', 'Agile', 'Scrum', 'JIRA', 'Analytics'],
-    education: 'MBA - Harvard Business School (2019)',
-    experience: 4,
-    bio: 'Strategic product manager with 4+ years of experience in building and launching successful products. Strong background in user research and data-driven decision making.',
-  },
-  {
-    id: '3',
-    name: 'Michael Chen',
-    displayPicture: '/assets/images/faces/3.jpg',
-    phone: '+1 (555) 345-6789',
-    email: 'michael.chen@example.com',
-    skills: ['Vue.js', 'JavaScript', 'CSS', 'HTML', 'Responsive Design'],
-    education: 'BS Web Development - UC Berkeley (2020)',
-    experience: 3,
-    bio: 'Creative frontend developer specializing in creating beautiful and intuitive user interfaces. Expert in modern CSS frameworks and responsive design.',
-  },
-  {
-    id: '4',
-    name: 'Emily Davis',
-    displayPicture: '/assets/images/faces/4.jpg',
-    phone: '+1 (555) 456-7890',
-    email: 'emily.davis@example.com',
-    skills: ['Python', 'Machine Learning', 'TensorFlow', 'SQL', 'Data Visualization'],
-    education: 'MS Data Science - MIT (2021)',
-    experience: 3,
-    bio: 'Data scientist passionate about extracting insights from complex datasets. Experienced in building predictive models and creating data-driven solutions.',
-  },
-  {
-    id: '5',
-    name: 'David Brown',
-    displayPicture: '/assets/images/faces/5.jpg',
-    phone: '+1 (555) 567-8901',
-    email: 'david.brown@example.com',
-    skills: ['Docker', 'Kubernetes', 'CI/CD', 'AWS', 'Linux'],
-    education: 'BS Computer Engineering - Carnegie Mellon (2018)',
-    experience: 5,
-    bio: 'DevOps engineer with expertise in cloud infrastructure and automation. Passionate about improving deployment pipelines and system reliability.',
-  },
-  {
-    id: '6',
-    name: 'Lisa Anderson',
-    displayPicture: '/assets/images/faces/6.jpg',
-    phone: '+1 (555) 678-9012',
-    email: 'lisa.anderson@example.com',
-    skills: ['Figma', 'Adobe XD', 'User Research', 'Prototyping', 'UI/UX Design'],
-    education: 'BFA Graphic Design - Art Center College (2019)',
-    experience: 4,
-    bio: 'UX designer focused on creating meaningful user experiences. Strong background in user research, wireframing, and visual design.',
-  },
-  {
-    id: '7',
-    name: 'Robert Wilson',
-    displayPicture: '/assets/images/faces/7.jpg',
-    phone: '+1 (555) 789-0123',
-    email: 'robert.wilson@example.com',
-    skills: ['Java', 'Spring Boot', 'MySQL', 'Redis', 'Microservices'],
-    education: 'BS Software Engineering - Georgia Tech (2017)',
-    experience: 6,
-    bio: 'Backend developer specializing in building scalable and efficient server-side applications. Expert in RESTful APIs and microservices architecture.',
-  },
-  {
-    id: '8',
-    name: 'Jessica Martinez',
-    displayPicture: '/assets/images/faces/8.jpg',
-    phone: '+1 (555) 890-1234',
-    email: 'jessica.martinez@example.com',
-    skills: ['Digital Marketing', 'SEO', 'Content Strategy', 'Analytics', 'Social Media'],
-    education: 'BA Marketing - UCLA (2018)',
-    experience: 5,
-    bio: 'Marketing professional with expertise in digital marketing strategies and brand development. Proven track record of driving growth and engagement.',
-  },
-  {
-    id: '9',
-    name: 'Thomas Lee',
-    displayPicture: '/assets/images/faces/9.jpg',
-    phone: '+1 (555) 901-2345',
-    email: 'thomas.lee@example.com',
-    skills: ['Sales', 'CRM', 'Negotiation', 'Account Management', 'Business Development'],
-    education: 'BA Business Administration - USC (2020)',
-    experience: 3,
-    bio: 'Results-driven sales executive with strong relationship-building skills. Experienced in B2B sales and enterprise account management.',
-  },
-  {
-    id: '10',
-    name: 'Jennifer White',
-    displayPicture: '/assets/images/faces/10.jpg',
-    phone: '+1 (555) 012-3456',
-    email: 'jennifer.white@example.com',
-    skills: ['Selenium', 'Test Automation', 'QA Testing', 'JIRA', 'API Testing'],
-    education: 'BS Computer Science - UC San Diego (2019)',
-    experience: 4,
-    bio: 'QA engineer dedicated to ensuring software quality through comprehensive testing strategies. Expert in test automation and bug tracking.',
-  },
-  {
-    id: '11',
-    name: 'Christopher Taylor',
-    displayPicture: '/assets/images/faces/11.jpg',
-    phone: '+1 (555) 123-4568',
-    email: 'christopher.taylor@example.com',
-    skills: ['React', 'Node.js', 'PostgreSQL', 'GraphQL', 'TypeScript'],
-    education: 'BS Computer Science - University of Washington (2018)',
-    experience: 5,
-    bio: 'Full-stack developer with expertise in modern JavaScript frameworks. Passionate about building complete web applications from frontend to backend.',
-  },
-  {
-    id: '12',
-    name: 'Amanda Garcia',
-    displayPicture: '/assets/images/faces/12.jpg',
-    phone: '+1 (555) 234-5679',
-    email: 'amanda.garcia@example.com',
-    skills: ['Business Analysis', 'SQL', 'Excel', 'Project Management', 'Process Improvement'],
-    education: 'MBA - Northwestern University (2020)',
-    experience: 3,
-    bio: 'Business analyst with strong analytical skills and experience in process optimization. Focused on driving business value through data insights.',
-  },
-  {
-    id: '13',
-    name: 'Daniel Rodriguez',
-    displayPicture: '/assets/images/faces/13.jpg',
-    phone: '+1 (555) 345-6790',
-    email: 'daniel.rodriguez@example.com',
-    skills: ['AWS', 'Azure', 'Terraform', 'Cloud Architecture', 'Serverless'],
-    education: 'MS Cloud Computing - Arizona State (2019)',
-    experience: 4,
-    bio: 'Cloud architect specializing in designing and implementing scalable cloud infrastructure solutions. Expert in multi-cloud strategies.',
-  },
-  {
-    id: '14',
-    name: 'Rachel Kim',
-    displayPicture: '/assets/images/faces/14.jpg',
-    phone: '+1 (555) 456-7901',
-    email: 'rachel.kim@example.com',
-    skills: ['Swift', 'Kotlin', 'React Native', 'iOS Development', 'Android Development'],
-    education: 'BS Mobile App Development - San Diego State (2021)',
-    experience: 2,
-    bio: 'Mobile app developer with expertise in both native and cross-platform development. Passionate about creating smooth mobile experiences.',
-  },
-  {
-    id: '15',
-    name: 'Kevin Harris',
-    displayPicture: '/assets/images/faces/15.jpg',
-    phone: '+1 (555) 567-9012',
-    email: 'kevin.harris@example.com',
-    skills: ['Network Administration', 'Cisco', 'Firewall', 'VPN', 'System Security'],
-    education: 'BS Network Engineering - Tennessee Tech (2018)',
-    experience: 5,
-    bio: 'Network administrator with extensive experience in managing enterprise network infrastructure and ensuring optimal performance and security.',
-  }
-]
-
+// Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
+type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
 
 interface FilterState {
   name: string[]
@@ -183,17 +50,6 @@ interface FilterState {
   email: string
   experience: [number, number] // [min, max] in years
 }
-
-// Extract experience ranges to determine min/max for slider
-const getExperienceRanges = () => {
-  const experiences = CANDIDATES_DATA.map(candidate => candidate.experience || 0)
-  return {
-    min: Math.min(...experiences),
-    max: Math.max(...experiences)
-  }
-}
-
-const experienceRangesConst = getExperienceRanges()
 
 // Note type for candidate notes
 interface CandidateNote {
@@ -205,16 +61,24 @@ interface CandidateNote {
   postedDate: string
 }
 
+const DEFAULT_EXPERIENCE_RANGE: [number, number] = [0, 20]
+
 const Candidates = () => {
+  const router = useRouter()
+  const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
+  const [candidatesLoading, setCandidatesLoading] = useState(true)
+  const [candidatesError, setCandidatesError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [candidateNotes, setCandidateNotes] = useState<CandidateNote[]>([])
   const [previewCandidate, setPreviewCandidate] = useState<any>(null)
+  const [viewDetailTab, setViewDetailTab] = useState<string>('personal')
   const [notesCandidateId, setNotesCandidateId] = useState<string | null>(null)
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareCandidate, setShareCandidate] = useState<any>(null)
   const [copied, setCopied] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
+  const [shareSubmitting, setShareSubmitting] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
   
   const [filters, setFilters] = useState<FilterState>({
@@ -222,13 +86,102 @@ const Candidates = () => {
     skills: [],
     education: [],
     email: '',
-    experience: [experienceRangesConst.min, experienceRangesConst.max]
+    experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
   })
 
   // Search states for filter dropdowns
   const [searchName, setSearchName] = useState('')
   const [searchSkills, setSearchSkills] = useState('')
   const [searchEducation, setSearchEducation] = useState('')
+
+  // Create candidate modal state
+  const [createForm, setCreateForm] = useState({
+    fullName: '',
+    email: '',
+    phoneNumber: '',
+    shortBio: '',
+    skillsText: '',
+  })
+  const [createSubmitting, setCreateSubmitting] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [documentsCandidate, setDocumentsCandidate] = useState<CandidateDisplay | null>(null)
+  const [documentsList, setDocumentsList] = useState<CandidateDocument[]>([])
+  const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [salarySlipCandidate, setSalarySlipCandidate] = useState<CandidateDisplay | null>(null)
+  const [salarySlipForm, setSalarySlipForm] = useState({ month: '', year: '', file: null as File | null })
+  const [salarySlipSubmitting, setSalarySlipSubmitting] = useState(false)
+  const [feedbackCandidate, setFeedbackCandidate] = useState<CandidateDisplay | null>(null)
+  const [feedbackForm, setFeedbackForm] = useState({ feedback: '', rating: 3 })
+  const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null)
+  const [moreMenuState, setMoreMenuState] = useState<{ candidate: CandidateDisplay; top: number; left: number } | null>(null)
+
+  // Experience range from data (for slider min/max)
+  const experienceRanges = useMemo(() => {
+    const ex = candidates.map((c) => c.experience ?? 0)
+    if (!ex.length) return { min: DEFAULT_EXPERIENCE_RANGE[0], max: DEFAULT_EXPERIENCE_RANGE[1] }
+    return { min: Math.min(...ex), max: Math.max(...ex) }
+  }, [candidates])
+
+  const refreshCandidates = useCallback(() => {
+    setCandidatesLoading(true)
+    setCandidatesError(null)
+    listCandidates({ limit: 500 })
+      .then((res) => setCandidates(res.results.map(mapCandidateToDisplay)))
+      .catch((err) => {
+        setCandidatesError(err?.message ?? 'Failed to load candidates')
+        setCandidates([])
+      })
+      .finally(() => setCandidatesLoading(false))
+  }, [])
+
+  useEffect(() => {
+    refreshCandidates()
+  }, [refreshCandidates])
+
+  // Close "More" menu when clicking outside
+  useEffect(() => {
+    if (moreMenuState === null) return
+    const close = (e: MouseEvent) => {
+      const target = (e.target as Element)
+      if (target.closest('[data-more-menu-container]') || target.closest('[data-more-menu-portal]')) return
+      setMoreMenuState(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [moreMenuState])
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCreateError(null)
+    const phone = createForm.phoneNumber.replace(/\D/g, '')
+    if (phone.length !== 10) {
+      setCreateError('Phone must be 10 digits')
+      return
+    }
+    setCreateSubmitting(true)
+    try {
+      const skills = createForm.skillsText
+        ? createForm.skillsText.split(',').map((s) => ({ name: s.trim(), level: 'Beginner' as const })).filter((s) => s.name)
+        : undefined
+      await createCandidateApi({
+        fullName: createForm.fullName.trim(),
+        email: createForm.email.trim(),
+        phoneNumber: phone,
+        shortBio: createForm.shortBio.trim() || undefined,
+        skills,
+      })
+      setCreateForm({ fullName: '', email: '', phoneNumber: '', shortBio: '', skillsText: '' })
+      refreshCandidates()
+      const closeBtn = document.querySelector('[data-hs-overlay="#create-candidate-modal"]')
+      if (closeBtn instanceof HTMLElement) closeBtn.click()
+    } catch (err: any) {
+      setCreateError(err?.response?.data?.message ?? err?.message ?? 'Failed to create candidate')
+    } finally {
+      setCreateSubmitting(false)
+    }
+  }
 
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
@@ -262,21 +215,25 @@ const Candidates = () => {
     )
   }
 
-  // Add a new note
-  const handleAddNoteSubmit = () => {
+  // Add a new note (backend)
+  const handleAddNoteSubmit = async () => {
     if (!notesCandidateId || !newNote.text.trim()) return
-    
-    const note: CandidateNote = {
-      id: `note-${Date.now()}`,
-      candidateId: notesCandidateId,
-      note: newNote.text,
-      visibility: newNote.visibility,
-      postedBy: 'John Doe', // This would come from user context in real app
-      postedDate: new Date().toISOString()
+    setActionError(null)
+    try {
+      await addNoteToCandidate(notesCandidateId, newNote.text.trim())
+      const note: CandidateNote = {
+        id: `note-${Date.now()}`,
+        candidateId: notesCandidateId,
+        note: newNote.text,
+        visibility: newNote.visibility,
+        postedBy: 'Current user',
+        postedDate: new Date().toISOString()
+      }
+      setCandidateNotes([...candidateNotes, note])
+      setNewNote({ text: '', visibility: 'public' })
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add note')
     }
-    
-    setCandidateNotes([...candidateNotes, note])
-    setNewNote({ text: '', visibility: 'public' })
   }
 
   // Delete a note
@@ -287,7 +244,7 @@ const Candidates = () => {
   // Get candidate details for the notes sidebar
   const getCandidateDetails = () => {
     if (!notesCandidateId) return null
-    return CANDIDATES_DATA.find(candidate => candidate.id === notesCandidateId)
+    return candidates.find(candidate => candidate.id === notesCandidateId)
   }
 
   // Generate public URL for candidate
@@ -298,24 +255,216 @@ const Candidates = () => {
     return `https://example.com/ats/candidates/${candidateId}`
   }
 
-  // Export candidate documents
-  const handleExportDocs = (candidate: any, type: 'all' | 'resume' | 'cover-letter' = 'all') => {
-    // TODO: Implement document export functionality
-    console.log(`Exporting ${type} for candidate:`, candidate.id)
-    // Here you would implement the actual export logic based on type
-    switch (type) {
-      case 'all':
-        // Export both resume and cover letter
-        console.log('Exporting all documents')
-        break
-      case 'resume':
-        // Export only resume
-        console.log('Exporting resume')
-        break
-      case 'cover-letter':
-        // Export only cover letter
-        console.log('Exporting cover letter')
-        break
+  const [exportCandidate, setExportCandidate] = useState<CandidateDisplay | null>(null)
+  const [exportEmail, setExportEmail] = useState('')
+  const [exportSubmitting, setExportSubmitting] = useState(false)
+  const [exportAllEmail, setExportAllEmail] = useState('')
+  const [exportAllSubmitting, setExportAllSubmitting] = useState(false)
+  const [shareWithDoc, setShareWithDoc] = useState(false)
+  const [sharedPublicUrl, setSharedPublicUrl] = useState<string | null>(null)
+  const [sharedPublicUrlForId, setSharedPublicUrlForId] = useState<string | null>(null)
+  const [assignRecruiterCandidate, setAssignRecruiterCandidate] = useState<CandidateDisplay | null>(null)
+  const [recruitersList, setRecruitersList] = useState<{ id: string; name: string; email?: string }[]>([])
+  const [assignRecruiterId, setAssignRecruiterId] = useState('')
+  const [assignRecruiterSubmitting, setAssignRecruiterSubmitting] = useState(false)
+  const [joiningDateCandidate, setJoiningDateCandidate] = useState<CandidateDisplay | null>(null)
+  const [joiningDateValue, setJoiningDateValue] = useState('')
+  const [joiningDateSubmitting, setJoiningDateSubmitting] = useState(false)
+  const [resignDateCandidate, setResignDateCandidate] = useState<CandidateDisplay | null>(null)
+  const [resignDateValue, setResignDateValue] = useState('')
+  const [resignDateSubmitting, setResignDateSubmitting] = useState(false)
+  const [weekOffCandidateIds, setWeekOffCandidateIds] = useState<string[]>([])
+  const [weekOffDays, setWeekOffDays] = useState<string[]>([])
+  const [weekOffSubmitting, setWeekOffSubmitting] = useState(false)
+  const [assignShiftCandidateIds, setAssignShiftCandidateIds] = useState<string[]>([])
+  const [assignShiftId, setAssignShiftId] = useState('')
+  const [shiftsList, setShiftsList] = useState<{ id: string; name: string }[]>([])
+  const [assignShiftSubmitting, setAssignShiftSubmitting] = useState(false)
+  const [documentStatusMap, setDocumentStatusMap] = useState<Record<number, { status: number; adminNotes?: string }>>({})
+  const [salarySlipsFromCandidate, setSalarySlipsFromCandidate] = useState<Array<{ month?: string; year?: number; key?: string }>>([])
+  const [bulkDeleteSubmitting, setBulkDeleteSubmitting] = useState(false)
+  const handleExportDocs = (candidate: any, _type: 'all' | 'resume' | 'cover-letter' = 'all') => {
+    setExportCandidate(candidate)
+    setExportEmail('')
+    setActionError(null)
+    setTimeout(() => {
+      const trigger = document.getElementById('export-candidate-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleExportSubmit = async () => {
+    if (!exportCandidate?.id || !exportEmail.trim()) return
+    setExportSubmitting(true)
+    setActionError(null)
+    try {
+      await exportCandidateProfile(exportCandidate.id, exportEmail.trim())
+      setActionSuccess('Export email sent')
+      setExportCandidate(null)
+      setExportEmail('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#export-candidate-modal"]')?.dispatchEvent(new Event('click')), 0)
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Export failed')
+    } finally {
+      setExportSubmitting(false)
+    }
+  }
+
+  const openDocumentsModal = async (candidate: CandidateDisplay) => {
+    setDocumentsCandidate(candidate)
+    setDocumentsList([])
+    setDocumentStatusMap({})
+    setSalarySlipsFromCandidate([])
+    setDocumentsLoading(true)
+    setActionError(null)
+    try {
+      const [list, statusRes, candidateDetail] = await Promise.all([
+        getCandidateDocuments(candidate.id),
+        getDocumentStatus(candidate.id).catch(() => ({ documents: [] })),
+        getCandidate(candidate.id).catch(() => null),
+      ])
+      const docsList = Array.isArray(list) ? list : (list as any)?.documents ?? []
+      setDocumentsList(docsList)
+      const statusByIndex: Record<number, { status: number; adminNotes?: string }> = {}
+      ;(statusRes?.documents ?? []).forEach((d: any) => { statusByIndex[d.index] = { status: d.status, adminNotes: d.adminNotes } })
+      setDocumentStatusMap(statusByIndex)
+      setSalarySlipsFromCandidate((candidateDetail as any)?.salarySlips ?? [])
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to load documents')
+      setDocumentsList([])
+      setSalarySlipsFromCandidate([])
+    } finally {
+      setDocumentsLoading(false)
+      // Open modal only after state is updated so content is visible (avoids Preline showing stale/empty body)
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          const trigger = document.getElementById('documents-modal-trigger')
+          if (trigger) (trigger as HTMLElement).click()
+        }, 0)
+      })
+    }
+  }
+  const handleDocumentVerify = async (candidateId: string, documentIndex: number, status: number, adminNotes?: string) => {
+    setActionError(null)
+    try {
+      await verifyDocument(candidateId, documentIndex, status, adminNotes)
+      setDocumentStatusMap((prev) => ({ ...prev, [documentIndex]: { status, adminNotes } }))
+      setActionSuccess('Document status updated')
+      setTimeout(() => setActionSuccess(null), 2000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Verify failed')
+    }
+  }
+  const handleSalarySlipDelete = async (candidateId: string, index: number) => {
+    if (!documentsCandidate || documentsCandidate.id !== candidateId) return
+    if (!confirm('Remove this salary slip?')) return
+    setActionError(null)
+    try {
+      await deleteSalarySlip(candidateId, index)
+      setSalarySlipsFromCandidate((prev) => prev.filter((_, i) => i !== index))
+      setActionSuccess('Salary slip removed')
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 2000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
+    }
+  }
+  const handleDocumentDownload = async (candidateId: string, index: number) => {
+    try {
+      const { url } = await getDocumentDownloadUrl(candidateId, index)
+      window.open(url, '_blank')
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Download failed')
+    }
+  }
+
+  const openSalarySlipModal = (candidate: CandidateDisplay) => {
+    setSalarySlipCandidate(candidate)
+    setSalarySlipForm({ month: '', year: '', file: null })
+    setActionError(null)
+    setTimeout(() => {
+      const trigger = document.getElementById('salary-slip-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleSalarySlipSubmit = async () => {
+    if (!salarySlipCandidate?.id || !salarySlipForm.month || !salarySlipForm.year || !salarySlipForm.file) return
+    setSalarySlipSubmitting(true)
+    setActionError(null)
+    try {
+      const uploaded = await uploadDocument(salarySlipForm.file, `Salary Slip ${salarySlipForm.month} ${salarySlipForm.year}`)
+      await addSalarySlipToCandidate(salarySlipCandidate.id, {
+        month: salarySlipForm.month,
+        year: parseInt(salarySlipForm.year, 10),
+        documentUrl: uploaded.url,
+        key: uploaded.key,
+        originalName: uploaded.originalName,
+        size: uploaded.size,
+        mimeType: uploaded.mimeType,
+      })
+      setActionSuccess('Salary slip added')
+      setSalarySlipCandidate(null)
+      setSalarySlipForm({ month: '', year: '', file: null })
+      setTimeout(() => document.querySelector('[data-hs-overlay="#salary-slip-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add salary slip')
+    } finally {
+      setSalarySlipSubmitting(false)
+    }
+  }
+
+  const openFeedbackModal = (candidate: CandidateDisplay) => {
+    setFeedbackCandidate(candidate)
+    setFeedbackForm({ feedback: '', rating: 3 })
+    setActionError(null)
+    setTimeout(() => {
+      const trigger = document.getElementById('feedback-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleFeedbackSubmit = async () => {
+    if (!feedbackCandidate?.id || !feedbackForm.feedback.trim()) return
+    setFeedbackSubmitting(true)
+    setActionError(null)
+    try {
+      await addFeedbackToCandidate(feedbackCandidate.id, feedbackForm.feedback.trim(), feedbackForm.rating)
+      setActionSuccess('Feedback added')
+      setFeedbackCandidate(null)
+      setFeedbackForm({ feedback: '', rating: 3 })
+      setTimeout(() => document.querySelector('[data-hs-overlay="#feedback-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add feedback')
+    } finally {
+      setFeedbackSubmitting(false)
+    }
+  }
+
+  const handleResendVerification = async (candidate: CandidateDisplay) => {
+    setActionError(null)
+    try {
+      await resendVerificationEmail(candidate.id)
+      setActionSuccess('Verification email sent')
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to send verification email')
+    }
+  }
+
+  const handleDeleteCandidate = async (candidate: CandidateDisplay) => {
+    if (!confirm(`Delete candidate ${candidate.name}? This cannot be undone.`)) return
+    setActionError(null)
+    try {
+      await deleteCandidate(candidate.id)
+      setActionSuccess('Candidate deleted')
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
     }
   }
 
@@ -330,9 +479,9 @@ const Candidates = () => {
     }
   }
 
-  // Share on WhatsApp
+  // Share on WhatsApp – use shareable link with token when available
   const handleShareWhatsApp = (candidate: any) => {
-    const url = getCandidatePublicUrl(candidate.id)
+    const url = (sharedPublicUrl && sharedPublicUrlForId === candidate.id) ? sharedPublicUrl : getCandidatePublicUrl(candidate.id)
     const text = `Check out this candidate: ${candidate.name} - ${url}`
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
@@ -343,27 +492,243 @@ const Candidates = () => {
     setShowEmailInput(true)
   }
 
-  // Handle send email (UI only for now)
-  const handleSendEmail = () => {
-    if (!shareEmail.trim()) return
-    // TODO: Add email sending logic here
-    console.log('Sending email to:', shareEmail, 'for candidate:', shareCandidate?.id)
-    // Reset after sending
-    setShareEmail('')
-    setShowEmailInput(false)
+  // Handle send share email (backend) – backend returns the real shareable link with token
+  const handleSendEmail = async () => {
+    if (!shareEmail.trim() || !shareCandidate?.id || shareSubmitting) return
+    setActionError(null)
+    setShareSubmitting(true)
+    try {
+      const result = await shareCandidateProfile(shareCandidate.id, { email: shareEmail.trim(), withDoc: shareWithDoc })
+      setActionSuccess('Profile shared successfully')
+      if (result?.publicUrl) {
+        setSharedPublicUrl(result.publicUrl)
+        setSharedPublicUrlForId(shareCandidate.id)
+      }
+      setShareEmail('')
+      setShowEmailInput(false)
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to share')
+    } finally {
+      setShareSubmitting(false)
+    }
   }
 
-  // Handle share button click
+  // Handle share button click – open modal by setting state (no Preline trigger)
   const handleShareClick = (candidate: any) => {
     setShareCandidate(candidate)
     setShowEmailInput(false)
     setShareEmail('')
-    setTimeout(() => {
-      const trigger = document.getElementById('share-candidate-modal-trigger')
-      if (trigger) {
-        trigger.click()
+    setShareWithDoc(false)
+    if (sharedPublicUrlForId !== candidate.id) {
+      setSharedPublicUrl(null)
+      setSharedPublicUrlForId(null)
+    }
+  }
+
+  const handleExportAllOpen = () => {
+    setExportAllEmail('')
+    setActionError(null)
+    const trigger = document.getElementById('export-all-modal-trigger')
+    if (trigger) (trigger as HTMLElement).click()
+  }
+  const handleExportAllSubmit = async () => {
+    setExportAllSubmitting(true)
+    setActionError(null)
+    try {
+      const body = exportAllEmail.trim() ? { email: exportAllEmail.trim() } : undefined
+      const result = await exportAllCandidates(undefined, body)
+      if (result && typeof (result as Blob).slice === 'function') {
+        const url = URL.createObjectURL(result as Blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `candidates-export-${new Date().toISOString().split('T')[0]}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
       }
+      setActionSuccess('Export completed')
+      setExportAllEmail('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#export-all-modal"]')?.dispatchEvent(new Event('click')), 0)
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Export failed')
+    } finally {
+      setExportAllSubmitting(false)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedRows.size === 0) return
+    if (!confirm(`Delete ${selectedRows.size} selected candidate(s)? This cannot be undone.`)) return
+    setBulkDeleteSubmitting(true)
+    setActionError(null)
+    try {
+      for (const id of selectedRows) {
+        await deleteCandidate(id)
+      }
+      setSelectedRows(new Set())
+      setActionSuccess('Selected candidates deleted')
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
+    } finally {
+      setBulkDeleteSubmitting(false)
+    }
+  }
+
+  const openAssignRecruiterModal = (candidate: CandidateDisplay) => {
+    setAssignRecruiterCandidate(candidate)
+    setAssignRecruiterId('')
+    setActionError(null)
+    listUsers({ limit: 200 })
+      .then((res) => setRecruitersList((res.results ?? []).map((u: any) => ({ id: u.id ?? u._id, name: u.name, email: u.email }))))
+      .catch(() => setRecruitersList([]))
+    setTimeout(() => {
+      const trigger = document.getElementById('assign-recruiter-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
     }, 100)
+  }
+  const handleAssignRecruiterSubmit = async () => {
+    if (!assignRecruiterCandidate?.id || !assignRecruiterId) return
+    setAssignRecruiterSubmitting(true)
+    setActionError(null)
+    try {
+      await assignRecruiterToCandidate(assignRecruiterCandidate.id, assignRecruiterId)
+      setActionSuccess('Recruiter assigned')
+      setAssignRecruiterCandidate(null)
+      setAssignRecruiterId('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#assign-recruiter-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign recruiter')
+    } finally {
+      setAssignRecruiterSubmitting(false)
+    }
+  }
+
+  const openJoiningDateModal = (candidate: CandidateDisplay) => {
+    setJoiningDateCandidate(candidate)
+    setJoiningDateValue('')
+    setActionError(null)
+    setTimeout(() => {
+      const trigger = document.getElementById('joining-date-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleJoiningDateSubmit = async () => {
+    if (!joiningDateCandidate?.id || !joiningDateValue) return
+    setJoiningDateSubmitting(true)
+    setActionError(null)
+    try {
+      await updateJoiningDate(joiningDateCandidate.id, joiningDateValue)
+      setActionSuccess('Joining date updated')
+      setJoiningDateCandidate(null)
+      setJoiningDateValue('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#joining-date-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update joining date')
+    } finally {
+      setJoiningDateSubmitting(false)
+    }
+  }
+
+  const openResignDateModal = (candidate: CandidateDisplay) => {
+    setResignDateCandidate(candidate)
+    setResignDateValue('')
+    setActionError(null)
+    setTimeout(() => {
+      const trigger = document.getElementById('resign-date-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleResignDateSubmit = async () => {
+    if (!resignDateCandidate?.id) return
+    setResignDateSubmitting(true)
+    setActionError(null)
+    try {
+      await updateResignDate(resignDateCandidate.id, resignDateValue || null)
+      setActionSuccess('Resign date updated')
+      setResignDateCandidate(null)
+      setResignDateValue('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#resign-date-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
+    } finally {
+      setResignDateSubmitting(false)
+    }
+  }
+
+  const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const openWeekOffModal = (candidateIds: string[]) => {
+    setWeekOffCandidateIds(candidateIds)
+    setWeekOffDays([])
+    setWeekOffSubmitting(false)
+    setActionError(null)
+    if (candidateIds.length === 1) {
+      getCandidateWeekOff(candidateIds[0]).then((r) => setWeekOffDays(r.weekOff ?? [])).catch(() => {})
+    }
+    setTimeout(() => {
+      const trigger = document.getElementById('week-off-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleWeekOffSubmit = async () => {
+    if (weekOffCandidateIds.length === 0 || weekOffDays.length === 0) return
+    setWeekOffSubmitting(true)
+    setActionError(null)
+    try {
+      await updateWeekOff(weekOffCandidateIds, weekOffDays)
+      setActionSuccess('Week-off updated')
+      setWeekOffCandidateIds([])
+      setWeekOffDays([])
+      setTimeout(() => document.querySelector('[data-hs-overlay="#week-off-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update week-off')
+    } finally {
+      setWeekOffSubmitting(false)
+    }
+  }
+  const toggleWeekOffDay = (day: string) => {
+    setWeekOffDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]))
+  }
+
+  const openAssignShiftModal = (candidateIds: string[]) => {
+    setAssignShiftCandidateIds(candidateIds)
+    setAssignShiftId('')
+    setActionError(null)
+    getAllShifts({ isActive: true })
+      .then((res) => setShiftsList((res.data?.results ?? []).map((s: any) => ({ id: s.id ?? s._id, name: s.name }))))
+      .catch(() => setShiftsList([]))
+    setTimeout(() => {
+      const trigger = document.getElementById('assign-shift-modal-trigger')
+      if (trigger) (trigger as HTMLElement).click()
+    }, 100)
+  }
+  const handleAssignShiftSubmit = async () => {
+    if (assignShiftCandidateIds.length === 0 || !assignShiftId) return
+    setAssignShiftSubmitting(true)
+    setActionError(null)
+    try {
+      await assignShiftToCandidates(assignShiftCandidateIds, assignShiftId)
+      setActionSuccess('Shift assigned')
+      setAssignShiftCandidateIds([])
+      setAssignShiftId('')
+      setTimeout(() => document.querySelector('[data-hs-overlay="#assign-shift-modal"]')?.dispatchEvent(new Event('click')), 0)
+      refreshCandidates()
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign shift')
+    } finally {
+      setAssignShiftSubmitting(false)
+    }
   }
 
   // Define columns
@@ -373,6 +738,9 @@ const Candidates = () => {
         Header: 'All',
         accessor: 'checkbox',
         disableSortBy: true,
+        width: 52,
+        minWidth: 52,
+        maxWidth: 52,
         Cell: ({ row }: any) => (
           <input
             className="form-check-input"
@@ -405,13 +773,7 @@ const Candidates = () => {
                   className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
                   onClick={() => {
                     setPreviewCandidate(candidate)
-                    // Trigger the panel via Preline's trigger button
-                    setTimeout(() => {
-                      const trigger = document.getElementById('candidate-preview-panel-trigger')
-                      if (trigger) {
-                        trigger.click()
-                      }
-                    }, 100)
+                    setViewDetailTab('personal')
                   }}
                 >
                   {candidate.name}
@@ -458,6 +820,8 @@ const Candidates = () => {
       {
         Header: 'Education',
         accessor: 'education',
+        minWidth: 180,
+        maxWidth: 220,
         Cell: ({ row }: any) => {
           const candidate = row.original
           // Parse education: split by " - " to separate degree and university
@@ -467,23 +831,25 @@ const Candidates = () => {
           
           return (
             <div 
-              className="text-sm text-gray-800 dark:text-white" 
+              className="text-sm text-gray-800 dark:text-white min-w-0"
               style={{ 
-                maxWidth: '280px',
+                maxWidth: '100%',
                 minHeight: '60px',
                 lineHeight: '1.5',
-                wordBreak: 'break-word'
+                wordBreak: 'break-word',
+                overflow: 'hidden',
+                overflowWrap: 'break-word',
               }}
               title={candidate.education}
             >
-              <div className="font-medium flex items-center gap-2">
-                <i className="ri-graduation-cap-line text-primary"></i>
-                <span>{degree}</span>
+              <div className="font-medium flex items-center gap-2 min-w-0">
+                <i className="ri-graduation-cap-line text-primary flex-shrink-0"></i>
+                <span className="break-words">{degree}</span>
               </div>
               {university && (
-                <div className="text-gray-600 dark:text-gray-400 mt-0.5 flex items-center gap-2">
-                  <i className="ri-building-line text-info"></i>
-                  <span>{university}</span>
+                <div className="text-gray-600 dark:text-gray-400 mt-0.5 flex items-center gap-2 min-w-0">
+                  <i className="ri-building-line text-info flex-shrink-0"></i>
+                  <span className="break-words">{university}</span>
                 </div>
               )}
             </div>
@@ -493,23 +859,19 @@ const Candidates = () => {
       {
         Header: 'Bio',
         accessor: 'bio',
+        minWidth: 180,
+        maxWidth: 220,
         Cell: ({ row }: any) => {
           const candidate = row.original
           return (
             <div 
-              className="text-sm text-gray-700 dark:text-gray-300" 
+              className="text-sm text-gray-700 dark:text-gray-300 min-w-0 break-words"
               style={{ 
-                maxWidth: '280px',
-               
-                display: '-webkit-box',
-                WebkitLineClamp: 3,
-                WebkitBoxOrient: 'vertical',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
+                maxWidth: '100%',
                 lineHeight: '1.5',
-                wordBreak: 'break-word'
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
               }}
-              title={candidate.bio}
             >
               {candidate.bio}
             </div>
@@ -520,104 +882,110 @@ const Candidates = () => {
         Header: 'Actions',
         accessor: 'id',
         disableSortBy: true,
-        Cell: ({ row }: any) => (
-          <div className="flex items-center gap-2">
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-                title="Edit Candidate"
-              >
-                <i className="ri-pencil-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Edit Candidate
-                </span>
-              </button>
-            </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                onClick={() => handleAddNote(row.original.id, row.original)}
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
-                title="Add Note"
-              >
-                <i className="ri-file-add-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Add Note
-                </span>
-              </button>
-            </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                onClick={() => handleShareClick(row.original)}
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                title="Share Public URL"
-              >
-                <i className="ri-share-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Share Public URL
-                </span>
-              </button>
-            </div>
-            <div className="hs-dropdown ti-dropdown">
-              <button
-                type="button"
-                className="hs-dropdown-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                id={`export-dropdown-${row.original.id}`}
-                aria-expanded="false"
-              >
-                <i className="ri-download-line"></i>
-              </button>
-              <ul
-                className="hs-dropdown-menu ti-dropdown-menu hidden"
-                aria-labelledby={`export-dropdown-${row.original.id}`}
-              >
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'all')}
-                  >
-                    <i className="ri-file-download-line me-2"></i>All
+        Cell: ({ row }: any) => {
+          const c = row.original as CandidateDisplay
+          return (
+            <div className="flex flex-wrap items-center gap-1">
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  onClick={() => { setPreviewCandidate(c); setViewDetailTab('personal') }}
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-success/10 text-success hover:bg-success hover:text-white"
+                  title="View Details"
+                >
+                  <i className="ri-eye-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Details</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <Link href={`/ats/candidates/edit?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
+                  <i className="ri-pencil-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit Candidate</span>
+                </Link>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => openDocumentsModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-secondary/10 text-secondary hover:bg-secondary hover:text-white" title="View Documents">
+                  <i className="ri-file-list-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Documents</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => openSalarySlipModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-warning/10 text-warning hover:bg-warning hover:text-white" title="Upload Salary Slip">
+                  <i className="ri-file-add-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Upload Salary Slip</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share Candidate">
+                  <i className="ri-share-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share Candidate</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => { setActionSuccess('Attendance is not configured for candidates in this environment'); setTimeout(() => setActionSuccess(null), 3000) }} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white" title="View Attendance">
+                  <i className="ri-calendar-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Attendance</span>
+                </button>
+              </div>
+              {c.isEmailVerified === false && (
+                <div className="hs-tooltip ti-main-tooltip">
+                  <button type="button" onClick={() => handleResendVerification(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white" title="Resend Email Verification">
+                    <i className="ri-mail-send-line"></i>
+                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Resend Email Verification</span>
                   </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'resume')}
-                  >
-                    <i className="ri-file-text-line me-2"></i>Resume
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'cover-letter')}
-                  >
-                    <i className="ri-mail-line me-2"></i>Cover Letter
-                  </button>
-                </li>
-              </ul>
+                </div>
+              )}
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => handleAddNote(c.id, c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500 hover:text-white" title="Add Note">
+                  <i className="ri-file-text-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Add Note</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => openFeedbackModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white" title="Add Feedback">
+                  <i className="ri-feedback-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Add Feedback</span>
+                </button>
+              </div>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button type="button" onClick={() => handleDeleteCandidate(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-danger/10 text-danger hover:bg-danger hover:text-white" title="Delete">
+                  <i className="ri-delete-bin-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Delete</span>
+                </button>
+              </div>
+              <div className="inline-flex" data-more-menu-container>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-gray-500/10 text-gray-600 dark:text-gray-400 hover:bg-gray-500 hover:text-white"
+                  title="More"
+                  aria-label="More actions"
+                  aria-expanded={moreMenuState?.candidate.id === c.id}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    e.preventDefault()
+                    const target = e.currentTarget as HTMLElement
+                    const rect = target.getBoundingClientRect()
+                    if (moreMenuState?.candidate.id === c.id) {
+                      setMoreMenuState(null)
+                    } else {
+                      setMoreMenuState({ candidate: c, top: rect.bottom + 4, left: Math.min(rect.right - 8, window.innerWidth - 200) })
+                    }
+                  }}
+                >
+                  <i className="ri-more-2-fill"></i>
+                </button>
+              </div>
             </div>
-          </div>
-        ),
+          )
+        },
       },
     ],
-    [selectedRows]
+    [selectedRows, moreMenuState]
   )
 
   // Filter data based on filter state
   const filteredData = useMemo(() => {
-    return CANDIDATES_DATA.filter((candidate) => {
+    return candidates.filter((candidate) => {
       // Name filter (array)
       if (filters.name.length > 0 && !filters.name.some(name => 
         candidate.name.toLowerCase().includes(name.toLowerCase())
@@ -647,7 +1015,7 @@ const Candidates = () => {
       }
       
       // Experience filter (range)
-      if (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max) {
+      if (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max) {
         const candidateExperience = candidate.experience || 0
         if (candidateExperience < filters.experience[0] || candidateExperience > filters.experience[1]) {
           return false
@@ -656,26 +1024,26 @@ const Candidates = () => {
       
       return true
     })
-  }, [filters])
+  }, [candidates, filters, experienceRanges.min, experienceRanges.max])
 
   const data = useMemo(() => filteredData, [filteredData])
 
   // Get unique values for dropdown filters
   const allSkills = useMemo(() => {
     const skillSet = new Set<string>()
-    CANDIDATES_DATA.forEach(candidate => {
+    candidates.forEach(candidate => {
       candidate.skills?.forEach(skill => skillSet.add(skill))
     })
     return Array.from(skillSet).sort()
-  }, [])
+  }, [candidates])
 
   const allEducation = useMemo(() => {
-    return [...new Set(CANDIDATES_DATA.map(candidate => candidate.education))].sort()
-  }, [])
+    return [...new Set(candidates.map(candidate => candidate.education).filter(Boolean))].sort()
+  }, [candidates])
 
   const allNames = useMemo(() => {
-    return [...new Set(CANDIDATES_DATA.map(candidate => candidate.name))].sort()
-  }, [])
+    return [...new Set(candidates.map(candidate => candidate.name))].sort()
+  }, [candidates])
 
   // Filter options based on search terms
   const filteredNames = useMemo(() => {
@@ -726,7 +1094,7 @@ const Candidates = () => {
       skills: [],
       education: [],
       email: '',
-      experience: [experienceRangesConst.min, experienceRangesConst.max]
+      experience: [experienceRanges.min, experienceRanges.max]
     })
     setSearchName('')
     setSearchSkills('')
@@ -738,15 +1106,15 @@ const Candidates = () => {
     filters.skills.length > 0 ||
     filters.education.length > 0 ||
     filters.email !== '' ||
-    filters.experience[0] !== experienceRangesConst.min ||
-    filters.experience[1] !== experienceRangesConst.max
+    filters.experience[0] !== experienceRanges.min ||
+    filters.experience[1] !== experienceRanges.max
 
   const activeFilterCount = 
     filters.name.length +
     filters.skills.length +
     filters.education.length +
     (filters.email !== '' ? 1 : 0) +
-    (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0)
+    (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max ? 1 : 0)
 
   const tableInstance: any = useTable(
     {
@@ -826,7 +1194,27 @@ const Candidates = () => {
 
   return (
     <Fragment>
-  
+      {candidatesLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+        </div>
+      )}
+      {!candidatesLoading && candidatesError && (
+        <div className="p-4 rounded-lg bg-danger/10 text-danger mb-4">
+          {candidatesError}
+        </div>
+      )}
+      {actionError && (
+        <div className="p-4 rounded-lg bg-danger/10 text-danger mb-4 flex justify-between items-center">
+          <span>{actionError}</span>
+          <button type="button" onClick={() => setActionError(null)} className="ti-btn ti-btn-sm ti-btn-ghost">×</button>
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="p-4 rounded-lg bg-success/10 text-success mb-4">
+          {actionSuccess}
+        </div>
+      )}
       <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
@@ -927,10 +1315,8 @@ const Candidates = () => {
                   </ul>
                 </div>
                 <Link
-                  href="#!"
-                  scroll={false}
-                  className="hs-dropdown-toggle ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#create-candidate-modal"
+                  href="/ats/candidates/add"
+                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add Candidate
                 </Link>
@@ -957,6 +1343,7 @@ const Candidates = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleExportAllOpen}
                       >
                         <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
                       </button>
@@ -984,30 +1371,47 @@ const Candidates = () => {
                   )}
                 </button>
               
+                {selectedRows.size > 0 && (
+                  <>
+                    <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openWeekOffModal(Array.from(selectedRows))}>
+                      <i className="ri-calendar-week-line font-semibold align-middle me-1"></i>Week-off
+                    </button>
+                    <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openAssignShiftModal(Array.from(selectedRows))}>
+                      <i className="ri-time-line font-semibold align-middle me-1"></i>Assign shift
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  disabled={selectedRows.size === 0 || bulkDeleteSubmitting}
+                  onClick={handleBulkDelete}
                 >
-                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
+                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>{bulkDeleteSubmitting ? 'Deleting...' : 'Delete'}
                 </button>
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
+                <table {...getTableProps()} className="table min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600" style={{ tableLayout: 'fixed' }}>
                   <thead>
                     {headerGroups.map((headerGroup: any) => (
                       <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                        {headerGroup.headers.map((column: any) => (
+                        {headerGroup.headers.map((column: any) => {
+                          const headerProps = column.getHeaderProps(column.getSortByToggleProps());
+                          const isCheckboxCol = column.id === 'checkbox';
+                          return (
                           <th
-                            {...column.getHeaderProps(column.getSortByToggleProps())}
+                            {...headerProps}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
                             key={Math.random()}
                             style={{ 
+                              ...headerProps.style,
                               position: 'sticky', 
                               top: 0, 
-                              zIndex: 10
+                              zIndex: 10,
+                              ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
                             }}
                           >
                             {column.id === 'select' ? (
@@ -1038,7 +1442,8 @@ const Candidates = () => {
                               </div>
                             )}
                           </th>
-                        ))}
+                          );
+                        })}
                       </tr>
                     ))}
                   </thead>
@@ -1048,8 +1453,20 @@ const Candidates = () => {
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
                           {row.cells.map((cell: any) => {
+                            const isEducationOrBio = cell.column.id === 'education' || cell.column.id === 'bio';
+                            const isCheckboxCol = cell.column.id === 'checkbox';
+                            const cellProps = cell.getCellProps();
                             return (
-                              <td {...cell.getCellProps()} key={Math.random()}>
+                              <td
+                                {...cellProps}
+                                key={Math.random()}
+                                className={isEducationOrBio ? `${cellProps.className || ''} align-top !whitespace-normal`.trim() : cellProps.className}
+                                style={{
+                                  ...cellProps.style,
+                                  ...(isEducationOrBio ? { minWidth: 0, overflow: 'hidden' } : {}),
+                                  ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
+                                }}
+                              >
                                 {cell.render('Cell')}
                               </td>
                             )
@@ -1406,8 +1823,8 @@ const Candidates = () => {
                 <Range
                   values={filters.experience}
                   step={1}
-                  min={experienceRangesConst.min}
-                  max={experienceRangesConst.max}
+                  min={experienceRanges.min}
+                  max={experienceRanges.max}
                   onChange={handleExperienceRangeChange}
                   renderTrack={({ props, children }) => (
                     <div
@@ -1429,8 +1846,8 @@ const Candidates = () => {
                           background: getTrackBackground({
                             values: filters.experience,
                             colors: ['#e2e8f0', '#845adf', '#e2e8f0'],
-                            min: experienceRangesConst.min,
-                            max: experienceRangesConst.max,
+                            min: experienceRanges.min,
+                            max: experienceRanges.max,
                           }),
                           alignSelf: 'center',
                         }}
@@ -1501,119 +1918,278 @@ const Candidates = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for candidate preview panel (needed for Preline) */}
-      <button 
-        id="candidate-preview-panel-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#candidate-preview-panel"
-      ></button>
-
-      {/* Candidate Preview Panel (Offcanvas) */}
-      <div 
-        id="candidate-preview-panel" 
-        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !max-w-[50rem] lg:!max-w-[60rem]"
-        tabIndex={-1}
-      >
-        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
-            <i className="ri-user-line text-primary text-base"></i>
-            {previewCandidate?.name || 'Candidate Profile'}
-          </h6>
-          <button 
-            type="button" 
-            className="hs-dropdown-toggle ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1" 
-            data-hs-overlay="#candidate-preview-panel"
-            onClick={() => setPreviewCandidate(null)}
-          >
-            <span className="sr-only">Close</span>
-            <svg className="w-3.5 h-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z" fill="currentColor"/>
-            </svg>
-          </button>
-        </div>
-        <div className="ti-offcanvas-body !p-4">
-          {previewCandidate ? (
-            <div className="space-y-4">
-              {/* Candidate Header Info */}
-              <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
-                <img
-                  src={previewCandidate.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={previewCandidate.name}
-                  className="w-16 h-16 rounded-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
-                />
-                <div className="flex-1">
-                  <h6 className="font-bold text-gray-800 dark:text-white text-xl mb-1">{previewCandidate.name}</h6>
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <i className="ri-mail-line"></i>
-                      {previewCandidate.email}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <i className="ri-phone-line"></i>
-                      {previewCandidate.phone}
-                    </span>
+      {/* Candidate View Details Modal (centered modal with tabs – matches Dharwrin style) */}
+      {previewCandidate && (
+        <div className="fixed inset-0 z-[110] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-2 sm:px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }} />
+            <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-sm mx-auto sm:max-w-2xl md:max-w-4xl lg:max-w-6xl sm:my-8 sm:align-middle">
+              {/* Modal header */}
+              <div className="bg-white dark:bg-gray-800 px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center min-w-0 flex-1">
+                    <div className="avatar avatar-lg avatar-rounded me-3 flex-shrink-0">
+                      <img
+                        src={previewCandidate.displayPicture || (previewCandidate._raw?.profilePicture?.url) || '/assets/images/faces/1.jpg'}
+                        alt={previewCandidate.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg' }}
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white truncate">{previewCandidate.name}</h3>
+                      <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">{previewCandidate.email}</p>
+                      {(previewCandidate._raw?.employeeId) && (
+                        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">Employee ID: {previewCandidate._raw.employeeId}</p>
+                      )}
+                      {(previewCandidate.bio || previewCandidate._raw?.shortBio) && (
+                        <p className="text-xs text-gray-600 dark:text-gray-300 truncate mt-1">{previewCandidate.bio || previewCandidate._raw?.shortBio}</p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
-
-              {/* Key Details Grid */}
-              <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-black/20 rounded-lg">
-                <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Education</div>
-                  <div className="font-semibold text-gray-800 dark:text-white">{previewCandidate.education}</div>
-                </div>
-                <div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Skills</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {previewCandidate.skills?.map((skill: string, index: number) => (
-                      <span
-                        key={index}
-                        className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-md text-xs font-medium"
-                      >
-                        {skill}
+                  <div className="flex items-center gap-2 ml-2">
+                    {(previewCandidate._raw?.joiningDate) && (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-md">
+                        <i className="ri-calendar-check-line"></i>
+                        {new Date(previewCandidate._raw.joiningDate).toLocaleDateString()}
                       </span>
-                    ))}
+                    )}
+                    {(previewCandidate._raw?.resignDate) && (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-warning/10 text-warning rounded-md">
+                        <i className="ri-calendar-close-line"></i>
+                        {new Date(previewCandidate._raw.resignDate).toLocaleDateString()}
+                      </span>
+                    )}
+                    <button type="button" onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0">
+                      <i className="ri-close-line text-xl"></i>
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* Bio Section */}
-              {previewCandidate.bio && (
-                <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                  <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                    <i className="ri-file-text-line text-primary"></i>
-                    Bio
-                  </h6>
-                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {previewCandidate.bio}
-                  </p>
+              {/* Tabs */}
+              <div className="bg-white dark:bg-gray-800 px-4 sm:px-6 lg:px-8 py-4">
+                <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
+                  <nav className="-mb-px flex space-x-2 sm:space-x-4 overflow-x-auto">
+                    {[
+                      { id: 'personal', label: 'Personal Info', icon: 'ri-user-line' },
+                      { id: 'qualification', label: 'Qualification', icon: 'ri-book-line' },
+                      { id: 'experience', label: 'Experience', icon: 'ri-briefcase-line' },
+                      { id: 'skills', label: 'Skills', icon: 'ri-tools-line' },
+                      { id: 'documents', label: 'Documents', icon: 'ri-file-line' },
+                      { id: 'salary', label: 'Salary Slips', icon: 'ri-money-dollar-box-line' },
+                      { id: 'notes', label: 'Notes & Feedback', icon: 'ri-file-text-line' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setViewDetailTab(tab.id)}
+                        className={`py-2 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${
+                          viewDetailTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        }`}
+                      >
+                        <i className={tab.icon}></i>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </nav>
                 </div>
-              )}
 
-              {/* Action Buttons */}
-              <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10 flex gap-3">
-                <button 
-                  type="button" 
-                  className="hs-dropdown-toggle ti-btn ti-btn-light flex-1" 
-                  data-hs-overlay="#candidate-preview-panel"
-                  onClick={() => setPreviewCandidate(null)}
-                >
+                {/* Tab content */}
+                <div className="min-h-[300px] sm:min-h-[400px]">
+                  {viewDetailTab === 'personal' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Personal Information</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Full Name</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.name || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Email</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.email || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.phone || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Education</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.education || '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Experience (years)</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.experience ?? '-'}</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Short Bio</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.bio || previewCandidate._raw?.shortBio || '-'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'qualification' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Education & Qualifications</h4>
+                      {Array.isArray(previewCandidate._raw?.qualifications) && previewCandidate._raw.qualifications.length > 0 ? (
+                        previewCandidate._raw.qualifications.map((qual: any, index: number) => (
+                          <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                            <h5 className="font-semibold text-gray-900 dark:text-white mb-2">Education #{index + 1}</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Degree</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{qual?.degree || '-'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Institute</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{qual?.institute || '-'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <i className="ri-book-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                          <p className="text-gray-500 dark:text-gray-400">No qualifications listed.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'experience' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Work Experience</h4>
+                      {Array.isArray(previewCandidate._raw?.experiences) && previewCandidate._raw.experiences.length > 0 ? (
+                        previewCandidate._raw.experiences.map((exp: any, index: number) => (
+                          <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+                            <h5 className="font-semibold text-gray-900 dark:text-white mb-2">Experience #{index + 1}</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Company</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{exp?.company || '-'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Role</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{exp?.role || '-'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Start Date</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{exp?.startDate ? new Date(exp.startDate).toLocaleDateString() : '-'}</p>
+                              </div>
+                              <div>
+                                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">End Date</label>
+                                <p className="mt-1 text-sm text-gray-900 dark:text-white">{exp?.endDate ? new Date(exp.endDate).toLocaleDateString() : (exp?.currentlyWorking ? 'Present' : '-')}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-8">
+                          <i className="ri-briefcase-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                          <p className="text-gray-500 dark:text-gray-400">No work experience listed.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'skills' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Skills</h4>
+                      {(previewCandidate.skills?.length || previewCandidate._raw?.skills?.length) ? (
+                        <div className="flex flex-wrap gap-2">
+                          {(previewCandidate.skills || previewCandidate._raw?.skills?.map((s: any) => typeof s === 'string' ? s : s.name))?.map((skill: string, index: number) => (
+                            <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <i className="ri-tools-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                          <p className="text-gray-500 dark:text-gray-400">No skills listed.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'documents' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Documents</h4>
+                      {Array.isArray(previewCandidate._raw?.documents) && previewCandidate._raw.documents.length > 0 ? (
+                        <div className="space-y-3">
+                          {previewCandidate._raw.documents.map((doc: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                              <p className="font-medium text-gray-900 dark:text-white truncate">{doc?.label || doc?.originalName || `Document ${index + 1}`}</p>
+                              <button type="button" className="ti-btn ti-btn-sm ti-btn-primary flex-shrink-0" onClick={() => previewCandidate?.id && handleDocumentDownload(previewCandidate.id, index)}>
+                                <i className="ri-external-link-line me-1"></i>View
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <i className="ri-file-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                          <p className="text-gray-500 dark:text-gray-400">No documents uploaded.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'salary' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Salary Slips</h4>
+                      {Array.isArray(previewCandidate._raw?.salarySlips) && previewCandidate._raw.salarySlips.length > 0 ? (
+                        <div className="space-y-3">
+                          {previewCandidate._raw.salarySlips.map((slip: any, index: number) => (
+                            <div key={index} className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                              <span className="text-sm text-gray-900 dark:text-white">{slip?.month ?? ''} {slip?.year ?? ''}</span>
+                              {slip?.documentUrl || slip?.url ? (
+                                <a href={slip.documentUrl || slip.url} target="_blank" rel="noopener noreferrer" className="ti-btn ti-btn-sm ti-btn-primary">
+                                  <i className="ri-external-link-line me-1"></i>View
+                                </a>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8">
+                          <i className="ri-money-dollar-box-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
+                          <p className="text-gray-500 dark:text-gray-400">No salary slips uploaded.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {viewDetailTab === 'notes' && (
+                    <div className="space-y-4">
+                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Notes & Feedback</h4>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Use the Add Note and Add Feedback actions from the candidate row to add notes and feedback.</p>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-primary"
+                        onClick={() => {
+                          handleAddNote(previewCandidate.id, previewCandidate)
+                          setPreviewCandidate(null)
+                          setViewDetailTab('personal')
+                        }}
+                      >
+                        <i className="ri-file-text-line me-1"></i>Open Notes
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 px-4 sm:px-6 py-3 border-t border-gray-200 dark:border-gray-700">
+                <button type="button" className="ti-btn ti-btn-light" onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }}>
                   Close
-                </button>
-                <button type="button" className="ti-btn ti-btn-primary flex-1">
-                  View Full Profile
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">No candidate selected</div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Hidden trigger button for candidate notes panel (needed for Preline) */}
       <button 
@@ -1785,34 +2361,25 @@ const Candidates = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for share modal (needed for Preline) */}
-      <button 
-        id="share-candidate-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#share-candidate-modal"
-      ></button>
-
-      {/* Share Candidate Modal */}
+      {/* Create Candidate Modal */}
       <div 
-        id="share-candidate-modal" 
+        id="create-candidate-modal" 
         className="hs-overlay hidden ti-modal"
       >
         <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
           <div className="ti-modal-content">
             <div className="ti-modal-header">
               <h6 className="ti-modal-title flex items-center gap-2">
-                <i className="ri-share-line text-primary"></i>
-                Share Candidate
+                <i className="ri-user-add-line text-primary"></i>
+                Add Candidate
               </h6>
               <button 
                 type="button" 
                 className="hs-dropdown-toggle ti-modal-close-btn" 
-                data-hs-overlay="#share-candidate-modal"
+                data-hs-overlay="#create-candidate-modal"
                 onClick={() => {
-                  setShareCandidate(null)
-                  setShowEmailInput(false)
-                  setShareEmail('')
+                  setCreateError(null)
+                  setCreateForm({ fullName: '', email: '', phoneNumber: '', shortBio: '', skillsText: '' })
                 }}
               >
                 <span className="sr-only">Close</span>
@@ -1821,7 +2388,461 @@ const Candidates = () => {
                 </svg>
               </button>
             </div>
+            <form onSubmit={handleCreateSubmit}>
+              <div className="ti-modal-body space-y-4">
+                {createError && (
+                  <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">
+                    {createError}
+                  </div>
+                )}
+                <div>
+                  <label className="form-label">Full name <span className="text-danger">*</span></label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. John Doe"
+                    value={createForm.fullName}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, fullName: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Email <span className="text-danger">*</span></label>
+                  <input
+                    type="email"
+                    className="form-control"
+                    placeholder="john@example.com"
+                    value={createForm.email}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Phone (10 digits) <span className="text-danger">*</span></label>
+                  <input
+                    type="tel"
+                    className="form-control"
+                    placeholder="9876543210"
+                    value={createForm.phoneNumber}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, phoneNumber: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                    maxLength={10}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Bio</label>
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    placeholder="Short bio (optional)"
+                    value={createForm.shortBio}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, shortBio: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Skills (comma-separated)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. React, Node.js, TypeScript"
+                    value={createForm.skillsText}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, skillsText: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="ti-modal-footer">
+                <button 
+                  type="button" 
+                  className="ti-btn ti-btn-light" 
+                  data-hs-overlay="#create-candidate-modal"
+                  onClick={() => {
+                    setCreateError(null)
+                    setCreateForm({ fullName: '', email: '', phoneNumber: '', shortBio: '', skillsText: '' })
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="ti-btn ti-btn-primary"
+                  disabled={createSubmitting}
+                >
+                  {createSubmitting ? (
+                    <>
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full me-1 align-middle"></span>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-add-line me-1"></i>
+                      Add Candidate
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      {/* Documents modal */}
+      <button id="documents-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#documents-modal"></button>
+      <div id="documents-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Documents – {documentsCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#documents-modal" onClick={() => setDocumentsCandidate(null)}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body min-h-[200px]">
+              {documentsLoading ? (
+                <div className="flex justify-center items-center py-12">
+                  <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+                  <span className="ml-3 text-sm text-gray-500 dark:text-gray-400">Loading documents...</span>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {documentsList.length > 0 && (
+                    <div>
+                      <h6 className="form-label mb-2">Documents</h6>
+                      <ul className="space-y-2">
+                        {documentsList.map((doc, idx) => {
+                          const st = documentStatusMap[idx]
+                          const statusLabel = st?.status === 1 ? 'Approved' : st?.status === 2 ? 'Rejected' : 'Pending'
+                          return (
+                            <li key={idx} className="flex flex-wrap items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
+                              <div className="min-w-0 flex-1">
+                                <span className="text-sm truncate block">{doc.label || doc.originalName || `Document ${idx + 1}`}</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400">{statusLabel}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button type="button" className="ti-btn ti-btn-sm ti-btn-primary" onClick={() => documentsCandidate && handleDocumentDownload(documentsCandidate.id, idx)}>Download</button>
+                                {documentsCandidate && (
+                                  <>
+                                    <button type="button" className="ti-btn ti-btn-sm ti-btn-success" onClick={() => handleDocumentVerify(documentsCandidate.id, idx, 1)}>Approve</button>
+                                    <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => handleDocumentVerify(documentsCandidate.id, idx, 2)}>Reject</button>
+                                  </>
+                                )}
+                              </div>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )}
+                  {salarySlipsFromCandidate.length > 0 && (
+                    <div>
+                      <h6 className="form-label mb-2">Salary slips</h6>
+                      <ul className="space-y-2">
+                        {salarySlipsFromCandidate.map((slip, idx) => (
+                          <li key={idx} className="flex items-center justify-between p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
+                            <span className="text-sm">{slip.month ?? ''} {slip.year ?? ''}</span>
+                            {documentsCandidate && (
+                              <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => handleSalarySlipDelete(documentsCandidate.id, idx)}>Delete</button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {documentsList.length === 0 && salarySlipsFromCandidate.length === 0 && !documentsLoading && (
+                    <div className="text-center py-10 px-4">
+                      <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gray-100 dark:bg-black/30 text-gray-400 dark:text-gray-500 mb-4">
+                        <i className="ri-file-list-3-line text-3xl"></i>
+                      </div>
+                      <h4 className="text-base font-semibold text-gray-800 dark:text-white mb-1">No documents yet</h4>
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 max-w-sm mx-auto">
+                        No documents or salary slips have been added for {documentsCandidate?.name ?? 'this candidate'}.
+                      </p>
+                      {documentsCandidate && (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-primary"
+                          onClick={() => {
+                            setSalarySlipCandidate(documentsCandidate)
+                            setSalarySlipForm({ month: '', year: '', file: null })
+                            setActionError(null)
+                            document.querySelector('[data-hs-overlay="#documents-modal"]')?.dispatchEvent(new Event('click'))
+                            setTimeout(() => {
+                              const trigger = document.getElementById('salary-slip-modal-trigger')
+                              if (trigger) (trigger as HTMLElement).click()
+                            }, 150)
+                          }}
+                        >
+                          <i className="ri-file-add-line me-1"></i>Upload Salary Slip
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Salary slip modal */}
+      <button id="salary-slip-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#salary-slip-modal"></button>
+      <div id="salary-slip-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Upload Salary Slip – {salarySlipCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#salary-slip-modal" onClick={() => setSalarySlipCandidate(null)}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body space-y-4">
+              <div>
+                <label className="form-label">Month</label>
+                <input type="text" className="form-control" placeholder="e.g. January" value={salarySlipForm.month} onChange={(e) => setSalarySlipForm(f => ({ ...f, month: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">Year</label>
+                <input type="number" className="form-control" placeholder="2024" value={salarySlipForm.year} onChange={(e) => setSalarySlipForm(f => ({ ...f, year: e.target.value }))} />
+              </div>
+              <div>
+                <label className="form-label">File</label>
+                <input type="file" className="form-control" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => setSalarySlipForm(f => ({ ...f, file: e.target.files?.[0] ?? null }))} />
+              </div>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#salary-slip-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={salarySlipSubmitting || !salarySlipForm.month || !salarySlipForm.year || !salarySlipForm.file} onClick={handleSalarySlipSubmit}>
+                {salarySlipSubmitting ? 'Uploading...' : 'Upload'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Feedback modal */}
+      <button id="feedback-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#feedback-modal"></button>
+      <div id="feedback-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Add Feedback – {feedbackCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#feedback-modal" onClick={() => setFeedbackCandidate(null)}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body space-y-4">
+              <div>
+                <label className="form-label">Feedback</label>
+                <textarea className="form-control" rows={4} value={feedbackForm.feedback} onChange={(e) => setFeedbackForm(f => ({ ...f, feedback: e.target.value }))} placeholder="Enter feedback..." />
+              </div>
+              <div>
+                <label className="form-label">Rating (1-5)</label>
+                <select className="form-control" value={feedbackForm.rating} onChange={(e) => setFeedbackForm(f => ({ ...f, rating: parseInt(e.target.value, 10) }))}>
+                  {[1, 2, 3, 4, 5].map(n => (<option key={n} value={n}>{n}</option>))}
+                </select>
+              </div>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#feedback-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={feedbackSubmitting || !feedbackForm.feedback.trim()} onClick={handleFeedbackSubmit}>
+                {feedbackSubmitting ? 'Saving...' : 'Save Feedback'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Export (email) modal */}
+      <button id="export-candidate-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#export-candidate-modal"></button>
+      <div id="export-candidate-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Export profile by email – {exportCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#export-candidate-modal" onClick={() => setExportCandidate(null)}><span className="sr-only">Close</span>×</button>
+            </div>
             <div className="ti-modal-body">
+              <label className="form-label">Recipient email</label>
+              <input type="email" className="form-control" placeholder="email@example.com" value={exportEmail} onChange={(e) => setExportEmail(e.target.value)} />
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#export-candidate-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={exportSubmitting || !exportEmail.trim()} onClick={handleExportSubmit}>
+                {exportSubmitting ? 'Sending...' : 'Send export email'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Export all candidates modal */}
+      <button id="export-all-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#export-all-modal"></button>
+      <div id="export-all-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Export all candidates</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#export-all-modal"><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Send CSV by email (optional)</label>
+              <input type="email" className="form-control" placeholder="email@example.com" value={exportAllEmail} onChange={(e) => setExportAllEmail(e.target.value)} />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave empty to download only.</p>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#export-all-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={exportAllSubmitting} onClick={handleExportAllSubmit}>
+                {exportAllSubmitting ? 'Exporting...' : 'Export'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Assign recruiter modal */}
+      <button id="assign-recruiter-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#assign-recruiter-modal"></button>
+      <div id="assign-recruiter-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Assign recruiter – {assignRecruiterCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#assign-recruiter-modal" onClick={() => { setAssignRecruiterCandidate(null); setAssignRecruiterId('') }}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Recruiter</label>
+              <select className="form-control" value={assignRecruiterId} onChange={(e) => setAssignRecruiterId(e.target.value)}>
+                <option value="">Select recruiter</option>
+                {recruitersList.map((u) => (<option key={u.id} value={u.id}>{u.name}{u.email ? ` (${u.email})` : ''}</option>))}
+              </select>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#assign-recruiter-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={assignRecruiterSubmitting || !assignRecruiterId} onClick={handleAssignRecruiterSubmit}>
+                {assignRecruiterSubmitting ? 'Saving...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Joining date modal */}
+      <button id="joining-date-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#joining-date-modal"></button>
+      <div id="joining-date-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Joining date – {joiningDateCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#joining-date-modal" onClick={() => { setJoiningDateCandidate(null); setJoiningDateValue('') }}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Joining date</label>
+              <input type="date" className="form-control" value={joiningDateValue} onChange={(e) => setJoiningDateValue(e.target.value)} />
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#joining-date-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={joiningDateSubmitting || !joiningDateValue} onClick={handleJoiningDateSubmit}>
+                {joiningDateSubmitting ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Resign date modal */}
+      <button id="resign-date-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#resign-date-modal"></button>
+      <div id="resign-date-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Resign date – {resignDateCandidate?.name}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#resign-date-modal" onClick={() => { setResignDateCandidate(null); setResignDateValue('') }}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Resign date</label>
+              <input type="date" className="form-control" value={resignDateValue} onChange={(e) => setResignDateValue(e.target.value)} />
+              <button type="button" className="ti-btn ti-btn-light mt-2" onClick={() => setResignDateValue('')}>Clear date</button>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#resign-date-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={resignDateSubmitting} onClick={handleResignDateSubmit}>
+                {resignDateSubmitting ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Week-off modal */}
+      <button id="week-off-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#week-off-modal"></button>
+      <div id="week-off-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Week-off {weekOffCandidateIds.length > 1 ? `(${weekOffCandidateIds.length} candidates)` : ''}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#week-off-modal" onClick={() => { setWeekOffCandidateIds([]); setWeekOffDays([]) }}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Select week-off days</label>
+              <div className="flex flex-wrap gap-2">
+                {WEEK_DAYS.map((day) => (
+                  <label key={day} className="flex items-center gap-1 cursor-pointer">
+                    <input type="checkbox" className="form-check-input" checked={weekOffDays.includes(day)} onChange={() => toggleWeekOffDay(day)} />
+                    <span className="text-sm">{day}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#week-off-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={weekOffSubmitting || weekOffDays.length === 0} onClick={handleWeekOffSubmit}>
+                {weekOffSubmitting ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Assign shift modal */}
+      <button id="assign-shift-modal-trigger" type="button" style={{ display: 'none' }} data-hs-overlay="#assign-shift-modal"></button>
+      <div id="assign-shift-modal" className="hs-overlay hidden ti-modal">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
+          <div className="ti-modal-content">
+            <div className="ti-modal-header">
+              <h6 className="ti-modal-title">Assign shift {assignShiftCandidateIds.length > 1 ? `(${assignShiftCandidateIds.length} candidates)` : ''}</h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#assign-shift-modal" onClick={() => { setAssignShiftCandidateIds([]); setAssignShiftId('') }}><span className="sr-only">Close</span>×</button>
+            </div>
+            <div className="ti-modal-body">
+              <label className="form-label">Shift</label>
+              <select className="form-control" value={assignShiftId} onChange={(e) => setAssignShiftId(e.target.value)}>
+                <option value="">Select shift</option>
+                {shiftsList.map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#assign-shift-modal">Cancel</button>
+              <button type="button" className="ti-btn ti-btn-primary" disabled={assignShiftSubmitting || !assignShiftId} onClick={handleAssignShiftSubmit}>
+                {assignShiftSubmitting ? 'Saving...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Share Candidate Modal – state-driven (opens when shareCandidate is set) */}
+      {shareCandidate && (
+        <div className="fixed inset-0 z-[110] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen pt-4 px-2 sm:px-4 pb-20 text-center sm:block sm:p-0">
+            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" aria-hidden="true" onClick={() => { setShareCandidate(null); setShowEmailInput(false); setShareEmail('') }} />
+            <div className="inline-block align-bottom bg-white dark:bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl transform transition-all w-full max-w-lg my-8 sm:align-middle">
+              <div className="ti-modal-content">
+                <div className="ti-modal-header px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                  <h6 className="ti-modal-title flex items-center gap-2">
+                    <i className="ri-share-line text-primary"></i>
+                    Share Candidate
+                  </h6>
+                  <button
+                    type="button"
+                    className="ti-modal-close-btn text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    onClick={() => { setShareCandidate(null); setShowEmailInput(false); setShareEmail('') }}
+                  >
+                    <span className="sr-only">Close</span>
+                    <i className="ri-close-line text-xl"></i>
+                  </button>
+                </div>
+                <div className="ti-modal-body px-4 sm:px-6 py-4">
               {shareCandidate ? (
                 <div className="space-y-4">
                   {/* Candidate Info */}
@@ -1832,27 +2853,50 @@ const Candidates = () => {
                     </p>
                   </div>
 
-                  {/* Copy URL Section */}
+                  {/* Include documents in shared link */}
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="form-check-input" checked={shareWithDoc} onChange={(e) => setShareWithDoc(e.target.checked)} />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Include documents in shared link</span>
+                  </label>
+
+                  {/* Copy URL Section – use real shareable link (with token) after sending email */}
                   <div>
                     <label className="form-label mb-2 font-semibold text-sm text-gray-800 dark:text-white">
-                      Public URL
+                      Shareable link
                     </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        className="form-control"
-                        value={getCandidatePublicUrl(shareCandidate.id)}
-                        readOnly
-                      />
-                      <button
-                        type="button"
-                        className={`ti-btn ${copied ? 'ti-btn-success' : 'ti-btn-primary'}`}
-                        onClick={() => handleCopyUrl(getCandidatePublicUrl(shareCandidate.id))}
-                      >
-                        <i className={`ri-${copied ? 'check' : 'file-copy'}-line me-1`}></i>
-                        {copied ? 'Copied!' : 'Copy'}
-                      </button>
-                    </div>
+                    {(sharedPublicUrl && sharedPublicUrlForId === shareCandidate.id) ? (
+                      <>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            className="form-control text-sm"
+                            value={sharedPublicUrl}
+                            readOnly
+                          />
+                          <button
+                            type="button"
+                            className={`ti-btn ${copied ? 'ti-btn-success' : 'ti-btn-primary'}`}
+                            onClick={() => handleCopyUrl(sharedPublicUrl)}
+                          >
+                            <i className={`ri-${copied ? 'check' : 'file-copy'}-line me-1`}></i>
+                            {copied ? 'Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">This link was sent in the email. Recipients can open it to view the profile.</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Send the email above to generate a shareable link. The link (with token) will appear here and was also included in the email.</p>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            className="form-control text-sm bg-gray-100 dark:bg-gray-800"
+                            value="Send email first to get link"
+                            readOnly
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
 
                   {/* Share Options */}
@@ -1888,20 +2932,28 @@ const Candidates = () => {
                             value={shareEmail}
                             onChange={(e) => setShareEmail(e.target.value)}
                             onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSendEmail()
-                              }
+                              if (e.key === 'Enter' && !shareSubmitting) handleSendEmail()
                             }}
+                            disabled={shareSubmitting}
                           />
-                          <div className="flex gap-2">
+                          <div className="flex gap-2 items-center">
                             <button
                               type="button"
                               className="ti-btn ti-btn-primary flex-1"
                               onClick={handleSendEmail}
-                              disabled={!shareEmail.trim()}
+                              disabled={!shareEmail.trim() || shareSubmitting}
                             >
-                              <i className="ri-send-plane-line me-1"></i>
-                              Send
+                              {shareSubmitting ? (
+                                <>
+                                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin me-1.5" />
+                                  Sending...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="ri-send-plane-line me-1"></i>
+                                  Send
+                                </>
+                              )}
                             </button>
                             <button
                               type="button"
@@ -1910,6 +2962,7 @@ const Candidates = () => {
                                 setShowEmailInput(false)
                                 setShareEmail('')
                               }}
+                              disabled={shareSubmitting}
                             >
                               Cancel
                             </button>
@@ -1923,23 +2976,49 @@ const Candidates = () => {
                 <div className="text-center py-4 text-gray-500">No candidate selected</div>
               )}
             </div>
-            <div className="ti-modal-footer">
-              <button 
-                type="button" 
-                className="ti-btn ti-btn-light" 
-                data-hs-overlay="#share-candidate-modal"
-                onClick={() => {
-                  setShareCandidate(null)
-                  setShowEmailInput(false)
-                  setShareEmail('')
-                }}
+            <div className="ti-modal-footer px-4 sm:px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light"
+                onClick={() => { setShareCandidate(null); setShowEmailInput(false); setShareEmail('') }}
               >
                 Close
               </button>
             </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* More-actions menu portal (so it is not clipped by table overflow) */}
+      {moreMenuState && typeof document !== 'undefined' && createPortal(
+        <div
+          data-more-menu-portal
+          className="fixed z-[9999] min-w-[11rem] py-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg list-none"
+          style={{ top: moreMenuState.top, left: moreMenuState.left }}
+          role="menu"
+        >
+          <ul className="list-none p-0 m-0">
+            <li>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openAssignRecruiterModal(moreMenuState.candidate) }}><i className="ri-user-add-line me-2"></i>Assign recruiter</button>
+            </li>
+            <li>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openJoiningDateModal(moreMenuState.candidate) }}><i className="ri-calendar-check-line me-2"></i>Joining date</button>
+            </li>
+            <li>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openResignDateModal(moreMenuState.candidate) }}><i className="ri-calendar-close-line me-2"></i>Resign date</button>
+            </li>
+            <li>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openWeekOffModal([moreMenuState.candidate.id]) }}><i className="ri-calendar-week-line me-2"></i>Week-off</button>
+            </li>
+            <li>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openAssignShiftModal([moreMenuState.candidate.id]) }}><i className="ri-time-line me-2"></i>Assign shift</button>
+            </li>
+          </ul>
+        </div>,
+        document.body
+      )}
     </Fragment>
   )
 }
