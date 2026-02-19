@@ -46,9 +46,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
 
     // Don't force-redirect away from public auth pages (sign-in, register,
-    // reset-password) or the public candidate onboarding link from preboarding emails.
+    // reset-password), public candidate onboarding, or public meeting join (no login).
     if (typeof window !== "undefined") {
       const path = window.location.pathname;
+      const normalized = path.replace(/\/$/, "") || "/";
       const publicPaths = [
         ROUTES.signIn.replace(/\/$/, ""),
         ROUTES.register.replace(/\/$/, ""),
@@ -56,8 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "/reset-password",
         "/candidate-onboard",
       ];
-      const normalized = path.replace(/\/$/, "") || "/";
       if (publicPaths.includes(normalized)) {
+        return;
+      }
+      // Public meeting join: /join/room/[roomId] — no login required
+      if (normalized.startsWith("/join/room")) {
         return;
       }
     }
