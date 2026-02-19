@@ -94,6 +94,14 @@ export function PermissionGuard({
       setAllowed(canAccessAttendance(userPermissions, roleNames));
       return;
     }
+    // Candidates: allow if user has ats.candidates:* OR is a candidate (role 'user') editing own profile
+    if (required === "ats.candidates:") {
+      const hasCandidatesPermission = hasPermissionForPath(userPermissions, required);
+      const isCandidate = user?.role === "user";
+      const isOwnProfileEdit = (pathname ?? "").includes("/ats/candidates/edit");
+      setAllowed(hasCandidatesPermission || (isCandidate && isOwnProfileEdit));
+      return;
+    }
     setAllowed(hasPermissionForPath(userPermissions, required));
   }, [permissionsLoaded, pathname, userPermissions, roleNames]);
 

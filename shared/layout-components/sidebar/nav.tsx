@@ -93,7 +93,16 @@ export const MenuItems: any = [
     path: "/ats/candidates",
         active: false,
         selected: false,
-        dirchange: false, 
+        dirchange: false,
+      },
+      {
+    icon: CandidatesIcon,
+    title: "My Profile",
+        type: "link",
+    path: "/ats/my-profile",
+        active: false,
+        selected: false,
+        dirchange: false,
       },
 
       {

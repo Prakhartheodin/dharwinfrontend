@@ -124,7 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await authApi.login({ email, password });
         setUser(res.user);
-        router.push(ROUTES.defaultAfterLogin);
+        // Candidates (role 'user' from share-candidate-form) go to their profile on first login
+        const isCandidate = res.user?.role === "user";
+        router.push(isCandidate ? ROUTES.candidateProfile : ROUTES.defaultAfterLogin);
       } finally {
         setIsLoading(false);
       }

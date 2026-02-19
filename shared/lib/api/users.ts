@@ -26,6 +26,37 @@ export interface ListUsersParams {
   page?: number;
 }
 
+/** List recruiters – GET /users?role=recruiter */
+export async function listRecruiters(params?: Omit<ListUsersParams, "role">): Promise<UsersListResponse> {
+  return listUsers({ ...params, role: "recruiter" });
+}
+
+/** Export recruiters to Excel – GET /recruiters/export/excel */
+export async function exportRecruitersToExcel(): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>("/recruiters/export/excel", { responseType: "blob" });
+  return data;
+}
+
+/** Download recruiter Excel template – GET /recruiters/template/excel */
+export async function downloadRecruitersTemplate(): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>("/recruiters/template/excel", { responseType: "blob" });
+  return data;
+}
+
+/** Import recruiters from Excel – POST /recruiters/import/excel */
+export async function importRecruitersFromExcel(file: File): Promise<{
+  message: string;
+  results?: { successful: unknown[]; failed: unknown[] };
+  summary?: { total: number; successful: number; failed: number };
+}> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post("/recruiters/import/excel", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
 export async function listUsers(params?: ListUsersParams): Promise<UsersListResponse> {
   const { data } = await apiClient.get<UsersListResponse>("/users", { params });
   return data;
@@ -80,11 +111,40 @@ export async function publicRegisterCandidate(
   return data;
 }
 
+/** Dharwrin-style: register from invite link – POST /v1/auth/register. Creates User (active) + Candidate, returns tokens. */
+export interface RegisterCandidateFromInvitePayload {
+  name: string;
+  email: string;
+  password: string;
+  role: "user";
+  phoneNumber: string;
+  countryCode: string;
+  adminId: string;
+}
+
+export interface RegisterCandidateFromInviteResponse {
+  user: User;
+  tokens: { access: { token: string; expires: string }; refresh: { token: string; expires: string } };
+}
+
+export async function registerCandidateFromInvite(
+  payload: RegisterCandidateFromInvitePayload
+): Promise<RegisterCandidateFromInviteResponse> {
+  const { data } = await apiClient.post<RegisterCandidateFromInviteResponse>(AUTH_ENDPOINTS.register, payload);
+  return data;
+}
+
 export interface UpdateUserPayload {
   name?: string;
   email?: string;
   roleIds?: string[];
   status?: string;
+  phoneNumber?: string;
+  countryCode?: string;
+  education?: string;
+  domain?: string[];
+  location?: string;
+  profileSummary?: string;
 }
 
 export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<User> {

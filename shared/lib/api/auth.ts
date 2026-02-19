@@ -328,6 +328,33 @@ export interface RegisterMentorResponse {
   };
 }
 
+/** Recruiter registration payload (Admin only) */
+export interface RegisterRecruiterPayload {
+  name: string;
+  email: string;
+  password: string;
+  phoneNumber?: string;
+  countryCode?: string;
+  education?: string;
+  domain?: string | string[];
+  location?: string;
+  profileSummary?: string;
+}
+
+/** Recruiter registration response */
+export interface RegisterRecruiterResponse {
+  user: User;
+}
+
+/**
+ * Register recruiter (POST /v1/auth/register-recruiter). Admin only.
+ * Creates User with Recruiter role.
+ */
+export async function registerRecruiter(payload: RegisterRecruiterPayload): Promise<RegisterRecruiterResponse> {
+  const { data } = await apiClient.post<RegisterRecruiterResponse>(AUTH_ENDPOINTS.registerRecruiter, payload);
+  return data;
+}
+
 /**
  * Register mentor (POST /v1/auth/register-mentor).
  * Creates User + Mentor profile automatically.

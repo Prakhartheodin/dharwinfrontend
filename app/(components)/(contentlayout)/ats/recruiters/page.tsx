@@ -4,175 +4,12 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { listRecruiters, deleteUser, exportRecruitersToExcel, downloadRecruitersTemplate, importRecruitersFromExcel } from '@/shared/lib/api/users'
+import { mapRecruiterToDisplay, type DisplayRecruiter } from '@/shared/lib/ats/recruiterMappers'
 
-// Mock data for recruiters
-const RECRUITERS_DATA = [
-  {
-    id: '1',
-    name: 'John Anderson',
-    displayPicture: '/assets/images/faces/1.jpg',
-    phone: '+1 (555) 123-4567',
-    email: 'john.anderson@example.com',
-    education: 'BS Computer Science - Stanford University (2018)',
-    domain: 'Technology',
-    location: 'San Francisco, CA',
-    profileSummary: 'Experienced recruiter with 6+ years in tech talent acquisition. Specialized in placing software engineers and product managers at top-tier companies.',
-  },
-  {
-    id: '2',
-    name: 'Sarah Johnson',
-    displayPicture: '/assets/images/faces/2.jpg',
-    phone: '+1 (555) 234-5678',
-    email: 'sarah.johnson@example.com',
-    education: 'MBA - Harvard Business School (2019)',
-    domain: 'Finance',
-    location: 'New York, NY',
-    profileSummary: 'Strategic recruiter with 4+ years in finance and consulting placements. Expert in matching top talent with leading financial institutions.',
-  },
-  {
-    id: '3',
-    name: 'Michael Chen',
-    displayPicture: '/assets/images/faces/3.jpg',
-    phone: '+1 (555) 345-6789',
-    email: 'michael.chen@example.com',
-    education: 'BS Business Administration - UC Berkeley (2020)',
-    domain: 'Healthcare',
-    location: 'Los Angeles, CA',
-    profileSummary: 'Healthcare recruitment specialist connecting medical professionals with premier healthcare organizations. Strong network in clinical and administrative roles.',
-  },
-  {
-    id: '4',
-    name: 'Emily Davis',
-    displayPicture: '/assets/images/faces/4.jpg',
-    phone: '+1 (555) 456-7890',
-    email: 'emily.davis@example.com',
-    education: 'MS Human Resources - MIT (2021)',
-    domain: 'Technology',
-    location: 'Seattle, WA',
-    profileSummary: 'Tech recruiter passionate about building diverse engineering teams. Specialized in data science and machine learning talent placement.',
-  },
-  {
-    id: '5',
-    name: 'David Brown',
-    displayPicture: '/assets/images/faces/5.jpg',
-    phone: '+1 (555) 567-8901',
-    email: 'david.brown@example.com',
-    education: 'BS Business Management - Carnegie Mellon (2018)',
-    domain: 'Manufacturing',
-    location: 'Chicago, IL',
-    profileSummary: 'Manufacturing and operations recruiter with expertise in supply chain and logistics placements. Connecting talent with industrial leaders.',
-  },
-  {
-    id: '6',
-    name: 'Lisa Anderson',
-    displayPicture: '/assets/images/faces/6.jpg',
-    phone: '+1 (555) 678-9012',
-    email: 'lisa.anderson@example.com',
-    education: 'BA Psychology - Art Center College (2019)',
-    domain: 'Marketing',
-    location: 'Austin, TX',
-    profileSummary: 'Creative marketing recruiter focused on digital marketing and brand strategy roles. Building connections between creative talent and innovative brands.',
-  },
-  {
-    id: '7',
-    name: 'Robert Wilson',
-    displayPicture: '/assets/images/faces/7.jpg',
-    phone: '+1 (555) 789-0123',
-    email: 'robert.wilson@example.com',
-    education: 'BS Business Administration - Georgia Tech (2017)',
-    domain: 'Sales',
-    location: 'Boston, MA',
-    profileSummary: 'Sales recruitment expert specializing in B2B and enterprise sales placements. Proven track record in building high-performing sales teams.',
-  },
-  {
-    id: '8',
-    name: 'Jessica Martinez',
-    displayPicture: '/assets/images/faces/8.jpg',
-    phone: '+1 (555) 890-1234',
-    email: 'jessica.martinez@example.com',
-    education: 'BA Marketing - UCLA (2018)',
-    domain: 'Retail',
-    location: 'Miami, FL',
-    profileSummary: 'Retail and consumer goods recruiter connecting talent with leading brands. Expertise in merchandising, operations, and store management roles.',
-  },
-  {
-    id: '9',
-    name: 'Thomas Lee',
-    displayPicture: '/assets/images/faces/9.jpg',
-    phone: '+1 (555) 901-2345',
-    email: 'thomas.lee@example.com',
-    education: 'BA Business Administration - USC (2020)',
-    domain: 'Real Estate',
-    location: 'Phoenix, AZ',
-    profileSummary: 'Real estate recruitment specialist placing professionals in commercial and residential real estate firms. Strong network in property management.',
-  },
-  {
-    id: '10',
-    name: 'Jennifer White',
-    displayPicture: '/assets/images/faces/10.jpg',
-    phone: '+1 (555) 012-3456',
-    email: 'jennifer.white@example.com',
-    education: 'BS Human Resources - UC San Diego (2019)',
-    domain: 'Education',
-    location: 'Denver, CO',
-    profileSummary: 'Education sector recruiter connecting educators and administrators with schools and educational institutions. Passionate about educational excellence.',
-  },
-  {
-    id: '11',
-    name: 'Christopher Taylor',
-    displayPicture: '/assets/images/faces/11.jpg',
-    phone: '+1 (555) 123-4568',
-    email: 'christopher.taylor@example.com',
-    education: 'BS Business Management - University of Washington (2018)',
-    domain: 'Technology',
-    location: 'Portland, OR',
-    profileSummary: 'Full-stack tech recruiter with expertise in modern software development roles. Building connections between developers and innovative tech companies.',
-  },
-  {
-    id: '12',
-    name: 'Amanda Garcia',
-    displayPicture: '/assets/images/faces/12.jpg',
-    phone: '+1 (555) 234-5679',
-    email: 'amanda.garcia@example.com',
-    education: 'MBA - Northwestern University (2020)',
-    domain: 'Consulting',
-    location: 'Washington, DC',
-    profileSummary: 'Management consulting recruiter placing strategy and operations consultants with top-tier firms. Expert in matching analytical talent with consulting opportunities.',
-  },
-  {
-    id: '13',
-    name: 'Daniel Rodriguez',
-    displayPicture: '/assets/images/faces/13.jpg',
-    phone: '+1 (555) 345-6790',
-    email: 'daniel.rodriguez@example.com',
-    education: 'MS Business Analytics - Arizona State (2019)',
-    domain: 'Technology',
-    location: 'San Jose, CA',
-    profileSummary: 'Cloud and infrastructure recruiter specializing in DevOps and cloud architecture placements. Connecting engineers with cutting-edge technology companies.',
-  },
-  {
-    id: '14',
-    name: 'Rachel Kim',
-    displayPicture: '/assets/images/faces/14.jpg',
-    phone: '+1 (555) 456-7901',
-    email: 'rachel.kim@example.com',
-    education: 'BS Communications - San Diego State (2021)',
-    domain: 'Media',
-    location: 'Nashville, TN',
-    profileSummary: 'Media and entertainment recruiter connecting creative professionals with production companies and media organizations. Building teams for content creation.',
-  },
-  {
-    id: '15',
-    name: 'Kevin Harris',
-    displayPicture: '/assets/images/faces/15.jpg',
-    phone: '+1 (555) 567-9012',
-    email: 'kevin.harris@example.com',
-    education: 'BS Business Administration - Tennessee Tech (2018)',
-    domain: 'Logistics',
-    location: 'Atlanta, GA',
-    profileSummary: 'Logistics and supply chain recruiter with extensive experience in transportation and warehousing placements. Connecting operations talent with logistics leaders.',
-  }
-]
+// Recruiters data loaded from API in component – see recruitersData state below
+
 
 
 interface FilterState {
@@ -194,7 +31,17 @@ interface RecruiterNote {
 }
 
 const Recruiters = () => {
+  const router = useRouter()
+  const [recruitersData, setRecruitersData] = useState<DisplayRecruiter[]>([])
+  const [recruitersLoading, setRecruitersLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    listRecruiters({ limit: 500 })
+      .then((res) => setRecruitersData((res.results ?? []).map(mapRecruiterToDisplay)))
+      .catch(() => setRecruitersData([]))
+      .finally(() => setRecruitersLoading(false))
+  }, [])
   const [recruiterNotes, setRecruiterNotes] = useState<RecruiterNote[]>([])
   const [previewRecruiter, setPreviewRecruiter] = useState<any>(null)
   const [notesRecruiterId, setNotesRecruiterId] = useState<string | null>(null)
@@ -219,6 +66,10 @@ const Recruiters = () => {
   const [searchEducation, setSearchEducation] = useState('')
   const [searchLocation, setSearchLocation] = useState('')
 
+  // Excel import
+  const [excelImporting, setExcelImporting] = useState(false)
+  const excelInputRef = React.useRef<HTMLInputElement>(null)
+
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
     const newSelected = new Set(selectedRows)
@@ -228,6 +79,75 @@ const Recruiters = () => {
       newSelected.add(id)
     }
     setSelectedRows(newSelected)
+  }
+
+  const refreshRecruiters = () => {
+    listRecruiters({ limit: 500 })
+      .then((res) => setRecruitersData((res.results ?? []).map(mapRecruiterToDisplay)))
+      .catch(() => {})
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await exportRecruitersToExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `recruiters_export_${Date.now()}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to export recruiters')
+    }
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadRecruitersTemplate()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'recruiters_template.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to download template')
+    }
+  }
+
+  const handleImportExcel = () => {
+    excelInputRef.current?.click()
+  }
+
+  const onExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setExcelImporting(true)
+    try {
+      const result = await importRecruitersFromExcel(file)
+      refreshRecruiters()
+      const msg = result.summary
+        ? `Imported ${result.summary.successful} of ${result.summary.total}. Failed: ${result.summary.failed}`
+        : result.message
+      alert(msg)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to import recruiters')
+    } finally {
+      setExcelImporting(false)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedRows.size === 0) return
+    if (!confirm(`Delete ${selectedRows.size} selected recruiter(s)?`)) return
+    try {
+      await Promise.all(Array.from(selectedRows).map((id) => deleteUser(id)))
+      setSelectedRows(new Set())
+      refreshRecruiters()
+    } catch (err) {
+      alert('Failed to delete one or more recruiters')
+    }
   }
 
   // Handle add note - open notes sidebar
@@ -276,7 +196,7 @@ const Recruiters = () => {
   // Get recruiter details for the notes sidebar
   const getRecruiterDetails = () => {
     if (!notesRecruiterId) return null
-    return RECRUITERS_DATA.find(recruiter => recruiter.id === notesRecruiterId)
+    return recruitersData.find(recruiter => recruiter.id === notesRecruiterId)
   }
 
   // Generate public URL for recruiter
@@ -287,25 +207,29 @@ const Recruiters = () => {
     return `https://example.com/ats/recruiters/${recruiterId}`
   }
 
-  // Export candidate documents
-  const handleExportDocs = (candidate: any, type: 'all' | 'resume' | 'cover-letter' = 'all') => {
-    // TODO: Implement document export functionality
-    console.log(`Exporting ${type} for candidate:`, candidate.id)
-    // Here you would implement the actual export logic based on type
-    switch (type) {
-      case 'all':
-        // Export both resume and cover letter
-        console.log('Exporting all documents')
-        break
-      case 'resume':
-        // Export only resume
-        console.log('Exporting resume')
-        break
-      case 'cover-letter':
-        // Export only cover letter
-        console.log('Exporting cover letter')
-        break
-    }
+  // Download recruiter profile as text file
+  const handleDownloadProfile = (recruiter: DisplayRecruiter) => {
+    const lines = [
+      'RECRUITER PROFILE',
+      '=================',
+      '',
+      `Name: ${recruiter.name}`,
+      `Email: ${recruiter.email}`,
+      `Phone: ${recruiter.phone || '—'}`,
+      `Education: ${recruiter.education || '—'}`,
+      `Domain: ${recruiter.domain || '—'}`,
+      `Location: ${recruiter.location || '—'}`,
+      '',
+      'Profile Summary:',
+      recruiter.profileSummary || '—',
+    ]
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `recruiter_${(recruiter.name || 'profile').replace(/\s+/g, '_')}_${Date.now()}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   // Copy URL to clipboard
@@ -517,6 +441,7 @@ const Recruiters = () => {
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
+                onClick={() => router.push(`/ats/recruiters/edit/${row.original.id}`)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="Edit Recruiter"
               >
@@ -558,47 +483,20 @@ const Recruiters = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-dropdown ti-dropdown">
+            <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
-                className="hs-dropdown-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                id={`export-dropdown-${row.original.id}`}
-                aria-expanded="false"
+                onClick={() => handleDownloadProfile(row.original)}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                title="Download Profile"
               >
                 <i className="ri-download-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  Download Profile
+                </span>
               </button>
-              <ul
-                className="hs-dropdown-menu ti-dropdown-menu hidden"
-                aria-labelledby={`export-dropdown-${row.original.id}`}
-              >
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'all')}
-                  >
-                    <i className="ri-file-download-line me-2"></i>All
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'resume')}
-                  >
-                    <i className="ri-file-text-line me-2"></i>Resume
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item"
-                    onClick={() => handleExportDocs(row.original, 'cover-letter')}
-                  >
-                    <i className="ri-mail-line me-2"></i>Cover Letter
-                  </button>
-                </li>
-              </ul>
             </div>
           </div>
         ),
@@ -609,7 +507,7 @@ const Recruiters = () => {
 
   // Filter data based on filter state
   const filteredData = useMemo(() => {
-    return RECRUITERS_DATA.filter((recruiter) => {
+    return recruitersData.filter((recruiter) => {
       // Name filter (array)
       if (filters.name.length > 0 && !filters.name.some(name => 
         recruiter.name.toLowerCase().includes(name.toLowerCase())
@@ -645,26 +543,29 @@ const Recruiters = () => {
       
       return true
     })
-  }, [filters])
+  }, [recruitersData, filters])
 
   const data = useMemo(() => filteredData, [filteredData])
 
   // Get unique values for dropdown filters
   const allDomains = useMemo(() => {
-    return [...new Set(RECRUITERS_DATA.map(recruiter => recruiter.domain))].sort()
-  }, [])
+    const domains = recruitersData.flatMap((r) =>
+      (r.domain || "").split(",").map((d) => d.trim()).filter(Boolean)
+    );
+    return [...new Set(domains)].sort();
+  }, [recruitersData]);
 
   const allEducation = useMemo(() => {
-    return [...new Set(RECRUITERS_DATA.map(recruiter => recruiter.education))].sort()
-  }, [])
+    return [...new Set(recruitersData.map(recruiter => recruiter.education))].filter(Boolean).sort()
+  }, [recruitersData])
 
   const allNames = useMemo(() => {
-    return [...new Set(RECRUITERS_DATA.map(recruiter => recruiter.name))].sort()
-  }, [])
+    return [...new Set(recruitersData.map(recruiter => recruiter.name))].filter(Boolean).sort()
+  }, [recruitersData])
 
   const allLocations = useMemo(() => {
-    return [...new Set(RECRUITERS_DATA.map(recruiter => recruiter.location))].sort()
-  }, [])
+    return [...new Set(recruitersData.map(recruiter => recruiter.location))].filter(Boolean).sort()
+  }, [recruitersData])
 
   // Filter options based on search terms
   const filteredNames = useMemo(() => {
@@ -925,10 +826,8 @@ const Recruiters = () => {
                   </ul>
                 </div>
                 <Link
-                  href="#!"
-                  scroll={false}
-                  className="hs-dropdown-toggle ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#create-recruiter-modal"
+                  href="/ats/recruiters/add"
+                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add Recruiter
                 </Link>
@@ -947,14 +846,18 @@ const Recruiters = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleImportExcel}
+                        disabled={excelImporting}
                       >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>
+                        {excelImporting ? 'Importing...' : 'Import'}
                       </button>
                     </li>
                     <li>
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleExportExcel}
                       >
                         <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
                       </button>
@@ -963,11 +866,19 @@ const Recruiters = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleDownloadTemplate}
                       >
                         <i className="ri-download-line me-2 align-middle inline-block"></i>Template
                       </button>
                     </li>
                   </ul>
+                  <input
+                    ref={excelInputRef}
+                    type="file"
+                    accept=".xlsx,.xls"
+                    className="hidden"
+                    onChange={onExcelFileChange}
+                  />
                 </div>
                 <button
                   type="button"
@@ -985,6 +896,8 @@ const Recruiters = () => {
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  onClick={handleDeleteSelected}
+                  disabled={selectedRows.size === 0}
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
                 </button>

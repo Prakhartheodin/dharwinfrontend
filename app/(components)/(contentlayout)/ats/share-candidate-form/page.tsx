@@ -3,7 +3,7 @@
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useRef } from "react";
-import Link from "next/link";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { sendCandidateInvitation } from "@/shared/lib/api/auth";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
@@ -16,6 +16,7 @@ interface EmailRow {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ShareCandidateForm = () => {
+  const { user } = useAuth();
   const [emails, setEmails] = useState<EmailRow[]>([{ id: "1", email: "" }]);
   const [importMode, setImportMode] = useState<"manual" | "excel">("manual");
   const [isLoading, setIsLoading] = useState(false);
@@ -41,10 +42,15 @@ const ShareCandidateForm = () => {
   const buildOnboardUrl = (email: string): string => {
     if (typeof window === "undefined") return "";
     const origin = window.location.origin;
-    const token = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
-    const encodedEmail = encodeURIComponent(email);
+    const userId = user?.id ?? user?._id ?? "default-admin";
+    const timestamp = Date.now();
+    const randomStr = Math.random().toString(36).substring(2, 15);
+    const userHash = btoa(userId + timestamp).replace(/[^a-zA-Z0-9]/g, "");
+    const token = `${userHash}_${timestamp}_${randomStr}`;
+    const encryptedEmail = btoa(email);
+    const encryptedAdminId = btoa(String(userId));
     const expires = Date.now() + 24 * 60 * 60 * 1000;
-    return `${origin}/candidate-onboard?token=${token}&email=${encodedEmail}&expires=${expires}`;
+    return `${origin}/candidate-onboard?token=${token}&adminId=${encryptedAdminId}&email=${encryptedEmail}&expires=${expires}`;
   };
 
   const handleSend = async () => {
@@ -195,6 +201,20 @@ const ShareCandidateForm = () => {
                     <i className="ri-file-excel-2-line text-lg" /> Excel Import
                   </button>
                 </div>
+                {importMode === "excel" && (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-outline-primary ti-btn-sm rounded-lg"
+                    onClick={() => {
+                      const ws = XLSX.utils.aoa_to_sheet([["Email Address"], ["john.doe@example.com"], ["jane.smith@example.com"], ["candidate@company.com"]]);
+                      const wb = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(wb, ws, "Email List");
+                      XLSX.writeFile(wb, "candidate_email_template.xlsx");
+                    }}
+                  >
+                    <i className="ri-download-line me-1" /> Download Template
+                  </button>
+                )}
               </div>
 
               {/* Candidate email addresses */}

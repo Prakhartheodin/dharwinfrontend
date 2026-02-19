@@ -7,6 +7,7 @@ import store from '@/shared/redux/store';
 import Modalsearch from '../modal-search/modalsearch';
 import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
+import { ROUTES } from '@/shared/lib/constants';
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
@@ -516,10 +517,14 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   className="hs-dropdown-menu ti-dropdown-menu !-mt-3 border-0 w-[11rem] !p-0 border-defaultborder hidden main-header-dropdown  pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end"
                   aria-labelledby="dropdown-profile">
 
-                  <ul className="text-defaulttextcolor font-medium dark:text-[#8c9097] dark:text-white/50">
+                  <ul className="text-defaulttextcolor font-medium dark:text-[#8c9097] dark:text-white/50 list-none !m-0 !p-0">
+                    {/* Account */}
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/pages/profile/">
-                        <i className="ti ti-user-circle text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Profile
+                      <Link
+                        className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]"
+                        href={ROUTES.candidateProfile}
+                      >
+                        <i className="ti ti-user-circle text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>My Profile
                       </Link>
                     </li>
                     <li>
@@ -532,10 +537,14 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                       className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager</Link></li>
                     <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/"><i
                       className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings</Link></li>
+                    <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
+                    {/* Support */}
                     <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem] " href="#!" scroll={false}><i
-                      className="ti ti-wallet text-[1.125rem] me-2 opacity-[0.7 !inline-flex"></i>Bal: $7,12,950</Link></li>
+                      className="ti ti-wallet text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Bal: $7,12,950</Link></li>
                     <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/pages/chat/"><i
                       className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support</Link></li>
+                    <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
+                    {/* Log Out */}
                     <li>
                       <button type="button" onClick={() => logout()} className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex !text-start !border-0 !bg-transparent"><i
                         className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</button>

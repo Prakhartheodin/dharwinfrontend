@@ -7,16 +7,20 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
 import { AxiosError } from "axios";
-import {
-  COUNTRY_PHONE_RULES,
-  DEFAULT_COUNTRY_CODE,
-  getCountryRuleByCode,
-  toFullPhone,
-  validatePhoneForCountry,
-  getPhoneErrorForCountry,
-} from "@/shared/lib/country-phone";
+import Swal from "sweetalert2";
+import { getPhoneValidationError, getPhoneCountry, formatPhoneForApi } from "@/shared/lib/phoneCountries";
+import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 
 const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?])/;
+
+function decryptBase64(s: string): string {
+  try {
+    return atob(s || "");
+  } catch {
+    return "";
+  }
+}
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof AxiosError) {
@@ -27,17 +31,18 @@ function getErrorMessage(err: unknown): string {
 }
 
 /**
- * Public candidate onboarding page (no login required).
- * Linked from preboarding invitation emails: token, email, expires in query.
- * Per SHARE_CANDIDATE_FORM.md – onboarding form links must be public.
+ * Public candidate onboarding (Dharwrin-style).
+ * URL: /candidate-onboard?token=...&adminId=...&email=...&expires=...
+ * Creates User (active) + Candidate, returns tokens. User can log in immediately.
  */
 export default function CandidateOnboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [name, setName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
-  const [countryCode, setCountryCode] = useState(DEFAULT_COUNTRY_CODE);
-  const [phoneNational, setPhoneNational] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [countryCode, setCountryCode] = useState("IN");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -45,75 +50,152 @@ export default function CandidateOnboardPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
+  const [adminId, setAdminId] = useState("");
+  const [isValidToken, setIsValidToken] = useState(false);
 
   useEffect(() => {
     const token = searchParams.get("token");
     const emailParam = searchParams.get("email");
-    const expires = searchParams.get("expires");
+    const expiresParam = searchParams.get("expires");
+    const adminIdParam = searchParams.get("adminId");
 
-    if (!token || !emailParam || !expires) {
+    if (!token || !emailParam || !expiresParam) {
       setLinkError("Invalid or missing link parameters. Please use the link from your invitation email.");
       return;
     }
-    const expirationTime = parseInt(expires, 10);
-    if (Number.isNaN(expirationTime) || Date.now() > expirationTime) {
+    const expires = parseInt(expiresParam, 10);
+    if (Number.isNaN(expires) || Date.now() > expires) {
       setLinkError("This link has expired. Please request a new onboarding link.");
       return;
     }
-    try {
-      setEmail(decodeURIComponent(emailParam));
-    } catch {
-      setEmail(emailParam);
+    if (!token.includes("_") || token.split("_").length !== 3) {
+      setLinkError("Invalid token format.");
+      return;
     }
+    let decodedEmail = "";
+    let decodedAdminId = "";
+    try {
+      decodedEmail = emailParam.includes("@") ? decodeURIComponent(emailParam) : decryptBase64(emailParam);
+      decodedAdminId = adminIdParam ? decryptBase64(adminIdParam) : "";
+    } catch {
+      decodedEmail = emailParam;
+    }
+    if (!decodedEmail || !decodedEmail.includes("@")) {
+      setLinkError("Invalid or missing email in link.");
+      return;
+    }
+    setEmail(decodedEmail);
+    setAdminId(decodedAdminId);
+    setIsValidToken(true);
   }, [searchParams]);
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedName) {
-      setError("Full name is required.");
+    const fn = firstName.trim();
+    const ln = lastName.trim();
+    const em = email.trim().toLowerCase();
+    const phone = phoneNumber.trim().replace(/\D/g, "");
+
+    if (!fn || fn.length < 2) {
+      setError("First name must be at least 2 characters.");
       return;
     }
-    if (!trimmedEmail) {
+    if (!ln || ln.length < 2) {
+      setError("Last name must be at least 2 characters.");
+      return;
+    }
+    if (!em) {
       setError("Email is required.");
+      return;
+    }
+    if (!phone) {
+      setError("Phone number is required.");
+      return;
+    }
+    const phoneError = getPhoneValidationError(phoneNumber, countryCode);
+    if (phoneError) {
+      setError(phoneError);
       return;
     }
     if (password.length < PASSWORD_MIN_LENGTH) {
       setError("Password must be at least 8 characters.");
       return;
     }
-    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
-      setError("Password must contain at least 1 letter and 1 number.");
+    if (!PASSWORD_REGEX.test(password)) {
+      setError("Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.");
       return;
     }
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
-    const trimmedPhone = phoneNational.trim();
-    if (trimmedPhone) {
-      const rule = getCountryRuleByCode(countryCode);
-      if (!validatePhoneForCountry(trimmedPhone, rule)) {
-        setError(getPhoneErrorForCountry(rule));
-        return;
-      }
-    }
+
     setLoading(true);
     try {
-      const fullPhone = trimmedPhone ? toFullPhone(getCountryRuleByCode(countryCode).dialCode, trimmedPhone) : undefined;
-      const res = await usersApi.publicRegisterCandidate({
-        name: trimmedName,
-        email: trimmedEmail,
-        password,
-        phoneNumber: fullPhone,
-      });
-      router.push(
-        `${ROUTES.signIn}?registered=1&message=${encodeURIComponent(res.message ?? "Registration successful. You can sign in.")}`
-      );
-    } catch (err) {
-      setError(getErrorMessage(err));
+      if (adminId) {
+        const res = await usersApi.registerCandidateFromInvite({
+          name: `${fn} ${ln}`,
+          email: em,
+          password,
+          role: "user",
+          phoneNumber: phone,
+          countryCode,
+          adminId,
+        });
+        await Swal.fire({
+          title: "Registration Successful!",
+          html: `
+            <p class="mb-4">Your account has been created and is pending administrator approval.</p>
+            <p class="mb-4 text-sm text-gray-600">We've sent a verification email to <strong>${em}</strong>.</p>
+            <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
+              <p class="font-semibold mb-2">Next Steps:</p>
+              <ul class="list-disc list-inside space-y-1 text-gray-700">
+                <li>Check your email and click the verification link</li>
+                <li>Wait for an administrator to activate your account</li>
+                <li>Once activated, log in and complete your profile</li>
+              </ul>
+            </div>
+          `,
+          icon: "success",
+          confirmButtonText: "Go to Login",
+          confirmButtonColor: "#36af4c",
+        });
+        router.push(`${ROUTES.signIn}?registered=1&message=${encodeURIComponent("Registration successful. Your account is pending approval. You will be able to sign in once an administrator activates it.")}`);
+      } else {
+        const res = await usersApi.publicRegisterCandidate({
+          name: `${fn} ${ln}`,
+          email: em,
+          password,
+          phoneNumber: formatPhoneForApi(phone, countryCode),
+        });
+        router.push(
+          `${ROUTES.signIn}?registered=1&message=${encodeURIComponent(res.message ?? "Registration successful. You can sign in.")}`
+        );
+      }
+    } catch (err: unknown) {
+      const msg = getErrorMessage(err);
+      if (msg.toLowerCase().includes("already taken") || msg.toLowerCase().includes("email")) {
+        Swal.fire({
+          title: "Account Already Exists",
+          html: `
+            <p class="mb-4">Welcome back! You already have an account.</p>
+            <p class="text-sm text-gray-600 mb-4">${em}</p>
+            <p class="text-sm">Click below to log in and access your account.</p>
+          `,
+          icon: "info",
+          confirmButtonText: "Go to Login",
+          confirmButtonColor: "#36af4c",
+          showCancelButton: true,
+          cancelButtonText: "Stay Here",
+          cancelButtonColor: "#6b7280",
+        }).then((result) => {
+          if (result.isConfirmed) router.push(ROUTES.signIn);
+        });
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -139,147 +221,176 @@ export default function CandidateOnboardPage() {
     );
   }
 
+  if (!isValidToken) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-bodybg">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
+          <p className="text-defaulttextcolor dark:text-white/70">Validating secure access...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Fragment>
-      <Seo title="Complete your onboarding" />
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-bodybg px-4 py-8">
-        <div className="max-w-md w-full bg-white dark:bg-white/5 rounded-xl shadow-lg border border-gray-200 dark:border-white/10 overflow-hidden">
-          <div className="p-6 sm:p-8">
-            <div className="text-center mb-6">
-              <h1 className="text-xl font-bold text-defaulttextcolor dark:text-white">Complete your onboarding</h1>
-              <p className="text-sm text-defaulttextcolor/70 dark:text-white/60 mt-1">
-                Create your account using the email from your invitation.
-              </p>
-            </div>
-            <form onSubmit={handleSubmit}>
+      <Seo title="Candidate Registration" />
+      <div className="min-h-screen flex flex-col lg:flex-row">
+        {/* Left: Form */}
+        <div className="flex-1 bg-white dark:bg-white/5 flex flex-col justify-between items-center p-6 sm:p-8 lg:p-12">
+          <div className="w-full max-w-md">
+            <h1 className="text-2xl sm:text-3xl font-bold text-defaulttextcolor dark:text-white mb-2">
+              Find better jobs—faster
+            </h1>
+            <p className="text-defaulttextcolor/80 dark:text-white/70 mb-6">
+              Create your account using the email from your invitation.
+            </p>
+            <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="mb-4 p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger text-sm">
-                  {error}
-                </div>
+                <div className="p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger text-sm">{error}</div>
               )}
-              <div className="mb-4">
-                <label htmlFor="onboard-name" className="form-label">
-                  Full name
-                </label>
-                <input
-                  id="onboard-name"
-                  type="text"
-                  className="form-control"
-                  placeholder="e.g. Jane Doe"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoComplete="name"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="firstName" className="form-label">First Name</label>
+                  <input
+                    id="firstName"
+                    type="text"
+                    className="form-control"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    minLength={2}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="form-label">Last Name</label>
+                  <input
+                    id="lastName"
+                    type="text"
+                    className="form-control"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    minLength={2}
+                    required
+                  />
+                </div>
               </div>
-              <div className="mb-4">
-                <label htmlFor="onboard-email" className="form-label">
-                  Email
-                </label>
+              <div>
+                <label htmlFor="email" className="form-label">Email</label>
                 <input
-                  id="onboard-email"
+                  id="email"
                   type="email"
                   className="form-control bg-gray-100 dark:bg-black/20"
                   value={email}
                   readOnly
                   aria-readonly
                 />
-                <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1">This email was sent in your invitation.</p>
+                <p className="text-xs text-defaulttextcolor/60 mt-1">This email was sent in your invitation.</p>
               </div>
-              <div className="mb-4 w-full min-w-0">
-                <label htmlFor="onboard-phone" className="form-label">
-                  Phone <span className="text-defaulttextcolor/60 font-normal">(optional)</span>
-                </label>
-                <div className="flex gap-2 items-center w-full min-w-0">
-                  <select
-                    id="onboard-country"
-                    aria-label="Country code"
-                    className="form-control !w-[7.5rem] shrink-0 !min-w-0 !rounded-md"
+              <div>
+                <label htmlFor="phone" className="form-label">Phone Number</label>
+                <div className="flex gap-2">
+                  <PhoneCountrySelect
+                    id="countryCode"
                     value={countryCode}
-                    onChange={(e) => setCountryCode(e.target.value)}
-                  >
-                    {COUNTRY_PHONE_RULES.map((r) => (
-                      <option key={r.code} value={r.code}>
-                        {r.dialCode ? `${r.dialCode} ${r.name}` : r.name}
-                      </option>
-                    ))}
-                  </select>
-                  <span className="text-defaulttextcolor/70 text-sm shrink-0 hidden sm:inline">→</span>
+                    onChange={setCountryCode}
+                  />
                   <input
-                    id="onboard-phone"
+                    id="phone"
                     type="tel"
-                    aria-label="Phone number"
-                    className="form-control flex-1 min-w-[7rem] w-0 !rounded-md"
-                    placeholder="e.g. 9876543210"
-                    value={phoneNational}
-                    onChange={(e) => setPhoneNational(e.target.value)}
-                    autoComplete="tel-national"
-                    inputMode="tel"
-                    maxLength={getCountryRuleByCode(countryCode).code === "OTHER" ? 18 : getCountryRuleByCode(countryCode).maxLength + 4}
+                    className="form-control flex-1"
+                    placeholder={getPhoneCountry(countryCode).placeholder}
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    maxLength={getPhoneCountry(countryCode).maxLength}
+                    inputMode="numeric"
+                    required
                   />
                 </div>
-                <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1">
-                  {getCountryRuleByCode(countryCode).name}: {getCountryRuleByCode(countryCode).placeholder}
-                </p>
               </div>
-              <div className="mb-4">
-                <label htmlFor="onboard-password" className="form-label">
-                  Password
-                </label>
+              <div>
+                <label htmlFor="password" className="form-label">Password</label>
                 <div className="relative">
                   <input
-                    id="onboard-password"
+                    id="password"
                     type={showPassword ? "text" : "password"}
                     className="form-control pe-10"
-                    placeholder="Min 8 characters, at least 1 letter and 1 number"
+                    placeholder="Min 8 chars, 1 upper, 1 lower, 1 number, 1 special"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password"
                     minLength={PASSWORD_MIN_LENGTH}
+                    required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((p) => !p)}
-                    className="absolute top-1/2 -translate-y-1/2 end-3 p-1 text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-defaulttextcolor/70 hover:text-defaulttextcolor"
+                    aria-label={showPassword ? "Hide" : "Show"}
                   >
-                    <i className={showPassword ? "ri-eye-off-line text-lg" : "ri-eye-line text-lg"} />
+                    <i className={showPassword ? "ri-eye-off-line" : "ri-eye-line"} />
                   </button>
                 </div>
               </div>
-              <div className="mb-6">
-                <label htmlFor="onboard-confirm" className="form-label">
-                  Confirm password
-                </label>
+              <div>
+                <label htmlFor="confirm" className="form-label">Confirm Password</label>
                 <div className="relative">
                   <input
-                    id="onboard-confirm"
+                    id="confirm"
                     type={showConfirmPassword ? "text" : "password"}
                     className="form-control pe-10"
                     placeholder="Re-enter password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
-                    autoComplete="new-password"
+                    required
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((p) => !p)}
-                    className="absolute top-1/2 -translate-y-1/2 end-3 p-1 text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                    aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-defaulttextcolor/70 hover:text-defaulttextcolor"
+                    aria-label={showConfirmPassword ? "Hide" : "Show"}
                   >
-                    <i className={showConfirmPassword ? "ri-eye-off-line text-lg" : "ri-eye-line text-lg"} />
+                    <i className={showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"} />
                   </button>
                 </div>
               </div>
               <button type="submit" className="ti-btn ti-btn-primary w-full" disabled={loading}>
-                {loading ? "Creating account..." : "Create account"}
+                {loading ? "Creating account..." : "Create Account"}
               </button>
             </form>
-            <p className="text-center text-sm text-defaulttextcolor/60 dark:text-white/50 mt-6">
+            <p className="text-center text-sm text-defaulttextcolor/60 mt-6">
               Already have an account?{" "}
               <Link href={ROUTES.signIn} className="text-primary hover:underline">
                 Sign in
               </Link>
             </p>
+          </div>
+        </div>
+        {/* Right: Gradient panel (Dharwrin-style) */}
+        <div className="flex-1 bg-gradient-to-br from-[#093464] to-[#0a4a7a] p-6 sm:p-8 lg:p-12 flex flex-col justify-between hidden lg:flex">
+          <div className="flex flex-wrap gap-2 mb-4">
+            <span className="bg-white/20 px-4 py-2 rounded-full text-xs font-medium text-white">ALL EXPERIENCE LEVELS</span>
+            <span className="bg-white/20 px-4 py-2 rounded-full text-xs font-medium text-white">ALL INDUSTRIES WELCOME</span>
+            <span className="bg-white/20 px-4 py-2 rounded-full text-xs font-medium text-white">PRIVATE & SECURE</span>
+          </div>
+          <div>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-4">
+              Where top talent meets top opportunities.
+            </h2>
+            <p className="text-blue-100 mb-6">
+              Create your profile. See roles. Apply fast.
+            </p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-white/20 p-4 sm:p-6 rounded-xl">
+                <div className="text-2xl font-bold text-white">10K+</div>
+                <div className="text-sm text-blue-100">Candidates placed</div>
+              </div>
+              <div className="bg-white/20 p-4 sm:p-6 rounded-xl">
+                <div className="text-2xl font-bold text-white">500+</div>
+                <div className="text-sm text-blue-100">Companies hiring</div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

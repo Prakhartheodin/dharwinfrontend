@@ -140,6 +140,21 @@ const Candidates = () => {
     refreshCandidates()
   }, [refreshCandidates])
 
+  // Sync experience filter to data bounds when candidates load (fixes badge showing 1 with no user selection)
+  useEffect(() => {
+    setFilters(prev => {
+      const isStillDefault =
+        prev.experience[0] === DEFAULT_EXPERIENCE_RANGE[0] &&
+        prev.experience[1] === DEFAULT_EXPERIENCE_RANGE[1]
+      const needsSync =
+        prev.experience[0] !== experienceRanges.min || prev.experience[1] !== experienceRanges.max
+      if (isStillDefault && needsSync) {
+        return { ...prev, experience: [experienceRanges.min, experienceRanges.max] }
+      }
+      return prev
+    })
+  }, [experienceRanges.min, experienceRanges.max])
+
   // Close "More" menu when clicking outside
   useEffect(() => {
     if (moreMenuState === null) return
@@ -283,6 +298,7 @@ const Candidates = () => {
   const [documentStatusMap, setDocumentStatusMap] = useState<Record<number, { status: number; adminNotes?: string }>>({})
   const [salarySlipsFromCandidate, setSalarySlipsFromCandidate] = useState<Array<{ month?: string; year?: number; key?: string }>>([])
   const [bulkDeleteSubmitting, setBulkDeleteSubmitting] = useState(false)
+  const [deletingCandidateId, setDeletingCandidateId] = useState<string | null>(null)
   const handleExportDocs = (candidate: any, _type: 'all' | 'resume' | 'cover-letter' = 'all') => {
     setExportCandidate(candidate)
     setExportEmail('')
@@ -456,15 +472,48 @@ const Candidates = () => {
   }
 
   const handleDeleteCandidate = async (candidate: CandidateDisplay) => {
-    if (!confirm(`Delete candidate ${candidate.name}? This cannot be undone.`)) return
+    const result = await Swal.fire({
+      title: 'Delete candidate?',
+      html: `<p class="text-gray-600 dark:text-gray-400">This will permanently remove <strong>${candidate.name}</strong>. This action cannot be undone.</p>`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#dc2626',
+      cancelButtonColor: '#6b7280',
+      confirmButtonText: 'Yes, delete',
+      cancelButtonText: 'Cancel',
+    })
+    if (!result.isConfirmed) return
     setActionError(null)
+    setDeletingCandidateId(candidate.id)
     try {
       await deleteCandidate(candidate.id)
-      setActionSuccess('Candidate deleted')
-      refreshCandidates()
-      setTimeout(() => setActionSuccess(null), 3000)
+      // Optimistic removal – smooth instant feedback
+      setCandidates((prev) => prev.filter((c) => c.id !== candidate.id))
+      setSelectedRows((prev) => {
+        const next = new Set(prev)
+        next.delete(candidate.id)
+        return next
+      })
+      if (previewCandidate?.id === candidate.id) setPreviewCandidate(null)
+      if (notesCandidateId === candidate.id) setNotesCandidateId(null)
+      if (moreMenuState?.candidate.id === candidate.id) setMoreMenuState(null)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Deleted',
+        text: `${candidate.name} has been removed.`,
+        timer: 2000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
+      await Swal.fire({
+        icon: 'error',
+        title: 'Delete failed',
+        text: err?.response?.data?.message ?? err?.message ?? 'Could not delete candidate. Please try again.',
+      })
+    } finally {
+      setDeletingCandidateId(null)
     }
   }
 
@@ -769,14 +818,22 @@ const Candidates = () => {
                 />
               </div>
               <div className="flex-1 min-w-0">
-                <div 
-                  className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
-                  onClick={() => {
-                    setPreviewCandidate(candidate)
-                    setViewDetailTab('personal')
-                  }}
-                >
-                  {candidate.name}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div 
+                    className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
+                    onClick={() => {
+                      setPreviewCandidate(candidate)
+                      setViewDetailTab('personal')
+                    }}
+                  >
+                    {candidate.name}
+                  </div>
+                  {((candidate.isProfileCompleted ?? candidate._raw?.isProfileCompleted ?? 0) < 100) && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded" title="Profile completion">
+                      <i className="ri-pie-chart-line text-[10px]"></i>
+                      {candidate.isProfileCompleted ?? candidate._raw?.isProfileCompleted ?? 0}%
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   <div className="flex items-center gap-1">
@@ -948,8 +1005,18 @@ const Candidates = () => {
                 </button>
               </div>
               <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => handleDeleteCandidate(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-danger/10 text-danger hover:bg-danger hover:text-white" title="Delete">
-                  <i className="ri-delete-bin-line"></i>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteCandidate(c)}
+                  disabled={deletingCandidateId === c.id}
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-danger/10 text-danger hover:bg-danger hover:text-white disabled:opacity-70 disabled:cursor-not-allowed"
+                  title="Delete"
+                >
+                  {deletingCandidateId === c.id ? (
+                    <i className="ri-loader-4-line animate-spin" />
+                  ) : (
+                    <i className="ri-delete-bin-line"></i>
+                  )}
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Delete</span>
                 </button>
               </div>
@@ -980,7 +1047,7 @@ const Candidates = () => {
         },
       },
     ],
-    [selectedRows, moreMenuState]
+    [selectedRows, moreMenuState, deletingCandidateId]
   )
 
   // Filter data based on filter state
@@ -1335,6 +1402,7 @@ const Candidates = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={() => router.push('/ats/candidates/import')}
                       >
                         <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
                       </button>
@@ -1352,6 +1420,7 @@ const Candidates = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={() => downloadCandidateExcelTemplate()}
                       >
                         <i className="ri-download-line me-2 align-middle inline-block"></i>Template
                       </button>
@@ -1947,19 +2016,25 @@ const Candidates = () => {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    {(previewCandidate._raw?.joiningDate) && (
-                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-md">
-                        <i className="ri-calendar-check-line"></i>
-                        {new Date(previewCandidate._raw.joiningDate).toLocaleDateString()}
+                  <div className="flex items-center gap-2 ml-2 flex-wrap">
+                    {((previewCandidate.isProfileCompleted ?? previewCandidate._raw?.isProfileCompleted ?? 0) < 100) && (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-md" title="Profile completion">
+                        <i className="ri-pie-chart-line"></i>
+                        {previewCandidate.isProfileCompleted ?? previewCandidate._raw?.isProfileCompleted ?? 0}% complete
                       </span>
                     )}
-                    {(previewCandidate._raw?.resignDate) && (
-                      <span className="flex items-center gap-1 px-2 py-1 text-xs bg-warning/10 text-warning rounded-md">
-                        <i className="ri-calendar-close-line"></i>
-                        {new Date(previewCandidate._raw.resignDate).toLocaleDateString()}
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-md" title="Joining Date">
+                      <i className="ri-calendar-check-line"></i>
+                      {previewCandidate._raw?.joiningDate
+                        ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : 'Not set'}
+                    </span>
+                    <span className="flex items-center gap-1 px-2 py-1 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded-md" title="Resign Date">
+                      <i className="ri-calendar-close-line"></i>
+                      {previewCandidate._raw?.resignDate
+                        ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                        : 'Not set'}
+                    </span>
                     <button type="button" onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0">
                       <i className="ri-close-line text-xl"></i>
                     </button>
@@ -2020,6 +2095,22 @@ const Candidates = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Experience (years)</label>
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.experience ?? '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Joining Date</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                            {previewCandidate._raw?.joiningDate
+                              ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                              : '-'}
+                          </p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Resign Date</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                            {previewCandidate._raw?.resignDate
+                              ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                              : '-'}
+                          </p>
                         </div>
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Short Bio</label>

@@ -12,6 +12,8 @@ export const AUTH_ENDPOINTS = {
   registerStudent: `${BASE_API_URL}/auth/register-student`,
   /** Mentor registration – creates User + Mentor profile, auto-assigns Mentor role. */
   registerMentor: `${BASE_API_URL}/auth/register-mentor`,
+  /** Recruiter registration (Admin only) – creates User with Recruiter role. */
+  registerRecruiter: `${BASE_API_URL}/auth/register-recruiter`,
   /** Public registration – no auth; user created with status pending. */
   publicRegister: `${BASE_API_URL}/public/register`,
   /** Public candidate onboarding – no auth; creates User + Candidate for ATS list. */
@@ -37,6 +39,8 @@ export const ROUTES = {
   resetPassword: "/authentication/reset-password/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
+  /** Candidate profile (for users with role 'user' from share-candidate-form). Redirects to edit form. */
+  candidateProfile: "/ats/my-profile/",
   roles: "/roles/",
   rolesAdd: "/roles/add/",
   rolesEdit: (id: string) => `/roles/edit/?id=${encodeURIComponent(id)}`,

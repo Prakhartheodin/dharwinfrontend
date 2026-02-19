@@ -2,9 +2,12 @@
 import React, { useState } from "react";
 import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
-import { createCandidate, updateCandidate, uploadDocuments } from "@/shared/lib/api/candidates";
+import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments } from "@/shared/lib/api/candidates";
+import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
+import { ROUTES } from "@/shared/lib/constants";
 import { useEffect } from "react";
 
 // Wizard Component
@@ -270,7 +273,15 @@ function getAdminIdString(): string | null {
   }
 }
 
-export const Basicwizard = ({ initialData }: { initialData?: any }) => {
+export const Basicwizard = ({
+  initialData,
+  initialExcelMode,
+  returnToCandidatesOnBack,
+}: {
+  initialData?: any;
+  initialExcelMode?: boolean;
+  returnToCandidatesOnBack?: boolean;
+}) => {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
 
@@ -296,7 +307,7 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
             text: 'You can only edit your own profile.',
             confirmButtonText: 'OK'
           }).then(() => {
-            router.push('/profile');
+            router.push(ROUTES.candidateProfile);
           });
           return;
         }
@@ -497,14 +508,16 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
   const [error, setError] = useState<string | null>(null);
 
   // ------------------------------- Excel Import State -------------------------------
-  const [excelImportMode, setExcelImportMode] = useState(false);
+  const [excelImportMode, setExcelImportMode] = useState(!!initialExcelMode);
   
-  // Disable Excel import mode when editing existing candidates
+  // Disable Excel import mode when editing existing candidates; apply initialExcelMode from URL
   useEffect(() => {
     if (initialData) {
       setExcelImportMode(false);
+    } else if (initialExcelMode) {
+      setExcelImportMode(true);
     }
-  }, [initialData]);
+  }, [initialData, initialExcelMode]);
   const [excelFile, setExcelFile] = useState<File | null>(null);
   const [excelData, setExcelData] = useState<any[]>([]);
   const [excelImportProgress, setExcelImportProgress] = useState<{
@@ -527,16 +540,8 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
   };
 
   const validatePhone = (phone: string, countryCode: string = "IN"): boolean => {
-    if (countryCode === "IN") {
-      // Indian mobile number: 10 digits starting with 6-9
-      const phoneRegex = /^[6-9]\d{9}$/;
-      return phoneRegex.test(phone);
-    } else if (countryCode === "US") {
-      // US phone number: 10 digits
-      const phoneRegex = /^\d{10}$/;
-      return phoneRegex.test(phone);
-    }
-    return false;
+    const digits = (phone || "").replace(/\D/g, "");
+    return getPhoneCountry(countryCode).regex.test(digits);
   };
 
   const validateURL = (url: string): boolean => {
@@ -605,18 +610,18 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
           errors.push('Phone Number is required');
           newFieldErrors['phoneNumber'] = 'Phone Number is required';
         } else if (!validatePhone(formData.phoneNumber, formData.countryCode)) {
-          const countryName = formData.countryCode === "IN" ? "Indian" : "US";
-          errors.push(`Please enter a valid ${countryName} phone number`);
-          newFieldErrors['phoneNumber'] = `Please enter a valid ${countryName} phone number`;
+          const msg = getPhoneValidationError(formData.phoneNumber, formData.countryCode) || "Please enter a valid phone number";
+          errors.push(msg);
+          newFieldErrors['phoneNumber'] = msg;
         }
         if (!validateRequired(formData.visaType)) {
           errors.push('Visa Type is required');
           newFieldErrors['visaType'] = 'Visa Type is required';
         }
-        if (formData.supervisorContact && !validatePhone(formData.supervisorContact, formData.supervisorCountryCode)) {
-          const countryName = formData.supervisorCountryCode === "IN" ? "Indian" : "US";
-          errors.push(`Please enter a valid ${countryName} supervisor phone number`);
-          newFieldErrors['supervisorContact'] = `Please enter a valid ${countryName} supervisor phone number`;
+        if (formData.supervisorContact && !validatePhone(formData.supervisorContact, formData.supervisorCountryCode || formData.countryCode)) {
+          const msg = getPhoneValidationError(formData.supervisorContact, formData.supervisorCountryCode || formData.countryCode) || "Please enter a valid supervisor phone number";
+          errors.push(msg);
+          newFieldErrors['supervisorContact'] = msg;
         }
         if (formData.visaType === "Other" && !validateRequired(formData.customVisaType)) {
           errors.push('Custom visa type is required when "Other" is selected');
@@ -1924,7 +1929,7 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
         ...(isEdit ? {} : adminIdStr ? { role: "user" as const, adminId: adminIdStr } : {}), // Only include role/adminId for new candidates when we have a valid string
         fullName: formData.fullName,
         email: formData.email,
-        phoneNumber: formData.phoneNumber,
+        phoneNumber: (formData.phoneNumber || "").replace(/\D/g, ""),
         countryCode: formData.countryCode,
         shortBio: formData.shortBio,
         profilePicture: finalProfilePicture || {},
@@ -1932,7 +1937,7 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
         ead: formData.ead,
         degree: formData.degree,
         supervisorName: formData.supervisorName,
-        supervisorContact: formData.supervisorContact,
+        supervisorContact: (formData.supervisorContact || "").replace(/\D/g, ""),
         supervisorCountryCode: formData.supervisorCountryCode,
         visaType: formData.visaType,
         ...(formData.visaType === "Other" ? { customVisaType: formData.customVisaType } : {}),
@@ -1987,7 +1992,13 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
       let res: any;
       
       if (isEdit) {
-        res = await updateCandidate(String(initialData.id || initialData._id), payload);
+        const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+        const user = userData ? JSON.parse(userData) : null;
+        if (user?.role === 'user') {
+          res = await updateMyCandidate(payload);
+        } else {
+          res = await updateCandidate(String(initialData.id || initialData._id), payload);
+        }
         
         // Success alert for editing
         await Swal.fire({
@@ -2012,8 +2023,10 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
         });
       }
 
-      // Redirect after successful operation
-      router.push("/ats/candidates");
+      // Redirect after successful operation – candidates (role user) go to profile
+      const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+      const user = userData ? JSON.parse(userData) : null;
+      router.push(user?.role === 'user' ? ROUTES.candidateProfile : "/ats/candidates");
     } catch (err: any) {
       setError("Failed to add candidate");
       await Swal.fire({
@@ -2035,10 +2048,14 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold">Excel Import Candidates</h3>
             <button
-              onClick={() => setExcelImportMode(false)}
+              onClick={() =>
+                returnToCandidatesOnBack
+                  ? router.push("/ats/candidates")
+                  : setExcelImportMode(false)
+              }
               className="ti-btn ti-btn-secondary"
             >
-              Back to Manual Entry
+              {returnToCandidatesOnBack ? "Back to Candidates" : "Back to Manual Entry"}
             </button>
           </div>
           
@@ -2274,32 +2291,22 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="phone" className="form-label">Phone Number <span className="text-red-500">*</span></label>
                 <div className="flex gap-2">
-                  <div className="w-24">
-                    <select 
-                      name="countryCode" 
-                      value={formData.countryCode} 
-                      onChange={handleFormChange} 
-                      className="form-control w-full !rounded-md"
-                    >
-                      <option value="IN">🇮🇳 +91</option>
-                      <option value="US">🇺🇸 +1</option>
-                    </select>
-                  </div>
-                  <div className="flex-1">
-                    <input 
-                      type="tel" 
-                      name="phoneNumber" 
-                      value={formData.phoneNumber} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['phoneNumber'] ? 'border-red-500' : ''}`} 
-                      id="phone" 
-                      placeholder={formData.countryCode === "IN" ? "Enter 10-digit mobile number" : "Enter 10-digit phone number"} 
-                      maxLength={10}
-                      pattern={formData.countryCode === "IN" ? "[6-9][0-9]{9}" : "[0-9]{10}"}
-                      inputMode="numeric"
-                      // required
-                    />
-                  </div>
+                  <PhoneCountrySelect
+                    name="countryCode"
+                    value={formData.countryCode}
+                    onChange={(code) => handleFormChange({ target: { name: "countryCode", value: code } } as React.ChangeEvent<HTMLSelectElement>)}
+                  />
+                  <input
+                    type="tel"
+                    name="phoneNumber"
+                    value={formData.phoneNumber}
+                    onChange={handleFormChange}
+                    className={`form-control flex-1 !rounded-md ${fieldErrors['phoneNumber'] ? '!border-red-500' : ''}`}
+                    id="phone"
+                    placeholder={getPhoneCountry(formData.countryCode).placeholder}
+                    maxLength={getPhoneCountry(formData.countryCode).maxLength}
+                    inputMode="numeric"
+                  />
                 </div>
                 {fieldErrors['phoneNumber'] && (
                   <div className="text-red-500 text-sm mt-1">{fieldErrors['phoneNumber']}</div>
@@ -2324,28 +2331,22 @@ export const Basicwizard = ({ initialData }: { initialData?: any }) => {
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="supervisorContact" className="form-label">Supervisor Phone No.</label>
                 <div className="flex gap-2">
-                  <div className="w-24">
-                    <select 
-                      name="supervisorCountryCode" 
-                      value={formData.supervisorCountryCode || formData.countryCode} 
-                      onChange={handleFormChange} 
-                      className="form-control w-full !rounded-md"
-                    >
-                      <option value="IN">🇮🇳 +91</option>
-                      <option value="US">🇺🇸 +1</option>
-                    </select>
-                  </div>
-                  <div className="flex-1">
-                    <input 
-                      type="text" 
-                      name="supervisorContact" 
-                      value={formData.supervisorContact} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['supervisorContact'] ? 'border-red-500' : ''}`} 
-                      id="supervisorContact" 
-                      placeholder={formData.supervisorCountryCode === "US" || formData.countryCode === "US" ? "ex: 1234567890" : "ex: 98XXX4XXX0"} 
-                    />
-                  </div>
+                  <PhoneCountrySelect
+                    name="supervisorCountryCode"
+                    value={formData.supervisorCountryCode || formData.countryCode}
+                    onChange={(code) => handleFormChange({ target: { name: "supervisorCountryCode", value: code } } as React.ChangeEvent<HTMLSelectElement>)}
+                  />
+                  <input
+                    type="tel"
+                    name="supervisorContact"
+                    value={formData.supervisorContact}
+                    onChange={handleFormChange}
+                    className={`form-control flex-1 !rounded-md ${fieldErrors['supervisorContact'] ? '!border-red-500' : ''}`}
+                    id="supervisorContact"
+                    placeholder={getPhoneCountry(formData.supervisorCountryCode || formData.countryCode).placeholder}
+                    maxLength={getPhoneCountry(formData.supervisorCountryCode || formData.countryCode).maxLength}
+                    inputMode="numeric"
+                  />
                 </div>
                 {fieldErrors['supervisorContact'] && (
                   <div className="text-red-500 text-sm mt-1">{fieldErrors['supervisorContact']}</div>

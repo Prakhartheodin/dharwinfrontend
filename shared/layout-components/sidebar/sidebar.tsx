@@ -21,6 +21,7 @@ import {
 	COURSES_PERMISSION_PREFIX,
 	ATTENDANCE_PERMISSION_PREFIX,
 	isCandidateOnlyNav,
+	CANDIDATE_PROFILE_PATH,
 } from "@/shared/lib/route-permissions";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
@@ -87,6 +88,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	}, [user?.roleIds, roles]);
 
 	const isPathAllowed = (menuPath?: string) => {
+		// My Profile: hide from sidebar — only in header dropdown
+		if (menuPath === CANDIDATE_PROFILE_PATH || menuPath?.startsWith(CANDIDATE_PROFILE_PATH + "/")) {
+			return false;
+		}
+
 		// Until permissions are loaded, hide protected links to avoid flashes
 		// of unauthorized items. Unprotected (no prefix) remain visible.
 		if (!permissionsLoaded) {

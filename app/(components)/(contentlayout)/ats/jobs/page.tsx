@@ -6,309 +6,17 @@ import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table
 import Link from 'next/link'
 import { Range, getTrackBackground } from "react-range"
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
+import { listJobs, deleteJob, exportJobsToExcel, importJobsFromExcel, downloadJobsTemplate, applyToJob, shareJobByEmail } from '@/shared/lib/api/jobs'
+import { listCandidates } from '@/shared/lib/api/candidates'
+import { initiateBolnaCall } from '@/shared/lib/api/bolna'
+import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
 
-// Mock data for jobs
-const JOBS_DATA = [
-  {
-    id: '1',
-    jobTitle: 'Senior Software Engineer',
-    company: 'TechCorp Inc.',
-    location: 'San Francisco, CA',
-    experience: '5-8 years',
-    salary: '$120,000 - $150,000',
-    postedBy: 'John Doe',
-    active: true,
-    postingDate: '2024-01-15',
-    jobType: 'full-time', // full-time, part-time, contract, remote
-    isRemote: true,
-    urgency: 'high', // high, medium, low
-    salaryTier: 'high', // high, medium, low
-    description: `<p>We are looking for a <strong>Senior Software Engineer</strong> to join our growing team. You will be responsible for designing and developing scalable web applications using modern technologies.</p>
-      <h4>Responsibilities:</h4>
-      <ul>
-        <li>Design and develop robust, scalable applications</li>
-        <li>Collaborate with cross-functional teams</li>
-        <li>Mentor junior developers</li>
-        <li>Participate in code reviews</li>
-      </ul>
-      <h4>Requirements:</h4>
-      <ul>
-        <li>5+ years of software development experience</li>
-        <li>Strong knowledge of React, Node.js, and TypeScript</li>
-        <li>Experience with cloud platforms (AWS, Azure)</li>
-        <li>Excellent problem-solving skills</li>
-      </ul>`,
-    companyInfo: {
-      size: '500-1000',
-      industry: 'Technology',
-      founded: '2010',
-      website: 'www.techcorp.com',
-      description: 'TechCorp Inc. is a leading technology company specializing in innovative software solutions and cloud services. With over a decade of experience, we are committed to transforming businesses through cutting-edge technology and exceptional talent.'
-    }
-  },
-  {
-    id: '2',
-    jobTitle: 'Product Manager',
-    company: 'InnovateLabs',
-    location: 'New York, NY',
-    experience: '3-5 years',
-    salary: '$100,000 - $130,000',
-    postedBy: 'Jane Smith',
-    active: true,
-    postingDate: '2024-01-20',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'medium',
-    salaryTier: 'medium',
-    description: `<p>Join our product team as a <strong>Product Manager</strong> and drive the vision and execution of innovative products.</p>
-      <h4>Key Responsibilities:</h4>
-      <ul>
-        <li>Define product roadmap and strategy</li>
-        <li>Work closely with engineering and design teams</li>
-        <li>Gather and analyze user feedback</li>
-        <li>Launch new features and products</li>
-      </ul>`,
-    companyInfo: {
-      size: '100-500',
-      industry: 'Software',
-      founded: '2015',
-      website: 'www.innovatelabs.com'
-    }
-  },
-  {
-    id: '3',
-    jobTitle: 'Frontend Developer',
-    company: 'WebSolutions',
-    location: 'Austin, TX',
-    experience: '2-4 years',
-    salary: '$80,000 - $100,000',
-    postedBy: 'Mike Johnson',
-    active: false,
-    postingDate: '2024-01-10',
-    jobType: 'contract',
-    isRemote: true,
-    urgency: 'low',
-    salaryTier: 'medium',
-    description: `<p>We're seeking a talented <strong>Frontend Developer</strong> to build beautiful and functional user interfaces.</p>
-      <h4>What You'll Do:</h4>
-      <ul>
-        <li>Develop responsive web applications</li>
-        <li>Implement modern UI/UX designs</li>
-        <li>Optimize application performance</li>
-        <li>Collaborate with backend developers</li>
-      </ul>`,
-    companyInfo: {
-      size: '50-100',
-      industry: 'Web Development',
-      founded: '2018',
-      website: 'www.websolutions.com'
-    }
-  },
-  {
-    id: '4',
-    jobTitle: 'Data Scientist',
-    company: 'DataAnalytics Pro',
-    location: 'Seattle, WA',
-    experience: '4-6 years',
-    salary: '$130,000 - $160,000',
-    postedBy: 'Sarah Williams',
-    active: true,
-    postingDate: '2024-01-25',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'high',
-    salaryTier: 'high',
-    description: `<p>Seeking an experienced <strong>Data Scientist</strong> to analyze complex datasets and build predictive models.</p>`,
-    companyInfo: { size: '200-500', industry: 'Analytics', founded: '2012', website: 'www.dataanalyticspro.com', description: 'DataAnalytics Pro provides advanced data analytics and business intelligence solutions to help companies make data-driven decisions.' }
-  },
-  {
-    id: '5',
-    jobTitle: 'DevOps Engineer',
-    company: 'CloudTech Systems',
-    location: 'Boston, MA',
-    experience: '3-5 years',
-    salary: '$110,000 - $140,000',
-    postedBy: 'David Brown',
-    active: true,
-    postingDate: '2024-01-18',
-    jobType: 'full-time',
-    isRemote: true,
-    urgency: 'medium',
-    salaryTier: 'high',
-    description: `<p>Join our DevOps team to manage cloud infrastructure and CI/CD pipelines.</p>`,
-    companyInfo: { size: '100-200', industry: 'Cloud Services', founded: '2016', website: 'www.cloudtech.com', description: 'CloudTech Systems specializes in cloud infrastructure and DevOps solutions, helping businesses scale their operations efficiently.' }
-  },
-  {
-    id: '6',
-    jobTitle: 'UX Designer',
-    company: 'DesignStudio',
-    location: 'Los Angeles, CA',
-    experience: '2-4 years',
-    salary: '$85,000 - $110,000',
-    postedBy: 'Emily Davis',
-    active: false,
-    postingDate: '2024-01-12',
-    jobType: 'part-time',
-    isRemote: true,
-    urgency: 'low',
-    salaryTier: 'medium',
-    description: `<p>Creative UX Designer needed to design intuitive user experiences for web and mobile applications.</p>`,
-    companyInfo: { size: '50-100', industry: 'Design', founded: '2019', website: 'www.designstudio.com', description: 'DesignStudio creates beautiful and intuitive user experiences through innovative design thinking and creative solutions.' }
-  },
-  {
-    id: '7',
-    jobTitle: 'Backend Developer',
-    company: 'ServerSide Technologies',
-    location: 'Chicago, IL',
-    experience: '4-7 years',
-    salary: '$115,000 - $145,000',
-    postedBy: 'Robert Wilson',
-    active: true,
-    postingDate: '2024-01-22',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'medium',
-    salaryTier: 'high',
-    description: `<p>Build scalable backend systems and APIs using modern technologies.</p>`,
-    companyInfo: { size: '300-500', industry: 'Technology', founded: '2014', website: 'www.serverside.com', description: 'ServerSide Technologies develops robust backend systems and APIs for enterprise applications with focus on scalability and performance.' }
-  },
-  {
-    id: '8',
-    jobTitle: 'Marketing Manager',
-    company: 'GrowthMarketing Co.',
-    location: 'Miami, FL',
-    experience: '5-8 years',
-    salary: '$95,000 - $125,000',
-    postedBy: 'Lisa Anderson',
-    active: true,
-    postingDate: '2024-01-19',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'high',
-    salaryTier: 'medium',
-    description: `<p>Lead marketing campaigns and drive brand growth for our expanding company.</p>`,
-    companyInfo: { size: '150-300', industry: 'Marketing', founded: '2017', website: 'www.growthmarketing.com', description: 'GrowthMarketing Co. is a full-service marketing agency focused on driving business growth through data-driven strategies and creative campaigns.' }
-  },
-  {
-    id: '9',
-    jobTitle: 'Sales Executive',
-    company: 'SalesForce Dynamics',
-    location: 'Denver, CO',
-    experience: '2-5 years',
-    salary: '$70,000 - $90,000',
-    postedBy: 'Tom Martinez',
-    active: false,
-    postingDate: '2024-01-14',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'low',
-    salaryTier: 'low',
-    description: `<p>Drive sales growth and build relationships with enterprise clients.</p>`,
-    companyInfo: { size: '500-1000', industry: 'Sales', founded: '2011', website: 'www.salesforcedynamics.com', description: 'SalesForce Dynamics is a leading sales technology company providing CRM solutions and sales enablement tools to businesses worldwide.' }
-  },
-  {
-    id: '10',
-    jobTitle: 'QA Engineer',
-    company: 'QualityAssurance Labs',
-    location: 'Portland, OR',
-    experience: '3-6 years',
-    salary: '$90,000 - $115,000',
-    postedBy: 'Jennifer Lee',
-    active: true,
-    postingDate: '2024-01-23',
-    jobType: 'full-time',
-    isRemote: true,
-    urgency: 'medium',
-    salaryTier: 'medium',
-    description: `<p>Ensure product quality through comprehensive testing and quality assurance processes.</p>`,
-    companyInfo: { size: '100-200', industry: 'Quality Assurance', founded: '2015', website: 'www.qa-labs.com', description: 'QualityAssurance Labs ensures software quality through comprehensive testing services and quality assurance consulting.' }
-  },
-  {
-    id: '11',
-    jobTitle: 'Full Stack Developer',
-    company: 'FullStack Solutions',
-    location: 'Atlanta, GA',
-    experience: '4-6 years',
-    salary: '$105,000 - $135,000',
-    postedBy: 'Michael Chen',
-    active: true,
-    postingDate: '2024-01-21',
-    jobType: 'full-time',
-    isRemote: true,
-    urgency: 'high',
-    salaryTier: 'high',
-    description: `<p>Full-stack developer role working on both frontend and backend technologies.</p>`,
-    companyInfo: { size: '200-400', industry: 'Software Development', founded: '2013', website: 'www.fullstack.com', description: 'FullStack Solutions delivers end-to-end software development services, from frontend to backend, building complete digital solutions.' }
-  },
-  {
-    id: '12',
-    jobTitle: 'Business Analyst',
-    company: 'BusinessIntelligence Inc.',
-    location: 'Dallas, TX',
-    experience: '3-5 years',
-    salary: '$85,000 - $110,000',
-    postedBy: 'Amanda Taylor',
-    active: false,
-    postingDate: '2024-01-16',
-    jobType: 'contract',
-    isRemote: false,
-    urgency: 'low',
-    salaryTier: 'medium',
-    description: `<p>Analyze business processes and provide insights to improve operational efficiency.</p>`,
-    companyInfo: { size: '250-500', industry: 'Business Intelligence', founded: '2016', website: 'www.businessintel.com', description: 'BusinessIntelligence Inc. transforms raw data into actionable insights, helping organizations make informed strategic decisions.' }
-  },
-  {
-    id: '13',
-    jobTitle: 'Cloud Architect',
-    company: 'CloudInfrastructure Pro',
-    location: 'Phoenix, AZ',
-    experience: '6-10 years',
-    salary: '$140,000 - $180,000',
-    postedBy: 'Chris Rodriguez',
-    active: true,
-    postingDate: '2024-01-24',
-    jobType: 'full-time',
-    isRemote: true,
-    urgency: 'high',
-    salaryTier: 'high',
-    description: `<p>Senior cloud architect position designing and implementing cloud infrastructure solutions.</p>`,
-    companyInfo: { size: '500-1000', industry: 'Cloud Infrastructure', founded: '2010', website: 'www.cloudinfra.com', description: 'CloudInfrastructure Pro is a premier cloud services provider offering scalable infrastructure solutions for enterprises of all sizes.' }
-  },
-  {
-    id: '14',
-    jobTitle: 'Mobile App Developer',
-    company: 'MobileFirst Apps',
-    location: 'San Diego, CA',
-    experience: '3-5 years',
-    salary: '$95,000 - $120,000',
-    postedBy: 'Jessica White',
-    active: true,
-    postingDate: '2024-01-17',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'medium',
-    salaryTier: 'medium',
-    description: `<p>Develop native and cross-platform mobile applications for iOS and Android.</p>`,
-    companyInfo: { size: '100-250', industry: 'Mobile Development', founded: '2018', website: 'www.mobilefirst.com', description: 'MobileFirst Apps creates innovative mobile applications for iOS and Android, focusing on user experience and performance.' }
-  },
-  {
-    id: '15',
-    jobTitle: 'Network Administrator',
-    company: 'Networking Solutions',
-    location: 'Nashville, TN',
-    experience: '4-7 years',
-    salary: '$88,000 - $112,000',
-    postedBy: 'Daniel Harris',
-    active: false,
-    postingDate: '2024-01-13',
-    jobType: 'full-time',
-    isRemote: false,
-    urgency: 'low',
-    salaryTier: 'medium',
-    description: `<p>Manage and maintain network infrastructure and ensure optimal performance.</p>`,
-    companyInfo: { size: '150-300', industry: 'Networking', founded: '2015', website: 'www.networkingsolutions.com', description: 'Networking Solutions provides enterprise networking infrastructure and IT solutions to ensure reliable and secure network operations.' }
-  }
-]
+// Default ranges for filters when no data
+const DEFAULT_SALARY_RANGE = { min: 0, max: 200000 }
+const DEFAULT_EXPERIENCE_RANGE = { min: 0, max: 20 }
+
+// Jobs data loaded from API in component – see jobsData state below
+
 
 
 interface FilterState {
@@ -321,49 +29,8 @@ interface FilterState {
   postingDate: string
 }
 
-// Extract salary ranges to determine min/max for slider (compute outside component)
-const getSalaryRanges = () => {
-  const salaries = JOBS_DATA.map(job => {
-    const match = job.salary.match(/\$([\d,]+)/g)
-    if (match && match.length >= 2) {
-      const min = parseInt(match[0].replace(/[$,]/g, ''))
-      const max = parseInt(match[1].replace(/[$,]/g, ''))
-      return { min, max }
-    }
-    return null
-  }).filter(Boolean) as Array<{ min: number; max: number }>
-  
-  const allMins = salaries.map(s => s.min)
-  const allMaxs = salaries.map(s => s.max)
-  return {
-    min: Math.min(...allMins),
-    max: Math.max(...allMaxs)
-  }
-}
-
-const salaryRangesConst = getSalaryRanges()
-
-// Extract experience ranges to determine min/max for slider (compute outside component)
-const getExperienceRanges = () => {
-  const experiences = JOBS_DATA.map(job => {
-    const match = job.experience.match(/(\d+)-(\d+)/)
-    if (match) {
-      const min = parseInt(match[1])
-      const max = parseInt(match[2])
-      return { min, max }
-    }
-    return null
-  }).filter(Boolean) as Array<{ min: number; max: number }>
-  
-  const allMins = experiences.map(e => e.min)
-  const allMaxs = experiences.map(e => e.max)
-  return {
-    min: Math.min(...allMins),
-    max: Math.max(...allMaxs)
-  }
-}
-
-const experienceRangesConst = getExperienceRanges()
+const salaryRangesConst = DEFAULT_SALARY_RANGE
+const experienceRangesConst = DEFAULT_EXPERIENCE_RANGE
 
 // Note type for bookmark notes
 interface BookmarkNote {
@@ -377,7 +44,16 @@ interface BookmarkNote {
 
 const Jobs = () => {
   const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
+  const [jobsData, setJobsData] = useState<DisplayJob[]>([])
+  const [jobsLoading, setJobsLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    listJobs({ limit: 500 })
+      .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
+      .catch(() => setJobsData([]))
+      .finally(() => setJobsLoading(false))
+  }, [])
   const [bookmarkedJobs, setBookmarkedJobs] = useState<Set<string>>(new Set())
   const [previewJob, setPreviewJob] = useState<any>(null)
   const [companyModal, setCompanyModal] = useState<any>(null)
@@ -404,6 +80,141 @@ const Jobs = () => {
   const [searchJobTitle, setSearchJobTitle] = useState('')
   const [searchCompany, setSearchCompany] = useState('')
   const [searchLocation, setSearchLocation] = useState('')
+
+  // Excel import
+  const [excelImporting, setExcelImporting] = useState(false)
+  const excelInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Apply candidate to job
+  const [applyModalOpen, setApplyModalOpen] = useState(false)
+  const [applyJob, setApplyJob] = useState<any>(null)
+  const [candidatesList, setCandidatesList] = useState<{ id: string; fullName: string }[]>([])
+  const [selectedCandidateId, setSelectedCandidateId] = useState('')
+  const [applySubmitting, setApplySubmitting] = useState(false)
+  const [callingJobId, setCallingJobId] = useState<string | null>(null)
+
+  const getOrganisationPhone = (job: any): string => {
+    const maybePhone = job?.companyInfo?.phone
+    return typeof maybePhone === 'string' ? maybePhone.trim() : ''
+  }
+
+  const handleInitiateCall = async (job: any) => {
+    const phone = getOrganisationPhone(job)
+    if (!phone) {
+      alert('Organisation phone is required to initiate a call.')
+      return
+    }
+
+    setCallingJobId(job.id)
+    try {
+      const res = await initiateBolnaCall({
+        jobId: job.id,
+        phone,
+        candidateName: job.company || job.jobTitle || 'Organisation',
+      })
+      alert(`Call initiated successfully. Execution ID: ${res.executionId}`)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to initiate call')
+    } finally {
+      setCallingJobId(null)
+    }
+  }
+
+  const handleApplyClick = (job: any) => {
+    setApplyJob(job)
+    setSelectedCandidateId('')
+    listCandidates({ limit: 500 })
+      .then((res) => setCandidatesList((res.results ?? []).map((c: any) => ({ id: c._id ?? c.id, fullName: c.fullName ?? c.name ?? '' }))))
+      .catch(() => setCandidatesList([]))
+    setApplyModalOpen(true)
+  }
+  const handleApplySubmit = async () => {
+    if (!applyJob?.id || !selectedCandidateId) {
+      alert('Please select a candidate')
+      return
+    }
+    setApplySubmitting(true)
+    try {
+      await applyToJob(applyJob.id, selectedCandidateId)
+      alert('Candidate applied successfully')
+      setApplyModalOpen(false)
+      setApplyJob(null)
+      setSelectedCandidateId('')
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to apply candidate')
+    } finally {
+      setApplySubmitting(false)
+    }
+  }
+
+  const refreshJobs = () => {
+    listJobs({ limit: 500 })
+      .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
+      .catch(() => {})
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await exportJobsToExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `jobs_export_${Date.now()}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to export jobs')
+    }
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadJobsTemplate()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'jobs_template.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to download template')
+    }
+  }
+
+  const handleImportExcel = () => {
+    excelInputRef.current?.click()
+  }
+
+  const onExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setExcelImporting(true)
+    try {
+      const result = await importJobsFromExcel(file)
+      refreshJobs()
+      const msg = result.summary
+        ? `Imported ${result.summary.successful} of ${result.summary.total}. Failed: ${result.summary.failed}`
+        : result.message
+      alert(msg)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to import jobs')
+    } finally {
+      setExcelImporting(false)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedRows.size === 0) return
+    if (!confirm(`Delete ${selectedRows.size} selected job(s)?`)) return
+    try {
+      await Promise.all(Array.from(selectedRows).map((id) => deleteJob(id)))
+      setSelectedRows(new Set())
+      refreshJobs()
+    } catch (err) {
+      alert('Failed to delete one or more jobs')
+    }
+  }
 
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
@@ -469,7 +280,7 @@ const Jobs = () => {
   // Get job details for the bookmark notes sidebar
   const getBookmarkJobDetails = () => {
     if (!bookmarkNotesJobId) return null
-    return JOBS_DATA.find(job => job.id === bookmarkNotesJobId)
+    return jobsData.find(job => job.id === bookmarkNotesJobId)
   }
 
   // Generate public URL for job
@@ -504,14 +315,21 @@ const Jobs = () => {
     setShowEmailInput(true)
   }
 
-  // Handle send email (UI only for now)
-  const handleSendEmail = () => {
-    if (!shareEmail.trim()) return
-    // TODO: Add email sending logic here
-    console.log('Sending email to:', shareEmail, 'for job:', shareJob?.id)
-    // Reset after sending
-    setShareEmail('')
-    setShowEmailInput(false)
+  // Handle send email
+  const [shareEmailSending, setShareEmailSending] = useState(false)
+  const handleSendEmail = async () => {
+    if (!shareEmail.trim() || !shareJob?.id) return
+    setShareEmailSending(true)
+    try {
+      await shareJobByEmail(shareJob.id, shareEmail.trim())
+      alert('Job shared successfully')
+      setShareEmail('')
+      setShowEmailInput(false)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to share job')
+    } finally {
+      setShareEmailSending(false)
+    }
   }
 
   // Handle share button click
@@ -700,6 +518,25 @@ const Jobs = () => {
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
+                onClick={() => handleInitiateCall(row.original)}
+                disabled={!getOrganisationPhone(row.original) || callingJobId === row.original.id}
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <i className="ri-phone-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  {!getOrganisationPhone(row.original)
+                    ? 'Organisation phone required'
+                    : callingJobId === row.original.id
+                      ? 'Calling...'
+                      : 'Initiate Call'}
+                </span>
+              </button>
+            </div>
+            <div className="hs-tooltip ti-main-tooltip">
+              <button
+                type="button"
                 onClick={() => handleShareClick(row.original)}
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
               >
@@ -717,12 +554,12 @@ const Jobs = () => {
     ]
       return canDelete ? [checkboxColumn, ...restColumns] : restColumns
     },
-    [selectedRows, bookmarkedJobs, canDelete, canEdit]
+    [selectedRows, bookmarkedJobs, canDelete, canEdit, callingJobId]
   )
 
   // Filter data based on filter state
   const filteredData = useMemo(() => {
-    return JOBS_DATA.filter((job) => {
+    return jobsData.filter((job) => {
       // Job Title filter (array)
       if (filters.jobTitle.length > 0 && !filters.jobTitle.some(title => 
         job.jobTitle.toLowerCase().includes(title.toLowerCase())
@@ -781,7 +618,7 @@ const Jobs = () => {
       
       return true
     })
-  }, [filters])
+  }, [jobsData, filters])
 
   const data = useMemo(() => filteredData, [filteredData])
 
@@ -793,9 +630,9 @@ const Jobs = () => {
   }, [filteredData])
 
   // Get unique values for dropdown filters
-  const uniqueCompanies = useMemo(() => [...new Set(JOBS_DATA.map(job => job.company))].sort(), [])
-  const uniqueLocations = useMemo(() => [...new Set(JOBS_DATA.map(job => job.location))].sort(), [])
-  const uniqueJobTitles = useMemo(() => [...new Set(JOBS_DATA.map(job => job.jobTitle))].sort(), [])
+  const uniqueCompanies = useMemo(() => [...new Set(jobsData.map(job => job.company))].filter(Boolean).sort(), [jobsData])
+  const uniqueLocations = useMemo(() => [...new Set(jobsData.map(job => job.location))].filter(Boolean).sort(), [jobsData])
+  const uniqueJobTitles = useMemo(() => [...new Set(jobsData.map(job => job.jobTitle))].filter(Boolean).sort(), [jobsData])
 
   // Filter options based on search terms
   const filteredJobTitles = useMemo(() => {
@@ -1166,14 +1003,17 @@ const Jobs = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleImportExcel}
+                        disabled={excelImporting}
                       >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>{excelImporting ? 'Importing...' : 'Import'}
                       </button>
                     </li>
                     <li>
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleExportExcel}
                       >
                         <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
                       </button>
@@ -1182,6 +1022,7 @@ const Jobs = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                        onClick={handleDownloadTemplate}
                       >
                         <i className="ri-download-line me-2 align-middle inline-block"></i>Template
                       </button>
@@ -1204,11 +1045,20 @@ const Jobs = () => {
                 {canDelete && (
                   <button
                     type="button"
-                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleDeleteSelected}
+                    disabled={selectedRows.size === 0}
                   >
                     <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
                   </button>
                 )}
+                <input
+                  ref={excelInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  className="hidden"
+                  onChange={onExcelFileChange}
+                />
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
@@ -2042,34 +1892,36 @@ const Jobs = () => {
                 {previewJob ? (
                 <div className="space-y-4">
                   {/* Job Header Info */}
-                  <div className="flex flex-wrap items-center gap-3 mb-4">
-                    <span className={`badge ${getUrgencyBadge(previewJob.urgency || 'medium').color} text-white`}>
-                      {getUrgencyBadge(previewJob.urgency || 'medium').label}
-                    </span>
-                    {(() => {
-                      const jobTypeInfo = getJobTypeInfo(previewJob)
-                      return (
-                        <span className={`badge bg-primary/10 text-primary ${jobTypeInfo.color}`}>
-                          <i className={`${jobTypeInfo.icon} me-1`}></i>
-                          {jobTypeInfo.label}
-                        </span>
-                      )
-                    })()}
-                    {previewJob.isRemote && (
-                      <span className="badge bg-success/10 text-success border border-success/30">
-                        <i className="ri-home-line me-1"></i>Remote
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+                      <span className={`badge ${getUrgencyBadge(previewJob.urgency || 'medium').color} text-white`}>
+                        {getUrgencyBadge(previewJob.urgency || 'medium').label}
                       </span>
-                    )}
-                    <span className={`badge ${getSalaryTierBadge(previewJob.salaryTier || 'medium').color} text-white`}>
-                      {getSalaryTierBadge(previewJob.salaryTier || 'medium').label}
-                    </span>
+                      {(() => {
+                        const jobTypeInfo = getJobTypeInfo(previewJob)
+                        return (
+                          <span className={`badge bg-primary/10 text-primary ${jobTypeInfo.color}`}>
+                            <i className={`${jobTypeInfo.icon} me-1`}></i>
+                            {jobTypeInfo.label}
+                          </span>
+                        )
+                      })()}
+                      {previewJob.isRemote && (
+                        <span className="badge bg-success/10 text-success border border-success/30">
+                          <i className="ri-home-line me-1"></i>Remote
+                        </span>
+                      )}
+                      <span className={`badge ${getSalaryTierBadge(previewJob.salaryTier || 'medium').color} text-white`}>
+                        {getSalaryTierBadge(previewJob.salaryTier || 'medium').label}
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleBookmark(previewJob.id, previewJob)}
-                      className={`ti-btn ti-btn-sm ${bookmarkedJobs.has(previewJob.id) ? 'ti-btn-warning' : 'ti-btn-light'} ms-auto`}
+                      className={`ti-btn ti-btn-sm flex-shrink-0 self-start sm:self-center min-w-[9rem] whitespace-nowrap px-3 py-1.5 inline-flex items-center justify-center ${bookmarkedJobs.has(previewJob.id) ? 'ti-btn-warning' : 'ti-btn-light'}`}
                     >
-                      <i className={bookmarkedJobs.has(previewJob.id) ? 'ri-bookmark-fill me-1' : 'ri-bookmark-line me-1'}></i>
-                      {bookmarkedJobs.has(previewJob.id) ? 'View Notes' : 'Bookmark'}
+                      <i className={`${bookmarkedJobs.has(previewJob.id) ? 'ri-bookmark-fill' : 'ri-bookmark-line'} flex-shrink-0 me-1.5`}></i>
+                      <span>{bookmarkedJobs.has(previewJob.id) ? 'View Notes' : 'Bookmark'}</span>
                     </button>
                   </div>
 
@@ -2174,13 +2026,25 @@ const Jobs = () => {
                     <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10 flex gap-3">
                       <button 
                         type="button" 
-                        className="hs-dropdown-toggle ti-btn ti-btn-light flex-1" 
+                        className="hs-dropdown-toggle ti-btn ti-btn-light flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"
                         data-hs-overlay="#job-preview-panel"
                         onClick={() => setPreviewJob(null)}
                       >
                         Close
                       </button>
-                      <button type="button" className="ti-btn ti-btn-primary flex-1">
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => previewJob && handleInitiateCall(previewJob)}
+                        disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
+                      >
+                        {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
+                      </button>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"
+                        onClick={() => previewJob && handleApplyClick(previewJob)}
+                      >
                         Apply Now
                       </button>
                     </div>
@@ -2479,10 +2343,10 @@ const Jobs = () => {
                               type="button"
                               className="ti-btn ti-btn-primary flex-1"
                               onClick={handleSendEmail}
-                              disabled={!shareEmail.trim()}
+                              disabled={!shareEmail.trim() || shareEmailSending}
                             >
                               <i className="ri-send-plane-line me-1"></i>
-                              Send
+                              {shareEmailSending ? 'Sending...' : 'Send'}
                             </button>
                             <button
                               type="button"
@@ -2521,6 +2385,48 @@ const Jobs = () => {
           </div>
         </div>
       </div>
+
+      {/* Apply Candidate Modal */}
+      {applyModalOpen && applyJob && (
+        <div id="apply-job-modal" className="ti-modal overflow-y-auto" role="dialog" aria-modal="true" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}>
+          <div className="ti-modal-content !max-w-md">
+            <div className="ti-modal-header">
+              <h5 className="ti-modal-title">Apply Candidate to Job</h5>
+              <button type="button" className="ti-btn ti-btn-light !p-1" onClick={() => { setApplyModalOpen(false); setApplyJob(null); }}>
+                <i className="ri-close-line"></i>
+              </button>
+            </div>
+            <div className="ti-modal-body">
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                Select a candidate to apply for <strong>{applyJob.jobTitle}</strong>
+              </p>
+              <select
+                className="form-control"
+                value={selectedCandidateId}
+                onChange={(e) => setSelectedCandidateId(e.target.value)}
+              >
+                <option value="">-- Select Candidate --</option>
+                {candidatesList.map((c) => (
+                  <option key={c.id} value={c.id}>{c.fullName}</option>
+                ))}
+              </select>
+            </div>
+            <div className="ti-modal-footer">
+              <button type="button" className="ti-btn ti-btn-light" onClick={() => { setApplyModalOpen(false); setApplyJob(null); }}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary"
+                onClick={handleApplySubmit}
+                disabled={!selectedCandidateId || applySubmitting}
+              >
+                {applySubmitting ? 'Applying...' : 'Apply'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Fragment>
   )
 }

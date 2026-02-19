@@ -16,6 +16,8 @@ export interface CandidateListItem {
   employeeId?: string;
   isActive?: boolean;
   isEmailVerified?: boolean;
+  isProfileCompleted?: number;
+  isCompleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
   owner?: { name?: string; email?: string };
@@ -68,6 +70,18 @@ export async function listCandidates(params?: ListCandidatesParams): Promise<Can
 
 export async function getCandidate(candidateId: string): Promise<CandidateListItem> {
   const { data } = await apiClient.get<CandidateListItem>(`/candidates/${candidateId}`);
+  return data;
+}
+
+/** Get current user's own candidate (auth only, no candidates.read). For role 'user' from share-candidate-form. */
+export async function getMyCandidate(): Promise<CandidateListItem> {
+  const { data } = await apiClient.get<CandidateListItem>("/candidates/me");
+  return data;
+}
+
+/** Update current user's own candidate (auth only). For role 'user' from share-candidate-form. */
+export async function updateMyCandidate(payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
+  const { data } = await apiClient.patch<CandidateListItem>("/candidates/me", payload);
   return data;
 }
 
@@ -283,6 +297,8 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
     experience: experienceYears,
     bio: c.shortBio ?? "",
     isEmailVerified: (c as any).isEmailVerified ?? true,
+    isProfileCompleted: (c as any).isProfileCompleted ?? 0,
+    isCompleted: (c as any).isCompleted ?? false,
     _raw: c,
   };
 }

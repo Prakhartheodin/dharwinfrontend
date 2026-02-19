@@ -70,6 +70,9 @@ export function hasPermissionForPath(
   return userPermissions.some((p) => p.startsWith(requiredPrefix));
 }
 
+/** Path for candidate's own profile (role 'user' from share-candidate-form). */
+export const CANDIDATE_PROFILE_PATH = "/ats/my-profile";
+
 /** Permission prefix for the candidate-only courses section. */
 export const COURSES_PERMISSION_PREFIX = "candidate.courses:";
 

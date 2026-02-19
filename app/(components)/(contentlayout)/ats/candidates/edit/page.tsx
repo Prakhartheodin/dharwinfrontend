@@ -5,23 +5,35 @@ import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getCandidate } from "@/shared/lib/api/candidates";
+import { getCandidate, getMyCandidate } from "@/shared/lib/api/candidates";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { useIsCandidateForProfile } from "@/shared/hooks/use-is-candidate-for-profile";
 
 const EditCandidate = () => {
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
+  const { user } = useAuth();
+  const { isCandidate, isLoading: rolesLoading } = useIsCandidateForProfile();
   const [initialData, setInitialData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!id || !user || rolesLoading) {
+      if (!id || !rolesLoading) setLoading(false);
+      return;
+    }
     const load = async () => {
-      if (!id) {
-        setLoading(false);
-        return;
-      }
       try {
-        const data = await getCandidate(id);
-        setInitialData(data);
+        // Only candidates (share-candidate-form, no Administrator) use /me – admins use getCandidate
+        if (isCandidate) {
+          const data = await getMyCandidate();
+          const dataId = (data as any).id ?? (data as any)._id;
+          if (dataId === id) setInitialData(data);
+          else setInitialData(null);
+        } else {
+          const data = await getCandidate(id);
+          setInitialData(data);
+        }
       } catch {
         setInitialData(null);
       } finally {
@@ -29,7 +41,7 @@ const EditCandidate = () => {
       }
     };
     load();
-  }, [id]);
+  }, [id, user, isCandidate, rolesLoading]);
 
   return (
     <Fragment>
