@@ -35,7 +35,7 @@ export interface RecordingStatusResponse {
 }
 
 /**
- * Generate LiveKit access token
+ * Generate LiveKit access token (authenticated)
  */
 export async function getLiveKitToken(
   roomName: string,
@@ -44,6 +44,20 @@ export async function getLiveKitToken(
   const response = await apiClient.post<LiveKitTokenResponse>("/livekit/token", {
     roomName,
     participantName,
+  });
+  return response.data;
+}
+
+/**
+ * Generate LiveKit access token (public, no auth) for /join/room/[roomId]
+ */
+export async function getPublicLiveKitToken(
+  roomName: string,
+  participantName: string
+): Promise<LiveKitTokenResponse> {
+  const response = await apiClient.post<LiveKitTokenResponse>("/public/livekit-token", {
+    roomName,
+    participantName: participantName || "Guest",
   });
   return response.data;
 }

@@ -1,9 +1,9 @@
 "use client"
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import Link from 'next/link'
+import { createMeeting, type Meeting, type CreateMeetingPayload } from '@/shared/lib/api/meetings'
 
 // Mock data for interviews
 const INTERVIEWS_DATA = [
@@ -348,6 +348,13 @@ const Interviews = () => {
   const [searchStatus, setSearchStatus] = useState('')
   const [searchType, setSearchType] = useState('')
 
+  // Schedule Interview modal: success view & form state
+  const [createdMeeting, setCreatedMeeting] = useState<Meeting | null>(null)
+  const [hosts, setHosts] = useState<{ nameOrRole: string; email: string }[]>([{ nameOrRole: '', email: '' }])
+  const [emailInvites, setEmailInvites] = useState<string[]>([''])
+  const [formLoading, setFormLoading] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
+
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
     const newSelected = new Set(selectedRows)
@@ -358,6 +365,66 @@ const Interviews = () => {
     }
     setSelectedRows(newSelected)
   }
+
+  const resetCreateMeetingForm = useCallback(() => {
+    setCreatedMeeting(null)
+    setFormError(null)
+    setHosts([{ nameOrRole: '', email: '' }])
+    setEmailInvites([''])
+  }, [])
+
+  const handleScheduleInterviewSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFormError(null)
+    const form = e.target as HTMLFormElement
+    const getVal = (id: string) => (form.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value?.trim() ?? ''
+    const title = getVal('schedule-meeting-title') || getVal('schedule-job') || 'Interview'
+    const description = getVal('schedule-description')
+    const date = getVal('schedule-date')
+    const time = getVal('schedule-time')
+    const durationMinutes = parseInt(getVal('schedule-duration') || '60', 10) || 60
+    const maxParticipants = parseInt(getVal('schedule-max-participants') || '10', 10) || 10
+    const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? true
+    const requireApproval = (form.querySelector('#schedule-require-approval') as HTMLInputElement)?.checked ?? false
+    const jobPosition = getVal('schedule-job')
+    const interviewType = (form.querySelector('input[name="schedule-type"]:checked') as HTMLInputElement)?.value || 'Video'
+    const notes = getVal('schedule-notes')
+    const candidateSelect = form.querySelector('#schedule-candidate') as HTMLSelectElement
+    const candidateOption = candidateSelect?.selectedOptions?.[0]
+    const candidateText = candidateOption?.text?.trim() ?? ''
+    const candidateMatch = candidateText.match(/^(.+?)\s*-\s*(.+)$/)
+    const recruiterSelect = form.querySelector('#schedule-recruiter') as HTMLSelectElement
+    const recruiterOption = recruiterSelect?.selectedOptions?.[0]
+    const recruiterText = recruiterOption?.text?.trim() ?? ''
+    const recruiterMatch = recruiterText.match(/^(.+?)\s*-\s*(.+)$/)
+    const scheduledAt = date && time ? `${date}T${time}:00.000Z` : new Date().toISOString()
+    const payload: CreateMeetingPayload = {
+      title,
+      description: description || undefined,
+      scheduledAt,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Calcutta',
+      durationMinutes,
+      maxParticipants,
+      allowGuestJoin,
+      requireApproval,
+      hosts: hosts.filter((h) => h.email.trim()),
+      emailInvites: emailInvites.filter((em) => em.trim()),
+      jobPosition: jobPosition || undefined,
+      interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
+      candidate: candidateOption?.value ? { id: candidateOption.value, name: candidateMatch?.[1] ?? candidateText, email: candidateMatch?.[2] ?? '' } : undefined,
+      recruiter: recruiterOption?.value ? { id: recruiterOption.value, name: recruiterMatch?.[1] ?? recruiterText, email: recruiterMatch?.[2] ?? '' } : undefined,
+      notes: notes || undefined,
+    }
+    setFormLoading(true)
+    try {
+      const meeting = await createMeeting(payload)
+      setCreatedMeeting(meeting)
+    } catch (err: any) {
+      setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
+    } finally {
+      setFormLoading(false)
+    }
+  }, [hosts, emailInvites])
 
   // Define columns
   const columns = useMemo(
@@ -870,14 +937,13 @@ const Interviews = () => {
                     </li>
                   </ul>
                 </div>
-                <Link
-                  href="#!"
-                  scroll={false}
+                <button
+                  type="button"
                   className="hs-dropdown-toggle ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
                   data-hs-overlay="#create-interview-modal"
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Schedule Interview
-                </Link>
+                </button>
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
@@ -1114,6 +1180,397 @@ const Interviews = () => {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Schedule Interview Modal */}
+      <div id="create-interview-modal" className="hs-overlay hidden ti-modal size-lg !z-[105]" tabIndex={-1} aria-labelledby="create-interview-modal-label" aria-hidden="true">
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
+          <div className="ti-modal-content border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl overflow-hidden">
+            <div className="ti-modal-header bg-gray-50 dark:bg-black/20 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
+              <h3 id="create-interview-modal-label" className="ti-modal-title text-lg font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
+                <i className="ri-calendar-schedule-line text-primary text-xl"></i>
+                {createdMeeting ? 'Meeting Created' : 'Schedule Interview'}
+              </h3>
+              <button
+                type="button"
+                className="ti-modal-close-btn hs-dropdown-toggle flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 dark:text-[#8c9097] dark:hover:text-white/80 rounded-md hover:bg-gray-100 dark:hover:bg-black/40 focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
+                data-hs-overlay="#create-interview-modal"
+                onClick={resetCreateMeetingForm}
+                aria-label="Close"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+            {createdMeeting ? (
+              <div className="ti-modal-body px-6 py-5">
+                <div className="text-center mb-6">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/10 text-success mb-4">
+                    <i className="ri-check-double-line text-2xl"></i>
+                  </div>
+                  <h4 className="text-lg font-semibold text-defaulttextcolor dark:text-white mb-1">Meeting Created Successfully!</h4>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{createdMeeting.title}</p>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="form-label block text-xs font-medium text-defaulttextcolor dark:text-white mb-1">Meeting URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={createdMeeting.publicMeetingUrl || ''}
+                        className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 dark:bg-black/20"
+                      />
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-primary !py-2 !px-3 !text-sm"
+                        onClick={() => {
+                          const url = createdMeeting.publicMeetingUrl
+                          if (url) {
+                            navigator.clipboard.writeText(url)
+                            // Optional: toast
+                          }
+                        }}
+                      >
+                        <i className="ri-file-copy-line"></i> Copy
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Meeting ID</span>
+                      <p className="font-medium text-defaulttextcolor dark:text-white">{createdMeeting.meetingId}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">Status</span>
+                      <p className="font-medium text-defaulttextcolor dark:text-white capitalize">{createdMeeting.status}</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-end mt-6 pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium"
+                    onClick={() => { resetCreateMeetingForm(); (window as any).HSOverlay?.close(document.querySelector('#create-interview-modal')); }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-outline-primary !py-2 !px-4 !text-sm font-medium"
+                    onClick={resetCreateMeetingForm}
+                  >
+                    <i className="ri-add-line me-1.5"></i>Create Another Meeting
+                  </button>
+                  <a
+                    href={createdMeeting.publicMeetingUrl || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium"
+                  >
+                    <i className="ri-vidicon-line me-1.5"></i>Join Meeting
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <form className="ti-modal-body !p-0" onSubmit={handleScheduleInterviewSubmit}>
+                <div className="px-6 py-5 space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
+                  {formError && (
+                    <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{formError}</div>
+                  )}
+                  {/* Meeting Title */}
+                  <div>
+                    <label htmlFor="schedule-meeting-title" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Meeting Title <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      id="schedule-meeting-title"
+                      placeholder="e.g. Technical Interview - John Doe"
+                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                  {/* Description */}
+                  <div>
+                    <label htmlFor="schedule-description" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Description
+                    </label>
+                    <textarea
+                      id="schedule-description"
+                      rows={2}
+                      placeholder="Optional meeting description..."
+                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                    />
+                  </div>
+                  {/* Job / Position */}
+                  <div>
+                    <label htmlFor="schedule-job" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Job / Position
+                    </label>
+                    <select
+                      id="schedule-job"
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="">Select job position</option>
+                      <option value="senior-software-engineer">Senior Software Engineer</option>
+                      <option value="product-manager">Product Manager</option>
+                      <option value="frontend-developer">Frontend Developer</option>
+                      <option value="backend-developer">Backend Developer</option>
+                      <option value="data-scientist">Data Scientist</option>
+                      <option value="ux-designer">UX Designer</option>
+                      <option value="devops-engineer">DevOps Engineer</option>
+                      <option value="qa-engineer">QA Engineer</option>
+                    </select>
+                  </div>
+                  {/* Date & Time row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="schedule-date" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                        Date <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        id="schedule-date"
+                        className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="schedule-time" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                        Time <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="time"
+                        id="schedule-time"
+                        className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  {/* Duration & Max Participants */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="schedule-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                        Duration (minutes)
+                      </label>
+                      <input
+                        type="number"
+                        id="schedule-duration"
+                        min={1}
+                        max={480}
+                        defaultValue={60}
+                        className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="schedule-max-participants" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                        Max Participants
+                      </label>
+                      <input
+                        type="number"
+                        id="schedule-max-participants"
+                        min={1}
+                        max={100}
+                        defaultValue={10}
+                        className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                  </div>
+                  {/* Allow Guest Join & Require Approval */}
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" id="schedule-allow-guest" defaultChecked className="form-check-input !w-4 !h-4 text-primary" />
+                      <span className="text-sm text-defaulttextcolor dark:text-white">Allow guest join</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" id="schedule-require-approval" className="form-check-input !w-4 !h-4 text-primary" />
+                      <span className="text-sm text-defaulttextcolor dark:text-white">Require approval</span>
+                    </label>
+                  </div>
+                  {/* Hosts */}
+                  <div>
+                    <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
+                      Hosts (name/role + email)
+                    </label>
+                    <div className="space-y-2">
+                      {hosts.map((h, i) => (
+                        <div key={i} className="flex gap-2 flex-wrap">
+                          <input
+                            type="text"
+                            placeholder="Name or role"
+                            value={h.nameOrRole}
+                            onChange={(e) => {
+                              const next = [...hosts]
+                              next[i] = { ...next[i], nameOrRole: e.target.value }
+                              setHosts(next)
+                            }}
+                            className="form-control !py-2 !text-sm flex-1 min-w-[120px] border-defaultborder dark:border-defaultborder/10 rounded-lg"
+                          />
+                          <input
+                            type="email"
+                            placeholder="email@example.com"
+                            value={h.email}
+                            onChange={(e) => {
+                              const next = [...hosts]
+                              next[i] = { ...next[i], email: e.target.value }
+                              setHosts(next)
+                            }}
+                            className="form-control !py-2 !text-sm flex-1 min-w-[160px] border-defaultborder dark:border-defaultborder/10 rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-light !py-2 !px-2"
+                            onClick={() => setHosts((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label="Remove host"
+                          >
+                            <i className="ri-close-line"></i>
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-outline-light !py-1.5 !px-3 !text-sm"
+                        onClick={() => setHosts((prev) => [...prev, { nameOrRole: '', email: '' }])}
+                      >
+                        <i className="ri-add-line me-1"></i>Add host
+                      </button>
+                    </div>
+                  </div>
+                  {/* Email Invites */}
+                  <div>
+                    <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
+                      Email invites
+                    </label>
+                    <div className="space-y-2">
+                      {emailInvites.map((email, i) => (
+                        <div key={i} className="flex gap-2">
+                          <input
+                            type="email"
+                            placeholder="email@example.com"
+                            value={email}
+                            onChange={(e) => {
+                              const next = [...emailInvites]
+                              next[i] = e.target.value
+                              setEmailInvites(next)
+                            }}
+                            className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg"
+                          />
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-light !py-2 !px-2"
+                            onClick={() => setEmailInvites((prev) => prev.filter((_, j) => j !== i))}
+                            aria-label="Remove"
+                          >
+                            <i className="ri-close-line"></i>
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-outline-light !py-1.5 !px-3 !text-sm"
+                        onClick={() => setEmailInvites((prev) => [...prev, ''])}
+                      >
+                        <i className="ri-add-line me-1"></i>Add email
+                      </button>
+                    </div>
+                  </div>
+                  {/* Interview Type */}
+                  <div>
+                    <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
+                      Interview Type <span className="text-danger">*</span>
+                    </label>
+                    <div className="flex flex-wrap gap-3">
+                      {(['Video', 'In-Person', 'Phone'] as const).map((type) => (
+                        <label
+                          key={type}
+                          className="flex items-center gap-2 cursor-pointer px-4 py-2.5 rounded-lg border-2 border-defaultborder dark:border-defaultborder/10 hover:border-primary/50 dark:hover:border-primary/50 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5 dark:has-[:checked]:bg-primary/10"
+                        >
+                          <input
+                            type="radio"
+                            name="schedule-type"
+                            value={type === 'In-Person' ? 'in-person' : type.toLowerCase()}
+                            defaultChecked={type === 'Video'}
+                            className="form-check-input !w-4 !h-4 text-primary"
+                          />
+                          <i className={`ri-${type === 'Video' ? 'vidicon-line' : type === 'In-Person' ? 'user-line' : 'phone-line'} text-base text-gray-600 dark:text-gray-400`}></i>
+                          <span className="text-sm font-medium text-defaulttextcolor dark:text-white">{type}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Candidate */}
+                  <div>
+                    <label htmlFor="schedule-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Candidate
+                    </label>
+                    <select
+                      id="schedule-candidate"
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="">Select candidate</option>
+                      <option value="1">John Anderson - john.anderson@example.com</option>
+                      <option value="2">Sarah Johnson - sarah.johnson@example.com</option>
+                      <option value="3">Michael Chen - michael.chen@example.com</option>
+                      <option value="4">Emily Davis - emily.davis@example.com</option>
+                      <option value="5">David Brown - david.brown@example.com</option>
+                      <option value="6">Lisa Anderson - lisa.anderson@example.com</option>
+                    </select>
+                  </div>
+                  {/* Recruiter */}
+                  <div>
+                    <label htmlFor="schedule-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Recruiter
+                    </label>
+                    <select
+                      id="schedule-recruiter"
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      <option value="">Select recruiter</option>
+                      <option value="1">John Anderson - john.anderson@example.com</option>
+                      <option value="2">Sarah Johnson - sarah.johnson@example.com</option>
+                      <option value="3">Emily Davis - emily.davis@example.com</option>
+                    </select>
+                  </div>
+                  {/* Notes */}
+                  <div>
+                    <label htmlFor="schedule-notes" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Notes
+                    </label>
+                    <textarea
+                      id="schedule-notes"
+                      rows={3}
+                      placeholder="Add any additional notes or instructions for the interview..."
+                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                    />
+                  </div>
+                </div>
+                <div className="ti-modal-footer flex flex-wrap gap-2 justify-end px-6 py-4 bg-gray-50 dark:bg-black/20 border-t border-defaultborder dark:border-defaultborder/10">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium"
+                    data-hs-overlay="#create-interview-modal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={formLoading}
+                    className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium"
+                  >
+                    {formLoading ? (
+                      <>
+                        <span className="animate-spin inline-block me-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-check-line me-1.5 align-middle"></i>
+                        Schedule Interview
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       </div>
