@@ -84,14 +84,15 @@ export async function startRecording(
 }
 
 /**
- * Stop recording
+ * Stop recording (authenticated – requires roomName for host check)
  */
 export async function stopRecording(
-  egressId: string
+  egressId: string,
+  roomName: string
 ): Promise<StopRecordingResponse> {
   const response = await apiClient.post<StopRecordingResponse>(
     "/livekit/recording/stop",
-    { egressId }
+    { egressId, roomName }
   );
   return response.data;
 }
@@ -104,6 +105,47 @@ export async function getRecordingStatus(
 ): Promise<RecordingStatusResponse> {
   const response = await apiClient.get<RecordingStatusResponse>(
     `/livekit/recording/status/${encodeURIComponent(roomName)}`
+  );
+  return response.data;
+}
+
+/**
+ * Start recording (public – host only, no auth)
+ */
+export async function startRecordingPublic(
+  roomName: string,
+  hostEmail: string
+): Promise<StartRecordingResponse> {
+  const response = await apiClient.post<StartRecordingResponse>(
+    "/public/recording/start",
+    { roomName, hostEmail }
+  );
+  return response.data;
+}
+
+/**
+ * Stop recording (public – host only, no auth)
+ */
+export async function stopRecordingPublic(
+  egressId: string,
+  roomName: string,
+  hostEmail: string
+): Promise<StopRecordingResponse> {
+  const response = await apiClient.post<StopRecordingResponse>(
+    "/public/recording/stop",
+    { egressId, roomName, hostEmail }
+  );
+  return response.data;
+}
+
+/**
+ * Get recording status (public – no auth)
+ */
+export async function getRecordingStatusPublic(
+  roomName: string
+): Promise<RecordingStatusResponse> {
+  const response = await apiClient.get<RecordingStatusResponse>(
+    `/public/recording/status/${encodeURIComponent(roomName)}`
   );
   return response.data;
 }
