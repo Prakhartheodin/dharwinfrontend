@@ -14,6 +14,9 @@ export interface CandidateListItem {
   experiences?: { company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean }[];
   shortBio?: string;
   employeeId?: string;
+  department?: string | null;
+  designation?: string | null;
+  reportingManager?: string | { _id: string; name?: string; email?: string } | null;
   isActive?: boolean;
   isEmailVerified?: boolean;
   isProfileCompleted?: number;
@@ -23,7 +26,10 @@ export interface CandidateListItem {
   owner?: { name?: string; email?: string };
 }
 
+export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
+
 export interface CandidateDocument {
+  type?: DocumentType;
   label?: string;
   url?: string;
   key?: string;

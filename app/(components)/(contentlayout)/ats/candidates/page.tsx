@@ -2603,7 +2603,7 @@ const Candidates = () => {
                           return (
                             <li key={idx} className="flex flex-wrap items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
                               <div className="min-w-0 flex-1">
-                                <span className="text-sm truncate block">{doc.label || doc.originalName || `Document ${idx + 1}`}</span>
+                                <span className="text-sm truncate block">{doc.type ? `[${doc.type}] ` : ''}{doc.label || doc.originalName || `Document ${idx + 1}`}</span>
                                 <span className="text-xs text-gray-500 dark:text-gray-400">{statusLabel}</span>
                               </div>
                               <div className="flex items-center gap-1">

@@ -2,11 +2,55 @@
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
+import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
+import { listOffers, createOffer, updateOffer, deleteOffer } from '@/shared/lib/api/offers'
+import type { Offer } from '@/shared/lib/api/offers'
 
-// Mock data for offers & placement
-const OFFERS_PLACEMENT_DATA = [
+// Map API offer to table row format (handle both _id and id from API)
+// Includes pre-boarding/onboarding data: placement, candidate HRMS (department, designation)
+const mapOfferToRow = (o: Offer) => {
+  const placement = (o as Offer & { placement?: { preBoardingStatus?: string; backgroundVerification?: { status?: string }; assetAllocation?: unknown[]; itAccess?: unknown[] } }).placement
+  const cand = o.candidate as { department?: string; designation?: string } | undefined
+  return {
+    id: (o as { _id?: string; id?: string })._id ?? (o as { id?: string }).id ?? '',
+    offerId: o.offerCode,
+    position: o.job?.title || '-',
+    offerDate: o.createdAt || '',
+    joiningDate: o.joiningDate || null,
+    templateType: 'Standard',
+    version: 1,
+    offerStatus: o.status,
+    signedStatus: o.status === 'Accepted' ? 'Signed' : o.status === 'Rejected' ? 'Not Sent' : o.status === 'Sent' || o.status === 'Under Negotiation' ? 'Pending' : 'Draft',
+    onboardingStatus: o.status === 'Accepted' ? 'Ready' : o.status === 'Rejected' ? 'Not Applicable' : 'Pending',
+    placementStatus: (o as { placementStatus?: string }).placementStatus ?? null,
+    department: cand?.department || null,
+    designation: cand?.designation || null,
+    preBoardingStatus: placement?.preBoardingStatus || null,
+    bgvStatus: placement?.backgroundVerification?.status || null,
+    assetCount: Array.isArray(placement?.assetAllocation) ? placement.assetAllocation.length : 0,
+    itAccessCount: Array.isArray(placement?.itAccess) ? placement.itAccess.length : 0,
+    candidate: {
+      id: (o.candidate as any)?._id ?? (o.candidate as any)?.id ?? '',
+      name: o.candidate?.fullName || '-',
+      displayPicture: (o.candidate as any)?.profilePicture?.url || '/assets/images/faces/1.jpg',
+      email: o.candidate?.email || '',
+      phone: o.candidate?.phoneNumber || '',
+    },
+    recruiter: {
+      id: (o.createdBy as any)?._id ?? (o.createdBy as any)?.id ?? '',
+      name: o.createdBy?.name || '-',
+      displayPicture: '/assets/images/faces/1.jpg',
+      email: o.createdBy?.email || '',
+    },
+    _raw: o as Offer,
+  }
+}
+
+// Legacy mock data fallback (filtered to offer rows only - used when API empty)
+const OFFERS_PLACEMENT_DATA_LEGACY = [
   {
     id: '1',
     offerId: 'OFF-2024-001',
@@ -135,7 +179,20 @@ const OFFERS_PLACEMENT_DATA = [
   {
     id: '6',
     position: 'UX Designer',
-    date: '2024-01-20',
+    offerId: 'OFF-2024-006',
+    offerDate: '2024-01-20',
+    joiningDate: null,
+    templateType: 'Standard',
+    version: 1,
+    signedStatus: 'Draft',
+    offerStatus: 'Draft',
+    onboardingStatus: 'Pending',
+    candidate: { id: '6', name: 'Lisa Anderson', displayPicture: '/assets/images/faces/6.jpg', email: 'lisa@example.com', phone: '+1 555' },
+    recruiter: { id: '6', name: 'Lisa Anderson', displayPicture: '/assets/images/faces/6.jpg', email: 'lisa@example.com' },
+  },
+  {
+    id: '7',
+    date: '2024-01-21',
     time: '1:00 PM',
     type: 'Video',
     candidate: {
@@ -348,25 +405,107 @@ interface FilterState {
   candidate: string[]
   recruiter: string[]
   offerStatus: string[]
-  onboardingStatus: string[]
+  step: string[]
 }
 
 const OffersPlacement = () => {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("ats.offers")
+  const [offersData, setOffersData] = useState<Offer[]>([])
+  const [offersLoading, setOffersLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>('')
-  
+
+  const fetchOffers = () => {
+    setOffersLoading(true)
+    listOffers({ limit: 500 })
+      .then((res) => setOffersData(res.results ?? []))
+      .catch(() => setOffersData([]))
+      .finally(() => setOffersLoading(false))
+  }
+
+  useEffect(() => {
+    fetchOffers()
+  }, [])
+
+  // Refetch when returning from Create Offer (has ?refresh= param)
+  useEffect(() => {
+    const refresh = searchParams?.get('refresh')
+    if (refresh) {
+      setOffersLoading(true)
+      listOffers({ limit: 500 })
+        .then((res) => setOffersData(res.results ?? []))
+        .catch(() => {})
+        .finally(() => {
+          setOffersLoading(false)
+          router.replace('/ats/offers-placement')
+        })
+    }
+  }, [searchParams])
+
+  // Re-init Preline so Sort, Excel dropdowns and Search overlay work (content mounts after layout autoInit)
+  useEffect(() => {
+    const initPreline = () => {
+      const win = window as any
+      if (win.HSStaticMethods?.autoInit) {
+        setTimeout(() => win.HSStaticMethods.autoInit(), 100)
+      }
+    }
+    if (typeof window !== 'undefined') {
+      import('preline/preline').then(initPreline).catch(() => {})
+    }
+  }, [])
+
+  const refreshOffers = () => fetchOffers()
+
+  const tableDataFromApi = useMemo(() => offersData.map(mapOfferToRow), [offersData])
+  const OFFERS_PLACEMENT_DATA = tableDataFromApi
+
   const [filters, setFilters] = useState<FilterState>({
     candidate: [],
     recruiter: [],
     offerStatus: [],
-    onboardingStatus: []
+    step: []
   })
 
   // Search states for filter dropdowns
   const [searchCandidate, setSearchCandidate] = useState('')
   const [searchRecruiter, setSearchRecruiter] = useState('')
   const [searchOfferStatus, setSearchOfferStatus] = useState('')
-  const [searchOnboardingStatus, setSearchOnboardingStatus] = useState('')
+  const [searchStep, setSearchStep] = useState('')
+
+  const [editOfferModal, setEditOfferModal] = useState<Offer | null>(null)
+  const [editStatus, setEditStatus] = useState('')
+  const [viewOfferModal, setViewOfferModal] = useState<Offer | null>(null)
+  const [viewHistoryModal, setViewHistoryModal] = useState<Offer | null>(null)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  const handleUpdateStatus = async () => {
+    if (!editOfferModal || !editStatus) return
+    setEditSubmitting(true)
+    try {
+      await updateOffer((editOfferModal as any)._id ?? (editOfferModal as any).id ?? '', { status: editStatus as any })
+      setEditOfferModal(null)
+      refreshOffers()
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to update status')
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedRows.size === 0) return
+    if (!confirm(`Delete ${selectedRows.size} selected offer(s)?`)) return
+    for (const id of selectedRows) {
+      try {
+        await deleteOffer(id)
+      } catch { /* skip */ }
+    }
+    setSelectedRows(new Set())
+    refreshOffers()
+  }
 
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
@@ -500,6 +639,79 @@ const OffersPlacement = () => {
         },
       },
       {
+        Header: 'Department',
+        accessor: 'department',
+        Cell: ({ row }: any) => {
+          const dept = row.original.department
+          return (
+            <span className="text-sm text-gray-700 dark:text-gray-300">{dept || '-'}</span>
+          )
+        },
+      },
+      {
+        Header: 'Designation',
+        accessor: 'designation',
+        Cell: ({ row }: any) => {
+          const des = row.original.designation
+          return (
+            <span className="text-sm text-gray-700 dark:text-gray-300">{des || '-'}</span>
+          )
+        },
+      },
+      {
+        Header: 'Pre-boarding',
+        accessor: 'preBoardingStatus',
+        Cell: ({ row }: any) => {
+          const offer = row.original
+          if (offer.offerStatus !== 'Accepted' || offer.placementStatus !== 'Pending') return <span className="text-gray-400">-</span>
+          const status = offer.preBoardingStatus || 'Not Started'
+          const colors: Record<string, string> = {
+            'Not Started': 'bg-gray/10 text-gray border-gray/30',
+            'In Progress': 'bg-info/10 text-info border-info/30',
+            'Completed': 'bg-success/10 text-success border-success/30',
+          }
+          return (
+            <span className={`badge ${colors[status] || 'bg-gray/10 text-gray'} border px-2 py-1 rounded-md text-xs font-medium`}>
+              {status}
+            </span>
+          )
+        },
+      },
+      {
+        Header: 'BGV',
+        accessor: 'bgvStatus',
+        Cell: ({ row }: any) => {
+          const offer = row.original
+          if (offer.offerStatus !== 'Accepted') return <span className="text-gray-400">-</span>
+          const status = offer.bgvStatus || 'Pending'
+          const colors: Record<string, string> = {
+            'Pending': 'bg-warning/10 text-warning border-warning/30',
+            'In Progress': 'bg-info/10 text-info border-info/30',
+            'Completed': 'bg-success/10 text-success border-success/30',
+            'Verified': 'bg-success/10 text-success border-success/30',
+            'Failed': 'bg-danger/10 text-danger border-danger/30',
+          }
+          return (
+            <span className={`badge ${colors[status] || 'bg-gray/10 text-gray'} border px-2 py-1 rounded-md text-xs font-medium`}>
+              {status}
+            </span>
+          )
+        },
+      },
+      {
+        Header: 'Assets / IT',
+        accessor: 'assetsIt',
+        Cell: ({ row }: any) => {
+          const offer = row.original
+          if (offer.offerStatus !== 'Accepted') return <span className="text-gray-400">-</span>
+          const assets = offer.assetCount ?? 0
+          const it = offer.itAccessCount ?? 0
+          return (
+            <span className="text-sm text-gray-700 dark:text-gray-300">{assets} / {it}</span>
+          )
+        },
+      },
+      {
         Header: 'Offer Status',
         accessor: 'offerStatus',
         Cell: ({ row }: any) => {
@@ -525,6 +737,29 @@ const OffersPlacement = () => {
         },
       },
       {
+        Header: 'Step',
+        accessor: 'step',
+        Cell: ({ row }: any) => {
+          const offer = row.original
+          if (offer.offerStatus !== 'Accepted') return null
+          if (offer.placementStatus === 'Pending') {
+            return (
+              <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-md text-xs font-medium">
+                Pre-boarding
+              </span>
+            )
+          }
+          if (offer.placementStatus === 'Joined') {
+            return (
+              <span className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
+                Onboarding
+              </span>
+            )
+          }
+          return null
+        },
+      },
+      {
         Header: 'Joining Date',
         accessor: 'joiningDate',
         Cell: ({ row }: any) => {
@@ -544,36 +779,44 @@ const OffersPlacement = () => {
         },
       },
       {
-        Header: 'Onboarding Readiness',
-        accessor: 'onboardingStatus',
-        Cell: ({ row }: any) => {
-          const offer = row.original
-          const statusColors: Record<string, string> = {
-            'Ready': 'bg-success/10 text-success border-success/30',
-            'In Progress': 'bg-info/10 text-info border-info/30',
-            'Pending': 'bg-warning/10 text-warning border-warning/30',
-            'Not Applicable': 'bg-gray/10 text-gray border-gray/30',
-          }
-          return (
-            <div className="text-sm">
-              <span className={`badge ${statusColors[offer.onboardingStatus] || 'bg-gray/10 text-gray border-gray/30'} border px-2 py-1 rounded-md text-xs font-medium`}>
-                {offer.onboardingStatus}
-              </span>
-            </div>
-          )
-        },
-      },
-      {
         Header: 'Actions',
         accessor: 'id',
         disableSortBy: true,
-        Cell: ({ row }: any) => (
-          <div className="flex items-center gap-2">
-            <div className="hs-tooltip ti-main-tooltip">
+        Cell: ({ row }: any) => {
+          const offer = row.original
+          const isAccepted = offer.offerStatus === 'Accepted'
+          // Pre-boarding shows Pending placements only; Joined placements go to Onboarding
+          const inPreBoarding = isAccepted && offer.placementStatus === 'Pending'
+          const inOnboarding = isAccepted && offer.placementStatus === 'Joined'
+          return (
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            {inPreBoarding && (
+              <Link
+                href="/ats/pre-boarding"
+                className="ti-btn ti-btn-sm ti-btn-success shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                title="Go to Pre-boarding"
+              >
+                <i className="ri-user-follow-line me-1"></i>Pre-boarding
+              </Link>
+            )}
+            {inOnboarding && (
+              <Link
+                href="/ats/onboarding"
+                className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                title="Go to Onboarding"
+              >
+                <i className="ri-login-circle-line me-1"></i>Onboarding
+              </Link>
+            )}
+            <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
                 title="View Offer"
+                onClick={() => {
+                  const raw = (row.original as any)._raw
+                  if (raw) setViewOfferModal(raw)
+                }}
               >
                 <i className="ri-file-text-line"></i>
                 <span
@@ -583,11 +826,15 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip">
+            <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="View History"
+                onClick={() => {
+                  const raw = (row.original as any)._raw
+                  if (raw) setViewHistoryModal(raw)
+                }}
               >
                 <i className="ri-history-line"></i>
                 <span
@@ -597,11 +844,18 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip">
+            <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
                 title="Edit Offer"
+                onClick={() => {
+                  const raw = (row.original as any)._raw
+                  if (raw) {
+                    setEditOfferModal(raw)
+                    setEditStatus(raw.status)
+                  }
+                }}
               >
                 <i className="ri-pencil-line"></i>
                 <span
@@ -612,7 +866,8 @@ const OffersPlacement = () => {
               </button>
             </div>
           </div>
-        ),
+        )
+        },
       },
     ],
     [selectedRows]
@@ -640,33 +895,43 @@ const OffersPlacement = () => {
         return false
       }
       
-      // Onboarding Status filter (array)
-      if (filters.onboardingStatus.length > 0 && offer.onboardingStatus && !filters.onboardingStatus.includes(offer.onboardingStatus)) {
-        return false
+      // Step filter (Pre-boarding, Onboarding)
+      if (filters.step.length > 0) {
+        const step = offer.offerStatus === 'Accepted'
+          ? (offer.placementStatus === 'Pending' ? 'Pre-boarding' : offer.placementStatus === 'Joined' ? 'Onboarding' : null)
+          : null
+        if (!step || !filters.step.includes(step)) return false
       }
       
       return true
     })
-  }, [filters])
+  }, [filters, OFFERS_PLACEMENT_DATA])
 
   const data = useMemo(() => filteredData, [filteredData])
 
   // Get unique values for dropdown filters
   const allCandidates = useMemo(() => {
     return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.candidate.name))].sort()
-  }, [])
+  }, [OFFERS_PLACEMENT_DATA])
 
   const allRecruiters = useMemo(() => {
     return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.recruiter.name))].sort()
-  }, [])
+  }, [OFFERS_PLACEMENT_DATA])
 
   const allOfferStatuses = useMemo((): string[] => {
     return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.offerStatus).filter((s): s is string => s !== undefined))].sort()
-  }, [])
+  }, [OFFERS_PLACEMENT_DATA])
 
-  const allOnboardingStatuses = useMemo((): string[] => {
-    return [...new Set(OFFERS_PLACEMENT_DATA.map(offer => offer.onboardingStatus).filter((s): s is string => s !== undefined))].sort()
-  }, [])
+  const allSteps = useMemo((): string[] => {
+    const steps = new Set<string>()
+    OFFERS_PLACEMENT_DATA.forEach((offer) => {
+      if (offer.offerStatus === 'Accepted') {
+        if (offer.placementStatus === 'Pending') steps.add('Pre-boarding')
+        else if (offer.placementStatus === 'Joined') steps.add('Onboarding')
+      }
+    })
+    return [...steps].sort()
+  }, [OFFERS_PLACEMENT_DATA])
 
   // Filter options based on search terms
   const filteredCandidates = useMemo(() => {
@@ -690,14 +955,12 @@ const OffersPlacement = () => {
     )
   }, [allOfferStatuses, searchOfferStatus])
 
-  const filteredOnboardingStatuses = useMemo((): string[] => {
-    if (!searchOnboardingStatus) return allOnboardingStatuses
-    return allOnboardingStatuses.filter(status => 
-      status.toLowerCase().includes(searchOnboardingStatus.toLowerCase())
-    )
-  }, [allOnboardingStatuses, searchOnboardingStatus])
+  const filteredSteps = useMemo((): string[] => {
+    if (!searchStep) return allSteps
+    return allSteps.filter((s) => s.toLowerCase().includes(searchStep.toLowerCase()))
+  }, [allSteps, searchStep])
 
-  const handleMultiSelectChange = (key: 'candidate' | 'recruiter' | 'offerStatus' | 'onboardingStatus', value: string) => {
+  const handleMultiSelectChange = (key: 'candidate' | 'recruiter' | 'offerStatus' | 'step', value: string) => {
     setFilters(prev => {
       const currentArray = prev[key]
       const newArray = currentArray.includes(value)
@@ -707,7 +970,7 @@ const OffersPlacement = () => {
     })
   }
 
-  const handleRemoveFilter = (key: 'candidate' | 'recruiter' | 'offerStatus' | 'onboardingStatus', value: string) => {
+  const handleRemoveFilter = (key: 'candidate' | 'recruiter' | 'offerStatus' | 'step', value: string) => {
     setFilters(prev => ({
       ...prev,
       [key]: prev[key].filter(item => item !== value)
@@ -719,25 +982,25 @@ const OffersPlacement = () => {
       candidate: [],
       recruiter: [],
       offerStatus: [],
-      onboardingStatus: []
+      step: []
     })
     setSearchCandidate('')
     setSearchRecruiter('')
     setSearchOfferStatus('')
-    setSearchOnboardingStatus('')
+    setSearchStep('')
   }
 
   const hasActiveFilters = 
     filters.candidate.length > 0 ||
     filters.recruiter.length > 0 ||
     filters.offerStatus.length > 0 ||
-    filters.onboardingStatus.length > 0
+    filters.step.length > 0
 
   const activeFilterCount = 
     filters.candidate.length +
     filters.recruiter.length +
     filters.offerStatus.length +
-    filters.onboardingStatus.length
+    filters.step.length
 
   const tableInstance: any = useTable(
     {
@@ -855,7 +1118,7 @@ const OffersPlacement = () => {
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
                     id="sort-dropdown-button"
                     aria-expanded="false"
                   >
@@ -965,18 +1228,18 @@ const OffersPlacement = () => {
                     </li>
                   </ul>
                 </div>
-                <Link
-                  href="#!"
-                  scroll={false}
-                  className="hs-dropdown-toggle ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#create-offer-modal"
-                >
-                  <i className="ri-add-line font-semibold align-middle"></i>Create Offer
-                </Link>
+                {canCreate && (
+                  <Link
+                    href="/ats/offers-placement/create"
+                    className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  >
+                    <i className="ri-add-line font-semibold align-middle"></i>Create Offer
+                  </Link>
+                )}
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
                     id="excel-dropdown-button"
                     aria-expanded="false"
                   >
@@ -1023,15 +1286,23 @@ const OffersPlacement = () => {
                   )}
                 </button>
               
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
-                >
-                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
-                </button>
+                {canDelete && selectedRows.size > 0 && (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                    onClick={handleDeleteSelected}
+                  >
+                    <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete ({selectedRows.size})
+                  </button>
+                )}
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+              {offersLoading ? (
+                <div className="flex items-center justify-center p-12">
+                  <i className="ri-loader-4-line animate-spin text-3xl text-primary"></i>
+                </div>
+              ) : (
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
@@ -1099,6 +1370,7 @@ const OffersPlacement = () => {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
@@ -1415,56 +1687,56 @@ const OffersPlacement = () => {
               </div>
             </div>
 
-            {/* Onboarding Status Filter */}
+            {/* Step Filter (Pre-boarding, Onboarding) */}
             <div className="pb-4">
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-user-settings-line text-warning text-base"></i>
-                Onboarding Status
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allOnboardingStatuses.length})</span>
+                Step
+                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allSteps.length})</span>
               </label>
               <div className="space-y-2">
                 <input
                   type="text"
                   className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search onboarding status..."
-                  value={searchOnboardingStatus}
-                  onChange={(e) => setSearchOnboardingStatus(e.target.value)}
+                  placeholder="Search step..."
+                  value={searchStep}
+                  onChange={(e) => setSearchStep(e.target.value)}
                 />
                 <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
-                    {filteredOnboardingStatuses.length > 0 ? (
-                      filteredOnboardingStatuses.map((status) => (
+                    {filteredSteps.length > 0 ? (
+                      filteredSteps.map((step) => (
                         <label
-                          key={status}
+                          key={step}
                           className="flex items-center gap-2 cursor-pointer hover:bg-warning/5 dark:hover:bg-warning/10 p-1.5 rounded-md transition-colors"
                         >
                           <input
                             type="checkbox"
                             className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.onboardingStatus.includes(status)}
-                            onChange={() => handleMultiSelectChange('onboardingStatus', status)}
+                            checked={filters.step.includes(step)}
+                            onChange={() => handleMultiSelectChange('step', step)}
                           />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{status}</span>
+                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{step}</span>
                         </label>
                       ))
                     ) : (
                       <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No onboarding statuses found
+                        No steps found
                       </div>
                     )}
                   </div>
                 </div>
-                {filters.onboardingStatus.length > 0 && (
+                {filters.step.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.onboardingStatus.map((status) => (
+                    {filters.step.map((step) => (
                       <span
-                        key={status}
+                        key={step}
                         className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
                       >
-                        {status}
+                        {step}
                         <button
                           type="button"
-                          onClick={() => handleRemoveFilter('onboardingStatus', status)}
+                          onClick={() => handleRemoveFilter('step', step)}
                           className="hover:text-warning-hover hover:bg-warning/20 rounded-full p-0.5 transition-colors"
                         >
                           <i className="ri-close-line text-xs"></i>
@@ -1496,6 +1768,125 @@ const OffersPlacement = () => {
           </div>
         </div>
       </div>
+
+      {/* Edit Offer Status Modal - !opacity-100 !pointer-events-auto so it shows when opened via React state */}
+      {editOfferModal && (
+        <div id="edit-offer-modal" className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
+          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setEditOfferModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm">
+            <div className="ti-modal-content">
+              <div className="ti-modal-header">
+                <h4 className="ti-modal-title">Update Offer Status – {editOfferModal.offerCode}</h4>
+                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setEditOfferModal(null)}>
+                  <i className="ri-close-line"></i>
+                </button>
+              </div>
+              <div className="ti-modal-body">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                  {editOfferModal.job?.title} – {editOfferModal.candidate?.fullName}
+                </p>
+                <div>
+                  <label className="form-label">Status</label>
+                  <select
+                    className="form-control"
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                  >
+                    <option value="Draft">Draft</option>
+                    <option value="Sent">Sent</option>
+                    <option value="Under Negotiation">Under Negotiation</option>
+                    <option value="Accepted">Accepted</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+              <div className="ti-modal-footer">
+                <button type="button" className="ti-btn ti-btn-light" onClick={() => setEditOfferModal(null)}>Cancel</button>
+                <button type="button" className="ti-btn ti-btn-primary" onClick={handleUpdateStatus} disabled={editSubmitting}>
+                  {editSubmitting ? <i className="ri-loader-4-line animate-spin"></i> : 'Update'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Offer Modal */}
+      {viewOfferModal && (
+        <div className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
+          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setViewOfferModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm ti-modal-lg">
+            <div className="ti-modal-content">
+              <div className="ti-modal-header">
+                <h4 className="ti-modal-title">{viewOfferModal.offerCode}</h4>
+                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setViewOfferModal(null)}>
+                  <i className="ri-close-line"></i>
+                </button>
+              </div>
+              <div className="ti-modal-body space-y-4 text-sm">
+                <div>
+                  <h5 className="font-semibold text-gray-800 dark:text-white mb-2">Offer &amp; Job</h5>
+                  <p><strong>Position:</strong> {viewOfferModal.job?.title}</p>
+                  <p><strong>Candidate:</strong> {viewOfferModal.candidate?.fullName}</p>
+                  <p><strong>Status:</strong> {viewOfferModal.status}</p>
+                  {viewOfferModal.ctcBreakdown?.gross && (
+                    <p><strong>CTC:</strong> ₹{viewOfferModal.ctcBreakdown.gross.toLocaleString()}</p>
+                  )}
+                  {viewOfferModal.joiningDate && (
+                    <p><strong>Joining:</strong> {new Date(viewOfferModal.joiningDate).toLocaleDateString()}</p>
+                  )}
+                </div>
+                {viewOfferModal.status === 'Accepted' && (
+                  <>
+                    <div>
+                      <h5 className="font-semibold text-gray-800 dark:text-white mb-2">HRMS (Onboarding)</h5>
+                      <p><strong>Department:</strong> {(viewOfferModal.candidate as any)?.department || '-'}</p>
+                      <p><strong>Designation:</strong> {(viewOfferModal.candidate as any)?.designation || '-'}</p>
+                      <p><strong>Reporting Manager:</strong> {typeof (viewOfferModal.candidate as any)?.reportingManager === 'object' ? (viewOfferModal.candidate as any)?.reportingManager?.name : (viewOfferModal.candidate as any)?.reportingManager || '-'}</p>
+                    </div>
+                    {(viewOfferModal as any).placement && (
+                      <div>
+                        <h5 className="font-semibold text-gray-800 dark:text-white mb-2">Pre-boarding &amp; Placement</h5>
+                        <p><strong>Pre-boarding Status:</strong> {(viewOfferModal as any).placement?.preBoardingStatus || '-'}</p>
+                        {(viewOfferModal as any).placement?.backgroundVerification && (
+                          <p><strong>BGV:</strong> {(viewOfferModal as any).placement.backgroundVerification?.status || '-'} {(viewOfferModal as any).placement.backgroundVerification?.agency ? `(${(viewOfferModal as any).placement.backgroundVerification.agency})` : ''}</p>
+                        )}
+                        {Array.isArray((viewOfferModal as any).placement?.assetAllocation) && (viewOfferModal as any).placement.assetAllocation.length > 0 && (
+                          <p><strong>Assets:</strong> {(viewOfferModal as any).placement.assetAllocation.map((a: any) => a.name || a.type).join(', ') || '-'}</p>
+                        )}
+                        {Array.isArray((viewOfferModal as any).placement?.itAccess) && (viewOfferModal as any).placement.itAccess.length > 0 && (
+                          <p><strong>IT Access:</strong> {(viewOfferModal as any).placement.itAccess.map((i: any) => i.system).join(', ') || '-'}</p>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View History Modal */}
+      {viewHistoryModal && (
+        <div className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
+          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setViewHistoryModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm">
+            <div className="ti-modal-content">
+              <div className="ti-modal-header">
+                <h4 className="ti-modal-title">Offer History – {viewHistoryModal.offerCode}</h4>
+                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setViewHistoryModal(null)}>
+                  <i className="ri-close-line"></i>
+                </button>
+              </div>
+              <div className="ti-modal-body text-sm">
+                <p className="text-gray-600 dark:text-gray-400">Current status: <strong>{viewHistoryModal.status}</strong></p>
+                <p className="text-xs text-gray-500 mt-2">Detailed status history is not available.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </Fragment>
   )
 }

@@ -1787,8 +1787,10 @@ export const Basicwizard = ({
         return d.getUTCFullYear();
       };
 
+      const DOCUMENT_TYPES = ['Aadhar', 'PAN', 'Bank', 'Passport'] as const;
       // Upload documents using uploadDocuments API
       const uploadedDocs: { 
+        type?: string;
         label: string; 
         url: string; 
         key: string; 
@@ -1812,7 +1814,10 @@ export const Basicwizard = ({
           if (uploadResponse.success && uploadResponse.data && Array.isArray(uploadResponse.data)) {
             // Map the response data to our expected format with labels
             uploadResponse.data.forEach((fileData: any, index: number) => {
+              const docType = documentsToUpload[index]?.name;
+              const type = DOCUMENT_TYPES.includes(docType as any) ? docType : 'Other';
               uploadedDocs.push({
+                type,
                 label: labels[index] || fileData.originalName,
                 url: fileData.url,
                 key: fileData.key,
@@ -3017,10 +3022,18 @@ export const Basicwizard = ({
                   required
                 >
                   <option value="">Select Document Type</option>
-                  <option value="CV/Resume">CV/Resume</option>
-                  <option value="Marksheet">Marksheet</option>
-                  <option value="Degree Certificate">Degree Certificate</option>
-                  <option value="Experience Letter">Experience Letter</option>
+                  <optgroup label="Identity / KYC (Pre-boarding)">
+                    <option value="Aadhar">Aadhar</option>
+                    <option value="PAN">PAN</option>
+                    <option value="Bank">Bank</option>
+                    <option value="Passport">Passport</option>
+                  </optgroup>
+                  <optgroup label="Application">
+                    <option value="CV/Resume">CV/Resume</option>
+                    <option value="Marksheet">Marksheet</option>
+                    <option value="Degree Certificate">Degree Certificate</option>
+                    <option value="Experience Letter">Experience Letter</option>
+                  </optgroup>
                   <option value="Other">Other</option>
                 </select>
               </div>
