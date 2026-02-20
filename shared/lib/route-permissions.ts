@@ -11,6 +11,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",
+  "/ats/job-applications": "ats.candidates:",
   "/ats/offers-placement": "ats.offers:",
   "/ats/pre-boarding": "ats.pre-boarding:",
   "/ats/onboarding": "ats.onboarding:",

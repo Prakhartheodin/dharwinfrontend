@@ -7,6 +7,7 @@ const JobsIcon = <i className="bx bx-briefcase-alt side-menu__icon"></i>;
 const CandidatesIcon = <i className="bx bx-user side-menu__icon"></i>;
 const RecruitersIcon = <i className="bx bx-user-check side-menu__icon"></i>;
 const InterviewsIcon = <i className="bx bx-calendar-check side-menu__icon"></i>;
+const JobApplicationsIcon = <i className="bx bx-list-check side-menu__icon"></i>;
 const OffersPlacementIcon = <i className="bx bx-badge-check side-menu__icon"></i>;
 const PreBoardingIcon = <i className="bx bx-user-plus side-menu__icon"></i>;
 const ShareCandidateFormIcon = <i className="bx bx-share-alt side-menu__icon"></i>;
@@ -130,6 +131,16 @@ export const MenuItems: any = [
     title: "Interviews",
         type: "link",
     path: "/ats/interviews",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
+    icon: JobApplicationsIcon,
+    title: "Job Applications",
+        type: "link",
+    path: "/ats/job-applications",
         active: false,
         selected: false,
         dirchange: false, 
