@@ -3,326 +3,79 @@ import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, type Meeting, type CreateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeetingRecordings, type Meeting, type CreateMeetingPayload, type MeetingRecording } from '@/shared/lib/api/meetings'
+import { listJobs, type Job } from '@/shared/lib/api/jobs'
+import { listCandidates, type CandidateListItem } from '@/shared/lib/api/candidates'
+import { listRecruiters } from '@/shared/lib/api/users'
+import type { User } from '@/shared/lib/types'
 
-// Mock data for interviews
-const INTERVIEWS_DATA = [
-  {
-    id: '1',
-    position: 'Senior Software Engineer',
-    date: '2024-01-15',
-    time: '10:00 AM',
-    type: 'Video',
+/** Table row shape derived from Meeting API */
+interface InterviewTableRow {
+  id: string
+  position: string
+  date: string
+  time: string
+  type: string
+  candidate: {
+    id?: string
+    name: string
+    displayPicture?: string
+    email: string
+    phone?: string
+  }
+  recruiter: {
+    id?: string
+    name: string
+    displayPicture?: string
+    email: string
+  }
+  status: string
+}
+
+function formatMeetingTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  } catch {
+    return '—'
+  }
+}
+
+function formatMeetingDate(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toISOString().slice(0, 10)
+  } catch {
+    return '—'
+  }
+}
+
+function meetingToTableRow(m: Meeting): InterviewTableRow {
+  const date = formatMeetingDate(m.scheduledAt)
+  const time = formatMeetingTime(m.scheduledAt)
+  const position = m.title || m.jobPosition || 'Interview'
+  return {
+    id: m._id || m.meetingId,
+    position,
+    date,
+    time,
+    type: m.interviewType || 'Video',
     candidate: {
-      id: '1',
-      name: 'John Anderson',
-      displayPicture: '/assets/images/faces/1.jpg',
-      email: 'john.anderson@example.com',
-      phone: '+1 (555) 123-4567',
+      id: m.candidate?.id,
+      name: m.candidate?.name ?? '—',
+      displayPicture: undefined,
+      email: m.candidate?.email ?? '',
+      phone: m.candidate?.phone,
     },
     recruiter: {
-      id: '1',
-      name: 'John Anderson',
-      displayPicture: '/assets/images/faces/1.jpg',
-      email: 'john.anderson@example.com',
+      id: m.recruiter?.id,
+      name: m.recruiter?.name ?? '—',
+      displayPicture: undefined,
+      email: m.recruiter?.email ?? '',
     },
-    status: 'Scheduled',
-  },
-  {
-    id: '2',
-    position: 'Product Manager',
-    date: '2024-01-16',
-    time: '2:00 PM',
-    type: 'In-Person',
-    candidate: {
-      id: '2',
-      name: 'Sarah Johnson',
-      displayPicture: '/assets/images/faces/2.jpg',
-      email: 'sarah.johnson@example.com',
-      phone: '+1 (555) 234-5678',
-    },
-    recruiter: {
-      id: '2',
-      name: 'Sarah Johnson',
-      displayPicture: '/assets/images/faces/2.jpg',
-      email: 'sarah.johnson@example.com',
-    },
-    status: 'Completed',
-  },
-  {
-    id: '3',
-    position: 'Frontend Developer',
-    date: '2024-01-17',
-    time: '11:30 AM',
-    type: 'Phone',
-    candidate: {
-      id: '3',
-      name: 'Michael Chen',
-      displayPicture: '/assets/images/faces/3.jpg',
-      email: 'michael.chen@example.com',
-      phone: '+1 (555) 345-6789',
-    },
-    recruiter: {
-      id: '4',
-      name: 'Emily Davis',
-      displayPicture: '/assets/images/faces/4.jpg',
-      email: 'emily.davis@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '4',
-    position: 'Data Scientist',
-    date: '2024-01-18',
-    time: '3:00 PM',
-    type: 'Video',
-    candidate: {
-      id: '4',
-      name: 'Emily Davis',
-      displayPicture: '/assets/images/faces/4.jpg',
-      email: 'emily.davis@example.com',
-      phone: '+1 (555) 456-7890',
-    },
-    recruiter: {
-      id: '4',
-      name: 'Emily Davis',
-      displayPicture: '/assets/images/faces/4.jpg',
-      email: 'emily.davis@example.com',
-    },
-    status: 'Rescheduled',
-  },
-  {
-    id: '5',
-    position: 'DevOps Engineer',
-    date: '2024-01-19',
-    time: '9:00 AM',
-    type: 'In-Person',
-    candidate: {
-      id: '5',
-      name: 'David Brown',
-      displayPicture: '/assets/images/faces/5.jpg',
-      email: 'david.brown@example.com',
-      phone: '+1 (555) 567-8901',
-    },
-    recruiter: {
-      id: '5',
-      name: 'David Brown',
-      displayPicture: '/assets/images/faces/5.jpg',
-      email: 'david.brown@example.com',
-    },
-    status: 'Cancelled',
-  },
-  {
-    id: '6',
-    position: 'UX Designer',
-    date: '2024-01-20',
-    time: '1:00 PM',
-    type: 'Video',
-    candidate: {
-      id: '6',
-      name: 'Lisa Anderson',
-      displayPicture: '/assets/images/faces/6.jpg',
-      email: 'lisa.anderson@example.com',
-      phone: '+1 (555) 678-9012',
-    },
-    recruiter: {
-      id: '6',
-      name: 'Lisa Anderson',
-      displayPicture: '/assets/images/faces/6.jpg',
-      email: 'lisa.anderson@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '7',
-    position: 'Backend Developer',
-    date: '2024-01-21',
-    time: '10:30 AM',
-    type: 'Phone',
-    candidate: {
-      id: '7',
-      name: 'Robert Wilson',
-      displayPicture: '/assets/images/faces/7.jpg',
-      email: 'robert.wilson@example.com',
-      phone: '+1 (555) 789-0123',
-    },
-    recruiter: {
-      id: '7',
-      name: 'Robert Wilson',
-      displayPicture: '/assets/images/faces/7.jpg',
-      email: 'robert.wilson@example.com',
-    },
-    status: 'Completed',
-  },
-  {
-    id: '8',
-    position: 'Digital Marketing Manager',
-    date: '2024-01-22',
-    time: '4:00 PM',
-    type: 'Video',
-    candidate: {
-      id: '8',
-      name: 'Jessica Martinez',
-      displayPicture: '/assets/images/faces/8.jpg',
-      email: 'jessica.martinez@example.com',
-      phone: '+1 (555) 890-1234',
-    },
-    recruiter: {
-      id: '8',
-      name: 'Jessica Martinez',
-      displayPicture: '/assets/images/faces/8.jpg',
-      email: 'jessica.martinez@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '9',
-    position: 'Sales Executive',
-    date: '2024-01-23',
-    time: '2:30 PM',
-    type: 'In-Person',
-    candidate: {
-      id: '9',
-      name: 'Thomas Lee',
-      displayPicture: '/assets/images/faces/9.jpg',
-      email: 'thomas.lee@example.com',
-      phone: '+1 (555) 901-2345',
-    },
-    recruiter: {
-      id: '9',
-      name: 'Thomas Lee',
-      displayPicture: '/assets/images/faces/9.jpg',
-      email: 'thomas.lee@example.com',
-    },
-    status: 'Rescheduled',
-  },
-  {
-    id: '10',
-    position: 'QA Engineer',
-    date: '2024-01-24',
-    time: '11:00 AM',
-    type: 'Video',
-    candidate: {
-      id: '10',
-      name: 'Jennifer White',
-      displayPicture: '/assets/images/faces/10.jpg',
-      email: 'jennifer.white@example.com',
-      phone: '+1 (555) 012-3456',
-    },
-    recruiter: {
-      id: '10',
-      name: 'Jennifer White',
-      displayPicture: '/assets/images/faces/10.jpg',
-      email: 'jennifer.white@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '11',
-    position: 'Full-Stack Developer',
-    date: '2024-01-25',
-    time: '3:30 PM',
-    type: 'Phone',
-    candidate: {
-      id: '11',
-      name: 'Christopher Taylor',
-      displayPicture: '/assets/images/faces/11.jpg',
-      email: 'christopher.taylor@example.com',
-      phone: '+1 (555) 123-4568',
-    },
-    recruiter: {
-      id: '11',
-      name: 'Christopher Taylor',
-      displayPicture: '/assets/images/faces/11.jpg',
-      email: 'christopher.taylor@example.com',
-    },
-    status: 'Completed',
-  },
-  {
-    id: '12',
-    position: 'Business Analyst',
-    date: '2024-01-26',
-    time: '10:00 AM',
-    type: 'Video',
-    candidate: {
-      id: '12',
-      name: 'Amanda Garcia',
-      displayPicture: '/assets/images/faces/12.jpg',
-      email: 'amanda.garcia@example.com',
-      phone: '+1 (555) 234-5679',
-    },
-    recruiter: {
-      id: '12',
-      name: 'Amanda Garcia',
-      displayPicture: '/assets/images/faces/12.jpg',
-      email: 'amanda.garcia@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '13',
-    position: 'Cloud Architect',
-    date: '2024-01-27',
-    time: '1:30 PM',
-    type: 'In-Person',
-    candidate: {
-      id: '13',
-      name: 'Daniel Rodriguez',
-      displayPicture: '/assets/images/faces/13.jpg',
-      email: 'daniel.rodriguez@example.com',
-      phone: '+1 (555) 345-6790',
-    },
-    recruiter: {
-      id: '13',
-      name: 'Daniel Rodriguez',
-      displayPicture: '/assets/images/faces/13.jpg',
-      email: 'daniel.rodriguez@example.com',
-    },
-    status: 'Cancelled',
-  },
-  {
-    id: '14',
-    position: 'Mobile App Developer',
-    date: '2024-01-28',
-    time: '9:30 AM',
-    type: 'Video',
-    candidate: {
-      id: '14',
-      name: 'Rachel Kim',
-      displayPicture: '/assets/images/faces/14.jpg',
-      email: 'rachel.kim@example.com',
-      phone: '+1 (555) 456-7901',
-    },
-    recruiter: {
-      id: '14',
-      name: 'Rachel Kim',
-      displayPicture: '/assets/images/faces/14.jpg',
-      email: 'rachel.kim@example.com',
-    },
-    status: 'Scheduled',
-  },
-  {
-    id: '15',
-    position: 'Network Administrator',
-    date: '2024-01-29',
-    time: '2:00 PM',
-    type: 'Phone',
-    candidate: {
-      id: '15',
-      name: 'Kevin Harris',
-      displayPicture: '/assets/images/faces/15.jpg',
-      email: 'kevin.harris@example.com',
-      phone: '+1 (555) 567-9012',
-    },
-    recruiter: {
-      id: '15',
-      name: 'Kevin Harris',
-      displayPicture: '/assets/images/faces/15.jpg',
-      email: 'kevin.harris@example.com',
-    },
-    status: 'Completed',
-  },
-]
+    status: m.status || 'Scheduled',
+  }
+}
 
 interface FilterState {
   candidate: string[]
@@ -355,6 +108,93 @@ const Interviews = () => {
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  // Dynamic dropdown data for Schedule Interview modal
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [candidates, setCandidates] = useState<CandidateListItem[]>([])
+  const [recruiters, setRecruiters] = useState<User[]>([])
+  const [dropdownsLoading, setDropdownsLoading] = useState(true)
+
+  // Real interviews/meetings from API
+  const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [meetingsLoading, setMeetingsLoading] = useState(true)
+  const [meetingsError, setMeetingsError] = useState<string | null>(null)
+
+  // View recordings modal
+  const [recordingsModalMeetingId, setRecordingsModalMeetingId] = useState<string | null>(null)
+  const [recordingsList, setRecordingsList] = useState<MeetingRecording[]>([])
+  const [recordingsLoading, setRecordingsLoading] = useState(false)
+  const [recordingsError, setRecordingsError] = useState<string | null>(null)
+
+  const fetchMeetings = useCallback(async () => {
+    setMeetingsLoading(true)
+    setMeetingsError(null)
+    try {
+      const res = await listMeetings({ limit: 100 })
+      setMeetings(res.results || [])
+    } catch (err: any) {
+      setMeetingsError(err?.response?.data?.message || err?.message || 'Failed to load interviews')
+      setMeetings([])
+    } finally {
+      setMeetingsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMeetings()
+  }, [fetchMeetings])
+
+  // Fetch recordings when View recordings modal is opened
+  useEffect(() => {
+    if (!recordingsModalMeetingId) return
+    let cancelled = false
+    setRecordingsLoading(true)
+    setRecordingsError(null)
+    getMeetingRecordings(recordingsModalMeetingId)
+      .then((list) => {
+        if (!cancelled) {
+          setRecordingsList(list)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setRecordingsList([])
+          setRecordingsError(err?.response?.data?.message || err?.message || 'Failed to load recordings')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRecordingsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [recordingsModalMeetingId])
+
+  useEffect(() => {
+    let cancelled = false
+    setDropdownsLoading(true)
+    Promise.all([
+      listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
+      listCandidates({ limit: 100 }).then((r) => r.results),
+      listRecruiters({ limit: 100 }).then((r) => r.results),
+    ])
+      .then(([jobList, candidateList, recruiterList]) => {
+        if (!cancelled) {
+          setJobs(jobList || [])
+          setCandidates(candidateList || [])
+          setRecruiters(recruiterList || [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setJobs([])
+          setCandidates([])
+          setRecruiters([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDropdownsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [])
+
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
     const newSelected = new Set(selectedRows)
@@ -378,7 +218,9 @@ const Interviews = () => {
     setFormError(null)
     const form = e.target as HTMLFormElement
     const getVal = (id: string) => (form.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value?.trim() ?? ''
-    const title = getVal('schedule-meeting-title') || getVal('schedule-job') || 'Interview'
+    const jobId = getVal('schedule-job')
+    const selectedJob = jobs.find((j) => (j.id ?? j._id) === jobId)
+    const title = getVal('schedule-meeting-title') || selectedJob?.title || 'Interview'
     const description = getVal('schedule-description')
     const date = getVal('schedule-date')
     const time = getVal('schedule-time')
@@ -386,7 +228,7 @@ const Interviews = () => {
     const maxParticipants = parseInt(getVal('schedule-max-participants') || '10', 10) || 10
     const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? true
     const requireApproval = (form.querySelector('#schedule-require-approval') as HTMLInputElement)?.checked ?? false
-    const jobPosition = getVal('schedule-job')
+    const jobPosition = jobId || selectedJob?.title
     const interviewType = (form.querySelector('input[name="schedule-type"]:checked') as HTMLInputElement)?.value || 'Video'
     const notes = getVal('schedule-notes')
     const candidateSelect = form.querySelector('#schedule-candidate') as HTMLSelectElement
@@ -419,12 +261,13 @@ const Interviews = () => {
     try {
       const meeting = await createMeeting(payload)
       setCreatedMeeting(meeting)
+      fetchMeetings()
     } catch (err: any) {
       setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
     } finally {
       setFormLoading(false)
     }
-  }, [hosts, emailInvites])
+  }, [hosts, emailInvites, jobs, fetchMeetings])
 
   // Define columns
   const columns = useMemo(
@@ -568,6 +411,24 @@ const Interviews = () => {
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                title="View recordings"
+                onClick={() => {
+                  setRecordingsModalMeetingId(row.original.id)
+                  ;(window as any).HSOverlay?.open(document.querySelector('#view-recordings-modal'))
+                }}
+              >
+                <i className="ri-video-line"></i>
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  View recordings
+                </span>
+              </button>
+            </div>
+            <div className="hs-tooltip ti-main-tooltip">
+              <button
+                type="button"
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="Edit Interview"
               >
@@ -614,55 +475,44 @@ const Interviews = () => {
     [selectedRows]
   )
 
+  // Map API meetings to table rows
+  const tableData = useMemo<InterviewTableRow[]>(() => {
+    return meetings.map(meetingToTableRow)
+  }, [meetings])
+
   // Filter data based on filter state
   const filteredData = useMemo(() => {
-    return INTERVIEWS_DATA.filter((interview) => {
-      // Candidate filter (array)
-      if (filters.candidate.length > 0 && !filters.candidate.some(candidateName => 
+    return tableData.filter((interview) => {
+      if (filters.candidate.length > 0 && !filters.candidate.some(candidateName =>
         interview.candidate.name.toLowerCase().includes(candidateName.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Recruiter filter (array)
-      if (filters.recruiter.length > 0 && !filters.recruiter.some(recruiterName => 
+      )) return false
+      if (filters.recruiter.length > 0 && !filters.recruiter.some(recruiterName =>
         interview.recruiter.name.toLowerCase().includes(recruiterName.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Status filter (array)
-      if (filters.status.length > 0 && !filters.status.includes(interview.status)) {
-        return false
-      }
-      
-      // Type filter (array)
-      if (filters.type.length > 0 && !filters.type.includes(interview.type)) {
-        return false
-      }
-      
+      )) return false
+      if (filters.status.length > 0 && !filters.status.includes(interview.status)) return false
+      if (filters.type.length > 0 && !filters.type.includes(interview.type)) return false
       return true
     })
-  }, [filters])
+  }, [tableData, filters])
 
   const data = useMemo(() => filteredData, [filteredData])
 
-  // Get unique values for dropdown filters
+  // Get unique values for dropdown filters (from real data)
   const allCandidates = useMemo(() => {
-    return [...new Set(INTERVIEWS_DATA.map(interview => interview.candidate.name))].sort()
-  }, [])
+    return [...new Set(tableData.map((i) => i.candidate.name).filter(Boolean))].filter((n) => n !== '—').sort()
+  }, [tableData])
 
   const allRecruiters = useMemo(() => {
-    return [...new Set(INTERVIEWS_DATA.map(interview => interview.recruiter.name))].sort()
-  }, [])
+    return [...new Set(tableData.map((i) => i.recruiter.name).filter(Boolean))].filter((n) => n !== '—').sort()
+  }, [tableData])
 
   const allStatuses = useMemo(() => {
-    return [...new Set(INTERVIEWS_DATA.map(interview => interview.status))].sort()
-  }, [])
+    return [...new Set(tableData.map((i) => i.status).filter(Boolean))].sort()
+  }, [tableData])
 
   const allTypes = useMemo(() => {
-    return [...new Set(INTERVIEWS_DATA.map(interview => interview.type))].sort()
-  }, [])
+    return [...new Set(tableData.map((i) => i.type).filter(Boolean))].sort()
+  }, [tableData])
 
   // Filter options based on search terms
   const filteredCandidates = useMemo(() => {
@@ -1003,6 +853,23 @@ const Interviews = () => {
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+              {meetingsLoading ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"></div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Loading interviews...</p>
+                </div>
+              ) : meetingsError ? (
+                <div className="flex flex-col items-center justify-center py-16 px-4">
+                  <p className="text-sm text-danger mb-3">{meetingsError}</p>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
+                    onClick={() => fetchMeetings()}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
@@ -1070,11 +937,13 @@ const Interviews = () => {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
+            {!meetingsLoading && !meetingsError && (
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
+                  Showing {data.length === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
@@ -1180,6 +1049,7 @@ const Interviews = () => {
                 </div>
               </div>
             </div>
+            )}
           </div>
         </div>
       </div>
@@ -1311,16 +1181,14 @@ const Interviews = () => {
                     <select
                       id="schedule-job"
                       className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      disabled={dropdownsLoading}
                     >
-                      <option value="">Select job position</option>
-                      <option value="senior-software-engineer">Senior Software Engineer</option>
-                      <option value="product-manager">Product Manager</option>
-                      <option value="frontend-developer">Frontend Developer</option>
-                      <option value="backend-developer">Backend Developer</option>
-                      <option value="data-scientist">Data Scientist</option>
-                      <option value="ux-designer">UX Designer</option>
-                      <option value="devops-engineer">DevOps Engineer</option>
-                      <option value="qa-engineer">QA Engineer</option>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select job position'}</option>
+                      {jobs.map((job) => (
+                        <option key={job.id ?? job._id} value={job.id ?? job._id}>
+                          {job.title}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   {/* Date & Time row */}
@@ -1505,14 +1373,14 @@ const Interviews = () => {
                     <select
                       id="schedule-candidate"
                       className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      disabled={dropdownsLoading}
                     >
-                      <option value="">Select candidate</option>
-                      <option value="1">John Anderson - john.anderson@example.com</option>
-                      <option value="2">Sarah Johnson - sarah.johnson@example.com</option>
-                      <option value="3">Michael Chen - michael.chen@example.com</option>
-                      <option value="4">Emily Davis - emily.davis@example.com</option>
-                      <option value="5">David Brown - david.brown@example.com</option>
-                      <option value="6">Lisa Anderson - lisa.anderson@example.com</option>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select candidate'}</option>
+                      {candidates.map((c) => (
+                        <option key={c.id ?? c._id} value={c.id ?? c._id}>
+                          {c.fullName} - {c.email}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   {/* Recruiter */}
@@ -1523,11 +1391,14 @@ const Interviews = () => {
                     <select
                       id="schedule-recruiter"
                       className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      disabled={dropdownsLoading}
                     >
-                      <option value="">Select recruiter</option>
-                      <option value="1">John Anderson - john.anderson@example.com</option>
-                      <option value="2">Sarah Johnson - sarah.johnson@example.com</option>
-                      <option value="3">Emily Davis - emily.davis@example.com</option>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select recruiter'}</option>
+                      {recruiters.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name ?? r.email} - {r.email}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   {/* Notes */}
@@ -1571,6 +1442,95 @@ const Interviews = () => {
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* View recordings modal */}
+      <div
+        id="view-recordings-modal"
+        className="hs-overlay hidden ti-modal size-lg !z-[105]"
+        tabIndex={-1}
+        aria-labelledby="view-recordings-modal-label"
+        aria-hidden="true"
+      >
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
+          <div className="ti-modal-content border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl overflow-hidden">
+            <div className="ti-modal-header bg-gray-50 dark:bg-black/20 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
+              <h3 id="view-recordings-modal-label" className="ti-modal-title text-lg font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
+                <i className="ri-video-line text-success"></i>
+                Recordings
+              </h3>
+              <button
+                type="button"
+                className="ti-modal-close-btn hs-dropdown-toggle flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 dark:hover:text-white/80 rounded-md hover:bg-gray-100 dark:hover:bg-black/40 focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
+                data-hs-overlay="#view-recordings-modal"
+                onClick={() => setRecordingsModalMeetingId(null)}
+                aria-label="Close"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+            <div className="ti-modal-body px-6 py-5">
+              {recordingsLoading && (
+                <div className="flex items-center justify-center py-8 text-defaulttextcolor dark:text-white/70">
+                  <span className="animate-spin inline-block me-2 w-5 h-5 border-2 border-primary border-t-transparent rounded-full"></span>
+                  Loading recordings...
+                </div>
+              )}
+              {!recordingsLoading && recordingsError && (
+                <div className="py-4 px-4 rounded-lg bg-danger/10 text-danger text-sm">
+                  {recordingsError}
+                </div>
+              )}
+              {!recordingsLoading && !recordingsError && recordingsList.length === 0 && (
+                <p className="text-defaulttextcolor/70 dark:text-white/70 text-sm py-4">No recordings for this meeting yet.</p>
+              )}
+              {!recordingsLoading && !recordingsError && recordingsList.length > 0 && (
+                <ul className="space-y-3">
+                  {recordingsList.map((rec) => (
+                    <li
+                      key={rec.id}
+                      className="flex items-center justify-between gap-4 py-3 px-4 rounded-lg border border-defaultborder dark:border-defaultborder/10 bg-gray-50/50 dark:bg-black/20"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-defaulttextcolor dark:text-white truncate">
+                          {rec.completedAt
+                            ? new Date(rec.completedAt).toLocaleString(undefined, {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })
+                            : new Date(rec.startedAt).toLocaleString(undefined, {
+                                dateStyle: 'medium',
+                                timeStyle: 'short',
+                              })}
+                        </p>
+                        <p className="text-xs text-defaulttextcolor/70 dark:text-white/70 mt-0.5">
+                          {rec.status === 'completed' ? 'Completed' : 'Recording'}
+                        </p>
+                      </div>
+                      {rec.status === 'completed' && (rec.playbackUrl || rec.playbackError) && (
+                        <div className="flex-shrink-0">
+                          {rec.playbackUrl ? (
+                            <a
+                              href={rec.playbackUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="ti-btn ti-btn-sm ti-btn-success !py-1.5 !px-3 !text-xs font-medium"
+                            >
+                              <i className="ri-play-line me-1 align-middle"></i>
+                              Play
+                            </a>
+                          ) : (
+                            <span className="text-xs text-danger">{rec.playbackError || 'Playback unavailable'}</span>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
         </div>
       </div>

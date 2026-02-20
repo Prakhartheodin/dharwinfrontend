@@ -13,6 +13,7 @@ import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
+import { RecordingButton } from "@/shared/components/livekit/recording-button";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 1000;
@@ -479,6 +480,17 @@ function PublicRoomContent({
       <div className="room-meeting-container relative flex flex-col h-full min-h-0 w-full">
         <VideoConference />
         <RoomAudioRenderer />
+        {isHost && (
+          <div
+            className="absolute top-4 right-4 z-[1000] flex flex-col gap-2"
+            style={{ maxWidth: "400px" }}
+          >
+            <RecordingButton
+              roomName={roomName}
+              hostEmail={participantEmail || undefined}
+            />
+          </div>
+        )}
         {isHost && (
           <div
             className="absolute top-4 left-4 z-[1000]"

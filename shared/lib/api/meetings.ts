@@ -105,3 +105,20 @@ export async function resendMeetingInvitations(id: string): Promise<{ sent: numb
   const { data } = await apiClient.post<{ sent: number }>(`/meetings/${id}/resend-invitations`);
   return data;
 }
+
+export interface MeetingRecording {
+  id: string;
+  meetingId: string;
+  egressId: string;
+  filePath: string;
+  status: string;
+  startedAt: string;
+  completedAt: string | null;
+  playbackUrl?: string | null;
+  playbackError?: string;
+}
+
+export async function getMeetingRecordings(meetingId: string): Promise<MeetingRecording[]> {
+  const { data } = await apiClient.get<MeetingRecording[]>(`/meetings/${meetingId}/recordings`);
+  return data;
+}

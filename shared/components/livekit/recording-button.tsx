@@ -6,20 +6,27 @@ import * as livekitApi from "@/shared/lib/api/livekit";
 
 interface RecordingButtonProps {
   roomName: string;
+  /** When provided, use public recording API (for hosts joining without login) */
+  hostEmail?: string;
 }
 
-export function RecordingButton({ roomName }: RecordingButtonProps) {
+export function RecordingButton({ roomName, hostEmail }: RecordingButtonProps) {
   const room = useRoomContext();
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [egressId, setEgressId] = useState<string | null>(null);
 
+  const getStatus = () =>
+    hostEmail
+      ? livekitApi.getRecordingStatusPublic(roomName)
+      : livekitApi.getRecordingStatus(roomName);
+
   // Check recording status on mount and periodically
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const data = await livekitApi.getRecordingStatus(roomName);
+        const data = await getStatus();
         setIsRecording(data.isRecording);
         if (data.recordings && data.recordings.length > 0) {
           setEgressId(data.recordings[0].egressId);
@@ -30,17 +37,19 @@ export function RecordingButton({ roomName }: RecordingButtonProps) {
     };
 
     checkStatus();
-    const interval = setInterval(checkStatus, 5000); // Check every 5 seconds
+    const interval = setInterval(checkStatus, 5000);
 
     return () => clearInterval(interval);
-  }, [roomName]);
+  }, [roomName, hostEmail]);
 
   const handleStartRecording = async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const data = await livekitApi.startRecording(roomName);
+      const data = hostEmail
+        ? await livekitApi.startRecordingPublic(roomName, hostEmail)
+        : await livekitApi.startRecording(roomName);
       setIsRecording(true);
       setEgressId(data.egressId);
     } catch (err: any) {
@@ -65,7 +74,11 @@ export function RecordingButton({ roomName }: RecordingButtonProps) {
     setError(null);
 
     try {
-      await livekitApi.stopRecording(egressId);
+      if (hostEmail) {
+        await livekitApi.stopRecordingPublic(egressId, roomName, hostEmail);
+      } else {
+        await livekitApi.stopRecording(egressId, roomName);
+      }
       setIsRecording(false);
       setEgressId(null);
     } catch (err: any) {
