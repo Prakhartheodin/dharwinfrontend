@@ -1,4 +1,5 @@
 "use client"
+
 import React, { Fragment, useState, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -9,7 +10,7 @@ import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
 import { getJobById, updateJob, type UpdateJobPayload } from '@/shared/lib/api/jobs'
 import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
-const Select = dynamic(() => import("react-select"), { ssr: false })
+const Select = dynamic(() => import('react-select'), { ssr: false })
 import CreatableSelect from 'react-select/creatable'
 
 const jobTypeOptions = [
@@ -123,7 +124,10 @@ export default function EditJobClient() {
   const handleSkillsKeyDown = (event: any) => {
     if (!skillsInputValue) return
     if (event.key === 'Enter' || event.key === 'Tab') {
-      setFormData((prev) => ({ ...prev, skills: [...prev.skills, createOption(skillsInputValue)] }))
+      setFormData((prev) => ({
+        ...prev,
+        skills: [...prev.skills, createOption(skillsInputValue)],
+      }))
       setSkillsInputValue('')
       event.preventDefault()
     }
@@ -210,7 +214,9 @@ export default function EditJobClient() {
                   <button
                     type="button"
                     onClick={() => setActiveTab('general')}
-                    className={`-mb-px py-2 px-4 text-sm font-medium border-b-2 ${activeTab === 'general' ? 'bg-primary/10 text-primary border-primary' : 'text-gray-500 border-transparent'}`}
+                    className={`-mb-px py-2 px-4 text-sm font-medium border-b-2 ${
+                      activeTab === 'general' ? 'bg-primary/10 text-primary border-primary' : 'text-gray-500 border-transparent'
+                    }`}
                   >
                     <i className="ri-file-text-line me-1"></i>General
                   </button>
@@ -220,31 +226,66 @@ export default function EditJobClient() {
                 {activeTab === 'general' && (
                   <div className="grid grid-cols-12 gap-4">
                     <div className="xl:col-span-6 col-span-12">
-                      <label className="form-label">Job Title <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control" value={formData.jobTitle} onChange={(e) => handleInputChange('jobTitle', e.target.value)} required />
+                      <label className="form-label">
+                        Job Title <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={formData.jobTitle}
+                        onChange={(e) => handleInputChange('jobTitle', e.target.value)}
+                        required
+                      />
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <label className="form-label">Organisation Name <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control" value={formData.organisationName} onChange={(e) => handleInputChange('organisationName', e.target.value)} required />
+                      <label className="form-label">
+                        Organisation Name <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={formData.organisationName}
+                        onChange={(e) => handleInputChange('organisationName', e.target.value)}
+                        required
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
                       <label className="form-label">Organisation Website</label>
-                      <input type="url" className="form-control" value={formData.organisationWebsite} onChange={(e) => handleInputChange('organisationWebsite', e.target.value)} />
+                      <input
+                        type="url"
+                        className="form-control"
+                        value={formData.organisationWebsite}
+                        onChange={(e) => handleInputChange('organisationWebsite', e.target.value)}
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
                       <label className="form-label">Organisation Email</label>
-                      <input type="email" className="form-control" value={formData.organisationEmail} onChange={(e) => handleInputChange('organisationEmail', e.target.value)} />
+                      <input
+                        type="email"
+                        className="form-control"
+                        value={formData.organisationEmail}
+                        onChange={(e) => handleInputChange('organisationEmail', e.target.value)}
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
                       <label className="form-label">Organisation Phone</label>
                       <div className="flex gap-2">
-                        <PhoneCountrySelect value={formData.organisationCountryCode} onChange={(code) => handleInputChange('organisationCountryCode', code)} name="organisationCountryCode" />
+                        <PhoneCountrySelect
+                          name="organisationCountryCode"
+                          value={formData.organisationCountryCode}
+                          onChange={(code) => handleInputChange('organisationCountryCode', code)}
+                        />
                         <input
                           type="tel"
                           className="form-control flex-1"
                           value={formData.organisationPhone}
                           placeholder={getPhoneCountry(formData.organisationCountryCode).placeholder}
-                          onChange={(e) => handleInputChange('organisationPhone', e.target.value.replace(/\D/g, '').slice(0, getPhoneCountry(formData.organisationCountryCode).maxLength))}
+                          onChange={(e) =>
+                            handleInputChange(
+                              'organisationPhone',
+                              e.target.value.replace(/\D/g, '').slice(0, getPhoneCountry(formData.organisationCountryCode).maxLength),
+                            )
+                          }
                           maxLength={getPhoneCountry(formData.organisationCountryCode).maxLength}
                           inputMode="numeric"
                         />
@@ -252,10 +293,17 @@ export default function EditJobClient() {
                     </div>
                     <div className="xl:col-span-12 col-span-12">
                       <label className="form-label">Organisation Address</label>
-                      <input type="text" className="form-control" value={formData.organisationAddress} onChange={(e) => handleInputChange('organisationAddress', e.target.value)} />
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={formData.organisationAddress}
+                        onChange={(e) => handleInputChange('organisationAddress', e.target.value)}
+                      />
                     </div>
                     <div className="xl:col-span-12 col-span-12">
-                      <label className="form-label">Job Description <span className="text-danger">*</span></label>
+                      <label className="form-label">
+                        Job Description <span className="text-danger">*</span>
+                      </label>
                       <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md">
                         <TiptapEditor content={jobDescription} placeholder="Job description..." onChange={(html) => setJobDescription(html)} />
                       </div>
@@ -264,31 +312,72 @@ export default function EditJobClient() {
                       <label className="form-label">Min Salary</label>
                       <div className="input-group">
                         <span className="input-group-text">$</span>
-                        <input type="number" className="form-control" value={formData.salaryMin} onChange={(e) => handleInputChange('salaryMin', e.target.value)} />
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={formData.salaryMin}
+                          onChange={(e) => handleInputChange('salaryMin', e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
                       <label className="form-label">Max Salary</label>
                       <div className="input-group">
                         <span className="input-group-text">$</span>
-                        <input type="number" className="form-control" value={formData.salaryMax} onChange={(e) => handleInputChange('salaryMax', e.target.value)} />
+                        <input
+                          type="number"
+                          className="form-control"
+                          value={formData.salaryMax}
+                          onChange={(e) => handleInputChange('salaryMax', e.target.value)}
+                        />
                       </div>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <label className="form-label">Location <span className="text-danger">*</span></label>
-                      <input type="text" className="form-control" value={formData.location} onChange={(e) => handleInputChange('location', e.target.value)} required />
+                      <label className="form-label">
+                        Location <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={formData.location}
+                        onChange={(e) => handleInputChange('location', e.target.value)}
+                        required
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
-                      <label className="form-label">Job Type <span className="text-danger">*</span></label>
-                      <Select options={jobTypeOptions} value={formData.jobType} onChange={(s: any) => handleInputChange('jobType', s)} placeholder="Select" classNamePrefix="Select2" className="ti-form-select !p-0" />
+                      <label className="form-label">
+                        Job Type <span className="text-danger">*</span>
+                      </label>
+                      <Select
+                        options={jobTypeOptions}
+                        value={formData.jobType}
+                        onChange={(s: any) => handleInputChange('jobType', s)}
+                        placeholder="Select"
+                        classNamePrefix="Select2"
+                        className="ti-form-select !p-0"
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
                       <label className="form-label">Experience Level</label>
-                      <Select options={experienceLevelOptions} value={formData.experienceLevel} onChange={(s: any) => handleInputChange('experienceLevel', s)} isClearable placeholder="Select" classNamePrefix="Select2" className="ti-form-select !p-0" />
+                      <Select
+                        options={experienceLevelOptions}
+                        value={formData.experienceLevel}
+                        onChange={(s: any) => handleInputChange('experienceLevel', s)}
+                        isClearable
+                        placeholder="Select"
+                        classNamePrefix="Select2"
+                        className="ti-form-select !p-0"
+                      />
                     </div>
                     <div className="xl:col-span-4 col-span-12">
                       <label className="form-label">Status</label>
-                      <Select options={statusOptions} value={formData.status} onChange={(s: any) => handleInputChange('status', s || { value: 'Active', label: 'Active' })} classNamePrefix="Select2" className="ti-form-select !p-0" />
+                      <Select
+                        options={statusOptions}
+                        value={formData.status}
+                        onChange={(s: any) => handleInputChange('status', s || { value: 'Active', label: 'Active' })}
+                        classNamePrefix="Select2"
+                        className="ti-form-select !p-0"
+                      />
                     </div>
                     <div className="xl:col-span-12 col-span-12">
                       <label className="form-label">Skills</label>
@@ -310,7 +399,9 @@ export default function EditJobClient() {
                   </div>
                 )}
                 <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200 dark:border-defaultborder/10">
-                  <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">Cancel</Link>
+                  <Link href="/ats/jobs" className="ti-btn ti-btn-secondary">
+                    Cancel
+                  </Link>
                   <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting}>
                     <i className="ri-save-line font-semibold align-middle me-1"></i>
                     {submitting ? 'Saving...' : 'Save Changes'}

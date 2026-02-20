@@ -464,16 +464,18 @@ function RoomContent({
       <div className="room-meeting-container" style={{ position: "relative" }}>
         <VideoConference />
         <RoomAudioRenderer />
-      <div
-        style={{
-          position: "absolute",
-          top: "16px",
-          right: "16px",
-          zIndex: 1000,
-        }}
-      >
-        <RecordingButton roomName={roomName} />
-      </div>
+      {isHost && (
+        <div
+          style={{
+            position: "absolute",
+            top: "16px",
+            right: "16px",
+            zIndex: 1000,
+          }}
+        >
+          <RecordingButton roomName={roomName} />
+        </div>
+      )}
       {isHost && (
         <div
           style={{
