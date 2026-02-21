@@ -12,6 +12,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import * as livekitApi from "@/shared/lib/api/livekit";
+import { endMeetingPublic } from "@/shared/lib/api/meetings";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
 
@@ -826,8 +827,12 @@ export default function PublicMeetingRoomClient() {
   }, [waitingForAdmission, participantName, participantEmail, participantIdentity, livekitUrl, roomId]);
 
   const handleLeave = useCallback(() => {
+    if (isHost && participantEmail) {
+      const roomName = decodeURIComponent(roomId);
+      endMeetingPublic(roomName, participantEmail).catch(() => {});
+    }
     router.push(`/join/room/${encodeURIComponent(roomId)}`);
-  }, [router, roomId]);
+  }, [router, roomId, isHost, participantEmail]);
 
   const handleReconnect = useCallback(async () => {
     if (!participantName || !roomId) return;

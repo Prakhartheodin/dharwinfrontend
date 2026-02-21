@@ -15,6 +15,7 @@ import { RecordingButton } from "@/shared/components/livekit/recording-button";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
+import { updateMeeting } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -596,8 +597,12 @@ export default function MeetingRoomClient() {
   }, [fetchToken, reconnectKey]);
 
   const handleLeave = useCallback(() => {
+    const roomName = decodeURIComponent(roomId);
+    if (isHost) {
+      updateMeeting(roomName, { status: "ended" }).catch(() => {});
+    }
     router.push("/meetings/pre-join/");
-  }, [router]);
+  }, [router, roomId, isHost]);
 
   const handleDisconnect = useCallback(() => {
     console.log("Disconnected from room - RoomContent will handle reconnection");

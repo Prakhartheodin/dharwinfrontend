@@ -57,6 +57,8 @@ export interface Meeting {
   recruiter?: MeetingRecruiterRef;
   notes?: string;
   status: string;
+  /** Interview result: pending, selected, rejected */
+  interviewResult?: 'pending' | 'selected' | 'rejected';
   createdBy?: { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;
@@ -92,7 +94,12 @@ export async function getMeeting(id: string): Promise<Meeting> {
   return data;
 }
 
-export async function updateMeeting(id: string, payload: Partial<CreateMeetingPayload>): Promise<Meeting> {
+export type UpdateMeetingPayload = Partial<CreateMeetingPayload> & {
+  status?: string;
+  interviewResult?: 'pending' | 'selected' | 'rejected';
+};
+
+export async function updateMeeting(id: string, payload: UpdateMeetingPayload): Promise<Meeting> {
   const { data } = await apiClient.patch<Meeting>(`/meetings/${id}`, payload);
   return data;
 }
@@ -120,5 +127,11 @@ export interface MeetingRecording {
 
 export async function getMeetingRecordings(meetingId: string): Promise<MeetingRecording[]> {
   const { data } = await apiClient.get<MeetingRecording[]>(`/meetings/${meetingId}/recordings`);
+  return data;
+}
+
+/** Public: mark meeting as ended when host leaves. No auth. Body: { roomName, hostEmail } */
+export async function endMeetingPublic(roomName: string, hostEmail: string): Promise<Meeting> {
+  const { data } = await apiClient.post<Meeting>("/public/meetings/end", { roomName, hostEmail });
   return data;
 }

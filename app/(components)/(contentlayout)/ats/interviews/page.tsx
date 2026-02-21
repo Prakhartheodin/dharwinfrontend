@@ -3,7 +3,7 @@ import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeetingRecordings, type Meeting, type CreateMeetingPayload, type MeetingRecording } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { listCandidates, type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listRecruiters } from '@/shared/lib/api/users'
@@ -30,6 +30,11 @@ interface InterviewTableRow {
     email: string
   }
   status: string
+  /** Interview result: pending, selected, rejected */
+  interviewResult: 'pending' | 'selected' | 'rejected'
+  /** Public join URL for the interview (copy link) */
+  publicMeetingUrl: string
+  meetingId: string
 }
 
 function formatMeetingTime(iso: string): string {
@@ -55,7 +60,7 @@ function meetingToTableRow(m: Meeting): InterviewTableRow {
   const time = formatMeetingTime(m.scheduledAt)
   const position = m.title || m.jobPosition || 'Interview'
   return {
-    id: m._id || m.meetingId,
+    id: (m._id != null ? String(m._id) : m.meetingId) || '',
     position,
     date,
     time,
@@ -74,6 +79,9 @@ function meetingToTableRow(m: Meeting): InterviewTableRow {
       email: m.recruiter?.email ?? '',
     },
     status: m.status || 'Scheduled',
+    interviewResult: (m.interviewResult || 'pending') as 'pending' | 'selected' | 'rejected',
+    publicMeetingUrl: m.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room/${encodeURIComponent(m.meetingId || '')}` : ''),
+    meetingId: m.meetingId || '',
   }
 }
 
@@ -125,6 +133,21 @@ const Interviews = () => {
   const [recordingsLoading, setRecordingsLoading] = useState(false)
   const [recordingsError, setRecordingsError] = useState<string | null>(null)
 
+  // Interview result modal: row being edited + selected value
+  const [resultModalInterview, setResultModalInterview] = useState<InterviewTableRow | null>(null)
+  const [resultModalSelected, setResultModalSelected] = useState<'pending' | 'selected' | 'rejected'>('pending')
+  const [resultUpdating, setResultUpdating] = useState(false)
+
+  // Copy interview link feedback
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
+
+  // Edit interview modal
+  const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
+  const [editMeeting, setEditMeeting] = useState<Meeting | null>(null)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   const fetchMeetings = useCallback(async () => {
     setMeetingsLoading(true)
     setMeetingsError(null)
@@ -138,6 +161,129 @@ const Interviews = () => {
       setMeetingsLoading(false)
     }
   }, [])
+
+  const copyInterviewLink = useCallback(async (row: InterviewTableRow) => {
+    const url = row.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room/${encodeURIComponent(row.meetingId)}` : '')
+    if (!url) return
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopiedLinkId(row.id)
+      setTimeout(() => setCopiedLinkId(null), 2000)
+    } catch (_) {
+      // fallback: select in temp input
+      const input = document.createElement('input')
+      input.value = url
+      document.body.appendChild(input)
+      input.select()
+      document.execCommand('copy')
+      document.body.removeChild(input)
+      setCopiedLinkId(row.id)
+      setTimeout(() => setCopiedLinkId(null), 2000)
+    }
+  }, [])
+
+  const openEditModal = useCallback((id: string) => {
+    setEditMeetingId(id)
+    setEditMeeting(null)
+    setEditError(null)
+    setEditLoading(true)
+    ;(window as any).HSOverlay?.open(document.querySelector('#edit-interview-modal'))
+  }, [])
+
+  const closeEditModal = useCallback(() => {
+    setEditMeetingId(null)
+    setEditMeeting(null)
+    setEditError(null)
+    ;(window as any).HSOverlay?.close(document.querySelector('#edit-interview-modal'))
+  }, [])
+
+  useEffect(() => {
+    if (!editMeetingId) return
+    let cancelled = false
+    getMeeting(editMeetingId)
+      .then((m) => {
+        if (!cancelled) setEditMeeting(m)
+      })
+      .catch((err: any) => {
+        if (!cancelled) setEditError(err?.response?.data?.message || err?.message || 'Failed to load meeting')
+      })
+      .finally(() => {
+        if (!cancelled) setEditLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [editMeetingId])
+
+  const handleEditInterviewSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!editMeetingId || !editMeeting) return
+    setEditError(null)
+    const form = e.target as HTMLFormElement
+    const getVal = (id: string) => (form.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value?.trim() ?? ''
+    const title = getVal('edit-meeting-title')
+    const description = getVal('edit-description')
+    const date = getVal('edit-date')
+    const time = getVal('edit-time')
+    const durationMinutes = parseInt(getVal('edit-duration') || '60', 10) || 60
+    const jobId = getVal('edit-job')
+    const selectedJob = jobs.find((j) => (j.id ?? j._id) === jobId)
+    const jobPosition = jobId ? (selectedJob?.title || jobId) : editMeeting.jobPosition
+    const interviewType = (form.querySelector('input[name="edit-type"]:checked') as HTMLInputElement)?.value || editMeeting.interviewType || 'Video'
+    const notes = getVal('edit-notes')
+    const status = getVal('edit-status') as 'scheduled' | 'ended' | 'cancelled' || editMeeting.status
+    const candidateId = (form.querySelector('#edit-candidate') as HTMLSelectElement)?.value
+    const recruiterId = (form.querySelector('#edit-recruiter') as HTMLSelectElement)?.value
+    const candidate = candidateId ? candidates.find((c) => (c.id ?? c._id) === candidateId) : null
+    const recruiter = recruiterId ? recruiters.find((r) => r.id === recruiterId) : null
+    const scheduledAt = date && time ? `${date}T${time}:00.000Z` : editMeeting.scheduledAt
+    const payload: UpdateMeetingPayload = {
+      title: title || editMeeting.title,
+      description: description || undefined,
+      scheduledAt,
+      durationMinutes,
+      jobPosition: jobPosition || undefined,
+      interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
+      candidate: candidate ? { id: candidate.id ?? candidate._id, name: candidate.fullName ?? '', email: candidate.email ?? '' } : editMeeting.candidate,
+      recruiter: recruiter ? { id: recruiter.id, name: recruiter.name ?? '', email: recruiter.email ?? '' } : editMeeting.recruiter,
+      notes: notes || undefined,
+      status,
+    }
+    setEditSaving(true)
+    try {
+      await updateMeeting(editMeetingId, payload)
+      await fetchMeetings()
+      closeEditModal()
+    } catch (err: any) {
+      setEditError(err?.response?.data?.message || err?.message || 'Failed to update meeting')
+    } finally {
+      setEditSaving(false)
+    }
+  }, [editMeetingId, editMeeting, jobs, candidates, recruiters, fetchMeetings, closeEditModal])
+
+  const openResultModal = useCallback((row: InterviewTableRow) => {
+    setResultModalInterview(row)
+    setResultModalSelected(row.interviewResult || 'pending')
+    ;(window as any).HSOverlay?.open(document.querySelector('#interview-result-modal'))
+  }, [])
+
+  const closeResultModal = useCallback(() => {
+    setResultModalInterview(null)
+    setResultModalSelected('pending')
+    ;(window as any).HSOverlay?.close(document.querySelector('#interview-result-modal'))
+  }, [])
+
+  const handleSaveInterviewResult = useCallback(async () => {
+    if (!resultModalInterview || !resultModalInterview.id) return
+    setResultUpdating(true)
+    try {
+      await updateMeeting(resultModalInterview.id, { interviewResult: resultModalSelected })
+      await fetchMeetings()
+      closeResultModal()
+    } catch (err: any) {
+      // Optionally show toast
+    } finally {
+      setResultUpdating(false)
+    }
+  }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal])
 
   useEffect(() => {
     fetchMeetings()
@@ -213,9 +359,21 @@ const Interviews = () => {
     setEmailInvites([''])
   }, [])
 
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+
   const handleScheduleInterviewSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
+    const validHosts = hosts.filter((h) => h.email.trim())
+    if (validHosts.length === 0) {
+      setFormError('At least one host with email is required')
+      return
+    }
+    const invalidHost = validHosts.find((h) => !isValidEmail(h.email))
+    if (invalidHost) {
+      setFormError(`Please enter a valid email for each host (e.g. name@gmail.com). "${invalidHost.email}" is incomplete or invalid.`)
+      return
+    }
     const form = e.target as HTMLFormElement
     const getVal = (id: string) => (form.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value?.trim() ?? ''
     const jobId = getVal('schedule-job')
@@ -249,12 +407,12 @@ const Interviews = () => {
       maxParticipants,
       allowGuestJoin,
       requireApproval,
-      hosts: hosts.filter((h) => h.email.trim()),
-      emailInvites: emailInvites.filter((em) => em.trim()),
+      hosts: validHosts.map((h) => ({ nameOrRole: (h.nameOrRole ?? '').trim(), email: h.email.trim() })),
+      emailInvites: emailInvites.filter((em) => em.trim()).map((em) => em.trim()),
       jobPosition: jobPosition || undefined,
       interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
-      candidate: candidateOption?.value ? { id: candidateOption.value, name: candidateMatch?.[1] ?? candidateText, email: candidateMatch?.[2] ?? '' } : undefined,
-      recruiter: recruiterOption?.value ? { id: recruiterOption.value, name: recruiterMatch?.[1] ?? recruiterText, email: recruiterMatch?.[2] ?? '' } : undefined,
+      candidate: candidateOption?.value ? { id: candidateOption.value, name: (candidateMatch?.[1] ?? candidateText).trim(), email: (candidateMatch?.[2] ?? '').trim() } : undefined,
+      recruiter: recruiterOption?.value ? { id: recruiterOption.value, name: (recruiterMatch?.[1] ?? recruiterText).trim(), email: (recruiterMatch?.[2] ?? '').trim() } : undefined,
       notes: notes || undefined,
     }
     setFormLoading(true)
@@ -389,14 +547,37 @@ const Interviews = () => {
           const interview = row.original
           const statusColors: Record<string, string> = {
             'Scheduled': 'bg-primary/10 text-primary border-primary/30',
+            'scheduled': 'bg-primary/10 text-primary border-primary/30',
             'Completed': 'bg-success/10 text-success border-success/30',
+            'ended': 'bg-success/10 text-success border-success/30',
             'Cancelled': 'bg-danger/10 text-danger border-danger/30',
+            'cancelled': 'bg-danger/10 text-danger border-danger/30',
             'Rescheduled': 'bg-warning/10 text-warning border-warning/30',
           }
           return (
             <div className="text-sm">
-              <span className={`badge ${statusColors[interview.status] || 'bg-gray/10 text-gray border-gray/30'} border px-2 py-1 rounded-md text-xs font-medium`}>
+              <span className={`badge ${statusColors[interview.status] || 'bg-gray/10 text-gray border-gray/30'} border px-2 py-1 rounded-md text-xs font-medium capitalize`}>
                 {interview.status}
+              </span>
+            </div>
+          )
+        },
+      },
+      {
+        Header: 'Result',
+        accessor: 'interviewResult',
+        Cell: ({ row }: any) => {
+          const interview = row.original
+          const resultColors: Record<string, string> = {
+            pending: 'bg-gray/10 text-gray border-gray/30',
+            selected: 'bg-success/10 text-success border-success/30',
+            rejected: 'bg-danger/10 text-danger border-danger/30',
+          }
+          const label = interview.interviewResult === 'selected' ? 'Selected' : interview.interviewResult === 'rejected' ? 'Rejected' : 'Pending'
+          return (
+            <div className="text-sm">
+              <span className={`badge ${resultColors[interview.interviewResult] || resultColors.pending} border px-2 py-1 rounded-md text-xs font-medium`}>
+                {label}
               </span>
             </div>
           )
@@ -429,8 +610,45 @@ const Interviews = () => {
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
+                title="Copy interview link"
+                onClick={() => copyInterviewLink(row.original)}
+              >
+                {copiedLinkId === row.original.id ? (
+                  <i className="ri-check-line text-success"></i>
+                ) : (
+                  <i className="ri-links-line"></i>
+                )}
+                <span
+                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                  role="tooltip">
+                  {copiedLinkId === row.original.id ? 'Copied!' : 'Copy link'}
+                </span>
+              </button>
+            </div>
+            {row.original.status?.toLowerCase() === 'ended' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                  title="Set interview result"
+                  onClick={() => openResultModal(row.original)}
+                >
+                  <i className="ri-checkbox-circle-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Set result
+                  </span>
+                </button>
+              </div>
+            )}
+            <div className="hs-tooltip ti-main-tooltip">
+              <button
+                type="button"
                 className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                 title="Edit Interview"
+                onClick={() => openEditModal(row.original.id)}
               >
                 <i className="ri-pencil-line"></i>
                 <span
@@ -472,7 +690,7 @@ const Interviews = () => {
         ),
       },
     ],
-    [selectedRows]
+    [selectedRows, openResultModal, copyInterviewLink, copiedLinkId, openEditModal]
   )
 
   // Map API meetings to table rows
@@ -1257,7 +1475,8 @@ const Interviews = () => {
                   {/* Hosts */}
                   <div>
                     <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
-                      Hosts (name/role + email)
+                      Hosts (name/role + email) <span className="text-danger">*</span>
+                      <span className="text-xs font-normal text-defaulttextcolor/70 dark:text-white/70 ml-1">— at least one host with email required</span>
                     </label>
                     <div className="space-y-2">
                       {hosts.map((h, i) => (
@@ -1529,6 +1748,227 @@ const Interviews = () => {
                     </li>
                   ))}
                 </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Interview result modal */}
+      <div
+        id="interview-result-modal"
+        className="hs-overlay hidden ti-modal !z-[105]"
+        tabIndex={-1}
+        aria-labelledby="interview-result-modal-label"
+        aria-hidden="true"
+      >
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-md">
+          <div className="ti-modal-content border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl overflow-hidden">
+            <div className="ti-modal-header bg-gray-50 dark:bg-black/20 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
+              <h3 id="interview-result-modal-label" className="ti-modal-title text-lg font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
+                <i className="ri-checkbox-circle-line text-primary"></i>
+                Interview result
+              </h3>
+              <button
+                type="button"
+                className="ti-modal-close-btn hs-dropdown-toggle flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 dark:hover:text-white/80 rounded-md hover:bg-gray-100 dark:hover:bg-black/40 focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
+                data-hs-overlay="#interview-result-modal"
+                onClick={closeResultModal}
+                aria-label="Close"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+            <div className="ti-modal-body px-6 py-5">
+              {resultModalInterview && (
+                <>
+                  <div className="mb-4">
+                    <p className="text-sm text-defaulttextcolor/70 dark:text-white/70 mb-0.5">Interview</p>
+                    <p className="font-medium text-defaulttextcolor dark:text-white">{resultModalInterview.position}</p>
+                    <p className="text-xs text-defaulttextcolor/60 dark:text-white/60 mt-1">
+                      Candidate: {resultModalInterview.candidate.name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
+                      Current status
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {(['pending', 'selected', 'rejected'] as const).map((value) => (
+                        <label
+                          key={value}
+                          className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                            resultModalSelected === value
+                              ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                              : 'border-defaultborder dark:border-defaultborder/10 hover:bg-gray-50 dark:hover:bg-black/20'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="interviewResult"
+                            value={value}
+                            checked={resultModalSelected === value}
+                            onChange={() => setResultModalSelected(value)}
+                            className="ti-form-radio"
+                          />
+                          <span className="capitalize font-medium text-defaulttextcolor dark:text-white">
+                            {value === 'pending' ? 'Pending' : value === 'selected' ? 'Selected' : 'Rejected'}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="ti-modal-footer flex flex-wrap gap-2 justify-end px-6 py-4 bg-gray-50 dark:bg-black/20 border-t border-defaultborder dark:border-defaultborder/10">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium"
+                onClick={closeResultModal}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium"
+                disabled={resultUpdating}
+                onClick={handleSaveInterviewResult}
+              >
+                {resultUpdating ? (
+                  <>
+                    <span className="animate-spin inline-block me-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-check-line me-1.5 align-middle"></i>
+                    Update result
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Edit Interview modal */}
+      <div
+        id="edit-interview-modal"
+        className="hs-overlay hidden ti-modal size-lg !z-[105]"
+        tabIndex={-1}
+        aria-labelledby="edit-interview-modal-label"
+        aria-hidden="true"
+      >
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
+          <div className="ti-modal-content border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl overflow-hidden">
+            <div className="ti-modal-header bg-gray-50 dark:bg-black/20 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
+              <h3 id="edit-interview-modal-label" className="ti-modal-title text-lg font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
+                <i className="ri-pencil-line text-info"></i>
+                Edit Interview
+              </h3>
+              <button
+                type="button"
+                className="ti-modal-close-btn hs-dropdown-toggle flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 dark:hover:text-white/80 rounded-md hover:bg-gray-100 dark:hover:bg-black/40 focus:ring-2 focus:ring-primary/20 focus:ring-offset-0"
+                data-hs-overlay="#edit-interview-modal"
+                onClick={closeEditModal}
+                aria-label="Close"
+              >
+                <i className="ri-close-line text-xl"></i>
+              </button>
+            </div>
+            <div className="ti-modal-body px-6 py-5">
+              {editLoading && (
+                <div className="flex items-center justify-center py-12 text-defaulttextcolor dark:text-white/70">
+                  <span className="animate-spin inline-block me-2 w-6 h-6 border-2 border-primary border-t-transparent rounded-full"></span>
+                  Loading...
+                </div>
+              )}
+              {!editLoading && editError && (
+                <div className="py-4 px-4 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>
+              )}
+              {!editLoading && editMeeting && (
+                <form onSubmit={handleEditInterviewSubmit} className="space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
+                  {editError && <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>}
+                  <div>
+                    <label htmlFor="edit-meeting-title" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Title <span className="text-danger">*</span></label>
+                    <input type="text" id="edit-meeting-title" defaultValue={editMeeting.title} required className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" placeholder="e.g. Technical Interview" />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-description" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Description</label>
+                    <textarea id="edit-description" rows={2} defaultValue={editMeeting.description ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none" placeholder="Optional description" />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-job" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Job / Position</label>
+                    <select id="edit-job" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={jobs.find((j) => j.title === editMeeting.jobPosition)?.id ?? jobs.find((j) => j.title === editMeeting.jobPosition)?._id ?? ''}>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select job'}</option>
+                      {jobs.map((j) => (
+                        <option key={j.id ?? j._id} value={j.id ?? j._id}>{j.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="edit-date" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Date <span className="text-danger">*</span></label>
+                      <input type="date" id="edit-date" defaultValue={editMeeting.scheduledAt?.slice(0, 10) ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                    </div>
+                    <div>
+                      <label htmlFor="edit-time" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Time <span className="text-danger">*</span></label>
+                      <input type="time" id="edit-time" defaultValue={editMeeting.scheduledAt?.slice(11, 16) ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="edit-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Duration (minutes)</label>
+                    <input type="number" id="edit-duration" min={1} max={480} defaultValue={editMeeting.durationMinutes ?? 60} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                  </div>
+                  <div>
+                    <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">Interview type</label>
+                    <div className="flex flex-wrap gap-4">
+                      {(['Video', 'In-Person', 'Phone'] as const).map((t) => (
+                        <label key={t} className="flex items-center gap-2 cursor-pointer">
+                          <input type="radio" name="edit-type" value={t.toLowerCase()} defaultChecked={(editMeeting.interviewType || 'Video') === t} className="form-check-input !w-4 !h-4 text-primary" />
+                          <span className="text-sm text-defaulttextcolor dark:text-white">{t}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="edit-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Candidate</label>
+                    <select id="edit-candidate" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.candidate?.id ?? ''}>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select candidate'}</option>
+                      {candidates.map((c) => (
+                        <option key={c.id ?? c._id} value={c.id ?? c._id}>{c.fullName} - {c.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="edit-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Recruiter</label>
+                    <select id="edit-recruiter" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.recruiter?.id ?? ''}>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select recruiter'}</option>
+                      {recruiters.map((r) => (
+                        <option key={r.id} value={r.id}>{r.name ?? r.email} - {r.email}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="edit-notes" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Notes</label>
+                    <textarea id="edit-notes" rows={2} defaultValue={editMeeting.notes ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none" placeholder="Optional notes" />
+                  </div>
+                  <div>
+                    <label htmlFor="edit-status" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Status</label>
+                    <select id="edit-status" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" defaultValue={editMeeting.status ?? 'scheduled'}>
+                      <option value="scheduled">Scheduled</option>
+                      <option value="ended">Ended</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                    <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Cancel</button>
+                    <button type="submit" disabled={editSaving} className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium">
+                      {editSaving ? (<><span className="animate-spin inline-block me-1.5 w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span> Saving...</>) : (<><i className="ri-check-line me-1.5 align-middle"></i> Save changes</>)}
+                    </button>
+                  </div>
+                </form>
               )}
             </div>
           </div>
