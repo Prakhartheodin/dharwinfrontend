@@ -546,7 +546,7 @@ export default function PublicMeetingRoomClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const roomId = (params?.roomId as string) || "";
+  const roomId = (params?.roomId as string) || searchParams?.get("room") || "";
   const nameFromQuery = searchParams.get("name")?.trim();
   const emailFromQuery = searchParams.get("email")?.trim();
 
@@ -730,7 +730,7 @@ export default function PublicMeetingRoomClient() {
       }
       params.set("audio", preJoinAudio ? "1" : "0");
       params.set("video", preJoinVideo ? "1" : "0");
-      router.push(`/join/room/${encodeURIComponent(roomId)}?${params.toString()}`);
+      router.push(`/join/room?room=${encodeURIComponent(roomId)}&${params.toString()}`);
     },
     [roomId, router, preJoinName, preJoinEmail, preJoinAudio, preJoinVideo, audioPermissionGranted, videoPermissionGranted]
   );
@@ -844,7 +844,7 @@ export default function PublicMeetingRoomClient() {
       const roomName = decodeURIComponent(roomId);
       endMeetingPublic(roomName, participantEmail).catch(() => {});
     }
-    router.push(`/join/room/${encodeURIComponent(roomId)}`);
+    router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
   }, [router, roomId, isHost, participantEmail]);
 
   const handleReconnect = useCallback(async () => {
@@ -1058,7 +1058,7 @@ export default function PublicMeetingRoomClient() {
                     setWaitingForAdmission(false);
                     setToken("");
                     setParticipantIdentity(null);
-                    router.push(`/join/room/${encodeURIComponent(roomId)}`);
+                    router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
                   }}
                   className="ti-btn ti-btn-light !py-2 !px-4 flex-1"
                 >
