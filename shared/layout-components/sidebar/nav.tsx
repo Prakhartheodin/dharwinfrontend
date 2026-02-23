@@ -7,7 +7,6 @@ const JobsIcon = <i className="bx bx-briefcase-alt side-menu__icon"></i>;
 const CandidatesIcon = <i className="bx bx-user side-menu__icon"></i>;
 const RecruitersIcon = <i className="bx bx-user-check side-menu__icon"></i>;
 const InterviewsIcon = <i className="bx bx-calendar-check side-menu__icon"></i>;
-const JobApplicationsIcon = <i className="bx bx-list-check side-menu__icon"></i>;
 const OffersPlacementIcon = <i className="bx bx-badge-check side-menu__icon"></i>;
 const PreBoardingIcon = <i className="bx bx-user-plus side-menu__icon"></i>;
 const ShareCandidateFormIcon = <i className="bx bx-share-alt side-menu__icon"></i>;
@@ -18,6 +17,7 @@ const AnalyticsIcon = <i className="bx bx-bar-chart-alt-2 side-menu__icon"></i>;
 const EmailIcon = <i className="bx bx-envelope side-menu__icon"></i>;
 const ChatsIcon = <i className="bx bx-message-rounded-dots side-menu__icon"></i>;
 const CallingIcon = <i className="bx bx-phone-call side-menu__icon"></i>;
+const RecordingsIcon = <i className="bx bx-video-recording side-menu__icon"></i>;
 const FilesStorageIcon = <i className="bx bx-folder side-menu__icon"></i>;
 
 // Training Management Icons
@@ -137,26 +137,6 @@ export const MenuItems: any = [
       },
 
       {
-    icon: JobApplicationsIcon,
-    title: "Job Applications",
-        type: "link",
-    path: "/ats/job-applications",
-        active: false,
-        selected: false,
-        dirchange: false, 
-      },
-
-      {
-    icon: OffersPlacementIcon,
-    title: "Offers & Placement",
-        type: "link",
-    path: "/ats/offers-placement",
-        active: false,
-        selected: false,
-        dirchange: false, 
-      },
-
-      {
     icon: PreBoardingIcon,
     title: "Pre-boarding",
         type: "sub",
@@ -191,6 +171,16 @@ export const MenuItems: any = [
     title: "Onboarding",
         type: "link",
     path: "/ats/onboarding",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
+    icon: OffersPlacementIcon,
+    title: "Offers & Placement",
+        type: "link",
+    path: "/ats/offers-placement",
         active: false,
         selected: false,
         dirchange: false, 
@@ -235,6 +225,16 @@ export const MenuItems: any = [
     title: "Calling",
         type: "link",
     path: "/communication/calling",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
+    icon: RecordingsIcon,
+    title: "Recordings",
+        type: "link",
+    path: "/communication/recordings",
         active: false,
         selected: false,
         dirchange: false, 

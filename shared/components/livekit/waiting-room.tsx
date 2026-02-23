@@ -53,7 +53,7 @@ export function WaitingRoom({
     };
 
     // Poll every 3 seconds to check admission status
-    checkingIntervalRef.current = setInterval(checkAdmissionStatus, 3000);
+    checkingIntervalRef.current = setInterval(checkAdmissionStatus, 5000);
     
     // Also check immediately
     checkAdmissionStatus();

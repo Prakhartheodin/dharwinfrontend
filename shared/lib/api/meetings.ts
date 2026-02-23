@@ -113,6 +113,12 @@ export async function resendMeetingInvitations(id: string): Promise<{ sent: numb
   return data;
 }
 
+/** Manually trigger move to pre-boarding for a meeting with result=selected. Use to retry if auto-move failed. */
+export async function moveMeetingToPreboarding(id: string): Promise<{ moved: boolean; message: string }> {
+  const { data } = await apiClient.post<{ moved: boolean; message: string }>(`/meetings/${id}/move-to-preboarding`);
+  return data;
+}
+
 export interface MeetingRecording {
   id: string;
   meetingId: string;
@@ -133,5 +139,26 @@ export async function getMeetingRecordings(meetingId: string): Promise<MeetingRe
 /** Public: mark meeting as ended when host leaves. No auth. Body: { roomName, hostEmail } */
 export async function endMeetingPublic(roomName: string, hostEmail: string): Promise<Meeting> {
   const { data } = await apiClient.post<Meeting>("/public/meetings/end", { roomName, hostEmail });
+  return data;
+}
+
+export interface RecordingWithMeeting extends MeetingRecording {
+  meetingTitle?: string;
+}
+
+export interface RecordingsListResponse {
+  results: RecordingWithMeeting[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+/** List all meeting recordings (paginated). Requires meetings.record permission. */
+export async function listAllRecordings(params?: {
+  page?: number;
+  limit?: number;
+}): Promise<RecordingsListResponse> {
+  const { data } = await apiClient.get<RecordingsListResponse>("/recordings", { params });
   return data;
 }

@@ -3,7 +3,7 @@ import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, moveMeetingToPreboarding, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { listCandidates, type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listRecruiters } from '@/shared/lib/api/users'
@@ -141,6 +141,9 @@ const Interviews = () => {
   // Copy interview link feedback
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
 
+  // Move to preboarding (retry for selected interviews)
+  const [moveToPreboardingId, setMoveToPreboardingId] = useState<string | null>(null)
+
   // Edit interview modal
   const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null)
@@ -275,15 +278,32 @@ const Interviews = () => {
     if (!resultModalInterview || !resultModalInterview.id) return
     setResultUpdating(true)
     try {
-      await updateMeeting(resultModalInterview.id, { interviewResult: resultModalSelected })
+      const updated = await updateMeeting(resultModalInterview.id, { interviewResult: resultModalSelected })
       await fetchMeetings()
       closeResultModal()
+      if (resultModalSelected === 'selected' && (updated as any).moveToPreboardingError) {
+        alert(`Result updated to Selected, but move to Pre-boarding failed: ${(updated as any).moveToPreboardingError}. Use the "Move to Pre-boarding" button to retry.`)
+      }
     } catch (err: any) {
-      // Optionally show toast
+      alert(err?.response?.data?.message || err?.message || 'Failed to update result')
     } finally {
       setResultUpdating(false)
     }
   }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal])
+
+  const handleMoveToPreboarding = useCallback(async (row: InterviewTableRow) => {
+    if (!row.id || row.interviewResult !== 'selected') return
+    setMoveToPreboardingId(row.id)
+    try {
+      await moveMeetingToPreboarding(row.id)
+      await fetchMeetings()
+      alert('Candidate moved to Pre-boarding. Refresh the Pre-boarding page to see them.')
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to move to Pre-boarding')
+    } finally {
+      setMoveToPreboardingId(null)
+    }
+  }, [fetchMeetings])
 
   useEffect(() => {
     fetchMeetings()
@@ -643,6 +663,28 @@ const Interviews = () => {
                 </button>
               </div>
             )}
+            {row.original.interviewResult === 'selected' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                  title="Move to Pre-boarding"
+                  disabled={moveToPreboardingId === row.original.id}
+                  onClick={() => handleMoveToPreboarding(row.original)}
+                >
+                  {moveToPreboardingId === row.original.id ? (
+                    <i className="ri-loader-4-line animate-spin"></i>
+                  ) : (
+                    <i className="ri-user-follow-line"></i>
+                  )}
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Move to Pre-boarding
+                  </span>
+                </button>
+              </div>
+            )}
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
@@ -690,7 +732,7 @@ const Interviews = () => {
         ),
       },
     ],
-    [selectedRows, openResultModal, copyInterviewLink, copiedLinkId, openEditModal]
+    [selectedRows, openResultModal, copyInterviewLink, copiedLinkId, openEditModal, handleMoveToPreboarding, moveToPreboardingId]
   )
 
   // Map API meetings to table rows

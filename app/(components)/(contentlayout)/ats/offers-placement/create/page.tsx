@@ -128,10 +128,7 @@ const CreateOffer = () => {
                     {!loading && jobApplications.length === 0 && (
                       <div className="text-sm text-gray-600 dark:text-gray-400 mt-2 p-3 rounded-lg bg-gray-50 dark:bg-black/20 space-y-1">
                         <p className="font-medium">No applications available to create an offer.</p>
-                        <p className="text-xs">Offers can only be created from applications in <strong>Applied</strong>, <strong>Screening</strong>, or <strong>Interview</strong> stage (not Offered, Hired, or Rejected).</p>
-                        <Link href="/ats/job-applications" className="text-primary hover:underline text-xs inline-block mt-2">
-                          Go to Job Applications →
-                        </Link>
+                        <p className="text-xs">Offers can only be created from applications in <strong>Applied</strong>, <strong>Screening</strong>, or <strong>Interview</strong> stage (not Offered, Hired, or Rejected). Apply candidates to jobs from the Jobs page.</p>
                       </div>
                     )}
                   </div>

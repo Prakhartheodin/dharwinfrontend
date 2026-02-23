@@ -741,22 +741,40 @@ const OffersPlacement = () => {
         accessor: 'step',
         Cell: ({ row }: any) => {
           const offer = row.original
-          if (offer.offerStatus !== 'Accepted') return null
-          if (offer.placementStatus === 'Pending') {
+          if (offer.offerStatus !== 'Accepted') {
+            return (
+              <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+                Offer
+              </span>
+            )
+          }
+          const status = offer.placementStatus
+          if (status === 'Pending') {
             return (
               <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-md text-xs font-medium">
                 Pre-boarding
               </span>
             )
           }
-          if (offer.placementStatus === 'Joined') {
+          if (status === 'Joined') {
             return (
               <span className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
                 Onboarding
               </span>
             )
           }
-          return null
+          if (status === 'Deferred' || status === 'Cancelled') {
+            return (
+              <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+                {status}
+              </span>
+            )
+          }
+          return (
+            <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+              Pre-boarding
+            </span>
+          )
         },
       },
       {

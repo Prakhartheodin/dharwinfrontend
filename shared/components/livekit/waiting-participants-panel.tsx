@@ -58,8 +58,8 @@ export function WaitingParticipantsPanel({
 
   useEffect(() => {
     fetchWaitingParticipants();
-    // Poll for updates every 3 seconds
-    const interval = setInterval(fetchWaitingParticipants, 3000);
+    // Poll for updates every 5 seconds (was 3s - reduces load and potential reconnect triggers)
+    const interval = setInterval(fetchWaitingParticipants, 5000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomName, hostEmail]);

@@ -11,7 +11,6 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",
-  "/ats/job-applications": "ats.candidates:",
   "/ats/offers-placement": "ats.offers:",
   "/ats/pre-boarding": "ats.pre-boarding:",
   "/ats/onboarding": "ats.onboarding:",
@@ -40,6 +39,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/communication/email": "communication.emails:",
   "/communication/chats": "communication.chats:",
   "/communication/filemanager": "communication.files-storage:",
+  "/communication/recordings": "meetings",
 };
 
 /** Path prefixes that require permission, sorted by length descending for longest-match. */

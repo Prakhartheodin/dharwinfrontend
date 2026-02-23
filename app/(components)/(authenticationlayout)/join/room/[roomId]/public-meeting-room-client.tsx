@@ -17,8 +17,8 @@ import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-pa
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
-const INITIAL_RECONNECT_DELAY = 1000;
-const MAX_RECONNECT_DELAY = 10000;
+const INITIAL_RECONNECT_DELAY = 3000;  // Longer initial delay to let network stabilize
+const MAX_RECONNECT_DELAY = 20000;
 
 function PublicRoomContent({
   onLeave,
@@ -155,8 +155,8 @@ function PublicRoomContent({
     };
 
     fetchWaitingParticipants();
-    // Poll every 3 seconds to get updated waiting list
-    const interval = setInterval(fetchWaitingParticipants, 3000);
+    // Poll every 5 seconds (reduces API load and potential reconnect triggers)
+    const interval = setInterval(fetchWaitingParticipants, 5000);
     return () => clearInterval(interval);
   }, [roomName, waitingIds]);
 
@@ -462,6 +462,9 @@ function PublicRoomContent({
           background: #202124;
           border-top-color: rgba(255,255,255,0.12);
         }
+        .room-meeting-container .recording-control-bar-placement {
+          padding: 0 0.5rem;
+        }
         .room-meeting-container .lk-participant-tile {
           min-height: 120px;
         }
@@ -472,6 +475,10 @@ function PublicRoomContent({
             padding-right: max(0.75rem, env(safe-area-inset-right));
             padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
           }
+          .room-meeting-container .recording-control-bar-placement {
+            right: calc(70px + max(0.75rem, env(safe-area-inset-right))) !important;
+            bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
+          }
           .room-meeting-container .lk-grid-layout {
             grid-gap: 0.25rem;
             padding: 0.25rem;
@@ -481,17 +488,23 @@ function PublicRoomContent({
       <div className="room-meeting-container relative flex flex-col h-full min-h-0 w-full">
         <VideoConference />
         <RoomAudioRenderer />
-        {isHost && (
-          <div
-            className="absolute top-4 right-4 z-[1000] flex flex-col gap-2"
-            style={{ maxWidth: "400px" }}
+        <div
+          className="recording-control-bar-placement"
+            style={{
+              position: "absolute",
+              bottom: "max(0.5rem, env(safe-area-inset-bottom))",
+              right: "calc(80px + max(1rem, env(safe-area-inset-right)))",
+              zIndex: 1000,
+              display: "flex",
+              alignItems: "center",
+            }}
           >
             <RecordingButton
               roomName={roomName}
               hostEmail={participantEmail || undefined}
+              controlBar
             />
           </div>
-        )}
         {isHost && (
           <div
             className="absolute top-4 left-4 z-[1000]"
@@ -813,8 +826,8 @@ export default function PublicMeetingRoomClient() {
       }
     };
     
-    // Start polling
-    admissionPollRef.current = setInterval(checkAdmission, 3000);
+    // Start polling (every 5s to reduce load)
+    admissionPollRef.current = setInterval(checkAdmission, 5000);
     // Also check immediately
     checkAdmission();
     

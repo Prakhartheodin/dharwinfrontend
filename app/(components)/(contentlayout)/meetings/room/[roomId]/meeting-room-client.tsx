@@ -19,8 +19,8 @@ import { updateMeeting } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
-const INITIAL_RECONNECT_DELAY = 1000; // 1 second
-const MAX_RECONNECT_DELAY = 10000; // 10 seconds
+const INITIAL_RECONNECT_DELAY = 3000;
+const MAX_RECONNECT_DELAY = 20000; // 10 seconds
 
 function RoomContent({
   onLeave,
@@ -187,8 +187,8 @@ function RoomContent({
     };
 
     fetchWaitingParticipants();
-    // Poll every 3 seconds to get updated waiting list
-    const interval = setInterval(fetchWaitingParticipants, 3000);
+    // Poll every 5 seconds
+    const interval = setInterval(fetchWaitingParticipants, 5000);
     return () => clearInterval(interval);
   }, [roomName]);
 
@@ -465,18 +465,19 @@ function RoomContent({
       <div className="room-meeting-container" style={{ position: "relative" }}>
         <VideoConference />
         <RoomAudioRenderer />
-      {isHost && (
-        <div
-          style={{
-            position: "absolute",
-            top: "16px",
-            right: "16px",
-            zIndex: 1000,
-          }}
-        >
-          <RecordingButton roomName={roomName} />
-        </div>
-      )}
+      <div
+        className="recording-control-bar-placement"
+        style={{
+          position: "absolute",
+          bottom: "max(0.5rem, env(safe-area-inset-bottom))",
+          right: "calc(80px + max(1rem, env(safe-area-inset-right)))",
+          zIndex: 1000,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <RecordingButton roomName={roomName} controlBar />
+      </div>
       {isHost && (
         <div
           style={{
