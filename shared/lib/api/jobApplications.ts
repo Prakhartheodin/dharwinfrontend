@@ -44,12 +44,32 @@ export async function getJobApplicationById(id: string): Promise<JobApplication>
   return data;
 }
 
+export interface CreateJobApplicationPayload {
+  job: string;
+  candidate: string;
+  status?: JobApplicationStatus;
+  coverLetter?: string | null;
+  notes?: string | null;
+}
+
+export async function createJobApplication(payload: CreateJobApplicationPayload): Promise<JobApplication> {
+  const { data } = await apiClient.post<JobApplication>("/job-applications", payload);
+  return data;
+}
+
 export interface UpdateJobApplicationStatusPayload {
-  status: JobApplicationStatus;
+  job?: string;
+  candidate?: string;
+  status?: JobApplicationStatus;
+  coverLetter?: string | null;
   notes?: string | null;
 }
 
 export async function updateJobApplicationStatus(id: string, payload: UpdateJobApplicationStatusPayload): Promise<JobApplication> {
   const { data } = await apiClient.patch<JobApplication>(`/job-applications/${id}`, payload);
   return data;
+}
+
+export async function deleteJobApplication(id: string): Promise<void> {
+  await apiClient.delete(`/job-applications/${id}`);
 }
