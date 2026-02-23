@@ -121,7 +121,7 @@ const Onboarding = () => {
                               const pid = (p as { _id?: string; id?: string })._id ?? (p as { id?: string }).id
                               const placementId = typeof pid === 'string' ? pid : ''
                               return isValidMongoId(placementId) ? (
-                                <Link href={`/ats/onboarding/edit/${placementId}`} className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
+                                <Link href={`/ats/onboarding/edit?id=${placementId}`} className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
                                   Edit HRMS
                                 </Link>
                               ) : null

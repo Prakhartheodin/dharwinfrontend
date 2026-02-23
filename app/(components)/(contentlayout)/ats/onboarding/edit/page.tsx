@@ -1,17 +1,20 @@
 "use client"
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import React, { Suspense } from 'react'
+import EditOnboardingClient from './[id]/EditOnboardingClient'
+import { useSearchParams } from 'next/navigation'
 
-export default function EditOnboardingRedirect() {
-  const router = useRouter()
-  useEffect(() => {
-    router.replace('/ats/onboarding')
-  }, [router])
+function EditOnboardingContent() {
+  const searchParams = useSearchParams()
+  const placementId = searchParams?.get('id') || searchParams?.get('placementId') || ''
+  return <EditOnboardingClient placementIdFromQuery={placementId} />
+}
+
+/** Edit HRMS page - uses query param ?id= for static export compatibility (dynamic [id] routes 404 in production). */
+export default function EditOnboardingPage() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[200px] gap-4">
-      <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-      <p className="text-sm text-gray-500">Redirecting to Onboarding...</p>
-    </div>
+    <Suspense fallback={<div className="flex justify-center py-12"><div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" /></div>}>
+      <EditOnboardingContent />
+    </Suspense>
   )
 }

@@ -80,7 +80,7 @@ function meetingToTableRow(m: Meeting): InterviewTableRow {
     },
     status: m.status || 'Scheduled',
     interviewResult: (m.interviewResult || 'pending') as 'pending' | 'selected' | 'rejected',
-    publicMeetingUrl: m.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room/${encodeURIComponent(m.meetingId || '')}` : ''),
+    publicMeetingUrl: m.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(m.meetingId || '')}` : ''),
     meetingId: m.meetingId || '',
   }
 }
@@ -166,7 +166,7 @@ const Interviews = () => {
   }, [])
 
   const copyInterviewLink = useCallback(async (row: InterviewTableRow) => {
-    const url = row.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room/${encodeURIComponent(row.meetingId)}` : '')
+    const url = row.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(row.meetingId)}` : '')
     if (!url) return
     try {
       await navigator.clipboard.writeText(url)

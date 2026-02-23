@@ -12,10 +12,15 @@ import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 const isValidMongoId = (id: unknown): id is string =>
   typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id)
 
-export default function EditOnboardingClient() {
+interface EditOnboardingClientProps {
+  /** When using static route /ats/onboarding/edit?id=xxx (deployed), id comes from query. */
+  placementIdFromQuery?: string
+}
+
+export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboardingClientProps = {}) {
   const router = useRouter()
   const params = useParams()
-  const rawId = params?.id
+  const rawId = placementIdFromQuery ?? params?.id
   const placementId = isValidMongoId(rawId) ? rawId : null
   const { canEdit } = useFeaturePermissions('ats.onboarding')
   const [loading, setLoading] = useState(true)
