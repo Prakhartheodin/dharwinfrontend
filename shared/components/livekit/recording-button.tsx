@@ -10,9 +10,11 @@ interface RecordingButtonProps {
   hostEmail?: string;
   /** When true, renders compact style matching control bar (mic, camera, etc.) */
   controlBar?: boolean;
+  /** Called when recording has successfully started */
+  onRecordingStarted?: () => void;
 }
 
-export function RecordingButton({ roomName, hostEmail, controlBar = false }: RecordingButtonProps) {
+export function RecordingButton({ roomName, hostEmail, controlBar = false, onRecordingStarted }: RecordingButtonProps) {
   const room = useRoomContext();
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,6 +56,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false }: Rec
         : await livekitApi.startRecording(roomName);
       setIsRecording(true);
       setEgressId(data.egressId);
+      onRecordingStarted?.();
     } catch (err: any) {
       console.error("Error starting recording:", err);
       const errorMessage =

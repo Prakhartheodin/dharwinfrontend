@@ -291,6 +291,17 @@ const Interviews = () => {
     }
   }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal])
 
+  const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
+    if (!row.id) return
+    if (!confirm(`Cancel this interview for ${row.candidate?.name || 'candidate'}? The join link will be disabled.`)) return
+    try {
+      await updateMeeting(row.id, { status: 'cancelled' })
+      await fetchMeetings()
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to cancel meeting')
+    }
+  }, [fetchMeetings])
+
   const handleMoveToPreboarding = useCallback(async (row: InterviewTableRow) => {
     if (!row.id || row.interviewResult !== 'selected') return
     setMoveToPreboardingId(row.id)
@@ -627,25 +638,27 @@ const Interviews = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
-                title="Copy interview link"
-                onClick={() => copyInterviewLink(row.original)}
-              >
-                {copiedLinkId === row.original.id ? (
-                  <i className="ri-check-line text-success"></i>
-                ) : (
-                  <i className="ri-links-line"></i>
-                )}
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  {copiedLinkId === row.original.id ? 'Copied!' : 'Copy link'}
-                </span>
-              </button>
-            </div>
+            {row.original.status?.toLowerCase() !== 'cancelled' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
+                  title="Copy interview link"
+                  onClick={() => copyInterviewLink(row.original)}
+                >
+                  {copiedLinkId === row.original.id ? (
+                    <i className="ri-check-line text-success"></i>
+                  ) : (
+                    <i className="ri-links-line"></i>
+                  )}
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    {copiedLinkId === row.original.id ? 'Copied!' : 'Copy link'}
+                  </span>
+                </button>
+              </div>
+            )}
             {row.original.status?.toLowerCase() === 'ended' && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
@@ -700,39 +713,28 @@ const Interviews = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
-                title="Reschedule"
-              >
-                <i className="ri-calendar-event-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Reschedule
-                </span>
-              </button>
-            </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
-                title="Cancel Interview"
-              >
-                <i className="ri-close-circle-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  Cancel Interview
-                </span>
-              </button>
-            </div>
+            {row.original.status?.toLowerCase() !== 'cancelled' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                  title="Cancel Interview"
+                  onClick={() => handleCancelMeeting(row.original)}
+                >
+                  <i className="ri-close-circle-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Cancel Interview
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         ),
       },
     ],
-    [selectedRows, openResultModal, copyInterviewLink, copiedLinkId, openEditModal, handleMoveToPreboarding, moveToPreboardingId]
+    [selectedRows, openResultModal, copyInterviewLink, copiedLinkId, openEditModal, handleMoveToPreboarding, moveToPreboardingId, handleCancelMeeting]
   )
 
   // Map API meetings to table rows
@@ -1478,14 +1480,16 @@ const Interviews = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="schedule-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                        Duration (minutes)
+                        Duration (minutes) <span className="text-danger">*</span>
                       </label>
                       <input
                         type="number"
                         id="schedule-duration"
+                        name="schedule-duration"
                         min={1}
                         max={480}
                         defaultValue={60}
+                        required
                         className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                       />
                     </div>
@@ -1777,10 +1781,10 @@ const Interviews = () => {
                               href={rec.playbackUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="ti-btn ti-btn-sm ti-btn-success !py-1.5 !px-3 !text-xs font-medium"
+                              className="inline-flex items-center justify-center gap-1.5 rounded-md bg-success text-white !py-1.5 !px-3 !text-xs font-medium whitespace-nowrap hover:bg-success/90"
                             >
-                              <i className="ri-play-line me-1 align-middle"></i>
-                              Play
+                              <i className="ri-play-line"></i>
+                              <span>Play</span>
                             </a>
                           ) : (
                             <span className="text-xs text-danger">{rec.playbackError || 'Playback unavailable'}</span>
@@ -1960,8 +1964,8 @@ const Interviews = () => {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="edit-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Duration (minutes)</label>
-                    <input type="number" id="edit-duration" min={1} max={480} defaultValue={editMeeting.durationMinutes ?? 60} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                    <label htmlFor="edit-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Duration (minutes) <span className="text-danger">*</span></label>
+                    <input type="number" id="edit-duration" name="edit-duration" min={1} max={480} defaultValue={editMeeting.durationMinutes ?? 60} required className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                   </div>
                   <div>
                     <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">Interview type</label>

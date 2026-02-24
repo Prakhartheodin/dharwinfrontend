@@ -7,6 +7,7 @@ import {
   useRoomContext,
   useParticipants,
 } from "@livekit/components-react";
+import { createPortal } from "react-dom";
 import "@livekit/components-styles";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
@@ -64,7 +65,8 @@ function RoomContent({
       if (reason === DisconnectReason.CLIENT_INITIATED) {
         console.log("Client initiated disconnect, not reconnecting");
         isManuallyLeavingRef.current = true;
-        setTimeout(() => onLeave(), 500);
+        setMeetingEndedToast(true);
+        setTimeout(() => onLeave(), 2000);
         return;
       }
 
@@ -93,6 +95,7 @@ function RoomContent({
       } else {
         console.error("Max reconnection attempts reached");
         setReconnecting(false);
+        setMeetingEndedToast(true);
         setTimeout(() => {
           if (!isManuallyLeavingRef.current) {
             onLeave();
@@ -165,6 +168,44 @@ function RoomContent({
   }, [room, initialAudioEnabled, initialVideoEnabled]);
 
   const participants = useParticipants();
+  const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
+  const [recordingToast, setRecordingToast] = useState(false);
+  const [meetingEndedToast, setMeetingEndedToast] = useState(false);
+
+  // Inject recording button into control bar (beside screen share and chat)
+  useEffect(() => {
+    const tryInject = () => {
+      const bar = document.querySelector(".lk-control-bar");
+      if (!bar) return false;
+      let slot = document.getElementById("recording-button-slot");
+      if (!slot) {
+        slot = document.createElement("div");
+        slot.id = "recording-button-slot";
+        slot.className = "recording-control-inline flex items-center";
+        slot.style.cssText = "display: flex; align-items: center; margin: 0 0.25rem;";
+        const leaveBtn = bar.querySelector("[data-lk-leave], [data-lk-source='leave']") || bar.lastElementChild;
+        if (leaveBtn) {
+          bar.insertBefore(slot, leaveBtn);
+        } else {
+          bar.appendChild(slot);
+        }
+      }
+      setRecordingSlot(slot);
+      return true;
+    };
+    if (tryInject()) return;
+    const timer = setInterval(() => {
+      if (tryInject()) clearInterval(timer);
+    }, 200);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Recording started toast (auto-dismiss)
+  useEffect(() => {
+    if (!recordingToast) return;
+    const t = setTimeout(() => setRecordingToast(false), 3000);
+    return () => clearTimeout(t);
+  }, [recordingToast]);
 
   useEffect(() => {
     if (waitingParticipantIdentities) {
@@ -465,19 +506,37 @@ function RoomContent({
       <div className="room-meeting-container" style={{ position: "relative" }}>
         <VideoConference />
         <RoomAudioRenderer />
-      <div
-        className="recording-control-bar-placement"
-        style={{
-          position: "absolute",
-          bottom: "max(0.5rem, env(safe-area-inset-bottom))",
-          right: "calc(80px + max(1rem, env(safe-area-inset-right)))",
-          zIndex: 1000,
-          display: "flex",
-          alignItems: "center",
-        }}
-      >
-        <RecordingButton roomName={roomName} controlBar />
-      </div>
+        {recordingSlot &&
+          createPortal(
+            <RecordingButton
+              roomName={roomName}
+              controlBar
+              onRecordingStarted={() => setRecordingToast(true)}
+            />,
+            recordingSlot
+          )}
+        {recordingToast && (
+          <div
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-success/95 text-white text-sm font-medium shadow-lg"
+            role="alert"
+          >
+            <span className="flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
+              Recording has started in meeting
+            </span>
+          </div>
+        )}
+        {meetingEndedToast && (
+          <div
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-gray-700/95 text-white text-sm font-medium shadow-lg"
+            role="alert"
+          >
+            <span className="flex items-center gap-2">
+              <i className="ri-checkbox-circle-line text-lg" />
+              Meeting ended
+            </span>
+          </div>
+        )}
       {isHost && (
         <div
           style={{

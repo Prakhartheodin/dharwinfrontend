@@ -25,7 +25,7 @@ export interface CreateMeetingPayload {
   description?: string;
   scheduledAt: string; // ISO date string
   timezone?: string;
-  durationMinutes?: number;
+  durationMinutes: number; // Required for auto-ending meetings after duration
   maxParticipants?: number;
   allowGuestJoin?: boolean;
   requireApproval?: boolean;

@@ -170,20 +170,20 @@ export default function RecordingsPage() {
                                       href={rec.playbackUrl}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="ti-btn ti-btn-sm ti-btn-success !py-1.5 !px-3"
+                                      className="inline-flex items-center justify-center gap-1.5 rounded-md bg-success text-white !py-1.5 !px-3 !text-xs font-medium whitespace-nowrap hover:bg-success/90"
                                     >
-                                      <i className="ri-play-line me-1" />
-                                      Play
+                                      <i className="ri-play-line" />
+                                      <span>Play</span>
                                     </a>
                                     <a
                                       href={rec.playbackUrl}
                                       download={getFilename(rec)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="ti-btn ti-btn-sm ti-btn-outline-primary !py-1.5 !px-3"
+                                      className="inline-flex items-center justify-center gap-1.5 rounded-md border border-primary text-primary !py-1.5 !px-3 !text-xs font-medium whitespace-nowrap hover:bg-primary/10"
                                     >
-                                      <i className="ri-download-line me-1" />
-                                      Save
+                                      <i className="ri-download-line" />
+                                      <span>Save</span>
                                     </a>
                                   </>
                                 ) : (
