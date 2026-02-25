@@ -362,7 +362,7 @@ export const MenuItems: any = [
     icon: TeamsIcon,
     title: "Teams",
             type: "link",
-    path: "/pages/team",
+    path: "/project-management/teams",
             active: false,
             selected: false,
             dirchange: false, 
