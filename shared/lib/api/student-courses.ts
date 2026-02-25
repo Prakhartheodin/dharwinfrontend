@@ -330,11 +330,27 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
       videoFile?: { url?: string };
       pdfDocument?: { url?: string };
       blogContent?: string;
-      quiz?: unknown;
+      quiz?: { questions?: unknown[] };
+      quizData?: { questions?: unknown[] };
       testLinkOrReference?: string;
-      essay?: { questions: { questionText?: string }[] };
+      essay?: { questions: { questionText?: string; expectedAnswer?: string }[] };
+      essayData?: { questions?: { questionText?: string; expectedAnswer?: string }[] };
       difficulty?: string;
+      sectionTitle?: string;
+      sectionIndex?: number;
     };
+    const quiz =
+      item.quiz?.questions != null
+        ? item.quiz
+        : item.quizData?.questions != null
+          ? { questions: item.quizData.questions }
+          : item.quiz;
+    const essay =
+      item.essay?.questions != null
+        ? item.essay
+        : item.essayData?.questions != null
+          ? { questions: item.essayData.questions }
+          : item.essay;
     return {
       id: item.playlistItemId ?? String(i),
       title: item.title ?? `Item ${i + 1}`,
@@ -344,9 +360,9 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
       videoFile: item.videoFile,
       pdfDocument: item.pdfDocument,
       blogContent: item.blogContent,
-      quiz: item.quiz,
+      quiz,
       testLinkOrReference: item.testLinkOrReference,
-      essay: item.essay,
+      essay,
       difficulty: item.difficulty,
       isCompleted: item.isCompleted,
     };
@@ -358,9 +374,36 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
     duration: p.duration != null ? `${p.duration} min` : undefined,
     isCompleted: (p as PlaylistItemWithProgress).isCompleted,
   }));
-  const courseSections = [
-    { id: "default", title: "Course content", lectures },
-  ];
+
+  const sectionMap = new Map<
+    string,
+    { id: string; title: string; lectures: { id: string; title: string; duration?: string; isCompleted?: boolean }[] }
+  >();
+  const sectionOrder: string[] = [];
+  playlist.forEach((p, i) => {
+    const item = p as { sectionTitle?: string; sectionIndex?: number };
+    const sectionTitleTrimmed = item.sectionTitle?.trim();
+    const key =
+      sectionTitleTrimmed !== undefined && sectionTitleTrimmed !== ""
+        ? sectionTitleTrimmed
+        : item.sectionIndex != null
+          ? `section-${item.sectionIndex}`
+          : "__none__";
+    const lecture = lectures[i];
+    if (!sectionMap.has(key)) {
+      const id =
+        sectionTitleTrimmed !== undefined && sectionTitleTrimmed !== ""
+          ? key.replace(/\s+/g, "-").slice(0, 80)
+          : item.sectionIndex != null
+            ? `section-${item.sectionIndex}`
+            : "default";
+      const title = sectionTitleTrimmed ?? (item.sectionIndex != null ? `Section ${item.sectionIndex + 1}` : "Course content");
+      sectionOrder.push(key);
+      sectionMap.set(key, { id, title, lectures: [] });
+    }
+    sectionMap.get(key)!.lectures.push(lecture);
+  });
+  const courseSections = sectionOrder.map((key) => sectionMap.get(key)!);
 
   const description = module.shortDescription ?? "";
   const learningPoints = description
