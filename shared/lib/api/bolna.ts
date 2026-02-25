@@ -111,7 +111,7 @@ export async function getBolnaCallRecords(
 export async function syncBolnaCallRecords(
   limit?: number
 ): Promise<SyncCallRecordsResponse> {
-  const { data } = await apiClient.post<SyncCallRecordsResponse>("/bolna/call-records/sync", null, {
+  const { data } = await apiClient.post<SyncCallRecordsResponse>("/bolna/call-records/sync", {}, {
     params: limit ? { limit } : undefined,
   });
   return data;

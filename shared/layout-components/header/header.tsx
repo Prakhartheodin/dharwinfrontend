@@ -1,6 +1,6 @@
 "use client"
 import Link from 'next/link'
-import React, { Fragment, useEffect, useState } from 'react';
+import React, { Fragment, useEffect, useState, useCallback } from 'react';
 import { ThemeChanger } from "../../redux/action";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
@@ -8,6 +8,13 @@ import Modalsearch from '../modal-search/modalsearch';
 import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
 import { ROUTES } from '@/shared/lib/constants';
+import {
+  getNotifications,
+  getUnreadCount,
+  markAsRead,
+  openNotificationStream,
+  type Notification,
+} from '@/shared/lib/api/notifications';
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
@@ -72,31 +79,83 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     setCartItemCount(updatedCart.length);
   };
 
-  //Notifications
-
-  const span1 = <span className="text-warning">ID: #1116773</span>
-  const span2 = <span className="text-success">ID: 7731116</span>
-
- const span3 = <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
-
- const notifydata = [
-  { id: 1, class: "Your Order Has Been Shipped", data: "Order No: 123456 Has Shipped To Your Delivery Address", icon: "gift", class2: "", color: "!bg-primary/10",color2: "primary"},
-  { id: 2, class: "Discount Available", data: "Discount Available On Selected Products", icon: "discount-2", class2: "", color: "!bg-secondary/10",color2:"secondary" },
-  { id: 3, class: "Account Has Been Verified", data: "Your Account Has Been Verified Sucessfully", icon: "user-check", class2: "", color: "!bg-pinkmain/10",color2: "pink"},
-  { id: 4, class: "Order Placed", data: "Order Placed Successfully", icon: "circle-check", class2: span1, color: "!bg-warning/10",color2: "warning"},
-  { id: 5, class: "Order Delayed", data: "Order Delayed Unfortunately", icon: "clock", class2: span2, color: "!bg-success/10",color2: "success"},
-]
-
-  const [notifications, setNotifications] = useState([...notifydata]);
-
-  const handleNotificationClose = (index: number,event: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
-    if (event) {
-      event.stopPropagation();
-    }
-    const updatedNotifications = [...notifications];
-    updatedNotifications.splice(index, 1);
-    setNotifications(updatedNotifications);
+  // Notifications: map API shape to existing UI shape { id, class, data, icon, class2, color, color2 }
+  const typeToIcon: Record<string, string> = {
+    leave: 'clock', task: 'circle-check', offer: 'gift', meeting: 'video', meeting_reminder: 'video', course: 'book',
+    certificate: 'certificate', job_application: 'briefcase', project: 'folder', account: 'user-check',
+    recruiter: 'user', general: 'bell',
   };
+  const typeToColor: Record<string, string> = {
+    leave: 'primary', task: 'success', offer: 'secondary', meeting: 'primary', meeting_reminder: 'primary', course: 'pinkmain',
+    certificate: 'warning', job_application: 'secondary', project: 'primary', account: 'success',
+    recruiter: 'pinkmain', general: 'secondary',
+  };
+  const mapNotificationToItem = (n: Notification) => ({
+    id: n._id,
+    class: n.title,
+    data: n.message,
+    icon: typeToIcon[n.type] || 'bell',
+    class2: '',
+    color: `!bg-${typeToColor[n.type] || 'secondary'}/10`,
+    color2: typeToColor[n.type] || 'secondary',
+    _id: n._id,
+  });
+
+  const [notificationItems, setNotificationItems] = useState<Array<ReturnType<typeof mapNotificationToItem>>>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const [listRes, count] = await Promise.all([
+        getNotifications({ limit: 5, unreadOnly: true }),
+        getUnreadCount(),
+      ]);
+      setNotificationItems((listRes.results || []).map(mapNotificationToItem));
+      setUnreadCount(count);
+    } catch (_) {
+      setNotificationItems([]);
+      setUnreadCount(0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNotificationItems([]);
+      setUnreadCount(0);
+      return;
+    }
+    loadNotifications();
+    const stream = openNotificationStream((event) => {
+      if (event.type === 'unread_count') setUnreadCount(event.count);
+      if (event.type === 'notification') {
+        setNotificationItems((prev) => [mapNotificationToItem(event.notification), ...prev].slice(0, 5));
+        setUnreadCount((c) => c + 1);
+      }
+    });
+    const onUnreadUpdate = (e: CustomEvent<{ count: number }>) => {
+      setUnreadCount(e.detail?.count ?? 0);
+    };
+    window.addEventListener('dharwin:notifications-unread-count', onUnreadUpdate as EventListener);
+    return () => {
+      stream.close();
+      window.removeEventListener('dharwin:notifications-unread-count', onUnreadUpdate as EventListener);
+    };
+  }, [user?.id, loadNotifications]);
+
+  const handleNotificationClose = async (index: number, event: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+    if (event) event.stopPropagation();
+    const item = notificationItems[index];
+    if (!item?._id) return;
+    try {
+      await markAsRead(item._id);
+      setNotificationItems((prev) => prev.filter((_, i) => i !== index));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch (_) {
+      setNotificationItems((prev) => prev.filter((_, i) => i !== index));
+    }
+  };
+
+  const notifications = notificationItems;
 
 
   //full screen
@@ -432,13 +491,15 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 <button id="dropdown-notification" type="button"
                   className="hs-dropdown-toggle relative ti-dropdown-toggle !p-0 !border-0 flex-shrink-0  !rounded-full !shadow-none align-middle text-xs">
                   <i className="bx bx-bell header-link-icon  text-[1.125rem]"></i>
+                  {unreadCount > 0 && (
                   <span className="flex absolute h-5 w-5 -top-[0.25rem] end-0  -me-[0.6rem]">
                     <span
                       className="animate-slow-ping absolute inline-flex -top-[2px] -start-[2px] h-full w-full rounded-full bg-secondary/40 opacity-75"></span>
                     <span
                       className="relative inline-flex justify-center items-center rounded-full  h-[14.7px] w-[14px] bg-secondary text-[0.625rem] text-white"
-                      id="notification-icon-badge">{notifications.length}</span>
+                      id="notification-icon-badge">{unreadCount}</span>
                   </span>
+                  )}
                 </button>
                 <div className="main-header-dropdown !-mt-3 !p-0 hs-dropdown-menu ti-dropdown-menu bg-white !w-[22rem] border-0 border-defaultborder hidden !m-0"
                   aria-labelledby="dropdown-notification">
@@ -446,12 +507,12 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   <div className="ti-dropdown-header !m-0 !p-4 !bg-transparent flex justify-between items-center">
                     <p className="mb-0 text-[1.0625rem] text-defaulttextcolor font-semibold ">Notifications</p>
                     <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-secondary/10 text-secondary"
-                      id="notifiation-data">{`${notifications.length} Unread`}</span>
+                      id="notifiation-data">{`${unreadCount} Unread`}</span>
                   </div>
                   <div className="dropdown-divider"></div>
                   <ul className="list-none !m-0 !p-0 end-0" id="header-notification-scroll">
                   {notifications.map((idx, index) => (
-                      <li className="ti-dropdown-item dropdown-item" key={Math.random()}>
+                      <li className="ti-dropdown-item dropdown-item" key={idx.id}>
                         <div className="flex items-start">
                           <div className="pe-2">
                             <span
@@ -474,7 +535,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     ))}
                   </ul>
 
-                  <div className={`p-4 empty-header-item1 border-t mt-2 ${notifications.length === 0 ? 'hidden' : 'block'}`}>
+                  <div className={`p-4 empty-header-item1 border-t mt-2 ${notifications.length > 0 ? 'block' : 'hidden'}`}>
                     <div className="grid">
                       <Link href="/pages/notifications/" className="ti-btn ti-btn-primary-full !m-0 w-full p-2">View All</Link>
                     </div>

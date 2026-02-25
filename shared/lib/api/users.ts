@@ -134,6 +134,19 @@ export async function registerCandidateFromInvite(
   return data;
 }
 
+/** Notification email preferences (matches backend user.notificationPreferences). */
+export interface NotificationPreferences {
+  leaveUpdates?: boolean;
+  taskAssignments?: boolean;
+  applicationUpdates?: boolean;
+  offerUpdates?: boolean;
+  meetingInvitations?: boolean;
+  meetingReminders?: boolean;
+  certificates?: boolean;
+  courseUpdates?: boolean;
+  recruiterUpdates?: boolean;
+}
+
 export interface UpdateUserPayload {
   name?: string;
   email?: string;
@@ -145,6 +158,7 @@ export interface UpdateUserPayload {
   domain?: string[];
   location?: string;
   profileSummary?: string;
+  notificationPreferences?: NotificationPreferences;
 }
 
 export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<User> {

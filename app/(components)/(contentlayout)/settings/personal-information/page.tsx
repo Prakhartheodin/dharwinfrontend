@@ -8,6 +8,7 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
 import * as rolesApi from "@/shared/lib/api/roles";
 import * as usersApi from "@/shared/lib/api/users";
+import type { NotificationPreferences } from "@/shared/lib/api/users";
 import type { Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
@@ -63,6 +64,18 @@ export default function PersonalInformationPage() {
   const [changePasswordSuccess, setChangePasswordSuccess] = useState("");
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
 
+  const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
+    leaveUpdates: true,
+    taskAssignments: true,
+    applicationUpdates: true,
+    offerUpdates: true,
+    meetingInvitations: true,
+    meetingReminders: true,
+    certificates: true,
+    courseUpdates: true,
+    recruiterUpdates: true,
+  });
+
   const rolesById = useMemo(() => {
     const map = new Map<string, Role>();
     roles.forEach((r) => map.set(r.id, r));
@@ -113,6 +126,7 @@ export default function PersonalInformationPage() {
       await usersApi.updateUser(user.id, {
         name: fullName || undefined,
         email: trimmedEmail || undefined,
+        notificationPreferences: notificationPrefs,
       });
       await checkAuth();
       setSaveSuccess("Profile updated successfully.");
@@ -196,6 +210,20 @@ export default function PersonalInformationPage() {
     const emailVal = user.email ?? "";
     setEmail(emailVal);
     setUserName(emailVal);
+    const prefs = (user as { notificationPreferences?: NotificationPreferences }).notificationPreferences;
+    if (prefs && typeof prefs === "object") {
+      setNotificationPrefs({
+        leaveUpdates: prefs.leaveUpdates ?? true,
+        taskAssignments: prefs.taskAssignments ?? true,
+        applicationUpdates: prefs.applicationUpdates ?? true,
+        offerUpdates: prefs.offerUpdates ?? true,
+        meetingInvitations: prefs.meetingInvitations ?? true,
+        meetingReminders: prefs.meetingReminders ?? true,
+        certificates: prefs.certificates ?? true,
+        courseUpdates: prefs.courseUpdates ?? true,
+        recruiterUpdates: prefs.recruiterUpdates ?? true,
+      });
+    }
   }, [user]);
 
   return (
@@ -300,6 +328,36 @@ export default function PersonalInformationPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
+          </div>
+        </div>
+
+        <h6 className="font-semibold mb-4 text-[1rem]">Notification preferences</h6>
+        <p className="text-[0.875rem] text-defaulttextcolor/80 mb-4">Choose which email notifications you want to receive. In-app notifications are always enabled.</p>
+        <div className="box border border-defaultborder rounded-lg overflow-hidden mb-6">
+          <div className="box-body px-4 py-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[
+                { key: "leaveUpdates" as const, label: "Leave & attendance updates" },
+                { key: "taskAssignments" as const, label: "Task assignments" },
+                { key: "applicationUpdates" as const, label: "Job application updates" },
+                { key: "offerUpdates" as const, label: "Offer updates" },
+                { key: "meetingInvitations" as const, label: "Meeting invitations" },
+                { key: "meetingReminders" as const, label: "Meeting reminders" },
+                { key: "certificates" as const, label: "Certificates" },
+                { key: "courseUpdates" as const, label: "Course / training updates" },
+                { key: "recruiterUpdates" as const, label: "Recruiter assignments" },
+              ].map(({ key, label }) => (
+                <label key={key} className="form-check flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="form-check-input"
+                    checked={notificationPrefs[key] !== false}
+                    onChange={(e) => setNotificationPrefs((p) => ({ ...p, [key]: e.target.checked }))}
+                  />
+                  <span className="text-[0.9375rem] text-defaulttextcolor">{label}</span>
+                </label>
+              ))}
+            </div>
           </div>
         </div>
 
