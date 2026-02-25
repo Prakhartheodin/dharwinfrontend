@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * Course learn page – tabs match training module content types: Overview, Video, Blog, Quiz, PDF, Test.
+ * Course learn page – tabs match training module content types: Overview, Video, Blog, Quiz, PDF, Q&A.
  */
 import Seo from "@/shared/layout-components/seo/seo"
 import React, { Fragment, useState, useMemo, useRef, useEffect } from "react"
@@ -12,6 +12,7 @@ import {
   markCourseItemComplete,
   updateLastAccessed,
   submitQuizAttempt,
+  submitEssayAttempt,
   type QuizSubmitAnswer,
 } from "@/shared/lib/api/student-courses"
 
@@ -146,7 +147,117 @@ function QuizRenderer({
   )
 }
 
-type LearnTabId = "overview" | "video" | "blog" | "quiz" | "pdf" | "test"
+function EssayRenderer({
+  essay,
+  playlistItemId,
+  studentId,
+  moduleId,
+  isCompleted,
+  onProgressUpdate,
+}: {
+  essay: unknown
+  playlistItemId: string
+  studentId: string
+  moduleId: string
+  isCompleted?: boolean
+  onProgressUpdate: () => Promise<void>
+}) {
+  const e = essay as { questions?: { questionText?: string; expectedAnswer?: string }[] } | null
+  const questions = e?.questions ?? []
+  const [answers, setAnswers] = useState<Record<number, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [result, setResult] = useState<{
+    percentage: number
+    totalQuestions: number
+    correctAnswers?: number
+    answers?: { questionIndex: number; score?: number; feedback?: string }[]
+  } | null>(null)
+
+  if (questions.length === 0) return <p className="text-[#6a6f73] dark:text-white/60">No Q&A questions.</p>
+
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      const attempt = (await submitEssayAttempt(studentId, moduleId, playlistItemId, {
+        answers: questions.map((_, i) => ({ questionIndex: i, typedAnswer: answers[i] ?? "" })),
+      })) as {
+        score?: { percentage?: number; totalQuestions?: number; correctAnswers?: number }
+        answers?: { questionIndex: number; score?: number; feedback?: string }[]
+      }
+      setSubmitted(true)
+      if (attempt?.score?.percentage != null) {
+        setResult({
+          percentage: attempt.score.percentage,
+          totalQuestions: attempt.score.totalQuestions ?? questions.length,
+          correctAnswers: attempt.score.correctAnswers,
+          answers: attempt.answers,
+        })
+      }
+      await onProgressUpdate()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (isCompleted || submitted) {
+    return (
+      <div className="space-y-4">
+        <p className="text-emerald-600 dark:text-emerald-400 font-medium">Q&A submitted.</p>
+        {result && (
+          <div className="p-4 rounded-lg border border-defaultborder bg-black/5 dark:bg-white/5">
+            <div className="text-[1rem] font-semibold text-[#1c1d1f] dark:text-white mb-2">
+              Score: {result.percentage}%
+            </div>
+            {result.answers?.map((a) => {
+              const q = questions[a.questionIndex]
+              if (!q || a.feedback == null) return null
+              return (
+                <div key={a.questionIndex} className="mt-3 text-[0.875rem]">
+                  <p className="font-medium text-[#1c1d1f] dark:text-white">
+                    Q{a.questionIndex + 1}: {a.score != null ? `${a.score}/100` : "—"}
+                  </p>
+                  {a.feedback && (
+                    <p className="text-[#6a6f73] dark:text-white/70 mt-1">{a.feedback}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {questions.map((q, i) => (
+        <div key={i} className="space-y-2">
+          <p className="font-medium text-[#1c1d1f] dark:text-white">
+            {i + 1}. {q.questionText ?? ""}
+          </p>
+          <textarea
+            className="form-control w-full rounded border border-[#d1d7dc] dark:border-white/20 bg-white dark:bg-white/5 text-[#1c1d1f] dark:text-white p-3"
+            rows={6}
+            placeholder="Type your answer..."
+            value={answers[i] ?? ""}
+            onChange={(e) => setAnswers((prev) => ({ ...prev, [i]: e.target.value }))}
+          />
+        </div>
+      ))}
+      <button
+        type="button"
+        className="ti-btn ti-btn-primary"
+        onClick={handleSubmit}
+        disabled={submitting}
+      >
+        {submitting ? "Submitting…" : "Submit Q&A"}
+      </button>
+    </div>
+  )
+}
+
+type LearnTabId = "overview" | "video" | "blog" | "quiz" | "pdf" | "essay"
 
 const TAB_CONFIG: { id: LearnTabId; label: string; contentTypes?: PlaylistItemContentType[] }[] = [
   { id: "overview", label: "Overview" },
@@ -154,7 +265,7 @@ const TAB_CONFIG: { id: LearnTabId; label: string; contentTypes?: PlaylistItemCo
   { id: "blog", label: "Blog", contentTypes: ["blog"] },
   { id: "quiz", label: "Quiz", contentTypes: ["quiz"] },
   { id: "pdf", label: "PDF / Document", contentTypes: ["pdf-document"] },
-  { id: "test", label: "Test", contentTypes: ["test"] },
+  { id: "essay", label: "Q&A", contentTypes: ["essay"] },
 ]
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
@@ -733,7 +844,7 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
       blog: playlistItems.filter((p) => p.contentType === "blog"),
       quiz: playlistItems.filter((p) => p.contentType === "quiz"),
       pdf: playlistItems.filter((p) => p.contentType === "pdf-document"),
-      test: playlistItems.filter((p) => p.contentType === "test"),
+      essay: playlistItems.filter((p) => p.contentType === "essay"),
     }
     return byTab
   }, [playlistItems])
@@ -814,7 +925,7 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
       <div className="flex flex-col lg:flex-row min-h-[calc(100vh-3.5rem)]">
         {/* Left: video + tabs + main body (this content scrolls the page; sidebar stays fixed) */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#000] dark:bg-black">
-          {/* Content viewer: video / blog / quiz / PDF / test based on selected sidebar item */}
+          {/* Content viewer: video / blog / quiz / PDF / Q&A based on selected sidebar item */}
           <div className="relative w-full aspect-video bg-[#1c1d1f] dark:bg-black flex flex-col">
             {!selectedItem && (
               <div className="absolute inset-0 flex items-center justify-center bg-[#1c1d1f]">
@@ -893,7 +1004,22 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
             )}
             {selectedItem?.contentType === "quiz" && (
               <div className="absolute inset-0 overflow-auto bg-white dark:bg-[#1c1d1f] p-4 lg:p-6">
-                <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white mb-4">{selectedItem.title}</h2>
+                <div className="flex items-center gap-2 mb-4">
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">{selectedItem.title}</h2>
+                  {selectedItem.difficulty && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        selectedItem.difficulty === "easy"
+                          ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400"
+                          : selectedItem.difficulty === "hard"
+                            ? "bg-red-500/20 text-red-600 dark:text-red-400"
+                            : "bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                      }`}
+                    >
+                      {selectedItem.difficulty}
+                    </span>
+                  )}
+                </div>
                 <QuizRenderer
                   quiz={selectedItem.quiz}
                   playlistItemId={selectedItem.id}
@@ -942,29 +1068,22 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                 </div>
               </div>
             )}
-            {selectedItem?.contentType === "test" && (
-              <div className="absolute inset-0 overflow-auto bg-white dark:bg-[#1c1d1f] p-4 lg:p-6 flex flex-col items-center justify-center text-center">
-                <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white mb-2">{selectedItem.title}</h2>
-                {selectedItem.testLinkOrReference && /^https?:\/\//i.test(selectedItem.testLinkOrReference) ? (
-                  <a href={selectedItem.testLinkOrReference} target="_blank" rel="noopener noreferrer" className="ti-btn ti-btn-primary mt-4">
-                    Take test (opens in new tab)
-                  </a>
-                ) : (
-                  <p className="text-[0.9375rem] text-[#6a6f73] dark:text-white/70 mt-2">{selectedItem.testLinkOrReference || "Complete this test as instructed."}</p>
-                )}
-                <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 mt-4">Pass with at least 90% to mark this item complete.</p>
-                {!selectedItem.isCompleted ? (
-                  <button type="button" onClick={() => markComplete(selectedItem)} disabled={!!completingId} className="ti-btn ti-btn-outline-primary mt-4 outline-offset-2 whitespace-nowrap">
-                    {completingId === selectedItem.id ? "Saving…" : "I passed (90% or more)"}
-                  </button>
-                ) : (
-                  <span className="text-emerald-600 dark:text-emerald-400 text-[0.8125rem] font-medium mt-4 whitespace-nowrap">Completed</span>
-                )}
+            {selectedItem?.contentType === "essay" && (
+              <div className="absolute inset-0 overflow-auto bg-white dark:bg-[#1c1d1f] p-4 lg:p-6">
+                <h2 className="text-[1.125rem] font-bold mb-4 text-[#1c1d1f] dark:text-white">{selectedItem.title}</h2>
+                <EssayRenderer
+                  essay={selectedItem.essay}
+                  playlistItemId={selectedItem.id}
+                  studentId={studentId}
+                  moduleId={moduleId}
+                  isCompleted={selectedItem.isCompleted}
+                  onProgressUpdate={onProgressUpdate}
+                />
               </div>
             )}
           </div>
 
-          {/* Tabs: Overview + training module content types (Video, Blog, Quiz, PDF, Test) */}
+          {/* Tabs: Overview + training module content types (Video, Blog, Quiz, PDF, Q&A) */}
           <nav className="flex items-center gap-2 border-b border-[#d1d7dc] dark:border-white/10 bg-white dark:bg-[#1c1d1f] px-4 overflow-x-auto">
             <button type="button" className="shrink-0 p-3 text-[#6a6f73] dark:text-white/60 hover:text-[#1c1d1f] dark:hover:text-white" aria-label="Search">
               <i className="ti ti-search text-[1.125rem]" />
@@ -1196,27 +1315,31 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                 )}
               </div>
             )}
-            {mainTab === "test" && (
+            {mainTab === "essay" && (
               <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Tests</h2>
-                {itemsByTab.test.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No test items in this course.</p>
+                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Q&A</h2>
+                {itemsByTab.essay.length === 0 ? (
+                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No Q&A items in this course.</p>
                 ) : (
                   <ul className="space-y-3">
-                    {itemsByTab.test.map((item) => (
-                      <li key={item.id} className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5">
+                    {itemsByTab.essay.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5"
+                      >
                         <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ti ti-clipboard-list text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                          <i className="ti ti-edit text-[#5624d0] dark:text-primary text-[1.125rem]" />
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white">{item.title}</p>
-                          {item.testLinkOrReference && <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 truncate">{item.testLinkOrReference}</p>}
                         </div>
-                        {item.testLinkOrReference && /^https?:\/\//i.test(item.testLinkOrReference) ? (
-                          <a href={item.testLinkOrReference} target="_blank" rel="noopener noreferrer" className="ti-btn ti-btn-sm ti-btn-primary shrink-0">Open link</a>
-                        ) : (
-                          <button type="button" className="ti-btn ti-btn-sm ti-btn-primary shrink-0" onClick={() => selectItem(item)}>Take test</button>
-                        )}
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-sm ti-btn-primary shrink-0"
+                          onClick={() => selectItem(item)}
+                        >
+                          {item.isCompleted ? "View" : "Start Q&A"}
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1271,8 +1394,8 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                                   ? "ti-article"
                                   : item?.contentType === "pdf-document"
                                     ? "ti-file-text"
-                                    : item?.contentType === "test"
-                                      ? "ti-clipboard-list"
+                                    : item?.contentType === "essay"
+                                      ? "ti-edit"
                                       : "ti-video"
                             return (
                               <li key={lecture.id}>

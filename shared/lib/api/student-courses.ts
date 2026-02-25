@@ -209,6 +209,23 @@ export async function submitQuizAttempt(
   return data;
 }
 
+/** Essay submit: answers (typed text). Backend marks item complete on submit. */
+export async function submitEssayAttempt(
+  studentId: string,
+  moduleId: string,
+  playlistItemId: string,
+  body: {
+    answers: { questionIndex: number; typedAnswer: string }[];
+    timeSpent?: number;
+  }
+): Promise<unknown> {
+  const { data } = await apiClient.post(
+    `/training/students/${studentId}/courses/${moduleId}/essays/${playlistItemId}/submit`,
+    body
+  );
+  return data;
+}
+
 /** Map API list item to a minimal course shape for list/card UI (first page: course list only). */
 export function mapStudentCourseToCard(item: StudentCourseListItem): {
   id: string;
@@ -270,14 +287,14 @@ function formatLastUpdated(iso?: string | Date | null): string | undefined {
   return `${month}/${year}`;
 }
 
-/** Playlist item with contentType for learn page tabs (Video, Blog, Quiz, PDF, Test). */
+/** Playlist item with contentType for learn page tabs (Video, Blog, Quiz, PDF, Q&A). */
 export type PlaylistItemContentType =
   | "upload-video"
   | "youtube-link"
   | "pdf-document"
   | "blog"
   | "quiz"
-  | "test";
+  | "essay";
 
 export interface PlaylistItemForLearn {
   id: string;
@@ -290,6 +307,8 @@ export interface PlaylistItemForLearn {
   blogContent?: string;
   quiz?: unknown;
   testLinkOrReference?: string;
+  essay?: { questions: { questionText?: string }[] };
+  difficulty?: string;
   isCompleted?: boolean;
 }
 
@@ -313,6 +332,8 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
       blogContent?: string;
       quiz?: unknown;
       testLinkOrReference?: string;
+      essay?: { questions: { questionText?: string }[] };
+      difficulty?: string;
     };
     return {
       id: item.playlistItemId ?? String(i),
@@ -325,6 +346,8 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
       blogContent: item.blogContent,
       quiz: item.quiz,
       testLinkOrReference: item.testLinkOrReference,
+      essay: item.essay,
+      difficulty: item.difficulty,
       isCompleted: item.isCompleted,
     };
   });

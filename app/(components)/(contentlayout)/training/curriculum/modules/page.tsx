@@ -4,6 +4,7 @@ import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
@@ -21,16 +22,23 @@ const SORT_OPTIONS = [
   { value: 'createdAt:asc', label: 'Oldest' },
 ]
 
-const contentTypeMeta: Record<
-  PlaylistItem['contentType'],
-  { label: string; icon: string; color: string }
-> = {
+const contentTypeMeta: Record<string, { label: string; icon: string; color: string }> = {
   'upload-video': { label: 'Uploaded Video', icon: 'ri-video-line', color: 'text-primary' },
-  'youtube-link': { label: 'YouTube', icon: 'ri-youtube-line', color: 'text-danger' },
+  'youtube-link': { label: 'YouTube Link', icon: 'ri-youtube-line', color: 'text-danger' },
   'pdf-document': { label: 'PDF / Document', icon: 'ri-file-pdf-line', color: 'text-danger' },
   blog: { label: 'Blog', icon: 'ri-article-line', color: 'text-info' },
   quiz: { label: 'Quiz', icon: 'ri-questionnaire-line', color: 'text-warning' },
-  test: { label: 'Test', icon: 'ri-file-list-3-line', color: 'text-success' },
+  essay: { label: 'Q&A', icon: 'ri-edit-line', color: 'text-primary' },
+}
+
+function getContentTypeMeta(contentType: string) {
+  return contentTypeMeta[contentType] ?? { label: contentType || 'Content', icon: 'ri-file-line', color: 'text-secondary' }
+}
+
+function getYoutubeVideoId(url: string): string | null {
+  if (!url?.trim()) return null
+  const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/)
+  return m ? m[1] : null
 }
 
 function formatDateTime(value?: string): string {
@@ -45,29 +53,30 @@ interface ModuleSummary {
   pdfs: number
   blogs: number
   quiz: number
-  tests: number
+  essays?: number
 }
 
-function calculateSummary(playlist: PlaylistItem[]): ModuleSummary {
+function calculateSummary(playlist: PlaylistItem[]): ModuleSummary & { essays: number } {
   return {
-    videos: playlist.filter((item) => 
+    videos: playlist.filter((item) =>
       item.contentType === 'upload-video' || item.contentType === 'youtube-link'
     ).length,
     pdfs: playlist.filter((item) => item.contentType === 'pdf-document').length,
     blogs: playlist.filter((item) => item.contentType === 'blog').length,
     quiz: playlist.filter((item) => item.contentType === 'quiz').length,
-    tests: playlist.filter((item) => item.contentType === 'test').length,
+    essays: playlist.filter((item) => item.contentType === 'essay').length,
   }
 }
 
 function SummaryBadges({ summary }: { summary: ModuleSummary }) {
-  const items = [
+  const items: { label: string; count: number; icon: string }[] = [
     { label: 'Videos', count: summary.videos, icon: 'ri-video-line' },
     { label: 'PDFs', count: summary.pdfs, icon: 'ri-file-pdf-line' },
     { label: 'Blogs', count: summary.blogs, icon: 'ri-article-line' },
     { label: 'Quiz', count: summary.quiz, icon: 'ri-questionnaire-line' },
-    { label: 'Tests', count: summary.tests, icon: 'ri-file-list-3-line' },
   ]
+  if ((summary.essays ?? 0) > 0)
+    items.push({ label: 'Q&A', count: summary.essays!, icon: 'ri-edit-line' })
   return (
     <div className="flex flex-wrap gap-1 mb-2">
       {items.map(({ label, count, icon }) => (
@@ -89,6 +98,7 @@ interface TrainingModuleCardProps {
   module: ApiTrainingModule
   onDelete: (moduleId: string) => void
   onView: (moduleId: string) => void
+  onClone: (moduleId: string) => void
 }
 
 interface ModuleDetailModalProps {
@@ -104,6 +114,23 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
     () => [...(moduleData?.playlist ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     [moduleData?.playlist],
   )
+  const playlistBySection = useMemo(() => {
+    const groups: { sectionTitle?: string; sectionIndex?: number; items: PlaylistItem[] }[] = []
+    for (const item of sortedPlaylist) {
+      const key = item.sectionTitle ?? '__none__'
+      const last = groups[groups.length - 1]
+      if (last && (last.sectionTitle ?? '__none__') === key) {
+        last.items.push(item)
+      } else {
+        groups.push({
+          sectionTitle: item.sectionTitle,
+          sectionIndex: item.sectionIndex,
+          items: [item],
+        })
+      }
+    }
+    return groups
+  }, [sortedPlaylist])
   const summary = useMemo(() => calculateSummary(moduleData?.playlist ?? []), [moduleData?.playlist])
 
   if (!open) return null
@@ -181,9 +208,20 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
                       {sortedPlaylist.length === 0 ? (
                         <div className="text-center py-8 text-[#8c9097] dark:text-white/50">No playlist content yet.</div>
                       ) : (
-                        <div className="space-y-3">
-                          {sortedPlaylist.map((item, index) => {
-                            const meta = contentTypeMeta[item.contentType]
+                        <div className="space-y-4">
+                          {playlistBySection.map((group) => (
+                            <div key={group.sectionTitle ?? `section-${group.sectionIndex ?? 0}`} className="space-y-3">
+                              {group.sectionTitle && (
+                                <div className="flex items-center gap-2 py-2 border-b border-primary/30">
+                                  <i className="ri-folder-open-line text-primary text-lg" />
+                                  <span className="font-semibold text-[0.9375rem] text-primary">
+                                    {group.sectionTitle}
+                                  </span>
+                                </div>
+                              )}
+                              {group.items.map((item, idx) => {
+                            const meta = getContentTypeMeta(item.contentType ?? '')
+                            const index = sortedPlaylist.indexOf(item)
                             const quizQuestions = item.contentType === 'quiz' ? item.quiz?.questions ?? [] : []
                             return (
                               <div
@@ -216,14 +254,30 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
                                   />
                                 )}
                                 {item.contentType === 'youtube-link' && item.youtubeUrl && (
-                                  <a
-                                    href={item.youtubeUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary text-[0.875rem] underline"
-                                  >
-                                    Open YouTube video
-                                  </a>
+                                  <div className="mt-2 flex flex-wrap items-center gap-3">
+                                    {getYoutubeVideoId(item.youtubeUrl) && (
+                                      <a
+                                        href={item.youtubeUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="block shrink-0 w-40 rounded overflow-hidden border border-defaultborder aspect-video bg-[#1a1a1a]"
+                                      >
+                                        <img
+                                          src={`https://img.youtube.com/vi/${getYoutubeVideoId(item.youtubeUrl)}/mqdefault.jpg`}
+                                          alt={item.title || 'YouTube video'}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      </a>
+                                    )}
+                                    <a
+                                      href={item.youtubeUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-primary text-[0.875rem] underline shrink-0"
+                                    >
+                                      Open YouTube video
+                                    </a>
+                                  </div>
                                 )}
                                 {item.contentType === 'pdf-document' && item.pdfDocument?.url && (
                                   <a
@@ -269,19 +323,11 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
                                     </div>
                                   </div>
                                 )}
-                                {item.contentType === 'test' && item.testLinkOrReference && (
-                                  <a
-                                    href={item.testLinkOrReference}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary text-[0.875rem] underline"
-                                  >
-                                    Open test / assessment link
-                                  </a>
-                                )}
                               </div>
                             )
                           })}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -297,7 +343,9 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
                       <div><i className="ri-play-circle-line me-2 text-primary" />{summary.videos} video items</div>
                       <div><i className="ri-file-pdf-line me-2 text-danger" />{summary.pdfs + summary.blogs} docs/blogs</div>
                       <div><i className="ri-questionnaire-line me-2 text-warning" />{summary.quiz} quizzes</div>
-                      <div><i className="ri-file-list-3-line me-2 text-success" />{summary.tests} tests</div>
+                      {(summary.essays ?? 0) > 0 && (
+                        <div><i className="ri-edit-line me-2 text-primary" />{summary.essays} Q&A</div>
+                      )}
                       <div><i className="ri-user-line me-2 text-info" />{moduleData.students?.length ?? 0} students</div>
                       <div><i className="ri-user-star-line me-2 text-info" />{moduleData.mentorsAssigned?.length ?? 0} mentors</div>
                     </div>
@@ -357,7 +405,7 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
   )
 }
 
-function TrainingModuleCard({ module: m, onDelete, onView }: TrainingModuleCardProps) {
+function TrainingModuleCard({ module: m, onDelete, onView, onClone }: TrainingModuleCardProps) {
   const summary = calculateSummary(m.playlist || [])
   const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -518,6 +566,15 @@ function TrainingModuleCard({ module: m, onDelete, onView }: TrainingModuleCardP
               <button
                 type="button"
                 className="ti-dropdown-item w-full text-left"
+                onClick={() => { closeDropdown(); onClone(m.id); }}
+              >
+                <i className="ri-file-copy-line me-1 align-middle inline-flex" /> Clone
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="ti-dropdown-item w-full text-left"
                 onClick={handleDelete}
               >
                 <i className="ri-delete-bin-line me-1 align-middle inline-flex" /> Delete
@@ -624,6 +681,19 @@ const TrainingModules = () => {
   useEffect(() => {
     fetchModules()
   }, [fetchModules])
+
+  const router = useRouter()
+
+  const handleClone = async (moduleId: string) => {
+    try {
+      const cloned = await trainingModulesApi.cloneModule(moduleId)
+      await Swal.fire('Cloned!', 'Module cloned as draft.', 'success')
+      router.push(`/training/curriculum/modules/edit?id=${cloned.id}`)
+    } catch (err) {
+      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : 'Failed to clone module.'
+      await Swal.fire({ icon: 'error', title: 'Clone failed', text: msg, toast: true, position: 'top-end', timer: 4000, showConfirmButton: false })
+    }
+  }
 
   const handleDelete = async (moduleId: string) => {
     try {
@@ -774,6 +844,13 @@ const TrainingModules = () => {
                     <i className="ri-add-line me-1 font-semibold align-middle" />
                     New Module
                   </Link>
+                  <Link
+                    href="/training/curriculum/modules/create-with-ai"
+                    className="ti-btn ti-btn-success-full me-2 !mb-0"
+                  >
+                    <i className="ri-magic-line me-1 font-semibold align-middle" />
+                    Create with AI
+                  </Link>
                   <Select
                     value={sortValue}
                     onChange={(v) => {
@@ -839,7 +916,7 @@ const TrainingModules = () => {
                       key={m.id}
                       className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
                     >
-                      <TrainingModuleCard module={m} onDelete={handleDelete} onView={handleView} />
+                      <TrainingModuleCard module={m} onDelete={handleDelete} onView={handleView} onClone={handleClone} />
                     </div>
                   ))}
                 </div>
