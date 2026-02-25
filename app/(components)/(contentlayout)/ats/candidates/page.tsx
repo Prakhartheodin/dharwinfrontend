@@ -955,7 +955,7 @@ const Candidates = () => {
                 </button>
               </div>
               <div className="hs-tooltip ti-main-tooltip">
-                <Link href={`/ats/candidates/edit?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
+                <Link href={`/ats/candidates/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
                   <i className="ri-pencil-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit Candidate</span>
                 </Link>
