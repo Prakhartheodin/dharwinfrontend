@@ -1,6 +1,6 @@
 "use client"
 
-import React, { Fragment, useState, useRef, useEffect, useCallback } from 'react'
+import React, { Fragment, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
@@ -32,7 +32,7 @@ const blogGeneratorLogger = {
 
 export type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 
-type PlaylistItemType = 'video' | 'youtube' | 'quiz' | 'pdf' | 'blog' | 'test'
+type PlaylistItemType = 'video' | 'youtube' | 'quiz' | 'pdf' | 'blog' | 'essay'
 
 export type BlogFormat =
   | 'expressive'
@@ -66,6 +66,42 @@ type QuizQuestion = {
   multipleCorrect: boolean
 }
 
+const MODULE_TEMPLATES: {
+  name: string
+  description: string
+  playlist: { type: PlaylistItemType; title: string; source?: string; blogContent?: string; quizData?: QuizQuestion[]; essayQuestions?: { id: string; questionText: string }[] }[]
+}[] = [
+  {
+    name: 'Video Course',
+    description: 'Intro blog + 3 video placeholders + quiz',
+    playlist: [
+      { type: 'blog', title: 'Introduction', blogContent: '' },
+      { type: 'youtube', title: 'Lesson 1', source: '' },
+      { type: 'youtube', title: 'Lesson 2', source: '' },
+      { type: 'youtube', title: 'Lesson 3', source: '' },
+      { type: 'quiz', title: 'Module Quiz', quizData: [] },
+    ],
+  },
+  {
+    name: 'Reading + Assessment',
+    description: '2 blogs + quiz + Q&A',
+    playlist: [
+      { type: 'blog', title: 'Reading 1', blogContent: '' },
+      { type: 'blog', title: 'Reading 2', blogContent: '' },
+      { type: 'quiz', title: 'Comprehension Quiz', quizData: [] },
+      { type: 'essay', title: 'Reflection Q&A', essayQuestions: [] },
+    ],
+  },
+  {
+    name: 'Minimal',
+    description: '1 blog + 1 quiz',
+    playlist: [
+      { type: 'blog', title: 'Lesson', blogContent: '' },
+      { type: 'quiz', title: 'Quiz', quizData: [] },
+    ],
+  },
+]
+
 type PlaylistItem = {
   id: string
   backendId?: string
@@ -80,6 +116,10 @@ type PlaylistItem = {
   pdfPreview?: string
   pdfMeta?: trainingModulesApi.FileUpload
   quizData?: QuizQuestion[]
+  difficulty?: 'easy' | 'medium' | 'hard'
+  essayQuestions?: { id: string; questionText: string; expectedAnswer?: string }[]
+  sectionTitle?: string
+  sectionIndex?: number
 }
 
 type ModuleFormData = {
@@ -96,6 +136,185 @@ type PersonOption = {
   value: string
   label: string
   avatar: string
+}
+
+function AIChatPanel({
+  moduleId,
+  formData,
+  convertApiPlaylistToForm,
+  onPlaylistUpdate,
+  onNameUpdate,
+}: {
+  moduleId: string
+  formData: ModuleFormData
+  convertApiPlaylistToForm: (apiItem: trainingModulesApi.PlaylistItem) => PlaylistItem
+  onPlaylistUpdate: (playlist: PlaylistItem[]) => void
+  onNameUpdate?: (name: string) => void
+}) {
+  const [messages, setMessages] = useState<{ role: 'user' | 'ai'; text: string }[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, loading])
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return
+    const userMsg = input.trim()
+    setMessages((prev) => [...prev, { role: 'user', text: userMsg }])
+    setInput('')
+    setError(null)
+    setLoading(true)
+    try {
+      const playlistPayload = formData.playlist.map((item) => {
+        const contentType =
+          item.type === 'video' ? 'upload-video' :
+          item.type === 'youtube' ? 'youtube-link' :
+          item.type === 'pdf' ? 'pdf-document' :
+          item.type === 'blog' ? 'blog' :
+          item.type === 'quiz' ? 'quiz' :
+          item.type === 'essay' ? 'essay' : 'blog'
+        const p: Record<string, unknown> = {
+          contentType,
+          title: item.title,
+          duration: parseInt(item.duration || '0', 10) || 0,
+        }
+        if (item.type === 'youtube') p.youtubeUrl = item.source
+        if (item.type === 'blog') p.blogContent = item.blogContent
+        if (item.type === 'quiz') {
+          p.difficulty = item.difficulty || 'medium'
+          p.quizData = item.quizData
+        }
+        if (item.type === 'essay') {
+          p.essayData = { questions: (item.essayQuestions ?? []).map((q) => ({ questionText: q.questionText })) }
+        }
+        return p
+      })
+      const result = (await trainingModulesApi.aiChat(moduleId, userMsg, {
+        moduleName: formData.name,
+        shortDescription: formData.shortDescription,
+        playlist: playlistPayload,
+      })) as { playlist?: trainingModulesApi.PlaylistItem[]; moduleName?: string }
+      if (result.playlist?.length) {
+        const formPlaylist = result.playlist.map((apiItem) =>
+          convertApiPlaylistToForm(apiItem as trainingModulesApi.PlaylistItem)
+        )
+        onPlaylistUpdate(formPlaylist)
+      }
+      if (result.moduleName && onNameUpdate) {
+        onNameUpdate(result.moduleName)
+      }
+      setMessages((prev) => [...prev, { role: 'ai', text: 'Module updated based on your request.' }])
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Request failed. Try again.'
+      setError(errMsg)
+      setMessages((prev) => [...prev, { role: 'ai', text: `Error: ${errMsg}` }])
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="border rounded-lg p-3 bg-white/60 dark:bg-black/20 mt-4">
+      <h6 className="font-semibold mb-1">
+        <i className="ri-chat-ai-line me-1" /> AI Assistant
+      </h6>
+      <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-2">
+        Ask to change the module in plain language. Examples: add 2 more quiz questions, add a new blog section, remove all video placeholders, reorder items, change a title, or add more Q&A questions.
+      </p>
+      <div className="max-h-60 overflow-y-auto space-y-2 mb-3 min-h-[4rem]">
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`text-sm p-2 rounded ${
+              m.role === 'user' ? 'bg-primary/10 text-right' : 'bg-gray-100 dark:bg-white/5'
+            }`}
+          >
+            {m.text}
+          </div>
+        ))}
+        {loading && (
+          <div className="flex items-center gap-2 text-sm p-2 rounded bg-primary/5 border border-primary/20">
+            <span className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-primary font-medium">Processing your request…</span>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      {error && (
+        <p className="text-[0.75rem] text-danger mb-2" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-2">
+        <input
+          className="form-control flex-1"
+          placeholder="e.g. Add 2 more quiz questions..."
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+          disabled={loading}
+        />
+        <button
+          type="button"
+          className="ti-btn ti-btn-primary !mb-0 shrink-0"
+          onClick={handleSend}
+          disabled={loading}
+        >
+          {loading ? (
+            <>
+              <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin me-1.5 align-middle" />
+              Processing…
+            </>
+          ) : (
+            'Send'
+          )}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ModuleChecklist({
+  formData,
+  coverImageFile,
+  existingCoverImageUrl,
+}: {
+  formData: ModuleFormData
+  coverImageFile: File | null
+  existingCoverImageUrl: string | null
+}) {
+  const rules = [
+    { label: 'Module name', pass: formData.name.trim().length > 0 },
+    { label: 'Short description (50+ chars)', pass: formData.shortDescription.length >= 50 },
+    { label: 'Cover image', pass: Boolean(coverImageFile || existingCoverImageUrl) },
+    { label: 'At least 1 playlist item', pass: formData.playlist.length > 0 },
+    {
+      label: 'At least 1 quiz',
+      pass: formData.playlist.some((p) => p.type === 'quiz'),
+    },
+  ]
+  return (
+    <div className="border rounded-lg p-3 bg-white/60 dark:bg-black/20 mt-4">
+      <h6 className="font-semibold mb-2">Quality Checklist</h6>
+      {rules.map((r) => (
+        <div key={r.label} className="flex items-center gap-2 py-1 text-sm">
+          <i
+            className={
+              r.pass ? 'ri-checkbox-circle-fill text-success' : 'ri-close-circle-line text-warning'
+            }
+          />
+          <span className={r.pass ? '' : 'text-warning'}>{r.label}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function CheckboxDropdown({
@@ -263,6 +482,7 @@ const CreateModule = () => {
         break
       case 'quiz': {
         formItem.type = 'quiz'
+        formItem.difficulty = (apiItem.difficulty as 'easy' | 'medium' | 'hard') || 'medium'
         const questions = apiItem.quiz?.questions ?? apiItem.quizData?.questions ?? []
         formItem.quizData = questions.map((q: trainingModulesApi.QuizQuestionShape, qi: number) => ({
           id: `q-${backendId ?? 'quiz'}-${qi}`,
@@ -276,14 +496,24 @@ const CreateModule = () => {
         }))
         break
       }
-      case 'test':
-        formItem.type = 'test'
-        formItem.source = apiItem.testLinkOrReference ?? ''
+      case 'essay': {
+        formItem.type = 'essay'
+        const questions = apiItem.essay?.questions ?? apiItem.essayData?.questions ?? []
+        formItem.essayQuestions = questions.map(
+          (q: { questionText?: string; expectedAnswer?: string }, qi: number) => ({
+            id: `eq-${backendId ?? 'essay'}-${qi}`,
+            questionText: q.questionText ?? '',
+            expectedAnswer: q.expectedAnswer ?? '',
+          })
+        )
         break
+      }
       default:
         break
     }
 
+    if (apiItem.sectionTitle != null) formItem.sectionTitle = apiItem.sectionTitle
+    if (apiItem.sectionIndex != null) formItem.sectionIndex = apiItem.sectionIndex
     return formItem
   }, [])
 
@@ -301,7 +531,7 @@ const CreateModule = () => {
           shortDescription: module.shortDescription,
           studentIds: module.students?.map((s: { id: string }) => s.id) ?? [],
           mentorIds: module.mentorsAssigned?.map((m: { id: string }) => m.id) ?? [],
-          playlist: (module.playlist ?? []).map(convertApiPlaylistToForm),
+          playlist: (module.playlist ?? []).filter((p) => (p as { contentType?: string }).contentType !== 'test').map(convertApiPlaylistToForm),
         })
 
         if (module.coverImage?.url) {
@@ -460,9 +690,18 @@ const CreateModule = () => {
   const suggestionTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const blogContentRef = useRef<Record<string, string>>({})
   const pendingSuggestionContentRef = useRef<Record<string, string>>({})
+  const sectionRefsRef = useRef<Record<string, HTMLDivElement | null>>({})
+  const drakeInstancesRef = useRef<Record<string, { destroy: () => void }>>({})
   const [videoPreviewModal, setVideoPreviewModal] = useState<{ itemId: string; url: string } | null>(
     null,
   )
+
+  // Enhance with AI for Quiz and Q&A
+  const [enhanceType, setEnhanceType] = useState<'quiz' | 'essay' | null>(null)
+  const [enhanceItemId, setEnhanceItemId] = useState<string | null>(null)
+  const [enhanceDifficulty, setEnhanceDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium')
+  const [enhanceQuestionSelection, setEnhanceQuestionSelection] = useState<'all' | number[]>('all')
+  const [enhanceLoading, setEnhanceLoading] = useState(false)
 
   const getYoutubeVideoId = (url: string): string | null => {
     if (!url?.trim()) return null
@@ -475,6 +714,23 @@ const CreateModule = () => {
     if (sizeInBytes < 1024 * 1024) return `${(sizeInBytes / 1024).toFixed(1)} KB`
     if (sizeInBytes < 1024 * 1024 * 1024) return `${(sizeInBytes / (1024 * 1024)).toFixed(2)} MB`
     return `${(sizeInBytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+  }
+
+  const applyTemplate = (template: (typeof MODULE_TEMPLATES)[0]) => {
+    const items: PlaylistItem[] = template.playlist.map((t, i) => ({
+      id: `${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+      type: t.type,
+      title: t.title,
+      source: t.source ?? '',
+      duration: '',
+      blogContent: t.blogContent ?? '',
+      quizData: t.quizData ?? [],
+      essayQuestions: (t.essayQuestions ?? []).map((q, qi) => ({
+        id: `eq-${Date.now()}-${i}-${qi}`,
+        questionText: q.questionText ?? '',
+      })),
+    }))
+    handleInputChange('playlist', items)
   }
 
   const handleAddPlaylistItem = () => {
@@ -510,6 +766,86 @@ const CreateModule = () => {
       playlist: prev.playlist.filter((item) => item.id !== id),
     }))
   }
+
+  const handleReorderWithinSection = useCallback(
+    (sectionKey: string, orderedIds: string[]) => {
+      setFormData((prev) => {
+        const itemsById = new Map(prev.playlist.map((i) => [i.id, i]))
+        const reordered = orderedIds
+          .map((id) => itemsById.get(id))
+          .filter(Boolean) as PlaylistItem[]
+        const sectionIndices: number[] = []
+        prev.playlist.forEach((p, i) => {
+          if ((p.sectionTitle ?? '__none__') === sectionKey) sectionIndices.push(i)
+        })
+        if (sectionIndices.length === 0) return prev
+        const start = sectionIndices[0]
+        const end = sectionIndices[sectionIndices.length - 1] + 1
+        return {
+          ...prev,
+          playlist: [
+            ...prev.playlist.slice(0, start),
+            ...reordered,
+            ...prev.playlist.slice(end),
+          ],
+        }
+      })
+    },
+    [],
+  )
+
+  const playlistStructureKey = useMemo(
+    () =>
+      formData.playlist
+        .map((i) => `${i.sectionTitle ?? '__none__'}:${i.id}`)
+        .sort()
+        .join(','),
+    [formData.playlist],
+  )
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || activeTab !== 'playlist') return
+    const drakes = drakeInstancesRef.current
+    Object.keys(drakes).forEach((k) => {
+      drakes[k].destroy()
+      delete drakes[k]
+    })
+    const id = setTimeout(() => {
+      const refs = sectionRefsRef.current
+      const dragula = require('dragula') as (
+        containers: HTMLElement[],
+        options?: { moves?: (el: Element, source: Element, handle: Element, sibling: Element) => boolean }
+      ) => { on: (ev: string, cb: (...args: unknown[]) => void) => void; destroy: () => void }
+      Object.entries(refs).forEach(([sectionKey, el]) => {
+      if (!el) return
+      const drake = dragula([el], {
+        moves: (_el: Element, _source: Element, handle: Element) => {
+          if (!handle || !(handle as HTMLElement).closest) return false
+          return Boolean((handle as HTMLElement).closest('.playlist-drag-handle'))
+        },
+      })
+      drake.on('drop', (...args: unknown[]) => {
+        const target = args[1] as HTMLElement
+        const key = target?.getAttribute('data-playlist-section')
+        if (!key) return
+        const ids: string[] = []
+        Array.from(target.children).forEach((child) => {
+          const id = (child as HTMLElement).getAttribute('data-playlist-item-id')
+          if (id) ids.push(id)
+        })
+        handleReorderWithinSection(key, ids)
+      })
+      drakes[sectionKey] = drake
+    })
+    }, 0)
+    return () => {
+      clearTimeout(id)
+      Object.keys(drakes).forEach((k) => {
+        drakes[k].destroy()
+        delete drakes[k]
+      })
+    }
+  }, [activeTab, playlistStructureKey, handleReorderWithinSection])
 
   const quizModalItem = quizModalItemId
     ? formData.playlist.find((i) => i.id === quizModalItemId)
@@ -894,6 +1230,159 @@ const CreateModule = () => {
     updateQuizData(itemId, item.quizData.map(updateCorrect))
   }
 
+  const handleAddEssayQuestion = (itemId: string) => {
+    const item = formData.playlist.find((p) => p.id === itemId)
+    if (!item) return
+    const prev = item.essayQuestions ?? []
+    const newQ = {
+      id: `eq-${itemId}-${Date.now()}`,
+      questionText: '',
+      expectedAnswer: '',
+    }
+    handlePlaylistItemChange(itemId, 'essayQuestions', [...prev, newQ])
+  }
+
+  const handleEssayQuestionChange = (itemId: string, qId: string, questionText: string) => {
+    const item = formData.playlist.find((p) => p.id === itemId)
+    if (!item?.essayQuestions) return
+    handlePlaylistItemChange(
+      itemId,
+      'essayQuestions',
+      item.essayQuestions.map((q) => (q.id === qId ? { ...q, questionText } : q)),
+    )
+  }
+
+  const handleEssayExpectedAnswerChange = (itemId: string, qId: string, expectedAnswer: string) => {
+    const item = formData.playlist.find((p) => p.id === itemId)
+    if (!item?.essayQuestions) return
+    handlePlaylistItemChange(
+      itemId,
+      'essayQuestions',
+      item.essayQuestions.map((q) => (q.id === qId ? { ...q, expectedAnswer } : q)),
+    )
+  }
+
+  const handleRemoveEssayQuestion = (itemId: string, qId: string) => {
+    const item = formData.playlist.find((p) => p.id === itemId)
+    if (!item?.essayQuestions) return
+    handlePlaylistItemChange(
+      itemId,
+      'essayQuestions',
+      item.essayQuestions.filter((q) => q.id !== qId),
+    )
+  }
+
+  const openEnhanceModal = (type: 'quiz' | 'essay', itemId: string) => {
+    const item = formData.playlist.find((i) => i.id === itemId)
+    if (!item) return
+    const d = (item as { difficulty?: string }).difficulty
+    setEnhanceType(type)
+    setEnhanceItemId(itemId)
+    setEnhanceDifficulty(
+      d === 'easy' || d === 'hard' ? d : 'medium',
+    )
+    setEnhanceQuestionSelection('all')
+  }
+
+  const handleEnhanceConfirm = async () => {
+    if (!enhanceItemId || !enhanceType) return
+    const item = formData.playlist.find((i) => i.id === enhanceItemId)
+    if (!item) return
+
+    setEnhanceLoading(true)
+    try {
+      const moduleTitle = item.title || formData.name || 'Module'
+      const topic = formData.shortDescription || formData.name || ''
+
+      if (enhanceType === 'quiz') {
+        const existingQuestions = (item.quizData ?? []).map((q) => ({
+          question: q.question,
+          options: q.options.map((o) => ({ text: o.text, isCorrect: o.correct })),
+        }))
+        const questionIndices =
+          enhanceQuestionSelection === 'all' ? 'all' : enhanceQuestionSelection
+        const result = await trainingModulesApi.enhanceQuiz({
+          moduleTitle,
+          topic,
+          difficulty: enhanceDifficulty,
+          existingQuestions,
+          questionIndices,
+        })
+        const existing = item.quizData ?? []
+        let newQuizData: QuizQuestion[]
+        if (questionIndices === 'all') {
+          newQuizData = result.questions.map((q, qi) => ({
+            id: `q-${item.id}-${qi}-${Date.now()}`,
+            question: q.questionText,
+            options: (q.options ?? []).map((o, oi) => ({
+              id: `o-${item.id}-${qi}-${oi}-${Date.now()}`,
+              text: o.text,
+              correct: o.isCorrect,
+            })),
+            multipleCorrect: q.allowMultipleAnswers ?? false,
+          }))
+        } else {
+          const indices = questionIndices as number[]
+          newQuizData = existing.map((q, i) => {
+            const idx = indices.indexOf(i)
+            if (idx < 0) return q
+            const r = result.questions[idx]
+            if (!r) return q
+            return {
+              id: q.id,
+              question: r.questionText,
+              options: (r.options ?? []).map((o, oi) => ({
+                id: `o-${item.id}-${i}-${oi}-${Date.now()}`,
+                text: o.text,
+                correct: o.isCorrect,
+              })),
+              multipleCorrect: r.allowMultipleAnswers ?? false,
+            }
+          })
+        }
+        handlePlaylistItemChange(enhanceItemId, 'quizData', newQuizData)
+      } else {
+        const existingQuestions = (item.essayQuestions ?? []).map((q) => ({
+          questionText: q.questionText,
+        }))
+        const questionIndices =
+          enhanceQuestionSelection === 'all' ? 'all' : enhanceQuestionSelection
+        const result = await trainingModulesApi.enhanceEssay({
+          moduleTitle,
+          topic,
+          difficulty: enhanceDifficulty,
+          existingQuestions,
+          questionIndices,
+        })
+        const existingEssay = item.essayQuestions ?? []
+        let newEssayQuestions: { id: string; questionText: string; expectedAnswer?: string }[]
+        if (questionIndices === 'all') {
+          newEssayQuestions = result.questions.map((q, qi) => ({
+            id: `eq-${item.id}-${qi}-${Date.now()}`,
+            questionText: q.questionText,
+            expectedAnswer: q.expectedAnswer ?? '',
+          }))
+        } else {
+          const indices = questionIndices as number[]
+          newEssayQuestions = existingEssay.map((q, i) => {
+            const idx = indices.indexOf(i)
+            if (idx < 0) return q
+            const r = result.questions[idx]
+            if (!r) return q
+            return { ...q, questionText: r.questionText, expectedAnswer: r.expectedAnswer ?? q.expectedAnswer ?? '' }
+          })
+        }
+        handlePlaylistItemChange(enhanceItemId, 'essayQuestions', newEssayQuestions)
+      }
+      setEnhanceType(null)
+      setEnhanceItemId(null)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to enhance')
+    } finally {
+      setEnhanceLoading(false)
+    }
+  }
+
   const processPlaylistVideoFile = (itemId: string, file: File | null) => {
     if (!file) return
     const looksLikeVideo =
@@ -1053,11 +1542,14 @@ const CreateModule = () => {
                        item.type === 'pdf' ? 'pdf-document' :
                        item.type === 'blog' ? 'blog' :
                        item.type === 'quiz' ? 'quiz' :
-                       'test',
+                       item.type === 'essay' ? 'essay' :
+                       'blog',
           title: item.title,
           duration: parseInt(item.duration || '0', 10) || 0,
           order: index,
         }
+        if (item.sectionTitle != null) playlistItem.sectionTitle = item.sectionTitle
+        if (item.sectionIndex != null) playlistItem.sectionIndex = item.sectionIndex
 
         switch (playlistItem.contentType) {
           case 'upload-video':
@@ -1077,9 +1569,6 @@ const CreateModule = () => {
             break
           case 'blog':
             playlistItem.blogContent = item.blogContent || ''
-            break
-          case 'test':
-            playlistItem.testLinkOrReference = item.source
             break
           case 'quiz': {
             if (item.quizData && item.quizData.length > 0) {
@@ -1114,8 +1603,17 @@ const CreateModule = () => {
                 questions: sanitizedQuestions,
               }
             }
+            if (item.difficulty) playlistItem.difficulty = item.difficulty
             break
           }
+          case 'essay':
+            playlistItem.essayData = {
+              questions: (item.essayQuestions ?? []).map((q) => ({
+                questionText: q.questionText,
+                expectedAnswer: q.expectedAnswer?.trim() || undefined,
+              })),
+            }
+            break
         }
 
         return playlistItem
@@ -1416,6 +1914,22 @@ const CreateModule = () => {
 
                 {activeTab === 'playlist' && (
                   <div id="playlist-panel" role="tabpanel" aria-labelledby="playlist-tab">
+                    {!isEditMode && formData.playlist.length === 0 && (
+                      <div className="mb-4 grid grid-cols-12 gap-3">
+                        {MODULE_TEMPLATES.map((t) => (
+                          <div key={t.name} className="xl:col-span-4 col-span-12">
+                            <button
+                              type="button"
+                              className="w-full border rounded-lg p-3 text-left hover:border-primary transition-colors border-defaultborder"
+                              onClick={() => applyTemplate(t)}
+                            >
+                              <p className="font-semibold text-defaulttextcolor">{t.name}</p>
+                              <p className="text-sm text-[#8c9097] dark:text-white/50 mt-0.5">{t.description}</p>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h5 className="font-semibold mb-1">Playlist</h5>
@@ -1443,19 +1957,90 @@ const CreateModule = () => {
                     )}
 
                     <div className="space-y-4">
-                      {formData.playlist.map((item, index) => (
+                      {(() => {
+                        const groups = formData.playlist.reduce<
+                          { sectionKey: string; sectionTitle?: string; sectionIndex?: number; items: PlaylistItem[] }[]
+                        >((acc, item) => {
+                          const key = item.sectionTitle ?? '__none__'
+                          const last = acc[acc.length - 1]
+                          if (last && last.sectionKey === key) {
+                            last.items.push(item)
+                          } else {
+                            acc.push({
+                              sectionKey: key,
+                              sectionTitle: item.sectionTitle,
+                              sectionIndex: item.sectionIndex,
+                              items: [item],
+                            })
+                          }
+                          return acc
+                        }, [])
+                        return groups.map((group) => (
+                          <div key={group.sectionKey} className="space-y-4">
+                            {group.sectionTitle && (
+                              <div className="flex items-center gap-2 py-2 border-b border-primary/30">
+                                <i className="ri-folder-open-line text-primary text-lg" />
+                                <span className="font-semibold text-[0.9375rem] text-primary">
+                                  {group.sectionTitle}
+                                </span>
+                              </div>
+                            )}
+                            <div
+                              ref={(el) => {
+                                if (el) sectionRefsRef.current[group.sectionKey] = el
+                                else delete sectionRefsRef.current[group.sectionKey]
+                              }}
+                              data-playlist-section={group.sectionKey}
+                              className="space-y-4"
+                            >
+                            {group.items.map((item, idx) => {
+                              const index = formData.playlist.indexOf(item)
+                              return (
                         <div
                           key={item.id}
+                          data-playlist-item-id={item.id}
                           className="border border-defaultborder rounded-md p-4 bg-white/60 dark:bg-black/20"
                         >
                           <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[0.75rem]">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className="playlist-drag-handle cursor-grab active:cursor-grabbing p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 shrink-0 touch-none"
+                                title="Drag to reorder"
+                              >
+                                <i className="ri-more-2-fill text-[#8c9097] dark:text-white/50 text-base" />
+                              </span>
+                              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-[0.75rem] shrink-0">
                                 {index + 1}
                               </span>
-                              <span className="font-semibold text-[0.875rem]">
-                                {item.title || `Playlist item ${index + 1}`}
-                              </span>
+                              {item.type === 'youtube' && getYoutubeVideoId(item.source ?? '') && (
+                                <a
+                                  href={item.source}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 w-12 rounded overflow-hidden border border-defaultborder aspect-video bg-[#1a1a1a] flex items-center justify-center"
+                                  title="YouTube video"
+                                >
+                                  <img
+                                    src={`https://img.youtube.com/vi/${getYoutubeVideoId(item.source!)}/mqdefault.jpg`}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                </a>
+                              )}
+                              <div className="min-w-0">
+                                <span className="font-semibold text-[0.875rem] block truncate">
+                                  {item.title || `Playlist item ${index + 1}`}
+                                </span>
+                                <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 flex items-center gap-1">
+                                  {item.type === 'youtube' && <i className="ri-youtube-line text-danger" />}
+                                  {item.type === 'video' && <i className="ri-video-line text-primary" />}
+                                  {item.type === 'blog' && <i className="ri-article-line text-info" />}
+                                  {item.type === 'quiz' && <i className="ri-questionnaire-line text-warning" />}
+                                  {item.type === 'essay' && <i className="ri-edit-line text-primary" />}
+                                  {item.type === 'pdf' && <i className="ri-file-pdf-line text-danger" />}
+                                  {item.type === 'youtube' ? 'YouTube Link' : item.type === 'video' ? 'Upload Video' : item.type === 'blog' ? 'Blog' : item.type === 'quiz' ? 'Quiz' : item.type === 'essay' ? 'Q&A' : item.type === 'pdf' ? 'PDF' : 'Content'}
+                                </span>
+                              </div>
                             </div>
                             <button
                               type="button"
@@ -1489,7 +2074,7 @@ const CreateModule = () => {
                                 <option value="pdf">PDF / Document</option>
                                 <option value="blog">Blog</option>
                                 <option value="quiz">Quiz</option>
-                                <option value="test">Test</option>
+                                <option value="essay">Q&A</option>
                               </select>
                             </div>
                             <div className="xl:col-span-4 md:col-span-6 col-span-12">
@@ -1522,6 +2107,26 @@ const CreateModule = () => {
                                 }
                               />
                             </div>
+                            {item.type === 'quiz' && (
+                              <div className="xl:col-span-3 md:col-span-4 col-span-12">
+                                <label className="form-label">Difficulty</label>
+                                <select
+                                  className="form-control"
+                                  value={item.difficulty || 'medium'}
+                                  onChange={(e) =>
+                                    handlePlaylistItemChange(
+                                      item.id,
+                                      'difficulty',
+                                      e.target.value as 'easy' | 'medium' | 'hard'
+                                    )
+                                  }
+                                >
+                                  <option value="easy">Easy</option>
+                                  <option value="medium">Medium</option>
+                                  <option value="hard">Hard</option>
+                                </select>
+                              </div>
+                            )}
                           </div>
 
                           {/* Type-specific content */}
@@ -1878,20 +2483,40 @@ const CreateModule = () => {
 
                           {item.type === 'quiz' && (
                             <div className="mt-4">
-                              <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                                 <label className="form-label mb-0">
                                   Quiz (MCQ – single or multiple correct answers)
                                 </label>
-                                <button
-                                  type="button"
-                                  className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
-                                  onClick={() => setQuizModalItemId(item.id)}
-                                >
-                                  <i className="ri-add-line me-1" />
-                                  {(item.quizData?.length ?? 0) === 0
-                                    ? 'Create Quiz'
-                                    : `Edit Quiz (${item.quizData?.length ?? 0} questions)`}
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] inline-flex items-center gap-1.5"
+                                    onClick={() => openEnhanceModal('quiz', item.id)}
+                                    disabled={enhanceLoading}
+                                  >
+                                    {enhanceLoading && enhanceItemId === item.id && enhanceType === 'quiz' ? (
+                                      <>
+                                        <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Generating...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <i className="ri-magic-line text-[1rem]" />
+                                        Enhance with AI
+                                      </>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+                                    onClick={() => setQuizModalItemId(item.id)}
+                                  >
+                                    <i className="ri-add-line me-1" />
+                                    {(item.quizData?.length ?? 0) === 0
+                                      ? 'Create Quiz'
+                                      : `Edit Quiz (${item.quizData?.length ?? 0} questions)`}
+                                  </button>
+                                </div>
                               </div>
                               {(item.quizData?.length ?? 0) > 0 && (
                                 <div className="rounded-md border border-defaultborder p-3 bg-black/5 dark:bg-white/5 text-[0.8125rem]">
@@ -1907,26 +2532,104 @@ const CreateModule = () => {
                             </div>
                           )}
 
-                          {item.type === 'test' && (
-                            <div className="mt-4">
-                              <label className="form-label">Test link or description</label>
-                              <input
-                                type="text"
-                                className="form-control"
-                                placeholder="Test URL or reference"
-                                value={item.source}
-                                onChange={(e) =>
-                                  handlePlaylistItemChange(item.id, 'source', e.target.value)
-                                }
-                              />
+                          {item.type === 'essay' && (
+                            <div className="mt-4 space-y-3">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <label className="form-label mb-0">Q&A Questions</label>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] inline-flex items-center gap-1.5 shrink-0"
+                                    onClick={() => openEnhanceModal('essay', item.id)}
+                                    disabled={enhanceLoading}
+                                  >
+                                    {enhanceLoading && enhanceItemId === item.id && enhanceType === 'essay' ? (
+                                      <>
+                                        <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        Generating...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <i className="ri-magic-line text-[1rem]" />
+                                        Enhance with AI
+                                      </>
+                                    )}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-primary-full !mb-0 !py-1.5 !px-3 !text-[0.8125rem] shrink-0 whitespace-nowrap"
+                                    onClick={() => handleAddEssayQuestion(item.id)}
+                                  >
+                                    <i className="ri-add-line me-1" /> Add Question
+                                  </button>
+                                </div>
+                              </div>
+                              {(item.essayQuestions ?? []).map((q, qIdx) => (
+                                <div key={q.id} className="space-y-2 p-3 rounded-lg border border-defaultborder">
+                                  <div className="flex items-start gap-2">
+                                    <span className="mt-2 text-[0.75rem] text-primary font-semibold">
+                                      {qIdx + 1}.
+                                    </span>
+                                    <input
+                                      type="text"
+                                      className="form-control flex-1"
+                                      placeholder="Enter Q&A question"
+                                      value={q.questionText}
+                                      onChange={(e) =>
+                                        handleEssayQuestionChange(item.id, q.id, e.target.value)
+                                      }
+                                    />
+                                    <button
+                                      type="button"
+                                      className="ti-btn ti-btn-sm ti-btn-light !mb-0 shrink-0"
+                                      onClick={() => handleRemoveEssayQuestion(item.id, q.id)}
+                                    >
+                                      <i className="ri-delete-bin-line" />
+                                    </button>
+                                  </div>
+                                  <div>
+                                    <label className="form-label text-[0.75rem] text-[#6a6f73] dark:text-white/60">
+                                      Expected answer (for AI grading — optional)
+                                    </label>
+                                    <textarea
+                                      className="form-control text-sm"
+                                      rows={3}
+                                      placeholder="Reference answer for automatic scoring..."
+                                      value={q.expectedAnswer ?? ""}
+                                      onChange={(e) =>
+                                        handleEssayExpectedAnswerChange(item.id, q.id, e.target.value)
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              ))}
                             </div>
                           )}
                         </div>
-                      ))}
+                              )
+                            })}
+                            </div>
+                          </div>
+                        ))
+                      })()}
                     </div>
+                    {isEditMode && moduleId && (
+                      <AIChatPanel
+                        moduleId={moduleId}
+                        formData={formData}
+                        convertApiPlaylistToForm={convertApiPlaylistToForm}
+                        onPlaylistUpdate={(playlist) => handleInputChange('playlist', playlist)}
+                        onNameUpdate={(name) => handleInputChange('name', name)}
+                      />
+                    )}
                   </div>
                 )}
               </div>
+              <ModuleChecklist
+                formData={formData}
+                coverImageFile={coverImageFile}
+                existingCoverImageUrl={existingCoverImageUrl}
+              />
               <div className="box-footer flex justify-end gap-2 pt-4 border-t border-defaultborder">
                 <Link
                   href="/training/curriculum/modules"
@@ -2148,6 +2851,139 @@ const CreateModule = () => {
           </div>
         </div>
       )}
+
+      {/* Enhance with AI modal for Quiz and Q&A */}
+      {enhanceType && enhanceItemId && (() => {
+        const item = formData.playlist.find((i) => i.id === enhanceItemId)
+        if (!item) return null
+        const questions =
+          enhanceType === 'quiz'
+            ? (item.quizData ?? []).map((q, i) => ({ idx: i, text: q.question || '(No question)' }))
+            : (item.essayQuestions ?? []).map((q, i) => ({ idx: i, text: q.questionText || '(No question)' }))
+        return (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+            onClick={() => {
+              setEnhanceType(null)
+              setEnhanceItemId(null)
+            }}
+          >
+            <div
+              className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-full max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+                <h5 className="font-semibold mb-0 flex items-center gap-2">
+                  <i className="ri-magic-line text-primary" />
+                  Enhance {enhanceType === 'quiz' ? 'Quiz' : 'Q&A'} with AI
+                </h5>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light !py-1 !px-2"
+                  onClick={() => {
+                    setEnhanceType(null)
+                    setEnhanceItemId(null)
+                  }}
+                >
+                  <i className="ri-close-line text-lg" />
+                </button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="form-label">Difficulty</label>
+                  <select
+                    className="form-control w-full"
+                    value={enhanceDifficulty}
+                    onChange={(e) => setEnhanceDifficulty(e.target.value as 'easy' | 'medium' | 'hard')}
+                  >
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="form-label mb-2 block">Which questions to enhance?</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="enhance-question-select"
+                        checked={enhanceQuestionSelection === 'all'}
+                        onChange={() => setEnhanceQuestionSelection('all')}
+                        className="form-check-input"
+                      />
+                      <span className="text-[0.8125rem]">All questions</span>
+                    </label>
+                    {questions.length > 0 && (
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name="enhance-question-select"
+                          checked={typeof enhanceQuestionSelection === 'object'}
+                          onChange={() => setEnhanceQuestionSelection(questions.map((q) => q.idx))}
+                          className="form-check-input"
+                        />
+                        <span className="text-[0.8125rem]">Select specific questions</span>
+                      </label>
+                    )}
+                    {typeof enhanceQuestionSelection === 'object' && questions.length > 0 && (
+                      <div className="ml-6 mt-2 space-y-1.5 max-h-40 overflow-y-auto">
+                        {questions.map((q) => (
+                          <label key={q.idx} className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={enhanceQuestionSelection.includes(q.idx)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setEnhanceQuestionSelection([...enhanceQuestionSelection, q.idx].sort((a, b) => a - b))
+                                } else {
+                                  setEnhanceQuestionSelection(enhanceQuestionSelection.filter((i) => i !== q.idx))
+                                }
+                              }}
+                              className="form-check-input"
+                            />
+                            <span className="text-[0.75rem] line-clamp-1">{q.text}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border-t border-defaultborder flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light"
+                  onClick={() => {
+                    setEnhanceType(null)
+                    setEnhanceItemId(null)
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary-full"
+                  onClick={handleEnhanceConfirm}
+                  disabled={enhanceLoading || (typeof enhanceQuestionSelection === 'object' && enhanceQuestionSelection.length === 0)}
+                >
+                  {enhanceLoading ? (
+                    <>
+                      <span className="inline-block w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin me-1" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-magic-line me-1" />
+                      Generate
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Blog: Generate from title & keywords (when content is empty) */}
       {blogAiItemId && blogAiItem && blogAiItem.type === 'blog' && !stripHtml(blogAiItem.blogContent ?? '').length && (
