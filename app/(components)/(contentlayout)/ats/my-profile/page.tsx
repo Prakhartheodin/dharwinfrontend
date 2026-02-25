@@ -25,7 +25,7 @@ export default function MyProfilePage() {
     getMyCandidate()
       .then((c) => {
         const id = (c as any).id ?? (c as any)._id;
-        if (id) router.replace(`/ats/candidates/edit?id=${id}`);
+        if (id) router.replace(`/ats/candidates/edit/?id=${id}`);
       })
       .catch(() => {});
   }, [user, isCandidate, rolesLoading, router]);
