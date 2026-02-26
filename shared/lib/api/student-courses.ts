@@ -209,6 +209,42 @@ export async function submitQuizAttempt(
   return data;
 }
 
+/** Quiz results with correct answers (for showing detailed results after submit). */
+export interface QuizResultsQuestion {
+  questionText: string;
+  allowMultipleAnswers?: boolean;
+  options: { text: string; isCorrect: boolean; isSelected: boolean }[];
+  studentAnswer: number[];
+  isCorrect: boolean;
+  /** AI-generated explanation for wrong answers (why the correct answer is right). */
+  explanation?: string;
+}
+
+export interface QuizResultsResponse {
+  quiz: {
+    playlistItemId: string;
+    title: string;
+    questions: QuizResultsQuestion[];
+  };
+  attempt: {
+    attemptNumber: number;
+    score: { totalQuestions: number; correctAnswers: number; percentage: number; totalPoints?: number; maxPoints?: number };
+    submittedAt: string;
+    timeSpent?: number;
+  };
+}
+
+export async function getQuizResults(
+  studentId: string,
+  moduleId: string,
+  playlistItemId: string
+): Promise<QuizResultsResponse> {
+  const { data } = await apiClient.get<QuizResultsResponse>(
+    `/training/students/${studentId}/courses/${moduleId}/quizzes/${playlistItemId}/results`
+  );
+  return data;
+}
+
 /** Essay submit: answers (typed text). Backend marks item complete on submit. */
 export async function submitEssayAttempt(
   studentId: string,

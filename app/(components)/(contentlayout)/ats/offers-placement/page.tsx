@@ -1324,14 +1324,14 @@ const OffersPlacement = () => {
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
-                    {headerGroups.map((headerGroup: any) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                        {headerGroup.headers.map((column: any) => (
+                    {headerGroups.map((headerGroup: any, i: number) => (
+                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                        {headerGroup.headers.map((column: any, i: number) => (
                           <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                            key={Math.random()}
+                            key={column.id || `col-${i}`}
                             style={{ 
                               position: 'sticky', 
                               top: 0, 
@@ -1371,13 +1371,13 @@ const OffersPlacement = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any) => {
+                    {page.map((row: any, i: number) => {
                       prepareRow(row)
                       return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                          {row.cells.map((cell: any) => {
+                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
+                          {row.cells.map((cell: any, i: number) => {
                             return (
-                              <td {...cell.getCellProps()} key={Math.random()}>
+                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
                                 {cell.render('Cell')}
                               </td>
                             )

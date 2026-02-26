@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
 
@@ -23,192 +23,148 @@ export default function PreJoinMeetingPage() {
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [audioPermissionGranted, setAudioPermissionGranted] = useState(false);
   const [videoPermissionGranted, setVideoPermissionGranted] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
   const permissionRequestedOnLoadRef = useRef(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number>(0);
 
-  // Request video/audio permission separately when participant visits the page
+  // Start video preview when we have a video stream
+  useEffect(() => {
+    if (!videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    video.srcObject = stream;
+    return () => {
+      video.srcObject = null;
+    };
+  }, [videoPermissionGranted, videoEnabled]);
+
+  // Audio level meter using AnalyserNode
+  useEffect(() => {
+    if (!audioEnabled || !streamRef.current) {
+      setAudioLevel(0);
+      return;
+    }
+    const stream = streamRef.current;
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack || audioTrack.muted) {
+      setAudioLevel(0);
+      return;
+    }
+    try {
+      const audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+      const source = audioContext.createMediaStreamSource(stream);
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      source.connect(analyser);
+      audioContextRef.current = audioContext;
+      analyserRef.current = analyser;
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+      const updateLevel = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        const sum = dataArray.reduce((a, b) => a + b, 0);
+        const avg = sum / dataArray.length;
+        const normalized = Math.min(100, Math.round((avg / 128) * 100));
+        setAudioLevel(normalized);
+        animationFrameRef.current = requestAnimationFrame(updateLevel);
+      };
+      updateLevel();
+      return () => {
+        cancelAnimationFrame(animationFrameRef.current);
+        audioContext.close();
+        audioContextRef.current = null;
+        analyserRef.current = null;
+      };
+    } catch {
+      setAudioLevel(0);
+    }
+  }, [audioEnabled, audioPermissionGranted]);
+
+  const requestMedia = useCallback(async () => {
+    setRequestingPermissions(true);
+    setPermissionError(null);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+
+    let audioGranted = false;
+    let videoGranted = false;
+    let combinedStream: MediaStream | null = null;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      });
+      combinedStream = stream;
+      audioGranted = stream.getAudioTracks().length > 0;
+      videoGranted = stream.getVideoTracks().length > 0;
+      streamRef.current = stream;
+      setAudioPermissionGranted(audioGranted);
+      setVideoPermissionGranted(videoGranted);
+      setAudioEnabled(audioGranted);
+      setVideoEnabled(videoGranted);
+    } catch (err) {
+      console.error("Media permission error:", err);
+      const error = err as Error;
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+        setPermissionError(
+          "Camera and microphone access was denied. Please allow access in your browser to join."
+        );
+      } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+        setPermissionError("No camera or microphone found. Please connect a device.");
+      } else {
+        setPermissionError("Could not access camera or microphone. Check your device settings.");
+      }
+      setAudioPermissionGranted(false);
+      setVideoPermissionGranted(false);
+    }
+
+    setRequestingPermissions(false);
+  }, []);
+
   useEffect(() => {
     if (permissionRequestedOnLoadRef.current) return;
     permissionRequestedOnLoadRef.current = true;
+    requestMedia();
+  }, [requestMedia]);
 
-    const requestOnLoad = async () => {
-      setRequestingPermissions(true);
-      setPermissionError(null);
-
-      // Request audio permission
-      let audioGranted = false;
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
-        audioStream.getTracks().forEach((track) => track.stop());
-        audioGranted = true;
-        setAudioPermissionGranted(true);
-      } catch (err) {
-        console.error("Audio permission error:", err);
-        setAudioPermissionGranted(false);
-      }
-
-      // Request video permission
-      let videoGranted = false;
-      try {
-        const videoStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-        });
-        videoStream.getTracks().forEach((track) => track.stop());
-        videoGranted = true;
-        setVideoPermissionGranted(true);
-      } catch (err) {
-        console.error("Video permission error:", err);
-        setVideoPermissionGranted(false);
-      }
-
-      // Set initial toggle states based on permissions
-      setAudioEnabled(audioGranted);
-      setVideoEnabled(videoGranted);
-
-      // Check if at least one permission is granted
-      if (!audioGranted && !videoGranted) {
-        setPermissionError(
-          "Camera and microphone permissions are required. Please allow at least one (audio or video) to join the meeting room."
-        );
-      } else if (!audioGranted) {
-        setPermissionError(
-          "Microphone permission denied. You can join with video only."
-        );
-      } else if (!videoGranted) {
-        setPermissionError(
-          "Camera permission denied. You can join with audio only."
-        );
-      } else {
-        setPermissionError(null);
-      }
-
-      setRequestingPermissions(false);
-    };
-
-    requestOnLoad();
-  }, []);
-
-  // Handle audio toggle
   const handleAudioToggle = async () => {
     if (audioEnabled) {
       setAudioEnabled(false);
+      streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
       return;
     }
-
     if (audioPermissionGranted) {
       setAudioEnabled(true);
+      streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = true));
       setPermissionError(null);
       return;
     }
-
-    setRequestingPermissions(true);
-    try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      audioStream.getTracks().forEach((track) => track.stop());
-      setAudioPermissionGranted(true);
-      setAudioEnabled(true);
-      if (!videoPermissionGranted) {
-        setPermissionError(
-          "Camera permission denied. You can join with audio only."
-        );
-      } else {
-        setPermissionError(null);
-      }
-    } catch (err: any) {
-      console.error("Audio permission error:", err);
-      setAudioPermissionGranted(false);
-      setAudioEnabled(false);
-      const error = err as Error;
-      if (
-        error.name === "NotAllowedError" ||
-        error.name === "PermissionDeniedError"
-      ) {
-        if (!videoPermissionGranted) {
-          setPermissionError(
-            "Camera and microphone permissions are required. Please allow at least one (audio or video) to join the meeting room."
-          );
-        } else {
-          setPermissionError(
-            "Microphone permission denied. You can join with video only."
-          );
-        }
-      } else if (
-        error.name === "NotFoundError" ||
-        error.name === "DevicesNotFoundError"
-      ) {
-        setPermissionError("No microphone found. Please connect a microphone device.");
-      } else {
-        setPermissionError(
-          "Failed to access microphone. Please check your device settings."
-        );
-      }
-    } finally {
-      setRequestingPermissions(false);
-    }
+    await requestMedia();
   };
 
-  // Handle video toggle
   const handleVideoToggle = async () => {
     if (videoEnabled) {
       setVideoEnabled(false);
+      streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = false));
       return;
     }
-
     if (videoPermissionGranted) {
       setVideoEnabled(true);
+      streamRef.current?.getVideoTracks().forEach((t) => (t.enabled = true));
       setPermissionError(null);
       return;
     }
-
-    setRequestingPermissions(true);
-    try {
-      const videoStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-      });
-      videoStream.getTracks().forEach((track) => track.stop());
-      setVideoPermissionGranted(true);
-      setVideoEnabled(true);
-      if (!audioPermissionGranted) {
-        setPermissionError(
-          "Microphone permission denied. You can join with video only."
-        );
-      } else {
-        setPermissionError(null);
-      }
-    } catch (err: any) {
-      console.error("Video permission error:", err);
-      setVideoPermissionGranted(false);
-      setVideoEnabled(false);
-      const error = err as Error;
-      if (
-        error.name === "NotAllowedError" ||
-        error.name === "PermissionDeniedError"
-      ) {
-        if (!audioPermissionGranted) {
-          setPermissionError(
-            "Camera and microphone permissions are required. Please allow at least one (audio or video) to join the meeting room."
-          );
-        } else {
-          setPermissionError(
-            "Camera permission denied. You can join with audio only."
-          );
-        }
-      } else if (
-        error.name === "NotFoundError" ||
-        error.name === "DevicesNotFoundError"
-      ) {
-        setPermissionError("No camera found. Please connect a camera device.");
-      } else {
-        setPermissionError(
-          "Failed to access camera. Please check your device settings."
-        );
-      }
-    } finally {
-      setRequestingPermissions(false);
-    }
+    await requestMedia();
   };
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -220,7 +176,8 @@ export default function PreJoinMeetingPage() {
         );
         return;
       }
-
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
       const params = new URLSearchParams({
         name: participantName,
         audio: audioEnabled ? "1" : "0",
@@ -235,23 +192,102 @@ export default function PreJoinMeetingPage() {
     setRoomName(randomRoom);
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-bodybg">
-      <div className="bg-white dark:bg-bodybg rounded-lg shadow-xl p-8 w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-2 text-gray-900 dark:text-white">
-          Join Meeting
-        </h1>
-        <p className="text-center text-gray-600 dark:text-gray-400 mb-8">
-          Join or create a video call room
-        </p>
+  const canJoin = (audioPermissionGranted || videoPermissionGranted) && !requestingPermissions;
 
-        <form onSubmit={handleJoinRoom} className="space-y-4">
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#0f0f12] dark:bg-[#0a0a0c] p-4">
+      <div className="w-full max-w-lg bg-[#1a1a1f] dark:bg-[#141418] rounded-2xl shadow-2xl border border-white/5 overflow-hidden">
+        {/* Header */}
+        <div className="text-center pt-8 pb-4 px-6">
+          <h1 className="text-2xl font-bold text-white">
+            Join Meeting
+          </h1>
+          <p className="text-sm text-gray-400 mt-1">
+            Set up your camera and mic, then join the room
+          </p>
+        </div>
+
+        {/* Camera preview */}
+        <div className="relative aspect-video bg-black mx-4 rounded-xl overflow-hidden">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover scale-x-[-1]"
+            style={{ transform: "scaleX(-1)" }}
+          />
+          {!videoPermissionGranted && !requestingPermissions && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80">
+              <div className="text-center">
+                <i className="ti ti-video-off text-4xl text-gray-500 mb-2 block" />
+                <p className="text-sm text-gray-400">Camera off or not available</p>
+              </div>
+            </div>
+          )}
+          {requestingPermissions && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+            </div>
+          )}
+          {/* Mic level bars overlay */}
+          {audioPermissionGranted && (
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-0.5 h-6">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <span
+                  key={i}
+                  className={`w-1 rounded-full transition-all duration-100 ${
+                    audioEnabled && audioLevel > i * 20 ? "bg-primary" : "bg-white/30"
+                  }`}
+                  style={{ height: `${(i + 1) * 20}%` }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Icon-style mic/camera controls */}
+        <div className="flex justify-center gap-4 py-4">
+          <button
+            type="button"
+            onClick={handleAudioToggle}
+            disabled={requestingPermissions}
+            title={audioEnabled ? "Mute microphone" : "Unmute microphone"}
+            className={`flex items-center justify-center w-14 h-14 rounded-full border-2 transition-all ${
+              audioEnabled
+                ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                : "bg-red-500/20 border-red-500/50 text-red-400"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {audioEnabled ? (
+              <i className="ti ti-microphone text-xl" />
+            ) : (
+              <i className="ti ti-microphone-off text-xl" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={handleVideoToggle}
+            disabled={requestingPermissions}
+            title={videoEnabled ? "Turn off camera" : "Turn on camera"}
+            className={`flex items-center justify-center w-14 h-14 rounded-full border-2 transition-all ${
+              videoEnabled
+                ? "bg-white/10 border-white/20 text-white hover:bg-white/20"
+                : "bg-red-500/20 border-red-500/50 text-red-400"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
+          >
+            {videoEnabled ? (
+              <i className="ti ti-video text-xl" />
+            ) : (
+              <i className="ti ti-video-off text-xl" />
+            )}
+          </button>
+        </div>
+
+        <form onSubmit={handleJoinRoom} className="p-6 pt-0 space-y-4">
           <div>
-            <label
-              htmlFor="participantName"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-            >
-              Your Name
+            <label htmlFor="participantName" className="block text-xs font-medium text-gray-400 mb-1.5">
+              Your name
             </label>
             <input
               id="participantName"
@@ -260,16 +296,12 @@ export default function PreJoinMeetingPage() {
               onChange={(e) => setParticipantName(e.target.value)}
               placeholder="Enter your name"
               required
-              className="ti-form-input w-full"
+              className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
-
           <div>
-            <label
-              htmlFor="roomName"
-              className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-            >
-              Room Name
+            <label htmlFor="roomName" className="block text-xs font-medium text-gray-400 mb-1.5">
+              Room name
             </label>
             <div className="flex gap-2">
               <input
@@ -279,104 +311,40 @@ export default function PreJoinMeetingPage() {
                 onChange={(e) => setRoomName(e.target.value)}
                 placeholder="Enter room name"
                 required
-                className="ti-form-input flex-1"
+                className="flex-1 px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
               />
               <button
                 type="button"
                 onClick={handleCreateRoom}
-                className="ti-btn ti-btn-secondary"
+                className="px-4 py-2.5 rounded-lg bg-white/10 text-gray-300 hover:bg-white/15 text-sm font-medium shrink-0"
               >
                 Random
               </button>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <span className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Join with (mute/unmute audio, video on/off)
-            </span>
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Microphone
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={audioEnabled}
-                  onClick={handleAudioToggle}
-                  disabled={requestingPermissions}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    audioEnabled ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-                      audioEnabled ? "translate-x-5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Camera
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={videoEnabled}
-                  onClick={handleVideoToggle}
-                  disabled={requestingPermissions}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    videoEnabled ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-                      videoEnabled ? "translate-x-5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
+          {requestingPermissions && (
+            <p className="text-sm text-primary">Requesting camera and microphone…</p>
+          )}
+          {permissionError && (
+            <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+              <p className="text-sm text-red-300">{permissionError}</p>
+              <button
+                type="button"
+                onClick={requestMedia}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                Try again
+              </button>
             </div>
-            {requestingPermissions && (
-              <p className="text-sm text-primary">
-                Requesting camera/microphone permissions...
-              </p>
-            )}
-            {permissionError && (
-              <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
-                <p className="text-sm text-danger">{permissionError}</p>
-                {!audioPermissionGranted && !videoPermissionGranted && (
-                  <p className="text-xs text-danger mt-2">
-                    Please allow at least one permission (audio or video) in
-                    your browser settings to join the meeting.
-                  </p>
-                )}
-                {(audioPermissionGranted || videoPermissionGranted) &&
-                  (!audioPermissionGranted || !videoPermissionGranted) && (
-                    <p className="text-xs text-primary mt-2">
-                      {audioPermissionGranted &&
-                        !videoPermissionGranted &&
-                        "You can join with audio. Toggle camera to request video permission."}
-                      {!audioPermissionGranted &&
-                        videoPermissionGranted &&
-                        "You can join with video. Toggle microphone to request audio permission."}
-                    </p>
-                  )}
-              </div>
-            )}
-          </div>
+          )}
 
           <button
             type="submit"
-            disabled={
-              requestingPermissions ||
-              (!audioPermissionGranted && !videoPermissionGranted)
-            }
-            className="ti-btn ti-btn-primary w-full"
+            disabled={!canJoin}
+            className="w-full py-3 rounded-xl bg-primary text-white font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
-            {requestingPermissions ? "Requesting Permissions..." : "Join Room"}
+            {requestingPermissions ? "Requesting…" : "Join room"}
           </button>
         </form>
       </div>

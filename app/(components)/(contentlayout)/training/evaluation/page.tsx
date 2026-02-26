@@ -5,12 +5,30 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect } from 'react'
 import { useTable, useSortBy, usePagination } from 'react-table'
 import { getEvaluation, type EvaluationRow } from '@/shared/lib/api/evaluation'
+import StudentPreviewPanel from './_components/StudentPreviewPanel'
 
-function getStatus(row: EvaluationRow): 'Completed' | 'In Progress' | 'Not Started' {
+function getCourseStatus(row: EvaluationRow): 'Completed' | 'In Progress' | 'Not Started' {
   const rate = row.completionRate ?? 0
-  const completedAt = row.completedAt
-  if (rate >= 100 && completedAt) return 'Completed'
+  if (rate >= 100 && row.completedAt) return 'Completed'
   if (rate > 0) return 'In Progress'
+  return 'Not Started'
+}
+
+interface StudentSummaryRow {
+  studentId: string
+  studentName: string
+  coursesAssigned: number
+  avgCompletion: number
+  overallStatus: 'Completed' | 'In Progress' | 'Not Started'
+  completedCount: number
+  avgQuizScore: number | null
+}
+
+function deriveOverallStatus(courses: EvaluationRow[]): 'Completed' | 'In Progress' | 'Not Started' {
+  if (courses.length === 0) return 'Not Started'
+  const statuses = courses.map(getCourseStatus)
+  if (statuses.every((s) => s === 'Completed')) return 'Completed'
+  if (statuses.some((s) => s === 'In Progress' || s === 'Completed')) return 'In Progress'
   return 'Not Started'
 }
 
@@ -27,8 +45,8 @@ const Evaluation = () => {
   const [evaluations, setEvaluations] = useState<EvaluationRow[]>([])
   const [error, setError] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState('')
-  const [filterCourse, setFilterCourse] = useState('')
   const [filterStudent, setFilterStudent] = useState('')
+  const [selectedStudent, setSelectedStudent] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -54,43 +72,90 @@ const Evaluation = () => {
     return () => { cancelled = true }
   }, [])
 
-  const uniqueCourses = useMemo(() => {
-    const set = new Set(evaluations.map((e) => e.courseName).filter(Boolean))
-    return Array.from(set).sort((a, b) => a.localeCompare(b))
+  const studentRows = useMemo(() => {
+    const map = new Map<string, EvaluationRow[]>()
+    for (const e of evaluations) {
+      if (!e.studentId) continue
+      const existing = map.get(e.studentId) || []
+      existing.push(e)
+      map.set(e.studentId, existing)
+    }
+    const rows: StudentSummaryRow[] = []
+    for (const [studentId, courses] of map.entries()) {
+      if (courses.length === 0) continue
+      const avgCompletion = courses.reduce((s, c) => s + (c.completionRate ?? 0), 0) / courses.length
+      const scores = courses.map((c) => c.quizScore).filter((v): v is number => v != null)
+      const avgQuiz = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null
+      const completedCount = courses.filter((c) => getCourseStatus(c) === 'Completed').length
+      rows.push({
+        studentId,
+        studentName: courses[0].studentName,
+        coursesAssigned: courses.length,
+        avgCompletion: Math.round(avgCompletion),
+        overallStatus: deriveOverallStatus(courses),
+        completedCount,
+        avgQuizScore: avgQuiz,
+      })
+    }
+    return rows
   }, [evaluations])
 
-  const filteredEvaluations = useMemo(() => {
-    let list = evaluations
+  const filteredStudents = useMemo(() => {
+    let list = studentRows
     if (filterStatus) {
-      list = list.filter((row) => getStatus(row) === filterStatus)
-    }
-    if (filterCourse) {
-      list = list.filter((row) => row.courseName === filterCourse)
+      list = list.filter((row) => row.overallStatus === filterStatus)
     }
     if (filterStudent.trim()) {
       const q = filterStudent.trim().toLowerCase()
       list = list.filter((row) => row.studentName?.toLowerCase().includes(q))
     }
     return list
-  }, [evaluations, filterStatus, filterCourse, filterStudent])
+  }, [studentRows, filterStatus, filterStudent])
 
-  const hasActiveFilters = filterStatus || filterCourse || filterStudent.trim()
+  const hasActiveFilters = filterStatus || filterStudent.trim()
 
   const clearFilters = () => {
     setFilterStatus('')
-    setFilterCourse('')
     setFilterStudent('')
   }
 
   const columns = useMemo(
     () => [
-      { Header: 'Student', accessor: 'studentName' as const },
-      { Header: 'Course', accessor: 'courseName' as const },
       {
-        Header: 'Completion %',
-        accessor: 'completionRate' as const,
+        Header: 'Student',
+        accessor: 'studentName' as const,
+        Cell: ({ row }: { row: { original: StudentSummaryRow } }) => (
+          <span
+            className="text-primary cursor-pointer hover:underline font-medium"
+            onClick={() => {
+              setSelectedStudent({
+                id: row.original.studentId,
+                name: row.original.studentName ?? '—',
+              })
+              setTimeout(() => {
+                ;(window as any).HSOverlay?.open(document.querySelector('#student-preview-panel'))
+              }, 50)
+            }}
+          >
+            {row.original.studentName}
+          </span>
+        ),
+      },
+      {
+        Header: 'Courses',
+        accessor: 'coursesAssigned' as const,
+        Cell: ({ row }: { row: { original: StudentSummaryRow } }) => (
+          <span>
+            {row.original.completedCount}/{row.original.coursesAssigned}
+            <span className="text-gray-400 dark:text-gray-500 text-xs ml-1">completed</span>
+          </span>
+        ),
+      },
+      {
+        Header: 'Avg Completion',
+        accessor: 'avgCompletion' as const,
         Cell: ({ value }: { value: number }) => {
-          const pct = value != null ? Math.min(100, Math.max(0, Math.round(value))) : 0
+          const pct = Math.min(100, Math.max(0, value))
           return (
             <div className="flex items-center gap-2 min-w-[120px]">
               <div className="flex-1 h-2 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
@@ -108,8 +173,7 @@ const Evaluation = () => {
       },
       {
         Header: 'Status',
-        id: 'status',
-        accessor: (row: EvaluationRow) => getStatus(row),
+        accessor: 'overallStatus' as const,
         Cell: ({ value }: { value: string }) => {
           const label = value || '—'
           const badgeClass =
@@ -126,23 +190,11 @@ const Evaluation = () => {
         },
       },
       {
-        Header: 'Completion date',
-        accessor: 'completedAt' as const,
-        Cell: ({ value }: { value: string | null }) => (
-          <span>{value ? new Date(value).toLocaleDateString() : '—'}</span>
-        ),
-      },
-      {
-        Header: 'Quiz score',
-        accessor: 'quizScore' as const,
+        Header: 'Avg Quiz Score',
+        accessor: 'avgQuizScore' as const,
         Cell: ({ value }: { value: number | null }) => (
           <span>{value != null ? `${value}%` : '—'}</span>
         ),
-      },
-      {
-        Header: 'Quiz tries',
-        accessor: 'quizTries' as const,
-        Cell: ({ value }: { value: number }) => <span>{value ?? 0}</span>,
       },
     ],
     []
@@ -151,7 +203,7 @@ const Evaluation = () => {
   const tableInstance = useTable(
     {
       columns,
-      data: filteredEvaluations,
+      data: filteredStudents,
       initialState: { pageIndex: 0, pageSize: 10 },
     },
     useSortBy,
@@ -175,13 +227,12 @@ const Evaluation = () => {
   } = tableInstance
 
   const { pageIndex, pageSize } = state
-  const total = filteredEvaluations.length
+  const total = filteredStudents.length
 
   useEffect(() => {
     gotoPage(0)
-    // Reset to first page when filters change; gotoPage is stable from useTable
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, filterCourse, filterStudent])
+  }, [filterStatus, filterStudent])
 
   return (
     <Fragment>
@@ -217,9 +268,9 @@ const Evaluation = () => {
                   <i className="ri-user-line text-xl" />
                 </span>
                 <div>
-                  <p className="text-defaulttextcolor/70 dark:text-white/70 text-sm mb-0">Students enrolled</p>
+                  <p className="text-defaulttextcolor/70 dark:text-white/70 text-sm mb-0">Students with courses</p>
                   <p className="text-xl font-semibold mb-0">
-                    {loading ? '—' : summary.totalStudentsEnrolled}
+                    {loading ? '—' : studentRows.length}
                   </p>
                 </div>
               </div>
@@ -232,7 +283,7 @@ const Evaluation = () => {
           <div className="box flex flex-col" style={{ minHeight: 0 }}>
             <div className="flex items-center justify-between flex-wrap gap-4 mb-4 px-4 pt-4">
               <div className="box-title">
-                Evaluations
+                Students
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
                   {total}
                 </span>
@@ -263,19 +314,6 @@ const Evaluation = () => {
                 {STATUS_OPTIONS.map((opt) => (
                   <option key={opt.value || 'all'} value={opt.value}>
                     {opt.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[160px]"
-                value={filterCourse}
-                onChange={(e) => setFilterCourse(e.target.value)}
-                aria-label="Filter by course"
-              >
-                <option value="">All courses</option>
-                {uniqueCourses.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
                   </option>
                 ))}
               </select>
@@ -317,7 +355,7 @@ const Evaluation = () => {
                     className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600"
                   >
                     <thead>
-                      {headerGroups.map((headerGroup) => (
+                      {headerGroups.map((headerGroup: any) => (
                         <tr
                           {...headerGroup.getHeaderGroupProps()}
                           className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600"
@@ -349,7 +387,7 @@ const Evaluation = () => {
                       ))}
                     </thead>
                     <tbody {...getTableBodyProps()}>
-                      {page.map((row) => {
+                      {page.map((row: any) => {
                         prepareRow(row)
                         return (
                           <tr
@@ -357,7 +395,7 @@ const Evaluation = () => {
                             className="border-b border-gray-300 dark:border-gray-600"
                             key={row.id}
                           >
-                            {row.cells.map((cell) => (
+                            {row.cells.map((cell: any) => (
                               <td {...cell.getCellProps()} key={cell.column.id}>
                                 {cell.render('Cell')}
                               </td>
@@ -386,7 +424,7 @@ const Evaluation = () => {
                               Prev
                             </button>
                           </li>
-                          {pageOptions.map((p) => (
+                          {pageOptions.map((p: number) => (
                             <li key={p} className={`page-item ${pageIndex === p ? 'active' : ''}`}>
                               <button
                                 className="page-link px-3 py-[0.375rem]"
@@ -415,6 +453,17 @@ const Evaluation = () => {
           </div>
         </div>
       </div>
+
+      <StudentPreviewPanel
+        studentId={selectedStudent?.id ?? null}
+        studentName={selectedStudent?.name ?? ''}
+        evaluations={evaluations}
+        onClose={() => {
+          const el = document.querySelector('#student-preview-panel')
+          if (el) (window as any).HSOverlay?.close(el)
+          setSelectedStudent(null)
+        }}
+      />
     </Fragment>
   )
 }

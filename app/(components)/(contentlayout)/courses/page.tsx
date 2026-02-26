@@ -123,10 +123,6 @@ export default function CandidateCoursesPage() {
         mainpage="My Courses"
       />
 
-      <div className="bg-[#1c1d1f] dark:bg-[#0d0d0d] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 mb-6 rounded-b-md">
-        <h2 className="text-white text-[1.75rem] font-bold">My Courses</h2>
-      </div>
-
       {/* Filters, count, search - Udemy-style */}
       <div className="flex flex-wrap items-center gap-4 mb-5">
         <span className="text-[0.875rem] font-semibold text-defaulttextcolor dark:text-white">

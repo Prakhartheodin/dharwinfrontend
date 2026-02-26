@@ -4,7 +4,6 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
-import { Range, getTrackBackground } from "react-range"
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import * as studentsApi from '@/shared/lib/api/students'
@@ -16,6 +15,9 @@ import {
   createStudentFromUser,
   getUsersWithoutStudentProfile,
 } from '@/shared/lib/api/students'
+import StudentViewModal from './_components/StudentViewModal'
+import StudentProfileImageModal from './_components/StudentProfileImageModal'
+import StudentFilters from './_components/StudentFilters'
 
 // Mock data for students
 const STUDENTS_DATA = [
@@ -195,16 +197,8 @@ interface FilterState {
   experience: [number, number] // [min, max] in years
 }
 
-// Extract experience ranges to determine min/max for slider
-const getExperienceRanges = () => {
-  const experiences = STUDENTS_DATA.map(student => student.experience || 0)
-  return {
-    min: Math.min(...experiences),
-    max: Math.max(...experiences)
-  }
-}
-
-const experienceRangesConst = getExperienceRanges()
+// Default experience range when no data is available
+const DEFAULT_EXPERIENCE_RANGE: [number, number] = [0, 50]
 
 // Interface for display purposes (mapped from User)
 interface StudentRow {
@@ -266,8 +260,16 @@ const Students = () => {
     skills: [],
     education: [],
     email: '',
-    experience: [experienceRangesConst.min, experienceRangesConst.max]
+    experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
   })
+
+  // Experience range from currently loaded data (students or STUDENTS_DATA fallback)
+  const experienceRanges = useMemo(() => {
+    const source = students.length > 0 ? students : STUDENTS_DATA
+    const experiences = source.map((s) => s.experience ?? 0)
+    if (!experiences.length) return { min: DEFAULT_EXPERIENCE_RANGE[0], max: DEFAULT_EXPERIENCE_RANGE[1] }
+    return { min: Math.min(DEFAULT_EXPERIENCE_RANGE[0], ...experiences), max: Math.max(DEFAULT_EXPERIENCE_RANGE[1], ...experiences) }
+  }, [students])
 
   // Search states for filter dropdowns
   const [searchName, setSearchName] = useState('')
@@ -291,12 +293,8 @@ const Students = () => {
     try {
       const student = await studentsApi.getStudent(studentId)
       setViewStudent(student)
-      // Trigger modal via Preline's trigger button
       setTimeout(() => {
-        const trigger = document.getElementById('view-student-modal-trigger')
-        if (trigger) {
-          trigger.click()
-        }
+        ;(window as any).HSOverlay?.open(document.querySelector('#view-student-modal'))
       }, 100)
     } catch (err) {
       const msg =
@@ -323,12 +321,8 @@ const Students = () => {
     // Open the notes sidebar
     setNotesStudentId(id)
     
-    // Trigger the panel via Preline's trigger button
     setTimeout(() => {
-      const trigger = document.getElementById('student-notes-panel-trigger')
-      if (trigger) {
-        trigger.click()
-      }
+      ;(window as any).HSOverlay?.open(document.querySelector('#student-notes-panel'))
     }, 100)
   }
 
@@ -432,12 +426,8 @@ const Students = () => {
         setProfileImageLoading(false)
       }
 
-      // Open modal via hidden trigger (Preline)
       setTimeout(() => {
-        const trigger = document.getElementById('student-profile-image-modal-trigger')
-        if (trigger) {
-          trigger.click()
-        }
+        ;(window as any).HSOverlay?.open(document.querySelector('#student-profile-image-modal'))
       }, 50)
     },
     []
@@ -551,6 +541,21 @@ const Students = () => {
   useEffect(() => {
     fetchStudents()
   }, [fetchStudents])
+
+  // Sync experience filter to data bounds when students load
+  useEffect(() => {
+    setFilters((prev) => {
+      const isStillDefault =
+        prev.experience[0] === DEFAULT_EXPERIENCE_RANGE[0] &&
+        prev.experience[1] === DEFAULT_EXPERIENCE_RANGE[1]
+      const needsSync =
+        prev.experience[0] !== experienceRanges.min || prev.experience[1] !== experienceRanges.max
+      if (isStillDefault && needsSync) {
+        return { ...prev, experience: [experienceRanges.min, experienceRanges.max] }
+      }
+      return prev
+    })
+  }, [experienceRanges.min, experienceRanges.max])
 
   const fetchUsersWithoutProfile = useCallback(async () => {
     setLoadingUsersWithoutProfile(true)
@@ -795,10 +800,7 @@ const Students = () => {
     setShowEmailInput(false)
     setShareEmail('')
     setTimeout(() => {
-      const trigger = document.getElementById('share-student-modal-trigger')
-      if (trigger) {
-        trigger.click()
-      }
+      ;(window as any).HSOverlay?.open(document.querySelector('#share-student-modal'))
     }, 100)
   }
 
@@ -842,12 +844,8 @@ const Students = () => {
                   className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
                   onClick={() => {
                     setPreviewStudent(student)
-                    // Trigger the panel via Preline's trigger button
                     setTimeout(() => {
-                      const trigger = document.getElementById('student-preview-panel-trigger')
-                      if (trigger) {
-                        trigger.click()
-                      }
+                      ;(window as any).HSOverlay?.open(document.querySelector('#student-preview-panel'))
                     }, 100)
                   }}
                 >
@@ -1114,7 +1112,7 @@ const Students = () => {
       }
       
       // Experience filter (range)
-      if (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max) {
+      if (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max) {
         const studentExperience = student.experience || 0
         if (studentExperience < filters.experience[0] || studentExperience > filters.experience[1]) {
           return false
@@ -1123,7 +1121,7 @@ const Students = () => {
       
       return true
     })
-  }, [students, filters])
+  }, [students, filters, experienceRanges.min, experienceRanges.max])
 
   const data = useMemo(() => filteredData, [filteredData])
 
@@ -1193,7 +1191,7 @@ const Students = () => {
       skills: [],
       education: [],
       email: '',
-      experience: [experienceRangesConst.min, experienceRangesConst.max]
+      experience: [experienceRanges.min, experienceRanges.max]
     })
     setSearchName('')
     setSearchSkills('')
@@ -1205,15 +1203,15 @@ const Students = () => {
     filters.skills.length > 0 ||
     filters.education.length > 0 ||
     filters.email !== '' ||
-    filters.experience[0] !== experienceRangesConst.min ||
-    filters.experience[1] !== experienceRangesConst.max
+    filters.experience[0] !== experienceRanges.min ||
+    filters.experience[1] !== experienceRanges.max
 
   const activeFilterCount = 
     filters.name.length +
     filters.skills.length +
     filters.education.length +
     (filters.email !== '' ? 1 : 0) +
-    (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0)
+    (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max ? 1 : 0)
 
   const tableInstance: any = useTable(
     {
@@ -1479,14 +1477,14 @@ const Students = () => {
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
-                    {headerGroups.map((headerGroup: any) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                        {headerGroup.headers.map((column: any) => (
+                    {headerGroups.map((headerGroup: any, i) => (
+                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                        {headerGroup.headers.map((column: any, j) => (
                           <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                            key={Math.random()}
+                            key={column.id || `col-${j}`}
                             style={{ 
                               position: 'sticky', 
                               top: 0, 
@@ -1701,447 +1699,41 @@ const Students = () => {
         </div>
       </div>
 
-      {/* Hidden trigger for profile image modal */}
-      <button
-        id="student-profile-image-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#student-profile-image-modal"
-      ></button>
+      <StudentProfileImageModal
+        student={profileImageStudent}
+        profileImageUrl={profileImageUrl}
+        profileImageLoading={profileImageLoading}
+        profileImageUploading={profileImageUploading}
+        profileImageError={profileImageError}
+        onClose={() => {
+          setProfileImageStudent(null)
+          setProfileImageUrl(null)
+          setProfileImageError(null)
+        }}
+        onFileChange={handleProfileImageFileChange}
+      />
 
-      {/* Student profile image modal */}
-      <div
-        id="student-profile-image-modal"
-        className="hs-overlay hidden ti-modal"
-        tabIndex={-1}
-      >
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="modal-title text-[1rem] font-semibold text-default dark:text-defaulttextcolor/70">
-                {profileImageStudent
-                  ? `Profile Image – ${profileImageStudent.name}`
-                  : 'Profile Image'}
-              </h6>
-              <button
-                type="button"
-                className="hs-dropdown-toggle !text-[1rem] !font-semibold"
-                data-hs-overlay="#student-profile-image-modal"
-                onClick={() => {
-                  setProfileImageStudent(null)
-                  setProfileImageUrl(null)
-                  setProfileImageError(null)
-                }}
-              >
-                <span className="sr-only">Close</span>
-                <i className="ri-close-line"></i>
-              </button>
-            </div>
-            <div className="ti-modal-body px-6 space-y-4">
-              {profileImageLoading ? (
-                <p className="text-sm text-defaulttextcolor/70 mb-0">
-                  Loading current profile image...
-                </p>
-              ) : profileImageUrl ? (
-                <div className="flex flex-col items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={profileImageUrl}
-                    alt={profileImageStudent?.name || 'Profile image'}
-                    className="w-24 h-24 rounded-full object-cover border border-defaultborder"
-                  />
-                  <p className="text-xs text-defaulttextcolor/60 mb-0">
-                    This preview URL is temporary and may expire; refresh to get a new one.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-sm text-defaulttextcolor/70 mb-0">
-                  No profile image has been uploaded for this student yet.
-                </p>
-              )}
-
-              {profileImageError && (
-                <div className="p-2 rounded border border-danger/20 bg-danger/5 text-danger text-xs">
-                  {profileImageError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="student-profile-image-file"
-                  className="form-label text-sm font-medium"
-                >
-                  {profileImageUrl ? 'Change picture' : 'Add picture'}
-                </label>
-                <input
-                  id="student-profile-image-file"
-                  type="file"
-                  accept="image/*"
-                  className="form-control"
-                  onChange={handleProfileImageFileChange}
-                  disabled={profileImageUploading || !profileImageStudent}
-                />
-                <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-                  Allowed types: PNG, JPG, JPEG. The image is uploaded securely and stored on the
-                  file storage backend.
-                </p>
-                {profileImageUploading && (
-                  <p className="text-[0.75rem] text-primary mt-1 mb-0">
-                    Uploading profile image...
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="ti-modal-footer">
-              <button
-                type="button"
-                className="ti-btn ti-btn-light align-middle"
-                data-hs-overlay="#student-profile-image-modal"
-                onClick={() => {
-                  setProfileImageStudent(null)
-                  setProfileImageUrl(null)
-                  setProfileImageError(null)
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Filter Panel Offcanvas - Same structure as candidates */}
-      <div id="students-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
-        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
-            <i className="ri-search-line text-primary text-base"></i>
-            Search Students
-          </h6>
-          <button 
-            type="button" 
-            className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1" 
-            onClick={handleResetFilters}
-          >
-            <i className="ri-refresh-line me-1.5"></i>Reset
-          </button>
-        </div>
-        <div className="ti-offcanvas-body !p-4">
-          <div className="space-y-5">
-            {/* Name Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-user-line text-primary text-base"></i>
-                Name
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allNames.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search names..."
-                  value={searchName}
-                  onChange={(e) => setSearchName(e.target.value)}
-                />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
-                  <div className="space-y-1">
-                    {filteredNames.length > 0 ? (
-                      filteredNames.map((name) => (
-                        <label
-                          key={name}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.name.includes(name)}
-                            onChange={() => handleMultiSelectChange('name', name)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{name}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No names found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.name.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.name.map((name) => (
-                      <span
-                        key={name}
-                        className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {name}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('name', name)}
-                          className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Skills Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-code-s-slash-line text-success text-base"></i>
-                Skills
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allSkills.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search skills..."
-                  value={searchSkills}
-                  onChange={(e) => setSearchSkills(e.target.value)}
-                />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
-                  <div className="space-y-1">
-                    {filteredSkills.length > 0 ? (
-                      filteredSkills.map((skill) => (
-                        <label
-                          key={skill}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-success/5 dark:hover:bg-success/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.skills.includes(skill)}
-                            onChange={() => handleMultiSelectChange('skills', skill)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{skill}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No skills found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.skills.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.skills.map((skill) => (
-                      <span
-                        key={skill}
-                        className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {skill}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('skills', skill)}
-                          className="hover:text-success-hover hover:bg-success/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Education Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-graduation-cap-line text-info text-base"></i>
-                Education
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allEducation.length})</span>
-              </label>
-              <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search education..."
-                  value={searchEducation}
-                  onChange={(e) => setSearchEducation(e.target.value)}
-                />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
-                  <div className="space-y-1">
-                    {filteredEducation.length > 0 ? (
-                      filteredEducation.map((edu) => (
-                        <label
-                          key={edu}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-info/5 dark:hover:bg-info/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.education.includes(edu)}
-                            onChange={() => handleMultiSelectChange('education', edu)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{edu}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No education found
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {filters.education.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.education.map((edu) => (
-                      <span
-                        key={edu}
-                        className="badge bg-info/10 text-info border border-info/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {edu}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('education', edu)}
-                          className="hover:text-info-hover hover:bg-info/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Email Filter */}
-            <div className="pb-4">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-mail-line text-warning text-base"></i>
-                Email
-              </label>
-              <input
-                type="text"
-                className="form-control border-gray-200 dark:border-defaultborder/10 focus:ring-2 focus:ring-primary/20 !py-1.5 !text-sm"
-                placeholder="Search by email..."
-                value={filters.email}
-                onChange={(e) => setFilters(prev => ({ ...prev, email: e.target.value }))}
-              />
-            </div>
-
-            {/* Experience Filter - Range Slider */}
-            <div className="pb-4">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <i className="ri-time-line text-info text-base"></i>
-                  Work Experience (Years)
-                </span>
-                <span className="text-xs font-medium text-primary bg-primary/10 px-2.5 py-0.5 rounded-full">
-                  {filters.experience[0]} - {filters.experience[1]} years
-                </span>
-              </label>
-              <div className="px-2 py-4 bg-gray-50 dark:bg-black/20 rounded-lg">
-                <Range
-                  values={filters.experience}
-                  step={1}
-                  min={experienceRangesConst.min}
-                  max={experienceRangesConst.max}
-                  onChange={handleExperienceRangeChange}
-                  renderTrack={({ props, children }) => (
-                    <div
-                      onMouseDown={props.onMouseDown}
-                      onTouchStart={props.onTouchStart}
-                      style={{
-                        ...props.style,
-                        height: '36px',
-                        display: 'flex',
-                        width: '100%',
-                      }}
-                    >
-                      <div
-                        ref={props.ref}
-                        style={{
-                          height: '8px',
-                          width: '100%',
-                          borderRadius: '6px',
-                          background: getTrackBackground({
-                            values: filters.experience,
-                            colors: ['#e2e8f0', '#845adf', '#e2e8f0'],
-                            min: experienceRangesConst.min,
-                            max: experienceRangesConst.max,
-                          }),
-                          alignSelf: 'center',
-                        }}
-                      >
-                        {children}
-                      </div>
-                    </div>
-                  )}
-                  renderThumb={({ index, props, isDragged }) => {
-                    const { key, ...restProps } = props
-                    return (
-                    <div
-                      key={key}
-                      {...restProps}
-                      style={{
-                        ...restProps.style,
-                        height: '20px',
-                        width: '20px',
-                        borderRadius: '50%',
-                        backgroundColor: '#fff',
-                        display: 'flex',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        boxShadow: isDragged ? '0px 2px 8px rgba(132, 90, 223, 0.4)' : '0px 2px 6px #AAA',
-                        border: '2px solid rgb(132, 90, 223)',
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: 'absolute',
-                          top: '-28px',
-                          color: '#fff',
-                          fontWeight: '600',
-                          fontSize: '12px',
-                          fontFamily: 'inherit',
-                          padding: '4px 8px',
-                          borderRadius: '4px',
-                          backgroundColor: 'rgb(132, 90, 223)',
-                        }}
-                      >
-                        {filters.experience[index]} {filters.experience[index] === 1 ? 'year' : 'years'}
-                      </div>
-                    </div>
-                    )
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Filter Actions */}
-            <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-defaultborder/10">
-              <button
-                type="button"
-                className="ti-btn ti-btn-primary flex-1 font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                onClick={handleResetFilters}
-              >
-                <i className="ri-refresh-line me-1.5"></i>Reset
-              </button>
-              <button
-                type="button"
-                className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                data-hs-overlay="#students-filter-panel"
-              >
-                <i className="ri-close-line me-1.5"></i>Close
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hidden trigger button for student preview panel (needed for Preline) */}
-      <button 
-        id="student-preview-panel-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#student-preview-panel"
-      ></button>
+      <StudentFilters
+        filters={filters}
+        setFilters={setFilters}
+        allNames={allNames}
+        allSkills={allSkills}
+        allEducation={allEducation}
+        filteredNames={filteredNames}
+        filteredSkills={filteredSkills}
+        filteredEducation={filteredEducation}
+        searchName={searchName}
+        setSearchName={setSearchName}
+        searchSkills={searchSkills}
+        setSearchSkills={setSearchSkills}
+        searchEducation={searchEducation}
+        setSearchEducation={setSearchEducation}
+        experienceRanges={experienceRanges}
+        handleMultiSelectChange={handleMultiSelectChange}
+        handleRemoveFilter={handleRemoveFilter}
+        handleExperienceRangeChange={handleExperienceRangeChange}
+        handleResetFilters={handleResetFilters}
+      />
 
       {/* Student Preview Panel (Offcanvas) */}
       <div 
@@ -2248,14 +1840,6 @@ const Students = () => {
           )}
         </div>
       </div>
-
-      {/* Hidden trigger button for student notes panel (needed for Preline) */}
-      <button 
-        id="student-notes-panel-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#student-notes-panel"
-      ></button>
 
       {/* Student Notes Panel (Offcanvas) */}
       <div 
@@ -2419,14 +2003,6 @@ const Students = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for share modal (needed for Preline) */}
-      <button 
-        id="share-student-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#share-student-modal"
-      ></button>
-
       {/* Share Student Modal */}
       <div 
         id="share-student-modal" 
@@ -2575,272 +2151,11 @@ const Students = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for view student modal (needed for Preline) */}
-      <button 
-        id="view-student-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#view-student-modal"
-      ></button>
-
-      {/* View Student Detailed Modal */}
-      <div 
-        id="view-student-modal" 
-        className="hs-overlay hidden ti-modal"
-      >
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-4xl lg:w-full m-3 lg:!mx-auto">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="ti-modal-title flex items-center gap-2">
-                <i className="ri-eye-line text-primary"></i>
-                Student Details
-              </h6>
-              <button 
-                type="button" 
-                className="hs-dropdown-toggle ti-modal-close-btn" 
-                data-hs-overlay="#view-student-modal"
-                onClick={() => setViewStudent(null)}
-              >
-                <span className="sr-only">Close</span>
-                <svg className="w-3.5 h-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z" fill="currentColor"/>
-                </svg>
-              </button>
-            </div>
-            <div className="ti-modal-body">
-              {viewStudentLoading ? (
-                <div className="text-center py-8">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <p className="mt-4 text-gray-500 dark:text-gray-400">Loading student details...</p>
-                </div>
-              ) : viewStudent ? (
-                <div className="space-y-6">
-                  {/* Student Header */}
-                  <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
-                    <img
-                      src={viewStudent.profileImageUrl || '/assets/images/faces/1.jpg'}
-                      alt={viewStudent.user?.name || 'Student'}
-                      className="w-20 h-20 rounded-full object-cover border-2 border-primary/30"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                      }}
-                    />
-                    <div className="flex-1">
-                      <h6 className="font-bold text-gray-800 dark:text-white text-xl mb-1">{viewStudent.user?.name || 'Unknown'}</h6>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <i className="ri-mail-line"></i>
-                          {viewStudent.user?.email || 'N/A'}
-                        </span>
-                        {viewStudent.phone && (
-                          <span className="flex items-center gap-1">
-                            <i className="ri-phone-line"></i>
-                            {viewStudent.phone}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <i className="ri-user-settings-line"></i>
-                          Status: <span className="font-semibold capitalize">{viewStudent.status}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Personal Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {viewStudent.dateOfBirth && (
-                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Date of Birth</div>
-                        <div className="font-semibold text-gray-800 dark:text-white">
-                          {new Date(viewStudent.dateOfBirth).toLocaleDateString()}
-                        </div>
-                      </div>
-                    )}
-                    {viewStudent.gender && (
-                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gender</div>
-                        <div className="font-semibold text-gray-800 dark:text-white capitalize">{viewStudent.gender}</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Address */}
-                  {viewStudent.address && (viewStudent.address.street || viewStudent.address.city || viewStudent.address.state || viewStudent.address.country) && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-map-pin-line text-primary"></i>
-                        Address
-                      </h6>
-                      <div className="text-sm text-gray-700 dark:text-gray-300">
-                        {[
-                          viewStudent.address.street,
-                          viewStudent.address.city,
-                          viewStudent.address.state,
-                          viewStudent.address.zipCode,
-                          viewStudent.address.country
-                        ].filter(Boolean).join(', ')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Education */}
-                  {viewStudent.education && viewStudent.education.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-graduation-cap-line text-primary"></i>
-                        Education
-                      </h6>
-                      <div className="space-y-3">
-                        {viewStudent.education.map((edu, index) => (
-                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="font-semibold text-gray-800 dark:text-white">
-                              {edu.degree || 'N/A'} {edu.institution && `- ${edu.institution}`}
-                            </div>
-                            {edu.fieldOfStudy && (
-                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">Field: {edu.fieldOfStudy}</div>
-                            )}
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {edu.startDate && new Date(edu.startDate).toLocaleDateString()} - {' '}
-                              {edu.isCurrent ? 'Present' : (edu.endDate ? new Date(edu.endDate).toLocaleDateString() : 'N/A')}
-                            </div>
-                            {edu.description && (
-                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{edu.description}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Work Experience */}
-                  {viewStudent.experience && viewStudent.experience.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-briefcase-line text-primary"></i>
-                        Work Experience
-                      </h6>
-                      <div className="space-y-3">
-                        {viewStudent.experience.map((exp, index) => (
-                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="font-semibold text-gray-800 dark:text-white">
-                              {exp.title || 'N/A'} {exp.company && `at ${exp.company}`}
-                            </div>
-                            {exp.location && (
-                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                <i className="ri-map-pin-line"></i> {exp.location}
-                              </div>
-                            )}
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {exp.startDate && new Date(exp.startDate).toLocaleDateString()} - {' '}
-                              {exp.isCurrent ? 'Present' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString() : 'N/A')}
-                            </div>
-                            {exp.description && (
-                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{exp.description}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Skills */}
-                  {viewStudent.skills && viewStudent.skills.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-tools-line text-primary"></i>
-                        Skills
-                      </h6>
-                      <div className="flex flex-wrap gap-2">
-                        {viewStudent.skills.map((skill, index) => (
-                          <span
-                            key={index}
-                            className="badge bg-primary/10 text-primary border border-primary/30 px-3 py-1 rounded-md text-sm font-medium"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Documents */}
-                  {viewStudent.documents && viewStudent.documents.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-file-line text-primary"></i>
-                        Documents
-                      </h6>
-                      <div className="space-y-2">
-                        {viewStudent.documents.map((doc, index) => (
-                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="flex items-center gap-2">
-                              <i className="ri-file-text-line text-primary"></i>
-                              <div>
-                                <div className="font-medium text-gray-800 dark:text-white">{doc.name}</div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400 capitalize">{doc.type}</div>
-                              </div>
-                            </div>
-                            {doc.fileUrl && (
-                              <a
-                                href={doc.fileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="ti-btn ti-btn-sm ti-btn-primary"
-                              >
-                                <i className="ri-external-link-line"></i>
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bio */}
-                  {viewStudent.bio && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-file-text-line text-primary"></i>
-                        Bio
-                      </h6>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                        {viewStudent.bio}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-gray-500">No student selected</div>
-              )}
-            </div>
-            <div className="ti-modal-footer">
-              <button 
-                type="button" 
-                className="ti-btn ti-btn-light" 
-                data-hs-overlay="#view-student-modal"
-                onClick={() => setViewStudent(null)}
-              >
-                Close
-              </button>
-              {viewStudent && (
-                <Link
-                  href={`/training/students/edit/?id=${encodeURIComponent(viewStudent.id)}`}
-                  className="ti-btn ti-btn-primary"
-                  onClick={() => {
-                    const trigger = document.getElementById('view-student-modal-trigger')
-                    if (trigger) {
-                      trigger.click()
-                    }
-                  }}
-                >
-                  <i className="ri-pencil-line me-1"></i>
-                  Edit Student
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      <StudentViewModal
+        student={viewStudent}
+        isLoading={viewStudentLoading}
+        onClose={() => setViewStudent(null)}
+      />
     </Fragment>
   )
 }

@@ -17,6 +17,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ShareCandidateForm = () => {
   const { user } = useAuth();
+  const nextIdRef = useRef(2);
   const [emails, setEmails] = useState<EmailRow[]>([{ id: "1", email: "" }]);
   const [importMode, setImportMode] = useState<"manual" | "excel">("manual");
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +32,8 @@ const ShareCandidateForm = () => {
   };
 
   const addRow = () => {
-    setEmails((prev) => [...prev, { id: String(prev.length + 1), email: "" }]);
+    const id = String(nextIdRef.current++);
+    setEmails((prev) => [...prev, { id, email: "" }]);
   };
 
   const removeRow = (id: string) => {
@@ -45,7 +47,7 @@ const ShareCandidateForm = () => {
     const userId = user?.id ?? user?._id ?? "default-admin";
     const timestamp = Date.now();
     const randomStr = Math.random().toString(36).substring(2, 15);
-    const userHash = btoa(userId + timestamp).replace(/[^a-zA-Z0-9]/g, "");
+    const userHash = btoa(String(userId) + timestamp).replace(/[^a-zA-Z0-9]/g, "");
     const token = `${userHash}_${timestamp}_${randomStr}`;
     const encryptedEmail = btoa(email);
     const encryptedAdminId = btoa(String(userId));
@@ -132,7 +134,9 @@ const ShareCandidateForm = () => {
         await Swal.fire({ icon: "warning", title: "No emails found", text: "No valid email addresses were found in the file." });
         return;
       }
-      setEmails(list.map((email, i) => ({ id: String(i + 1), email })));
+      const startId = nextIdRef.current;
+      nextIdRef.current += list.length;
+      setEmails(list.map((email, i) => ({ id: String(startId + i), email })));
       await Swal.fire({
         icon: "success",
         title: "Import complete",

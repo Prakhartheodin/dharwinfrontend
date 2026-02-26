@@ -171,8 +171,31 @@ function RoomContent({
   const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
   const [recordingToast, setRecordingToast] = useState(false);
   const [meetingEndedToast, setMeetingEndedToast] = useState(false);
+  const [meetingStartTime, setMeetingStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const participantCount = participants.length;
 
-  // Inject recording button into control bar (beside screen share and chat)
+  useEffect(() => {
+    if (room.state === ConnectionState.Connected && meetingStartTime === null) {
+      setMeetingStartTime(Date.now());
+    }
+  }, [room.state, meetingStartTime]);
+
+  useEffect(() => {
+    if (meetingStartTime === null) return;
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - meetingStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [meetingStartTime]);
+
+  const formatDuration = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  // Inject recording button into control bar (beside the disconnect/leave button)
   useEffect(() => {
     const tryInject = () => {
       const bar = document.querySelector(".lk-control-bar");
@@ -181,9 +204,8 @@ function RoomContent({
       if (!slot) {
         slot = document.createElement("div");
         slot.id = "recording-button-slot";
-        slot.className = "recording-control-inline flex items-center";
-        slot.style.cssText = "display: flex; align-items: center; margin: 0 0.25rem;";
-        const leaveBtn = bar.querySelector("[data-lk-leave], [data-lk-source='leave']") || bar.lastElementChild;
+        slot.style.cssText = "display:flex;align-items:center;order:90;";
+        const leaveBtn = bar.querySelector(".lk-disconnect-button, [data-lk-disconnect], button[aria-label*='Leave'], button[aria-label*='Disconnect']");
         if (leaveBtn) {
           bar.insertBefore(slot, leaveBtn);
         } else {
@@ -196,7 +218,7 @@ function RoomContent({
     if (tryInject()) return;
     const timer = setInterval(() => {
       if (tryInject()) clearInterval(timer);
-    }, 200);
+    }, 300);
     return () => clearInterval(timer);
   }, []);
 
@@ -501,9 +523,73 @@ function RoomContent({
   return (
     <>
       <style dangerouslySetInnerHTML={{ __html: `
+        .room-meeting-container {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          min-height: 0;
+          width: 100%;
+          background: #202124;
+        }
+        .room-meeting-container .lk-video-conference {
+          flex: 1;
+          min-height: 0;
+        }
+        .room-meeting-container .lk-video-conference-inner {
+          flex: 1;
+          min-height: 0;
+        }
+        .room-meeting-container .lk-focus-layout-wrapper,
+        .room-meeting-container .lk-grid-layout-wrapper {
+          flex: 1;
+          min-height: 0;
+        }
+        .room-meeting-container .lk-grid-layout {
+          min-height: 0;
+        }
+        .room-meeting-container .lk-control-bar {
+          flex-shrink: 0;
+          background: #202124;
+          border-top-color: rgba(255,255,255,0.12);
+        }
+        .room-meeting-container .lk-participant-tile {
+          min-height: 120px;
+        }
+        #recording-button-slot .lk-button {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.375rem;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
         ${waitingParticipantsCSS}
+        @media (max-width: 640px) {
+          .room-meeting-container .lk-control-bar {
+            padding-left: max(0.75rem, env(safe-area-inset-left));
+            padding-right: max(0.75rem, env(safe-area-inset-right));
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+          }
+        }
       `}} />
-      <div className="room-meeting-container" style={{ position: "relative" }}>
+      <div className="room-meeting-container relative">
+        {/* Top bar: duration + participant count */}
+        <div className="absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-4 py-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+          <div className="flex items-center gap-3 pointer-events-auto">
+            <span className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/40 text-white text-sm font-medium tabular-nums">
+              <i className="ti ti-clock text-base opacity-80" />
+              {formatDuration(elapsedSeconds)}
+            </span>
+            <span className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/40 text-white text-sm font-medium">
+              <i className="ti ti-users text-base opacity-80" />
+              {participantCount} {participantCount === 1 ? "participant" : "participants"}
+            </span>
+          </div>
+        </div>
+
         <VideoConference />
         <RoomAudioRenderer />
         {recordingSlot &&
@@ -517,60 +603,55 @@ function RoomContent({
           )}
         {recordingToast && (
           <div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-success/95 text-white text-sm font-medium shadow-lg"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-xl bg-emerald-600/95 text-white text-sm font-medium shadow-xl flex items-center gap-2"
             role="alert"
           >
-            <span className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
-              Recording has started in meeting
+            <span className="flex items-center justify-center w-5 h-5 rounded-full bg-white/20">
+              <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
             </span>
+            <i className="ti ti-record text-base" />
+            <span>Recording started</span>
           </div>
         )}
         {meetingEndedToast && (
           <div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-gray-700/95 text-white text-sm font-medium shadow-lg"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-xl bg-gray-800/95 text-white text-sm font-medium shadow-xl flex items-center gap-2"
             role="alert"
           >
-            <span className="flex items-center gap-2">
-              <i className="ri-checkbox-circle-line text-lg" />
-              Meeting ended
-            </span>
+            <i className="ti ti-circle-check text-lg text-emerald-400" />
+            <span>Meeting ended</span>
           </div>
         )}
       {isHost && (
-        <div
-          style={{
-            position: "absolute",
-            top: "16px",
-            left: "16px",
-            zIndex: 1000,
-            maxWidth: "400px",
+        <WaitingParticipantsPanel
+          roomName={roomName}
+          onParticipantAdmitted={(identity) => {
+            setWaitingIds((prev) => prev.filter(id => id !== identity));
+            setFetchedWaitingIds((prev) => prev.filter(id => id !== identity));
           }}
-        >
-          <WaitingParticipantsPanel
-            roomName={roomName}
-            onParticipantAdmitted={(identity) => {
-              console.log("Participant admitted:", identity);
-              // Remove from waiting list immediately when admitted
-              setWaitingIds((prev) => prev.filter(id => id !== identity));
-              setFetchedWaitingIds((prev) => prev.filter(id => id !== identity));
-            }}
-            onWaitingParticipantsChange={(identities) => {
-              setWaitingIds(identities);
-              // Also update fetched list
-              setFetchedWaitingIds(identities);
-            }}
-          />
-        </div>
+          onWaitingParticipantsChange={(identities) => {
+            setWaitingIds(identities);
+            setFetchedWaitingIds(identities);
+          }}
+        />
       )}
       {reconnecting && (
-        <div
-          className="absolute inset-0 bg-black/50 flex items-center justify-center z-50"
-          style={{ position: "absolute" }}
-        >
-          <div className="text-center text-white">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p>Reconnecting...</p>
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-[200]">
+          <div className="text-center text-white max-w-sm px-6">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full border-2 border-primary/50 mb-4">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+            </div>
+            <p className="text-lg font-medium mb-1">Reconnecting…</p>
+            <p className="text-sm text-gray-400 mb-4">
+              Attempt {reconnectAttempts} of {MAX_RECONNECT_ATTEMPTS}
+            </p>
+            <button
+              type="button"
+              onClick={() => onReconnect()}
+              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90"
+            >
+              Rejoin now
+            </button>
           </div>
         </div>
       )}

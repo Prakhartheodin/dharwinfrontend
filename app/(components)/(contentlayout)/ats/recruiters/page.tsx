@@ -154,13 +154,8 @@ const Recruiters = () => {
   const handleAddNote = (id: string, recruiter?: any) => {
     // Open the notes sidebar
     setNotesRecruiterId(id)
-    
-    // Trigger the panel via Preline's trigger button
     setTimeout(() => {
-      const trigger = document.getElementById('recruiter-notes-panel-trigger')
-      if (trigger) {
-        trigger.click()
-      }
+      ;(window as any).HSOverlay?.open(document.querySelector('#recruiter-notes-panel'))
     }, 100)
   }
 
@@ -272,10 +267,7 @@ const Recruiters = () => {
     setShowEmailInput(false)
     setShareEmail('')
     setTimeout(() => {
-      const trigger = document.getElementById('share-recruiter-modal-trigger')
-      if (trigger) {
-        trigger.click()
-      }
+      ;(window as any).HSOverlay?.open(document.querySelector('#share-recruiter-modal'))
     }, 100)
   }
 
@@ -318,12 +310,8 @@ const Recruiters = () => {
                   className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
                   onClick={() => {
                     setPreviewRecruiter(recruiter)
-                    // Trigger the panel via Preline's trigger button
                     setTimeout(() => {
-                      const trigger = document.getElementById('recruiter-preview-panel-trigger')
-                      if (trigger) {
-                        trigger.click()
-                      }
+                      ;(window as any).HSOverlay?.open(document.querySelector('#recruiter-preview-panel'))
                     }, 100)
                   }}
                 >
@@ -907,14 +895,14 @@ const Recruiters = () => {
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
-                    {headerGroups.map((headerGroup: any) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                        {headerGroup.headers.map((column: any) => (
+                    {headerGroups.map((headerGroup: any, i: number) => (
+                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                        {headerGroup.headers.map((column: any, i: number) => (
                           <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                            key={Math.random()}
+                            key={column.id || `col-${i}`}
                             style={{ 
                               position: 'sticky', 
                               top: 0, 
@@ -954,13 +942,13 @@ const Recruiters = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any) => {
+                    {page.map((row: any, i: number) => {
                       prepareRow(row)
                       return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                          {row.cells.map((cell: any) => {
+                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
+                          {row.cells.map((cell: any, i: number) => {
                             return (
-                              <td {...cell.getCellProps()} key={Math.random()}>
+                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
                                 {cell.render('Cell')}
                               </td>
                             )
@@ -1384,14 +1372,6 @@ const Recruiters = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for recruiter preview panel (needed for Preline) */}
-      <button 
-        id="recruiter-preview-panel-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#recruiter-preview-panel"
-      ></button>
-
       {/* Recruiter Preview Panel (Offcanvas) */}
       <div 
         id="recruiter-preview-panel" 
@@ -1497,14 +1477,6 @@ const Recruiters = () => {
           )}
         </div>
       </div>
-
-      {/* Hidden trigger button for recruiter notes panel (needed for Preline) */}
-      <button 
-        id="recruiter-notes-panel-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#recruiter-notes-panel"
-      ></button>
 
       {/* Recruiter Notes Panel (Offcanvas) */}
       <div 
@@ -1667,14 +1639,6 @@ const Recruiters = () => {
           )}
         </div>
       </div>
-
-      {/* Hidden trigger button for share modal (needed for Preline) */}
-      <button 
-        id="share-recruiter-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#share-recruiter-modal"
-      ></button>
 
       {/* Share Recruiter Modal */}
       <div 

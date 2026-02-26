@@ -10,11 +10,8 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { downloadCsv } from "@/shared/lib/csv-export";
-import dynamic from "next/dynamic";
-import { Chart, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from "chart.js";
-
-Chart.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
-const Bar = dynamic(() => import("react-chartjs-2").then((m) => m.Bar), { ssr: false });
+import AdminTrackView from "./_components/AdminTrackView";
+import AttendanceDashboard from "./_components/AttendanceDashboard";
 
 const POLL_INTERVAL_MS = 30000;
 const TRACK_POLL_MS = 10000;
@@ -863,85 +860,17 @@ export default function AttendanceTracking() {
             </div>
 
             {attendanceView === "track" && (
-          <div className="box">
-            <div className="box-header flex flex-wrap items-center justify-between gap-2">
-              <div className="box-title">Track Attendance</div>
-              <button type="button" className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]" onClick={exportTrackCsv} disabled={trackList.length === 0}>
-                Export CSV
-              </button>
-            </div>
-            <div className="box-body">
-              {trackListLoading ? (
-                <div className="py-8 text-center text-defaulttextcolor/70">Loading…</div>
-              ) : trackList.length === 0 ? (
-                <div className="py-8 text-center text-defaulttextcolor/70">No students found.</div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
-                    <thead>
-                      <tr className="bg-gray-50 dark:bg-white/5">
-                        <th className="!text-start">Name</th>
-                        <th className="!text-start">Email</th>
-                        <th className="!text-start">Status</th>
-                        <th className="!text-start">Punch In (timezone)</th>
-                        <th className="!text-start">Punch Out (timezone)</th>
-                        <th className="!text-start">Duration</th>
-                        <th className="!text-start">Timezone</th>
-                        <th className="!text-start">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {trackList.map((row) => (
-                        <tr key={row.studentId}>
-                          <td>{row.studentName}</td>
-                          <td>{row.email}</td>
-                          <td>
-                            <span
-                              className={`badge ${row.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
-                            >
-                              {row.isPunchedIn ? "Punched In" : "Punched Out"}
-                            </span>
-                          </td>
-                          <td>{formatTimeInTimezone(row.punchIn, row.timezone)}</td>
-                          <td>{formatTimeInTimezone(row.punchOut, row.timezone)}</td>
-                          <td>
-                            {row.isPunchedIn && row.punchIn
-                              ? formatDuration(Date.now() - new Date(row.punchIn).getTime())
-                              : formatDurationFromMs(row.durationMs ?? null)}
-                          </td>
-                          <td>{row.timezone}</td>
-                          <td>
-                            <span className="flex flex-wrap items-center gap-2">
-                              {canPunchOutOthers && row.isPunchedIn ? (
-                                <button
-                                  type="button"
-                                  className="ti-btn ti-btn-outline-danger !py-1 !px-2"
-                                  onClick={() => handleAdminPunchOut(row.studentId)}
-                                  disabled={punchOutLoadingId === row.studentId}
-                                  title="Punch Out"
-                                >
-                                  {punchOutLoadingId === row.studentId ? (
-                                    <i className="ri-loader-4-line animate-spin text-lg" />
-                                  ) : (
-                                    <>
-                                      <i className="ri-logout-box-r-line text-lg" />
-                                      <span className="ms-1">Punch Out</span>
-                                    </>
-                                  )}
-                                </button>
-                              ) : (
-                                <span className="text-defaulttextcolor/50">—</span>
-                              )}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
+              <AdminTrackView
+                trackList={trackList}
+                trackListLoading={trackListLoading}
+                canPunchOutOthers={canPunchOutOthers}
+                punchOutLoadingId={punchOutLoadingId}
+                onPunchOut={handleAdminPunchOut}
+                onExportCsv={exportTrackCsv}
+                formatTimeInTimezone={formatTimeInTimezone}
+                formatDuration={formatDuration}
+                formatDurationFromMs={formatDurationFromMs}
+              />
             )}
 
             {attendanceView === "history" && (
@@ -1014,69 +943,10 @@ export default function AttendanceTracking() {
             )}
 
             {attendanceView === "dashboard" && (
-              <div className="grid grid-cols-12 gap-6">
-                {historyLoading ? (
-                  <div className="col-span-12 py-8 text-center text-defaulttextcolor/70">Loading dashboard…</div>
-                ) : (
-                <>
-                {(() => {
-                  const list = historyList;
-                  const hoursByDate: Record<string, number> = {};
-                  const sessionsByStudent: Record<string, { name: string; count: number }> = {};
-                  const punchInByHour: number[] = Array.from({ length: 24 }, () => 0);
-                  list.forEach((row) => {
-                    const dateKey = new Date(row.date).toISOString().slice(0, 10);
-                    hoursByDate[dateKey] = (hoursByDate[dateKey] || 0) + ((row.durationMs ?? 0) / (1000 * 60 * 60));
-                    const sid = row.studentId;
-                    if (!sessionsByStudent[sid]) sessionsByStudent[sid] = { name: row.studentName, count: 0 };
-                    sessionsByStudent[sid].count += 1;
-                    if (row.punchIn) {
-                      try {
-                        const hour = parseInt(new Date(row.punchIn).toLocaleString("en-US", { timeZone: row.timezone || "UTC", hour: "numeric", hour12: false }), 10);
-                        if (hour >= 0 && hour < 24) punchInByHour[hour] += 1;
-                      } catch {
-                        const h = new Date(row.punchIn).getHours();
-                        punchInByHour[h] += 1;
-                      }
-                    }
-                  });
-                  const dateLabels = Object.keys(hoursByDate).sort().slice(-14);
-                  const hoursData = dateLabels.map((d) => Math.round((hoursByDate[d] || 0) * 100) / 100);
-                  const studentLabels = Object.values(sessionsByStudent).map((s) => s.name.length > 12 ? s.name.slice(0, 12) + "…" : s.name);
-                  const sessionsData = Object.values(sessionsByStudent).map((s) => s.count);
-                  const barOpt = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: {} } };
-                  return (
-                    <>
-                      <div className="col-span-12 xl:col-span-6">
-                        <div className="box">
-                          <div className="box-header"><div className="box-title">Hours per day (last 14 days)</div></div>
-                          <div className="box-body" style={{ height: 280 }}>
-                            {dateLabels.length ? <Bar options={barOpt} data={{ labels: dateLabels, datasets: [{ label: "Hours", data: hoursData, backgroundColor: "rgba(132, 90, 223, 0.2)", borderColor: "rgb(132, 90, 223)", borderWidth: 1 }] }} /> : <div className="flex items-center justify-center h-full text-defaulttextcolor/70">No data for this range.</div>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-span-12 xl:col-span-6">
-                        <div className="box">
-                          <div className="box-header"><div className="box-title">Sessions per student</div></div>
-                          <div className="box-body" style={{ height: 280 }}>
-                            {studentLabels.length ? <Bar options={{ ...barOpt, indexAxis: "y" as const }} data={{ labels: studentLabels, datasets: [{ label: "Sessions", data: sessionsData, backgroundColor: "rgba(35, 183, 229, 0.2)", borderColor: "rgb(35, 183, 229)", borderWidth: 1 }] }} /> : <div className="flex items-center justify-center h-full text-defaulttextcolor/70">No data for this range.</div>}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="col-span-12">
-                        <div className="box">
-                          <div className="box-header"><div className="box-title">Punch-in distribution (by hour)</div></div>
-                          <div className="box-body" style={{ height: 280 }}>
-                            {list.length ? <Bar options={barOpt} data={{ labels: Array.from({ length: 24 }, (_, i) => `${i}:00`), datasets: [{ label: "Punch-ins", data: punchInByHour, backgroundColor: "rgba(38, 191, 148, 0.2)", borderColor: "rgb(38, 191, 148)", borderWidth: 1 }] }} /> : <div className="flex items-center justify-center h-full text-defaulttextcolor/70">No data for this range.</div>}
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-                </>
-                )}
-              </div>
+              <AttendanceDashboard
+                historyList={historyList}
+                historyLoading={historyLoading}
+              />
             )}
           </>
         )}

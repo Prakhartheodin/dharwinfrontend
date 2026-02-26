@@ -10,6 +10,7 @@ import Menuloop from "./menuloop";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import {
@@ -27,6 +28,7 @@ import {
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
 	const { user } = useAuth();
+	const { isCandidate, isLoading: isCandidateLoading } = useIsCandidate();
 	const [userPermissions, setUserPermissions] = useState<string[]>([]);
 	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 	const [roles, setRoles] = useState<Role[]>([]);
@@ -75,7 +77,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	// Paths that should only be visible to Administrator role users in the sidebar.
 	const ADMIN_ONLY_PATHS = useMemo(
-		() => ["/logs/logs-activity"],
+		() => ["/logs/logs-activity", "/ats/external-jobs"],
 		[]
 	);
 
@@ -88,8 +90,12 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	}, [user?.roleIds, roles]);
 
 	const isPathAllowed = (menuPath?: string) => {
-		// My Profile: hide from sidebar — only in header dropdown
+		// My Profile: hide from sidebar for non-candidates (recruiters see it in header dropdown or we show in candidate nav)
 		if (menuPath === CANDIDATE_PROFILE_PATH || menuPath?.startsWith(CANDIDATE_PROFILE_PATH + "/")) {
+			return false;
+		}
+		// Browse Jobs and My Applications: only show in candidate nav, hide from recruiter menu
+		if (menuPath === "/ats/browse-jobs" || menuPath === "/ats/my-applications") {
 			return false;
 		}
 
@@ -120,14 +126,21 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	};
 
 	const isCandidateNav = useMemo(
-		() => isCandidateOnlyNav(roleNames, isAdministrator),
-		[roleNames, isAdministrator]
+		() =>
+			permissionsLoaded &&
+			!isCandidateLoading &&
+			!isAdministrator &&
+			(isCandidate || isCandidateOnlyNav(roleNames, isAdministrator)),
+		[permissionsLoaded, isCandidateLoading, isAdministrator, isCandidate, roleNames]
 	);
 
 	const filteredMenuItems = useMemo(() => {
-		// For candidates (Student role, non-admin): show Dashboard, Courses, and Attendance only.
+		// For candidates (record-based or Student/Candidate role): show Dashboard, Browse Jobs, My Applications, My Profile, Courses, Attendance.
 		if (permissionsLoaded && isCandidateNav) {
 			const dashboardItem = MenuItems.find((m: any) => m.path === "/dashboard");
+			const browseJobsItem = MenuItems.find((m: any) => m.path === "/ats/browse-jobs");
+			const myApplicationsItem = MenuItems.find((m: any) => m.path === "/ats/my-applications");
+			const myProfileItem = MenuItems.find((m: any) => m.path === "/ats/my-profile");
 			const coursesItem = MenuItems.find((m: any) => m.path === "/courses");
 			const attendanceItem = MenuItems.find(
 				(m: any) => m.path === "/training/attendance"
@@ -141,13 +154,20 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 					selected: false,
 				});
 			}
-			if (coursesItem) {
+			if (browseJobsItem || myApplicationsItem || myProfileItem || coursesItem) {
 				out.push({ menutitle: "ATS" });
-				out.push({
-					...coursesItem,
-					active: false,
-					selected: false,
-				});
+				if (browseJobsItem) {
+					out.push({ ...browseJobsItem, active: false, selected: false });
+				}
+				if (myApplicationsItem) {
+					out.push({ ...myApplicationsItem, active: false, selected: false });
+				}
+				if (myProfileItem) {
+					out.push({ ...myProfileItem, active: false, selected: false });
+				}
+				if (coursesItem) {
+					out.push({ ...coursesItem, active: false, selected: false });
+				}
 			}
 			if (attendanceItem) {
 				out.push({ menutitle: "ATTENDANCE" });

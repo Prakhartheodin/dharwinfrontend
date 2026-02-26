@@ -8,6 +8,8 @@ import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import * as mentorsApi from '@/shared/lib/api/mentors'
 import type { Mentor } from '@/shared/lib/api/mentors'
+import MentorViewModal from './_components/MentorViewModal'
+import MentorProfileImageModal from './_components/MentorProfileImageModal'
 
 // Interface for display purposes
 interface MentorRow {
@@ -150,12 +152,8 @@ const Mentors = () => {
     try {
       const mentor = await mentorsApi.getMentor(mentorId)
       setViewMentor(mentor)
-      // Trigger modal via Preline's trigger button
       setTimeout(() => {
-        const trigger = document.getElementById('view-mentor-modal-trigger')
-        if (trigger) {
-          trigger.click()
-        }
+        ;(window as any).HSOverlay?.open(document.querySelector('#view-mentor-modal'))
       }, 100)
     } catch (err) {
       const msg =
@@ -194,12 +192,8 @@ const Mentors = () => {
         setProfileImageLoading(false)
       }
 
-      // Open modal via hidden trigger (Preline)
       setTimeout(() => {
-        const trigger = document.getElementById('mentor-profile-image-modal-trigger')
-        if (trigger) {
-          trigger.click()
-        }
+        ;(window as any).HSOverlay?.open(document.querySelector('#mentor-profile-image-modal'))
       }, 50)
     },
     []
@@ -683,14 +677,14 @@ const Mentors = () => {
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
-                    {headerGroups.map((headerGroup: any) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={Math.random()}>
-                        {headerGroup.headers.map((column: any) => (
+                    {headerGroups.map((headerGroup: any, i) => (
+                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                        {headerGroup.headers.map((column: any, j) => (
                           <th
                             {...column.getHeaderProps()}
                             scope="col"
                             className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                            key={Math.random()}
+                            key={column.id || `col-${j}`}
                             style={{ 
                               position: 'sticky', 
                               top: 0, 
@@ -868,387 +862,25 @@ const Mentors = () => {
         </div>
       </div>
 
-      {/* Hidden trigger button for view mentor modal (needed for Preline) */}
-      <button 
-        id="view-mentor-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#view-mentor-modal"
-      ></button>
+      <MentorViewModal
+        mentor={viewMentor}
+        isLoading={viewMentorLoading}
+        onClose={() => setViewMentor(null)}
+      />
 
-      {/* View Mentor Detailed Modal */}
-      <div 
-        id="view-mentor-modal" 
-        className="hs-overlay hidden ti-modal"
-      >
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-4xl lg:w-full m-3 lg:!mx-auto">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="ti-modal-title flex items-center gap-2">
-                <i className="ri-eye-line text-primary"></i>
-                Mentor Details
-              </h6>
-              <button 
-                type="button" 
-                className="hs-dropdown-toggle ti-modal-close-btn" 
-                data-hs-overlay="#view-mentor-modal"
-                onClick={() => setViewMentor(null)}
-              >
-                <span className="sr-only">Close</span>
-                <svg className="w-3.5 h-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z" fill="currentColor"/>
-                </svg>
-              </button>
-            </div>
-            <div className="ti-modal-body">
-              {viewMentorLoading ? (
-                <div className="text-center py-8">
-                  <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <p className="mt-4 text-gray-500 dark:text-gray-400">Loading mentor details...</p>
-                </div>
-              ) : viewMentor ? (
-                <div className="space-y-6">
-                  {/* Mentor Header */}
-                  <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20 dark:border-primary/30 rounded-lg">
-                    <img
-                      src={viewMentor.profileImageUrl || '/assets/images/faces/1.jpg'}
-                      alt={viewMentor.user?.name || 'Mentor'}
-                      className="w-20 h-20 rounded-full object-cover border-2 border-primary/30"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                      }}
-                    />
-                    <div className="flex-1">
-                      <h6 className="font-bold text-gray-800 dark:text-white text-xl mb-1">{viewMentor.user?.name || 'Unknown'}</h6>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400">
-                        <span className="flex items-center gap-1">
-                          <i className="ri-mail-line"></i>
-                          {viewMentor.user?.email || 'N/A'}
-                        </span>
-                        {viewMentor.phone && (
-                          <span className="flex items-center gap-1">
-                            <i className="ri-phone-line"></i>
-                            {viewMentor.phone}
-                          </span>
-                        )}
-                        <span className="flex items-center gap-1">
-                          <i className="ri-user-settings-line"></i>
-                          Status: <span className="font-semibold capitalize">{viewMentor.status}</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Personal Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {viewMentor.dateOfBirth && (
-                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Date of Birth</div>
-                        <div className="font-semibold text-gray-800 dark:text-white">
-                          {new Date(viewMentor.dateOfBirth).toLocaleDateString()}
-                        </div>
-                      </div>
-                    )}
-                    {viewMentor.gender && (
-                      <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Gender</div>
-                        <div className="font-semibold text-gray-800 dark:text-white capitalize">{viewMentor.gender}</div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Address */}
-                  {viewMentor.address && (viewMentor.address.street || viewMentor.address.city || viewMentor.address.state || viewMentor.address.country) && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-map-pin-line text-primary"></i>
-                        Address
-                      </h6>
-                      <div className="text-sm text-gray-700 dark:text-gray-300">
-                        {[
-                          viewMentor.address.street,
-                          viewMentor.address.city,
-                          viewMentor.address.state,
-                          viewMentor.address.zipCode,
-                          viewMentor.address.country
-                        ].filter(Boolean).join(', ')}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Expertise */}
-                  {viewMentor.expertise && viewMentor.expertise.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-star-line text-primary"></i>
-                        Expertise
-                      </h6>
-                      <div className="space-y-3">
-                        {viewMentor.expertise.map((exp, index) => (
-                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="font-semibold text-gray-800 dark:text-white">
-                              {exp.area || 'N/A'} {exp.level && `(${exp.level})`}
-                            </div>
-                            {exp.yearsOfExperience && (
-                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                {exp.yearsOfExperience} years of experience
-                              </div>
-                            )}
-                            {exp.description && (
-                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{exp.description}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Work Experience */}
-                  {viewMentor.experience && viewMentor.experience.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-briefcase-line text-primary"></i>
-                        Work Experience
-                      </h6>
-                      <div className="space-y-3">
-                        {viewMentor.experience.map((exp, index) => (
-                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="font-semibold text-gray-800 dark:text-white">
-                              {exp.title || 'N/A'} {exp.company && `at ${exp.company}`}
-                            </div>
-                            {exp.location && (
-                              <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                <i className="ri-map-pin-line"></i> {exp.location}
-                              </div>
-                            )}
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {exp.startDate && new Date(exp.startDate).toLocaleDateString()} - {' '}
-                              {exp.isCurrent ? 'Present' : (exp.endDate ? new Date(exp.endDate).toLocaleDateString() : 'N/A')}
-                            </div>
-                            {exp.description && (
-                              <div className="text-sm text-gray-700 dark:text-gray-300 mt-2">{exp.description}</div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Certifications */}
-                  {viewMentor.certifications && viewMentor.certifications.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-award-line text-primary"></i>
-                        Certifications
-                      </h6>
-                      <div className="space-y-3">
-                        {viewMentor.certifications.map((cert, index) => (
-                          <div key={index} className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg">
-                            <div className="font-semibold text-gray-800 dark:text-white">
-                              {cert.name}
-                            </div>
-                            <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                              Issued by: {cert.issuer}
-                            </div>
-                            {cert.credentialId && (
-                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                                Credential ID: {cert.credentialId}
-                              </div>
-                            )}
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              {cert.issueDate && `Issued: ${new Date(cert.issueDate).toLocaleDateString()}`}
-                              {cert.expiryDate && ` • Expires: ${new Date(cert.expiryDate).toLocaleDateString()}`}
-                            </div>
-                            {cert.credentialUrl && (
-                              <a
-                                href={cert.credentialUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary hover:underline mt-1 inline-block"
-                              >
-                                <i className="ri-external-link-line"></i> Verify credential
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Skills */}
-                  {viewMentor.skills && viewMentor.skills.length > 0 && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-tools-line text-primary"></i>
-                        Skills
-                      </h6>
-                      <div className="flex flex-wrap gap-2">
-                        {viewMentor.skills.map((skill, index) => (
-                          <span
-                            key={index}
-                            className="badge bg-primary/10 text-primary border border-primary/30 px-3 py-1 rounded-md text-sm font-medium"
-                          >
-                            {skill}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bio */}
-                  {viewMentor.bio && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-file-text-line text-primary"></i>
-                        Bio
-                      </h6>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                        {viewMentor.bio}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-gray-500">No mentor selected</div>
-              )}
-            </div>
-            <div className="ti-modal-footer">
-              <button 
-                type="button" 
-                className="ti-btn ti-btn-light" 
-                data-hs-overlay="#view-mentor-modal"
-                onClick={() => setViewMentor(null)}
-              >
-                Close
-              </button>
-              {viewMentor && (
-                <Link
-                  href={`/training/mentors/edit/?id=${encodeURIComponent(viewMentor.id)}`}
-                  className="ti-btn ti-btn-primary"
-                  onClick={() => {
-                    const trigger = document.getElementById('view-mentor-modal-trigger')
-                    if (trigger) {
-                      trigger.click()
-                    }
-                  }}
-                >
-                  <i className="ri-pencil-line me-1"></i>
-                  Edit Mentor
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hidden trigger for profile image modal */}
-      <button
-        id="mentor-profile-image-modal-trigger"
-        type="button"
-        style={{ display: 'none' }}
-        data-hs-overlay="#mentor-profile-image-modal"
-      ></button>
-
-      {/* Mentor profile image modal */}
-      <div
-        id="mentor-profile-image-modal"
-        className="hs-overlay hidden ti-modal"
-        tabIndex={-1}
-      >
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="modal-title text-[1rem] font-semibold text-default dark:text-defaulttextcolor/70">
-                {profileImageMentor
-                  ? `Profile Image – ${profileImageMentor.name}`
-                  : 'Profile Image'}
-              </h6>
-              <button
-                type="button"
-                className="hs-dropdown-toggle !text-[1rem] !font-semibold"
-                data-hs-overlay="#mentor-profile-image-modal"
-                onClick={() => {
-                  setProfileImageMentor(null)
-                  setProfileImageUrl(null)
-                  setProfileImageError(null)
-                }}
-              >
-                <span className="sr-only">Close</span>
-                <i className="ri-close-line"></i>
-              </button>
-            </div>
-            <div className="ti-modal-body px-6 space-y-4">
-              {profileImageLoading ? (
-                <p className="text-sm text-defaulttextcolor/70 mb-0">
-                  Loading current profile image...
-                </p>
-              ) : profileImageUrl ? (
-                <div className="flex flex-col items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={profileImageUrl}
-                    alt={profileImageMentor?.name || 'Profile image'}
-                    className="w-24 h-24 rounded-full object-cover border border-defaultborder"
-                  />
-                  <p className="text-xs text-defaulttextcolor/60 mb-0">
-                    This preview URL is temporary and may expire; refresh to get a new one.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-sm text-defaulttextcolor/70 mb-0">
-                  No profile image has been uploaded for this mentor yet.
-                </p>
-              )}
-
-              {profileImageError && (
-                <div className="p-2 rounded border border-danger/20 bg-danger/5 text-danger text-xs">
-                  {profileImageError}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label
-                  htmlFor="mentor-profile-image-file"
-                  className="form-label text-sm font-medium"
-                >
-                  {profileImageUrl ? 'Change picture' : 'Add picture'}
-                </label>
-                <input
-                  id="mentor-profile-image-file"
-                  type="file"
-                  accept="image/*"
-                  className="form-control"
-                  onChange={handleProfileImageFileChange}
-                  disabled={profileImageUploading || !profileImageMentor}
-                />
-                <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-                  Allowed types: PNG, JPG, JPEG. The image is uploaded securely and stored on the
-                  file storage backend.
-                </p>
-                {profileImageUploading && (
-                  <p className="text-[0.75rem] text-primary mt-1 mb-0">
-                    Uploading profile image...
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="ti-modal-footer">
-              <button
-                type="button"
-                className="ti-btn ti-btn-light align-middle"
-                data-hs-overlay="#mentor-profile-image-modal"
-                onClick={() => {
-                  setProfileImageMentor(null)
-                  setProfileImageUrl(null)
-                  setProfileImageError(null)
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <MentorProfileImageModal
+        mentor={profileImageMentor}
+        profileImageUrl={profileImageUrl}
+        profileImageLoading={profileImageLoading}
+        profileImageUploading={profileImageUploading}
+        profileImageError={profileImageError}
+        onClose={() => {
+          setProfileImageMentor(null)
+          setProfileImageUrl(null)
+          setProfileImageError(null)
+        }}
+        onFileChange={handleProfileImageFileChange}
+      />
     </Fragment>
   )
 }

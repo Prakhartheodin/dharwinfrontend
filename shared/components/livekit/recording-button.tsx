@@ -1,32 +1,31 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import * as livekitApi from "@/shared/lib/api/livekit";
 
 interface RecordingButtonProps {
   roomName: string;
-  /** When provided, use public recording API (for hosts joining without login) */
   hostEmail?: string;
-  /** When true, renders compact style matching control bar (mic, camera, etc.) */
   controlBar?: boolean;
-  /** Called when recording has successfully started */
   onRecordingStarted?: () => void;
 }
 
 export function RecordingButton({ roomName, hostEmail, controlBar = false, onRecordingStarted }: RecordingButtonProps) {
-  const room = useRoomContext();
+  useRoomContext();
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [egressId, setEgressId] = useState<string | null>(null);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [showStopConfirm, setShowStopConfirm] = useState(false);
 
   const getStatus = () =>
     hostEmail
       ? livekitApi.getRecordingStatusPublic(roomName)
       : livekitApi.getRecordingStatus(roomName);
 
-  // Check recording status on mount and periodically
   useEffect(() => {
     const checkStatus = async () => {
       try {
@@ -34,6 +33,12 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
         setIsRecording(data.isRecording);
         if (data.recordings && data.recordings.length > 0) {
           setEgressId(data.recordings[0].egressId);
+          if (data.recordings[0].startedAt) {
+            const started = new Date(data.recordings[0].startedAt).getTime();
+            setRecordingStartTime(started);
+          }
+        } else {
+          setRecordingStartTime(null);
         }
       } catch (err) {
         console.error("Error checking recording status:", err);
@@ -42,28 +47,40 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
 
     checkStatus();
     const interval = setInterval(checkStatus, 5000);
-
     return () => clearInterval(interval);
   }, [roomName, hostEmail]);
+
+  useEffect(() => {
+    if (!isRecording || recordingStartTime === null) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - recordingStartTime) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isRecording, recordingStartTime]);
+
+  const formatDuration = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   const handleStartRecording = async () => {
     setIsLoading(true);
     setError(null);
-
     try {
       const data = hostEmail
         ? await livekitApi.startRecordingPublic(roomName, hostEmail)
         : await livekitApi.startRecording(roomName);
       setIsRecording(true);
       setEgressId(data.egressId);
+      setRecordingStartTime(Date.now());
       onRecordingStarted?.();
-    } catch (err: any) {
-      console.error("Error starting recording:", err);
-      const errorMessage =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to start recording";
-      setError(errorMessage);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || e?.message || "Failed to start recording");
     } finally {
       setIsLoading(false);
     }
@@ -74,10 +91,9 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       setError("No active recording found");
       return;
     }
-
+    setShowStopConfirm(false);
     setIsLoading(true);
     setError(null);
-
     try {
       if (hostEmail) {
         await livekitApi.stopRecordingPublic(egressId, roomName, hostEmail);
@@ -86,13 +102,10 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       }
       setIsRecording(false);
       setEgressId(null);
-    } catch (err: any) {
-      console.error("Error stopping recording:", err);
-      const errorMessage =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Failed to stop recording";
-      setError(errorMessage);
+      setRecordingStartTime(null);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || e?.message || "Failed to stop recording");
     } finally {
       setIsLoading(false);
     }
@@ -100,35 +113,33 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
 
   const handleToggleRecording = () => {
     if (isRecording) {
-      handleStopRecording();
+      setShowStopConfirm(true);
     } else {
       handleStartRecording();
     }
   };
 
+  const recordIcon = (
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+      <circle cx="12" cy="12" r="8" />
+    </svg>
+  );
+
   const buttonContent = (
     <>
       {isRecording ? (
         <>
-          <span
-            className="inline-block w-2 h-2 rounded-full bg-white animate-pulse flex-shrink-0"
-            style={{ animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}
-          />
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", backgroundColor: controlBar ? "#f87171" : "#fff", flexShrink: 0, animation: "pulse 2s infinite" }} />
+          {controlBar && (
+            <span style={{ fontSize: "0.75rem", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+              REC {formatDuration(elapsedSeconds)}
+            </span>
+          )}
           {!controlBar && <span>Stop Recording</span>}
         </>
       ) : (
         <>
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="flex-shrink-0"
-          >
-            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
-            <circle cx="8" cy="8" r="3" fill="currentColor" />
-          </svg>
+          {recordIcon}
           {!controlBar && <span>Record</span>}
         </>
       )}
@@ -137,35 +148,61 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
 
   if (controlBar) {
     return (
-      <div className="recording-control-inline">
+      <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
         <button
+          type="button"
           onClick={handleToggleRecording}
           disabled={isLoading}
-          className={`lk-button ${isRecording ? "recording-active" : ""}`}
-          title={isRecording ? "Stop Recording" : "Start Recording"}
-          aria-label={isRecording ? "Stop Recording" : "Start Recording"}
+          className="lk-button"
           style={{
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
             gap: "0.375rem",
-            padding: "0.5rem 0.75rem",
-            minWidth: "40px",
-            height: "40px",
-            background: isRecording ? "rgba(239, 68, 68, 0.2)" : "rgba(255,255,255,0.1)",
-            color: isRecording ? "#f87171" : "#fff",
+            padding: "0.625rem 0.75rem",
             border: "none",
-            borderRadius: "8px",
             cursor: isLoading ? "not-allowed" : "pointer",
             opacity: isLoading ? 0.6 : 1,
+            backgroundColor: isRecording ? "rgba(239,68,68,0.2)" : undefined,
+            color: isRecording ? "#f87171" : undefined,
+            whiteSpace: "nowrap",
+            fontSize: "inherit",
+            lineHeight: "inherit",
           }}
+          title={isRecording ? "Stop Recording" : "Start Recording"}
+          aria-label={isRecording ? "Stop Recording" : "Start Recording"}
         >
           {buttonContent}
         </button>
         {error && (
-          <span className="text-danger text-xs block mt-1" title={error}>
+          <span style={{ color: "#f87171", fontSize: "0.75rem", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={error}>
             {error}
           </span>
+        )}
+        {showStopConfirm && (
+          <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-[#1a1a1f] rounded-xl p-5 shadow-xl max-w-sm w-full border border-white/10">
+              <p className="text-white font-medium mb-1">Stop recording?</p>
+              <p className="text-gray-400 text-sm mb-4">The recording will be saved and available in the recordings list.</p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowStopConfirm(false)}
+                  className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStopRecording}
+                  disabled={isLoading}
+                  className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50"
+                >
+                  {isLoading ? "Stopping…" : "Stop recording"}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     );
@@ -174,16 +211,41 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
   return (
     <div className="recording-control">
       <button
+        type="button"
         onClick={handleToggleRecording}
         disabled={isLoading}
-        className={`ti-btn ${isRecording ? "ti-btn-danger" : "ti-btn-primary"} ${isLoading ? "ti-btn-loading" : ""}`}
+        className={`ti-btn inline-flex items-center gap-2 ${isRecording ? "ti-btn-danger" : "ti-btn-primary"} ${isLoading ? "opacity-60" : ""}`}
         title={isRecording ? "Stop Recording" : "Start Recording"}
-        style={{ display: "flex", alignItems: "center", gap: "8px" }}
       >
         {buttonContent}
       </button>
+      {showStopConfirm && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-[#1a1a1f] rounded-xl p-5 shadow-xl max-w-sm w-full border border-white/10">
+            <p className="text-white font-medium mb-1">Stop recording?</p>
+            <p className="text-gray-400 text-sm mb-4">The recording will be saved and available in the recordings list.</p>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowStopConfirm(false)}
+                className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStopRecording}
+                disabled={isLoading}
+                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50"
+              >
+                {isLoading ? "Stopping…" : "Stop recording"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {error && (
-        <div className="mt-2 p-2 bg-danger/10 border border-danger/20 rounded text-danger text-sm" style={{ fontSize: "12px" }}>
+        <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-xs">
           {error}
         </div>
       )}

@@ -136,7 +136,7 @@ function PublicRoomContent({
   const [recordingToast, setRecordingToast] = useState(false);
   const [meetingEndedToast, setMeetingEndedToast] = useState(false);
 
-  // Inject recording button into control bar (beside screen share and chat)
+  // Inject recording button into control bar (beside the disconnect/leave button)
   useEffect(() => {
     const tryInject = () => {
       const bar = document.querySelector(".lk-control-bar");
@@ -145,9 +145,8 @@ function PublicRoomContent({
       if (!slot) {
         slot = document.createElement("div");
         slot.id = "recording-button-slot";
-        slot.className = "recording-control-inline flex items-center";
-        slot.style.cssText = "display: flex; align-items: center; margin: 0 0.25rem;";
-        const leaveBtn = bar.querySelector("[data-lk-leave], [data-lk-source='leave']") || bar.lastElementChild;
+        slot.style.cssText = "display:flex;align-items:center;order:90;";
+        const leaveBtn = bar.querySelector(".lk-disconnect-button, [data-lk-disconnect], button[aria-label*='Leave'], button[aria-label*='Disconnect']");
         if (leaveBtn) {
           bar.insertBefore(slot, leaveBtn);
         } else {
@@ -160,7 +159,7 @@ function PublicRoomContent({
     if (tryInject()) return;
     const timer = setInterval(() => {
       if (tryInject()) clearInterval(timer);
-    }, 200);
+    }, 300);
     return () => clearInterval(timer);
   }, []);
 
@@ -505,6 +504,17 @@ function PublicRoomContent({
         }
         .room-meeting-container .lk-participant-tile {
           min-height: 120px;
+        }
+        #recording-button-slot .lk-button {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.375rem;
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
         ${waitingParticipantsCSS}
         @media (max-width: 640px) {

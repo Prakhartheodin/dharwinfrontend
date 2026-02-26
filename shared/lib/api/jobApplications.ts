@@ -73,3 +73,19 @@ export async function updateJobApplicationStatus(id: string, payload: UpdateJobA
 export async function deleteJobApplication(id: string): Promise<void> {
   await apiClient.delete(`/job-applications/${id}`);
 }
+
+export interface MyApplicationsListParams {
+  status?: JobApplicationStatus;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+}
+
+export async function getMyApplications(params?: MyApplicationsListParams): Promise<JobApplicationsListResponse> {
+  const { data } = await apiClient.get<JobApplicationsListResponse>("/job-applications/my-applications", { params });
+  return data;
+}
+
+export async function withdrawMyApplication(applicationId: string): Promise<void> {
+  await apiClient.delete(`/job-applications/my-applications/${applicationId}`);
+}

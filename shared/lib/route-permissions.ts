@@ -115,7 +115,8 @@ export function canAccessAttendance(
 }
 
 /**
- * Returns true if the user should see only the candidate/student portal menu (Dashboard, Courses, Attendance only).
+ * Returns true if the user should see only the candidate/student portal menu
+ * (Dashboard, Browse Jobs, My Applications, My Profile, Courses, Attendance).
  */
 export function isCandidateOnlyNav(
   roleNames: string[],
@@ -123,5 +124,6 @@ export function isCandidateOnlyNav(
 ): boolean {
   if (isAdministrator) return false;
   const hasStudentRole = roleNames.some((name) => name?.toLowerCase() === "student");
-  return hasStudentRole;
+  const hasCandidateRole = roleNames.some((name) => name?.toLowerCase() === "candidate");
+  return hasStudentRole || hasCandidateRole;
 }

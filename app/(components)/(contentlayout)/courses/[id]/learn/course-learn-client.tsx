@@ -12,8 +12,10 @@ import {
   markCourseItemComplete,
   updateLastAccessed,
   submitQuizAttempt,
+  getQuizResults,
   submitEssayAttempt,
   type QuizSubmitAnswer,
+  type QuizResultsResponse,
 } from "@/shared/lib/api/student-courses"
 
 function sectionDurationMin(lectures: CourseLesson[]): number {
@@ -48,6 +50,17 @@ interface QuizQuestion {
   options?: { text?: string; isCorrect?: boolean }[]
 }
 
+/** Deduplicate options by text – keeps first occurrence. */
+function dedupeOptions<T extends { text?: string }>(options: T[]): T[] {
+  const seen = new Set<string>()
+  return options.filter((opt) => {
+    const key = (opt.text ?? "").trim()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function QuizRenderer({
   quiz,
   playlistItemId,
@@ -64,10 +77,18 @@ function QuizRenderer({
   onProgressUpdate: () => Promise<void>
 }) {
   const q = quiz as { questions?: QuizQuestion[] } | null | undefined
-  const questions = q?.questions ?? []
+  const questions = useMemo(
+    () =>
+      (q?.questions ?? []).map((question) => ({
+        ...question,
+        options: dedupeOptions(question.options ?? []),
+      })),
+    [q?.questions]
+  )
   const [selected, setSelected] = useState<Record<number, number[]>>({})
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ percentage: number; correctAnswers: number; totalQuestions: number } | null>(null)
+  const [quizResults, setQuizResults] = useState<QuizResultsResponse | null>(null)
 
   const setOption = (qidx: number, oidx: number, multiple: boolean) => {
     setSelected((prev) => {
@@ -90,6 +111,7 @@ function QuizRenderer({
     }))
     setSubmitting(true)
     setResult(null)
+    setQuizResults(null)
     try {
       const res = await submitQuizAttempt(studentId, moduleId, playlistItemId, {
         answers,
@@ -99,6 +121,12 @@ function QuizRenderer({
       if (score) {
         setResult({ percentage: score.percentage, correctAnswers: score.correctAnswers, totalQuestions: score.totalQuestions })
         if (score.percentage >= 90) await onProgressUpdate()
+        try {
+          const results = await getQuizResults(studentId, moduleId, playlistItemId)
+          setQuizResults(results)
+        } catch {
+          // Results optional for detailed view
+        }
       }
     } finally {
       setSubmitting(false)
@@ -111,6 +139,9 @@ function QuizRenderer({
   if (isCompleted) {
     return <p className="text-emerald-600 dark:text-emerald-400 font-medium">You've completed this quiz.</p>
   }
+
+  const showDetailedResults = result !== null && quizResults !== null
+
   return (
     <div className="space-y-6">
       {result !== null && (
@@ -119,30 +150,86 @@ function QuizRenderer({
           <p className="text-[0.875rem] mt-1">Score: {result.correctAnswers}/{result.totalQuestions} ({result.percentage}%)</p>
         </div>
       )}
-      {questions.map((question, qidx) => (
-        <div key={qidx} className="rounded-lg border border-[#d1d7dc] dark:border-white/10 p-4">
-          <p className="font-medium text-[#1c1d1f] dark:text-white mb-3">
-            {qidx + 1}. {question.questionText ?? "Question"}
-          </p>
-          <div className="space-y-2">
-            {(question.options ?? []).map((opt, oidx) => (
-              <label key={oidx} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-[#f7f9fa] dark:hover:bg-white/5">
-                <input
-                  type={question.allowMultipleAnswers ? "checkbox" : "radio"}
-                  name={`q-${qidx}`}
-                  className="rounded border-defaultborder"
-                  checked={(selected[qidx] ?? []).includes(oidx)}
-                  onChange={() => setOption(qidx, oidx, !!question.allowMultipleAnswers)}
-                />
-                <span className="text-[0.9375rem] text-[#1c1d1f] dark:text-white">{opt.text ?? ""}</span>
-              </label>
-            ))}
-          </div>
+      {showDetailedResults && quizResults && (
+        <div className="space-y-4">
+          <p className="font-semibold text-[#1c1d1f] dark:text-white">Review your answers</p>
+          {quizResults.quiz.questions.map((question, qidx) => {
+            const correct = question.isCorrect
+            return (
+              <div
+                key={qidx}
+                className={`rounded-lg border p-4 ${correct ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/30 bg-red-500/5"}`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <p className="font-medium text-[#1c1d1f] dark:text-white">
+                    {qidx + 1}. {question.questionText ?? "Question"}
+                  </p>
+                  <span
+                    className={`shrink-0 badge ${correct ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300" : "bg-red-500/20 text-red-700 dark:text-red-300"}`}
+                  >
+                    {correct ? "Correct" : "Incorrect"}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {dedupeOptions(question.options).map((opt, oidx) => {
+                    const isCorrectOption = opt.isCorrect
+                    const isStudentSelected = (opt as { isSelected?: boolean }).isSelected
+                    let style = "p-2 rounded text-[0.9375rem] text-[#1c1d1f] dark:text-white"
+                    if (isCorrectOption) {
+                      style += " bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
+                    } else if (isStudentSelected) {
+                      style += " bg-red-500/10 border border-red-500/30 text-red-800 dark:text-red-200"
+                    } else {
+                      style += " border border-transparent"
+                    }
+                    return (
+                      <div key={oidx} className={style}>
+                        <span className="mr-2">{isCorrectOption ? "✓" : isStudentSelected ? "✗" : ""}</span>
+                        {opt.text ?? ""}
+                        {isCorrectOption && <span className="ml-1 text-[0.75rem] opacity-80">(Correct answer)</span>}
+                        {isStudentSelected && !isCorrectOption && <span className="ml-1 text-[0.75rem] opacity-80">(Your choice)</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+                {!correct && question.explanation && (
+                  <p className="mt-3 text-[0.875rem] text-[#6a6f73] dark:text-white/70 italic border-l-2 border-primary/50 pl-3">
+                    {question.explanation}
+                  </p>
+                )}
+              </div>
+            )
+          })}
         </div>
-      ))}
-      <button type="button" className="ti-btn ti-btn-primary" onClick={handleSubmit} disabled={submitting}>
-        {submitting ? "Submitting…" : "Submit quiz"}
-      </button>
+      )}
+      {!showDetailedResults && (
+        <>
+          {questions.map((question, qidx) => (
+            <div key={qidx} className="rounded-lg border border-[#d1d7dc] dark:border-white/10 p-4">
+              <p className="font-medium text-[#1c1d1f] dark:text-white mb-3">
+                {qidx + 1}. {question.questionText ?? "Question"}
+              </p>
+              <div className="space-y-2">
+                {(question.options ?? []).map((opt, oidx) => (
+                  <label key={oidx} className="flex items-center gap-3 cursor-pointer p-2 rounded hover:bg-[#f7f9fa] dark:hover:bg-white/5">
+                    <input
+                      type={question.allowMultipleAnswers ? "checkbox" : "radio"}
+                      name={`q-${qidx}`}
+                      className="rounded border-defaultborder"
+                      checked={(selected[qidx] ?? []).includes(oidx)}
+                      onChange={() => setOption(qidx, oidx, !!question.allowMultipleAnswers)}
+                    />
+                    <span className="text-[0.9375rem] text-[#1c1d1f] dark:text-white">{opt.text ?? ""}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button type="button" className="ti-btn ti-btn-primary" onClick={handleSubmit} disabled={submitting}>
+            {submitting ? "Submitting…" : "Submit quiz"}
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -171,7 +258,13 @@ function EssayRenderer({
     percentage: number
     totalQuestions: number
     correctAnswers?: number
-    answers?: { questionIndex: number; score?: number; feedback?: string }[]
+    answers?: {
+      questionIndex: number
+      score?: number
+      feedback?: string
+      rubric?: { accuracy?: number; completeness?: number; clarity?: number; criticalThinking?: number }
+      suggestions?: string
+    }[]
   } | null>(null)
 
   if (questions.length === 0) return <p className="text-[#6a6f73] dark:text-white/60">No Q&A questions.</p>
@@ -191,7 +284,7 @@ function EssayRenderer({
           percentage: attempt.score.percentage,
           totalQuestions: attempt.score.totalQuestions ?? questions.length,
           correctAnswers: attempt.score.correctAnswers,
-          answers: attempt.answers,
+          answers: (attempt as { answers?: { questionIndex: number; score?: number; feedback?: string; rubric?: Record<string, number>; suggestions?: string }[] }).answers,
         })
       }
       await onProgressUpdate()
@@ -211,7 +304,9 @@ function EssayRenderer({
             </div>
             {result.answers?.map((a) => {
               const q = questions[a.questionIndex]
-              if (!q || a.feedback == null) return null
+              if (!q) return null
+              const hasContent = a.score != null || a.feedback || a.rubric || a.suggestions
+              if (!hasContent) return null
               return (
                 <div key={a.questionIndex} className="mt-3 text-[0.875rem]">
                   <p className="font-medium text-[#1c1d1f] dark:text-white">
@@ -219,6 +314,27 @@ function EssayRenderer({
                   </p>
                   {a.feedback && (
                     <p className="text-[#6a6f73] dark:text-white/70 mt-1">{a.feedback}</p>
+                  )}
+                  {a.rubric && typeof a.rubric === "object" && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {[
+                        ["accuracy", "Accuracy"],
+                        ["completeness", "Completeness"],
+                        ["clarity", "Clarity"],
+                        ["criticalThinking", "Critical thinking"],
+                      ].map(([key, label]) => {
+                        const v = (a.rubric as Record<string, number>)?.[key]
+                        if (v == null) return null
+                        return (
+                          <span key={key} className="badge bg-primary/10 text-primary">
+                            {label}: {v}/25
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {a.suggestions && (
+                    <p className="text-primary/90 dark:text-primary/80 mt-1.5 italic">{a.suggestions}</p>
                   )}
                 </div>
               )
@@ -259,13 +375,13 @@ function EssayRenderer({
 
 type LearnTabId = "overview" | "video" | "blog" | "quiz" | "pdf" | "essay"
 
-const TAB_CONFIG: { id: LearnTabId; label: string; contentTypes?: PlaylistItemContentType[] }[] = [
-  { id: "overview", label: "Overview" },
-  { id: "video", label: "Video", contentTypes: ["upload-video", "youtube-link"] },
-  { id: "blog", label: "Blog", contentTypes: ["blog"] },
-  { id: "quiz", label: "Quiz", contentTypes: ["quiz"] },
-  { id: "pdf", label: "PDF / Document", contentTypes: ["pdf-document"] },
-  { id: "essay", label: "Q&A", contentTypes: ["essay"] },
+const TAB_CONFIG: { id: LearnTabId; label: string; icon: string; contentTypes?: PlaylistItemContentType[] }[] = [
+  { id: "overview", label: "Overview", icon: "ti-layout-dashboard" },
+  { id: "video", label: "Video", icon: "ti-player-play", contentTypes: ["upload-video", "youtube-link"] },
+  { id: "blog", label: "Blog", icon: "ti-article", contentTypes: ["blog"] },
+  { id: "quiz", label: "Quiz", icon: "ti-clipboard-check", contentTypes: ["quiz"] },
+  { id: "pdf", label: "PDF", icon: "ti-file-text", contentTypes: ["pdf-document"] },
+  { id: "essay", label: "Q&A", icon: "ti-message-dots", contentTypes: ["essay"] },
 ]
 
 const SPEED_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
@@ -1084,27 +1200,35 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
           </div>
 
           {/* Tabs: Overview + training module content types (Video, Blog, Quiz, PDF, Q&A) */}
-          <nav className="flex items-center gap-2 border-b border-[#d1d7dc] dark:border-white/10 bg-white dark:bg-[#1c1d1f] px-4 overflow-x-auto">
-            <button type="button" className="shrink-0 p-3 text-[#6a6f73] dark:text-white/60 hover:text-[#1c1d1f] dark:hover:text-white" aria-label="Search">
-              <i className="ti ti-search text-[1.125rem]" />
-            </button>
-            {tabsWithContent.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                className={`shrink-0 py-3 px-2 text-[0.8125rem] font-semibold border-b-2 transition-colors -mb-px ${
-                  mainTab === tab.id
-                    ? "text-[#1c1d1f] dark:text-white border-[#1c1d1f] dark:border-white"
-                    : "text-[#6a6f73] dark:text-white/70 border-transparent hover:text-[#1c1d1f] dark:hover:text-white"
-                }`}
-                onClick={() => setMainTab(tab.id)}
-              >
-                {tab.label}
-                {tab.id !== "overview" && itemsByTab[tab.id].length > 0 && (
-                  <span className="ml-1 text-[0.6875rem] font-normal opacity-80">({itemsByTab[tab.id].length})</span>
-                )}
-              </button>
-            ))}
+          <nav className="flex items-center gap-1 border-b border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-[#1c1d1f] px-4 py-2 overflow-x-auto">
+            {tabsWithContent.map((tab) => {
+              const isActive = mainTab === tab.id
+              const count = tab.id !== "overview" ? itemsByTab[tab.id].length : 0
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  className={`shrink-0 inline-flex items-center gap-1.5 py-2 px-3.5 rounded-md text-[0.8125rem] font-medium transition-all duration-150 ${
+                    isActive
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-[#6a6f73] dark:text-white/60 hover:bg-[#f7f9fa] dark:hover:bg-white/5 hover:text-[#1c1d1f] dark:hover:text-white"
+                  }`}
+                  onClick={() => setMainTab(tab.id)}
+                >
+                  <i className={`ti ${tab.icon} text-[0.9375rem] ${isActive ? "opacity-100" : "opacity-70"}`} />
+                  {tab.label}
+                  {count > 0 && (
+                    <span className={`inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[0.6875rem] font-semibold ${
+                      isActive
+                        ? "bg-white/20 text-white"
+                        : "bg-[#e4e8eb] dark:bg-white/10 text-[#6a6f73] dark:text-white/60"
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </nav>
 
           {/* Tab content - Overview */}
@@ -1209,25 +1333,34 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
               </div>
             )}
             {mainTab === "video" && (
-              <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Video content</h2>
+              <div className="max-w-[720px] mx-auto py-6 px-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <i className="ti ti-player-play text-primary text-[1.25rem]" />
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">Video Content</h2>
+                  <span className="ml-auto text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{itemsByTab.video.length} item{itemsByTab.video.length !== 1 ? "s" : ""}</span>
+                </div>
                 {itemsByTab.video.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No video items in this course.</p>
+                  <div className="text-center py-12">
+                    <i className="ti ti-video-off text-[2rem] text-[#d1d7dc] dark:text-white/20 mb-2 block" />
+                    <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No video items in this course.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {itemsByTab.video.map((item, idx) => (
-                      <li key={item.id} className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5">
-                        <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ti ti-video text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                  <ul className="space-y-2.5">
+                    {itemsByTab.video.map((item) => (
+                      <li key={item.id} className="group flex items-center gap-3.5 p-3.5 rounded-xl border border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-white/[0.03] hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer" onClick={() => selectItem(item)}>
+                        <span className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <i className={`ti ${item.contentType === "youtube-link" ? "ti-brand-youtube" : "ti-player-play"} text-primary text-[1rem]`} />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white truncate">{item.title}</p>
-                          <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60">
-                            {item.contentType === "youtube-link" ? "YouTube" : "Uploaded video"}
+                          <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white truncate group-hover:text-primary transition-colors">{item.title}</p>
+                          <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50 mt-0.5">
+                            {item.contentType === "youtube-link" ? "YouTube" : "Video"}
                             {item.duration ? ` · ${item.duration}` : ""}
                           </p>
                         </div>
-                        <button type="button" className="ti-btn ti-btn-sm ti-btn-primary shrink-0" onClick={() => selectItem(item)}>
+                        {item.isCompleted && <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><i className="ti ti-check text-white text-[0.75rem]" /></span>}
+                        <button type="button" className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[0.8125rem] font-medium hover:bg-primary hover:text-white transition-all" onClick={(e) => { e.stopPropagation(); selectItem(item) }}>
+                          <i className="ti ti-player-play text-[0.75rem]" />
                           {item.youtubeUrl ? "Watch" : "Play"}
                         </button>
                       </li>
@@ -1237,27 +1370,38 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
               </div>
             )}
             {mainTab === "blog" && (
-              <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Blog & articles</h2>
+              <div className="max-w-[720px] mx-auto py-6 px-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <i className="ti ti-article text-primary text-[1.25rem]" />
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">Blog & Articles</h2>
+                  <span className="ml-auto text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{itemsByTab.blog.length} item{itemsByTab.blog.length !== 1 ? "s" : ""}</span>
+                </div>
                 {itemsByTab.blog.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No blog items in this course.</p>
+                  <div className="text-center py-12">
+                    <i className="ti ti-article-off text-[2rem] text-[#d1d7dc] dark:text-white/20 mb-2 block" />
+                    <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No blog items in this course.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-2.5">
                     {itemsByTab.blog.map((item) => (
-                      <li key={item.id} className="p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5">
-                        <div className="flex items-start gap-3">
-                          <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                            <i className="ti ti-article text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                      <li key={item.id} className="group p-3.5 rounded-xl border border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-white/[0.03] hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer" onClick={() => selectItem(item)}>
+                        <div className="flex items-start gap-3.5">
+                          <span className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <i className="ti ti-article text-primary text-[1rem]" />
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white mb-1">{item.title}</p>
+                            <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white mb-1 group-hover:text-primary transition-colors">{item.title}</p>
                             {item.blogContent ? (
-                              <div className="text-[0.875rem] text-[#1c1d1f] dark:text-white/90 leading-relaxed line-clamp-3 prose prose-sm dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: item.blogContent.slice(0, 300) + (item.blogContent.length > 300 ? "…" : "") }} />
+                              <div className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 leading-relaxed line-clamp-2" dangerouslySetInnerHTML={{ __html: item.blogContent.replace(/<[^>]+>/g, "").slice(0, 150) + (item.blogContent.length > 150 ? "…" : "") }} />
                             ) : (
-                              <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60">Read article</p>
+                              <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50">Read article</p>
                             )}
                           </div>
-                          <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary shrink-0" onClick={() => selectItem(item)}>Read</button>
+                          {item.isCompleted && <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center mt-1"><i className="ti ti-check text-white text-[0.75rem]" /></span>}
+                          <button type="button" className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[0.8125rem] font-medium hover:bg-primary hover:text-white transition-all mt-0.5" onClick={(e) => { e.stopPropagation(); selectItem(item) }}>
+                            <i className="ti ti-book text-[0.75rem]" />
+                            Read
+                          </button>
                         </div>
                       </li>
                     ))}
@@ -1266,22 +1410,36 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
               </div>
             )}
             {mainTab === "quiz" && (
-              <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Quizzes</h2>
+              <div className="max-w-[720px] mx-auto py-6 px-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <i className="ti ti-clipboard-check text-primary text-[1.25rem]" />
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">Quizzes</h2>
+                  <span className="ml-auto text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{itemsByTab.quiz.length} item{itemsByTab.quiz.length !== 1 ? "s" : ""}</span>
+                </div>
                 {itemsByTab.quiz.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No quizzes in this course.</p>
+                  <div className="text-center py-12">
+                    <i className="ti ti-clipboard-off text-[2rem] text-[#d1d7dc] dark:text-white/20 mb-2 block" />
+                    <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No quizzes in this course.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-2.5">
                     {itemsByTab.quiz.map((item) => (
-                      <li key={item.id} className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5">
-                        <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ti ti-questionnaire text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                      <li key={item.id} className="group flex items-center gap-3.5 p-3.5 rounded-xl border border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-white/[0.03] hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer" onClick={() => selectItem(item)}>
+                        <span className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <i className="ti ti-clipboard-check text-primary text-[1rem]" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white">{item.title}</p>
-                          {item.duration && <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60">{item.duration}</p>}
+                          <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white group-hover:text-primary transition-colors">{item.title}</p>
+                          <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50 mt-0.5">
+                            {item.difficulty ? `${item.difficulty} · ` : ""}
+                            {item.duration ?? "Quiz"}
+                          </p>
                         </div>
-                        <button type="button" className="ti-btn ti-btn-sm ti-btn-primary shrink-0" onClick={() => selectItem(item)}>Start quiz</button>
+                        {item.isCompleted && <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><i className="ti ti-check text-white text-[0.75rem]" /></span>}
+                        <button type="button" className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[0.8125rem] font-medium hover:bg-primary hover:text-white transition-all" onClick={(e) => { e.stopPropagation(); selectItem(item) }}>
+                          <i className="ti ti-pencil text-[0.75rem]" />
+                          {item.isCompleted ? "Retake" : "Start"}
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1289,26 +1447,33 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
               </div>
             )}
             {mainTab === "pdf" && (
-              <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">PDF & documents</h2>
+              <div className="max-w-[720px] mx-auto py-6 px-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <i className="ti ti-file-text text-primary text-[1.25rem]" />
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">PDF & Documents</h2>
+                  <span className="ml-auto text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{itemsByTab.pdf.length} item{itemsByTab.pdf.length !== 1 ? "s" : ""}</span>
+                </div>
                 {itemsByTab.pdf.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No PDF or document items in this course.</p>
+                  <div className="text-center py-12">
+                    <i className="ti ti-file-off text-[2rem] text-[#d1d7dc] dark:text-white/20 mb-2 block" />
+                    <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No PDF or document items in this course.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-2.5">
                     {itemsByTab.pdf.map((item) => (
-                      <li key={item.id} className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5">
-                        <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ti ti-file-text text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                      <li key={item.id} className="group flex items-center gap-3.5 p-3.5 rounded-xl border border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-white/[0.03] hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer" onClick={() => selectItem(item)}>
+                        <span className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <i className="ti ti-file-text text-primary text-[1rem]" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white">{item.title}</p>
-                          {item.duration && <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60">{item.duration}</p>}
+                          <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white group-hover:text-primary transition-colors">{item.title}</p>
+                          {item.duration && <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50 mt-0.5">{item.duration}</p>}
                         </div>
-                        {item.pdfDocument?.url ? (
-                          <button type="button" className="ti-btn ti-btn-sm ti-btn-primary shrink-0" onClick={() => selectItem(item)}>View PDF</button>
-                        ) : (
-                          <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary shrink-0" onClick={() => selectItem(item)}>View</button>
-                        )}
+                        {item.isCompleted && <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><i className="ti ti-check text-white text-[0.75rem]" /></span>}
+                        <button type="button" className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[0.8125rem] font-medium hover:bg-primary hover:text-white transition-all" onClick={(e) => { e.stopPropagation(); selectItem(item) }}>
+                          <i className="ti ti-eye text-[0.75rem]" />
+                          View
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -1316,29 +1481,31 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
               </div>
             )}
             {mainTab === "essay" && (
-              <div className="max-w-[720px] mx-auto py-8 px-6">
-                <h2 className="text-[1.25rem] font-bold text-[#1c1d1f] dark:text-white mb-4">Q&A</h2>
+              <div className="max-w-[720px] mx-auto py-6 px-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <i className="ti ti-message-dots text-primary text-[1.25rem]" />
+                  <h2 className="text-[1.125rem] font-bold text-[#1c1d1f] dark:text-white">Q&A</h2>
+                  <span className="ml-auto text-[0.8125rem] text-[#6a6f73] dark:text-white/50">{itemsByTab.essay.length} item{itemsByTab.essay.length !== 1 ? "s" : ""}</span>
+                </div>
                 {itemsByTab.essay.length === 0 ? (
-                  <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No Q&A items in this course.</p>
+                  <div className="text-center py-12">
+                    <i className="ti ti-message-off text-[2rem] text-[#d1d7dc] dark:text-white/20 mb-2 block" />
+                    <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">No Q&A items in this course.</p>
+                  </div>
                 ) : (
-                  <ul className="space-y-3">
+                  <ul className="space-y-2.5">
                     {itemsByTab.essay.map((item) => (
-                      <li
-                        key={item.id}
-                        className="flex items-center gap-4 p-4 rounded-lg border border-[#d1d7dc] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5"
-                      >
-                        <span className="w-10 h-10 rounded-full bg-[#5624d0]/10 dark:bg-primary/10 flex items-center justify-center shrink-0">
-                          <i className="ti ti-edit text-[#5624d0] dark:text-primary text-[1.125rem]" />
+                      <li key={item.id} className="group flex items-center gap-3.5 p-3.5 rounded-xl border border-[#e4e8eb] dark:border-white/10 bg-white dark:bg-white/[0.03] hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer" onClick={() => selectItem(item)}>
+                        <span className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                          <i className="ti ti-message-dots text-primary text-[1rem]" />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-[0.9375rem] text-[#1c1d1f] dark:text-white">{item.title}</p>
+                          <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white group-hover:text-primary transition-colors">{item.title}</p>
                         </div>
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-sm ti-btn-primary shrink-0"
-                          onClick={() => selectItem(item)}
-                        >
-                          {item.isCompleted ? "View" : "Start Q&A"}
+                        {item.isCompleted && <span className="shrink-0 w-5 h-5 rounded-full bg-emerald-500 flex items-center justify-center"><i className="ti ti-check text-white text-[0.75rem]" /></span>}
+                        <button type="button" className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-[0.8125rem] font-medium hover:bg-primary hover:text-white transition-all" onClick={(e) => { e.stopPropagation(); selectItem(item) }}>
+                          <i className={`ti ${item.isCompleted ? "ti-eye" : "ti-pencil"} text-[0.75rem]`} />
+                          {item.isCompleted ? "View" : "Start"}
                         </button>
                       </li>
                     ))}

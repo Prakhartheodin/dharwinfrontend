@@ -2,14 +2,38 @@
 
 import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useState, useMemo } from "react"
+import React, { Fragment, useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { MY_COURSES } from "@/shared/data/training/courses-data"
 import type { Course } from "@/shared/data/training/courses-data"
+import { listTrainingModules, type TrainingModule } from "@/shared/lib/api/training-modules"
+
+function mapModuleToCourse(m: TrainingModule): Course {
+  const totalItems = m.playlist?.length ?? 0
+  const mentorName = m.mentorsAssigned?.[0]?.user?.name ?? "Instructor"
+  const categoryName = m.categories?.[0]?.name ?? ""
+  return {
+    id: m.id,
+    title: m.moduleName,
+    instructor: mentorName,
+    thumbnail: m.coverImage?.url ?? "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400&h=220&fit=crop",
+    progress: 0,
+    description: m.shortDescription || "",
+    lessons: (m.playlist ?? []).map((item, idx) => ({
+      id: item.id ?? item._id ?? `pl-${idx}`,
+      title: item.title,
+      duration: item.duration ? `${item.duration} min` : undefined,
+    })),
+    category: categoryName,
+    rating: 0,
+  }
+}
 
 const COURSES_PER_PAGE = 6
 
 const TrainingCurriculum = () => {
+  const [courses, setCourses] = useState<Course[]>(MY_COURSES)
+  const [apiLoading, setApiLoading] = useState(true)
   const [scheduleDismissed, setScheduleDismissed] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
@@ -20,17 +44,31 @@ const TrainingCurriculum = () => {
   const [openFilter, setOpenFilter] = useState<"category" | "progress" | "instructor" | null>(null)
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
 
-  const categories = useMemo(() => {
-    const set = new Set(MY_COURSES.map((c) => c.category).filter(Boolean))
-    return Array.from(set) as string[]
-  }, [])
-  const instructors = useMemo(() => {
-    const set = new Set(MY_COURSES.map((c) => c.instructor))
-    return Array.from(set)
+  useEffect(() => {
+    listTrainingModules({ limit: 200, status: "published" })
+      .then((res) => {
+        const apiCourses = (res.results ?? []).map(mapModuleToCourse)
+        if (apiCourses.length > 0) {
+          setCourses(apiCourses)
+        }
+      })
+      .catch(() => {
+        // Keep fallback MY_COURSES
+      })
+      .finally(() => setApiLoading(false))
   }, [])
 
+  const categories = useMemo(() => {
+    const set = new Set(courses.map((c) => c.category).filter(Boolean))
+    return Array.from(set) as string[]
+  }, [courses])
+  const instructors = useMemo(() => {
+    const set = new Set(courses.map((c) => c.instructor))
+    return Array.from(set)
+  }, [courses])
+
   const filteredCourses = useMemo(() => {
-    let list = [...MY_COURSES]
+    let list = [...courses]
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       list = list.filter(
@@ -50,7 +88,7 @@ const TrainingCurriculum = () => {
     if (sortBy === "recent") list = [...list].reverse()
     if (sortBy === "title") list = [...list].sort((a, b) => a.title.localeCompare(b.title))
     return list
-  }, [searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
+  }, [courses, searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE))
   const paginatedCourses = useMemo(() => {
@@ -66,11 +104,6 @@ const TrainingCurriculum = () => {
         activepage="Training Management"
         mainpage="Training Curriculum"
       />
-
-      {/* Dark header - Modules */}
-      <div className="bg-[#1c1d1f] dark:bg-[#0d0d0d] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 mb-6 rounded-b-md">
-        <h2 className="text-white text-[1.75rem] font-bold">Modules</h2>
-      </div>
 
       {/* Motivational cards */}
       <>

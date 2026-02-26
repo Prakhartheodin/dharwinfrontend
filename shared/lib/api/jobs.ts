@@ -42,6 +42,7 @@ export interface JobsListParams {
   experienceLevel?: string;
   createdBy?: string;
   search?: string;
+  forCandidates?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;

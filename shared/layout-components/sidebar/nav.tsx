@@ -4,6 +4,9 @@ const DashboardIcon = <i className="bx bx-home side-menu__icon"></i>;
 
 // ATS Icons
 const JobsIcon = <i className="bx bx-briefcase-alt side-menu__icon"></i>;
+const ExternalJobsIcon = <i className="bx bx-globe side-menu__icon"></i>;
+const BrowseJobsIcon = <i className="bx bx-search-alt side-menu__icon"></i>;
+const MyApplicationsIcon = <i className="bx bx-list-ul side-menu__icon"></i>;
 const CandidatesIcon = <i className="bx bx-user side-menu__icon"></i>;
 const RecruitersIcon = <i className="bx bx-user-check side-menu__icon"></i>;
 const InterviewsIcon = <i className="bx bx-calendar-check side-menu__icon"></i>;
@@ -86,12 +89,39 @@ export const MenuItems: any = [
         selected: false,
         dirchange: false, 
       },
+      {
+    icon: ExternalJobsIcon,
+    title: "External Jobs",
+    type: "link",
+    path: "/ats/external-jobs",
+    active: false,
+    selected: false,
+    dirchange: false,
+      },
 
       {
     icon: CandidatesIcon,
     title: "Candidates",
         type: "link",
     path: "/ats/candidates",
+        active: false,
+        selected: false,
+        dirchange: false,
+      },
+      {
+    icon: BrowseJobsIcon,
+    title: "Browse Jobs",
+        type: "link",
+    path: "/ats/browse-jobs",
+        active: false,
+        selected: false,
+        dirchange: false,
+      },
+      {
+    icon: MyApplicationsIcon,
+    title: "My Applications",
+        type: "link",
+    path: "/ats/my-applications",
         active: false,
         selected: false,
         dirchange: false,

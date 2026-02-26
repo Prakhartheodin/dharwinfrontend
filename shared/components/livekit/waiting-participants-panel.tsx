@@ -16,6 +16,28 @@ interface WaitingParticipantsPanelProps {
   onWaitingParticipantsChange?: (identities: string[]) => void;
 }
 
+const AVATAR_COLORS = [
+  "bg-primary/20 text-primary",
+  "bg-emerald-500/20 text-emerald-400",
+  "bg-amber-500/20 text-amber-400",
+  "bg-rose-500/20 text-rose-400",
+  "bg-blue-500/20 text-blue-400",
+];
+
+function getInitials(name: string): string {
+  const parts = (name || "").trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase().slice(0, 2);
+  }
+  return (name || "?").slice(0, 2).toUpperCase();
+}
+
+function avatarColor(identity: string): string {
+  let n = 0;
+  for (let i = 0; i < identity.length; i++) n += identity.charCodeAt(i);
+  return AVATAR_COLORS[n % AVATAR_COLORS.length];
+}
+
 export function WaitingParticipantsPanel({
   roomName,
   hostEmail,
@@ -27,30 +49,22 @@ export function WaitingParticipantsPanel({
   const [error, setError] = useState<string | null>(null);
   const [admitting, setAdmitting] = useState<string | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [admittingAll, setAdmittingAll] = useState(false);
 
   const fetchWaitingParticipants = async () => {
     try {
       setLoading(true);
       setError(null);
-      // Use public endpoint if hostEmail is provided (for public join flow)
       const response = hostEmail
         ? await livekitApi.getWaitingParticipantsPublic(roomName, hostEmail)
         : await livekitApi.getWaitingParticipants(roomName);
       const participants = response.participants || [];
       setWaitingParticipants(participants);
-      // Notify parent component of waiting participant identities (for filtering video grid)
-      // Also include names for better matching
-      const waitingIdentities = participants.map(p => p.identity);
-      onWaitingParticipantsChange?.(waitingIdentities);
-      
-      // Log for debugging
-      if (participants.length > 0) {
-        console.log('Waiting participants:', participants.map(p => ({ identity: p.identity, name: p.name })));
-      }
-    } catch (err: any) {
-      console.error("Error fetching waiting participants:", err);
-      setError(err?.response?.data?.message || "Failed to load waiting participants");
+      onWaitingParticipantsChange?.(participants.map((p) => p.identity));
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || "Failed to load waiting participants");
     } finally {
       setLoading(false);
     }
@@ -58,17 +72,14 @@ export function WaitingParticipantsPanel({
 
   useEffect(() => {
     fetchWaitingParticipants();
-    // Poll for updates every 5 seconds (was 3s - reduces load and potential reconnect triggers)
     const interval = setInterval(fetchWaitingParticipants, 5000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomName, hostEmail]);
 
   const handleAdmit = async (participant: WaitingParticipant) => {
     try {
       setAdmitting(participant.identity);
       setError(null);
-      // Use public endpoint if hostEmail is provided (for public join flow)
       if (hostEmail) {
         await livekitApi.admitParticipantPublic(
           roomName,
@@ -78,29 +89,41 @@ export function WaitingParticipantsPanel({
           hostEmail
         );
       } else {
-        await livekitApi.admitParticipant(
-          roomName,
-          participant.identity,
-          participant.name
-        );
+        await livekitApi.admitParticipant(roomName, participant.identity, participant.name);
       }
-      // Remove from waiting list immediately
-      setWaitingParticipants((prev) =>
-        prev.filter((p) => p.identity !== participant.identity)
-      );
-      // Update waiting IDs list immediately so hiding logic stops hiding this participant
-      onWaitingParticipantsChange?.(waitingParticipants.filter(p => p.identity !== participant.identity).map(p => p.identity));
+      setWaitingParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
+      onWaitingParticipantsChange?.(waitingParticipants.filter((p) => p.identity !== participant.identity).map((p) => p.identity));
       onParticipantAdmitted?.(participant.identity);
-      
-      // Also refresh the waiting list to get updated data from server
-      setTimeout(() => {
-        fetchWaitingParticipants();
-      }, 500);
-    } catch (err: any) {
-      console.error("Error admitting participant:", err);
-      setError(err?.response?.data?.message || "Failed to admit participant");
+      setTimeout(fetchWaitingParticipants, 500);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || "Failed to admit participant");
     } finally {
       setAdmitting(null);
+    }
+  };
+
+  const handleAdmitAll = async () => {
+    if (waitingParticipants.length === 0) return;
+    try {
+      setAdmittingAll(true);
+      setError(null);
+      for (const p of [...waitingParticipants]) {
+        if (hostEmail) {
+          await livekitApi.admitParticipantPublic(roomName, p.identity, p.name, undefined, hostEmail);
+        } else {
+          await livekitApi.admitParticipant(roomName, p.identity, p.name);
+        }
+        setWaitingParticipants((prev) => prev.filter((x) => x.identity !== p.identity));
+        onParticipantAdmitted?.(p.identity);
+      }
+      onWaitingParticipantsChange?.([]);
+      setTimeout(fetchWaitingParticipants, 500);
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || "Failed to admit all");
+    } finally {
+      setAdmittingAll(false);
     }
   };
 
@@ -108,152 +131,165 @@ export function WaitingParticipantsPanel({
     try {
       setRemoving(participant.identity);
       setError(null);
-      // Use public endpoint if hostEmail is provided (for public join flow)
       if (hostEmail) {
-        await livekitApi.removeParticipantPublic(
-          roomName,
-          participant.identity,
-          hostEmail
-        );
+        await livekitApi.removeParticipantPublic(roomName, participant.identity, hostEmail);
       } else {
         await livekitApi.removeParticipant(roomName, participant.identity);
       }
-      // Remove from waiting list
-      setWaitingParticipants((prev) =>
-        prev.filter((p) => p.identity !== participant.identity)
-      );
-    } catch (err: any) {
-      console.error("Error removing participant:", err);
-      setError(err?.response?.data?.message || "Failed to remove participant");
+      setWaitingParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
+      onWaitingParticipantsChange?.(waitingParticipants.filter((p) => p.identity !== participant.identity).map((p) => p.identity));
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      setError(e?.response?.data?.message || "Failed to remove participant");
     } finally {
       setRemoving(null);
     }
   };
 
-  // Always show the panel (collapsed or expanded) so host knows there's a waiting room
+  const count = waitingParticipants.length;
+
   return (
-    <div className="bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-700 overflow-hidden transition-all duration-200">
-      {/* Header with toggle icon */}
-      <div 
-        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-700/50 transition-colors"
-        onClick={() => setIsExpanded(!isExpanded)}
+    <>
+      {/* Drawer tab when closed */}
+      <button
+        type="button"
+        onClick={() => setDrawerOpen(true)}
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-[999] flex items-center gap-2 pl-3 pr-2 py-2 rounded-l-xl bg-[#1a1a1f] border border-r-0 border-white/10 shadow-lg hover:bg-[#222] transition-colors"
+        title="Waiting room"
       >
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <i className={`ri-user-search-line text-xl text-primary transition-transform duration-200 ${isExpanded ? 'rotate-0' : ''}`} />
-            {waitingParticipants.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center font-semibold">
-                {waitingParticipants.length}
+        <i className="ti ti-user-search text-primary text-lg" />
+        <span className="text-white text-sm font-medium">Waiting</span>
+        {count > 0 && (
+          <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-primary/20 text-primary text-xs font-semibold flex items-center justify-center">
+            {count}
+          </span>
+        )}
+      </button>
+
+      {/* Backdrop when open */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-[1000]"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* Drawer panel */}
+      <div
+        className={`fixed top-0 right-0 bottom-0 z-[1001] w-full max-w-[380px] bg-[#1a1a1f] border-l border-white/10 shadow-2xl flex flex-col transition-transform duration-200 ease-out ${
+          drawerOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
+          <div className="flex items-center gap-2">
+            <i className="ti ti-user-wait text-primary text-xl" />
+            <h3 className="text-white font-semibold">Waiting room</h3>
+            {count > 0 && (
+              <span className="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-xs font-medium">
+                {count}
               </span>
             )}
           </div>
-          <div>
-            <h3 className="text-white font-semibold text-sm">
-              Waiting Room
-            </h3>
-            {waitingParticipants.length > 0 && (
-              <p className="text-gray-400 text-xs">
-                {waitingParticipants.length} participant{waitingParticipants.length !== 1 ? 's' : ''} waiting
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {waitingParticipants.length > 0 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                fetchWaitingParticipants();
-              }}
-              className="text-gray-400 hover:text-primary text-sm p-1"
-              disabled={loading}
-              title="Refresh"
-            >
-              <i className={`ri-refresh-line ${loading ? 'animate-spin' : ''}`} />
-            </button>
-          )}
           <button
-            className="text-gray-400 hover:text-white transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExpanded(!isExpanded);
-            }}
+            type="button"
+            onClick={() => setDrawerOpen(false)}
+            className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label="Close"
           >
-            <i className={`ri-arrow-${isExpanded ? 'up' : 'down'}-s-line text-lg transition-transform duration-200`} />
+            <i className="ti ti-x text-lg" />
           </button>
         </div>
-      </div>
 
-      {/* Collapsible content */}
-      {isExpanded && (
-        <div className="border-t border-gray-700">
-          {loading && waitingParticipants.length === 0 ? (
-            <div className="p-4">
-              <p className="text-gray-400 text-sm text-center">Loading...</p>
-            </div>
-          ) : waitingParticipants.length === 0 ? (
-            <div className="p-4">
-              <p className="text-gray-400 text-sm text-center">No participants waiting</p>
-            </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading && count === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-8">Loading…</p>
+          ) : count === 0 ? (
+            <p className="text-gray-400 text-sm text-center py-8">No one waiting</p>
           ) : (
-            <div className="p-4 space-y-2 max-h-[400px] overflow-y-auto">
+            <>
               {error && (
-                <div className="mb-3 p-2 bg-red-900/50 border border-red-700 rounded text-red-200 text-xs">
+                <div className="mb-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-xs">
                   {error}
                 </div>
               )}
-
-              {waitingParticipants.map((participant) => (
-                <div
-                  key={participant.identity}
-                  className="bg-gray-700/50 rounded-lg p-3 flex items-center justify-between hover:bg-gray-700 transition-colors"
+              {count > 1 && (
+                <button
+                  type="button"
+                  onClick={handleAdmitAll}
+                  disabled={admittingAll}
+                  className="w-full mb-4 py-2.5 rounded-xl bg-primary/20 text-primary font-medium text-sm hover:bg-primary/30 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                      <i className="ri-user-line text-primary text-sm" />
+                  {admittingAll ? (
+                    <i className="ti ti-loader-2 animate-spin text-base" />
+                  ) : (
+                    <i className="ti ti-users-plus text-base" />
+                  )}
+                  Admit all ({count})
+                </button>
+              )}
+              <ul className="space-y-2">
+                {waitingParticipants.map((participant) => (
+                  <li
+                    key={participant.identity}
+                    className="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/5 hover:bg-white/10 transition-colors"
+                  >
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold ${avatarColor(participant.identity)}`}
+                    >
+                      {getInitials(participant.name || participant.identity)}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium text-sm truncate">{participant.name}</p>
-                      <p className="text-gray-400 text-xs truncate">
-                        {participant.identity}
-                      </p>
+                      <p className="text-white font-medium text-sm truncate">{participant.name || participant.identity}</p>
+                      <p className="text-gray-500 text-xs truncate">{participant.identity}</p>
                     </div>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => handleAdmit(participant)}
-                      disabled={admitting === participant.identity || removing === participant.identity}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-xs font-medium rounded-md transition-colors duration-200 shadow-sm"
-                      title="Admit participant"
-                    >
-                      {admitting === participant.identity ? (
-                        <i className="ri-loader-4-line animate-spin text-sm" />
-                      ) : (
-                        <>
-                          <i className="ri-check-line text-sm" />
-                          <span>Admit</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleRemove(participant)}
-                      disabled={admitting === participant.identity || removing === participant.identity}
-                      className="flex items-center justify-center w-8 h-8 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-md transition-colors duration-200 shadow-sm"
-                      title="Remove participant"
-                    >
-                      {removing === participant.identity ? (
-                        <i className="ri-loader-4-line animate-spin text-sm" />
-                      ) : (
-                        <i className="ri-close-line text-sm" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleAdmit(participant)}
+                        disabled={admitting === participant.identity || removing === participant.identity}
+                        className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50"
+                        title="Admit"
+                      >
+                        {admitting === participant.identity ? (
+                          <i className="ti ti-loader-2 animate-spin text-sm" />
+                        ) : (
+                          <i className="ti ti-check text-sm" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(participant)}
+                        disabled={admitting === participant.identity || removing === participant.identity}
+                        className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50"
+                        title="Remove"
+                      >
+                        {removing === participant.identity ? (
+                          <i className="ti ti-loader-2 animate-spin text-sm" />
+                        ) : (
+                          <i className="ti ti-x text-sm" />
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
-      )}
-    </div>
+
+        <div className="p-4 border-t border-white/10 shrink-0">
+          <button
+            type="button"
+            onClick={fetchWaitingParticipants}
+            disabled={loading}
+            className="w-full py-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 text-sm font-medium flex items-center justify-center gap-2"
+          >
+            <i className={`ti ti-refresh text-base ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
