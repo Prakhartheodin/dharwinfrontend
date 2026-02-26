@@ -2215,9 +2215,9 @@ export const Basicwizard = ({
         canNavigateToStep={canNavigateToStep}
       >
       <Step title={<><i className="ri-user-3-line basicstep-icon"></i> Personal Info</>}>
-        <div className="p-6">
+        <div className="p-6 w-full">
           <p className="mb-1 font-semibold text-[#8c9097] dark:text-white/50 opacity-50 text-[1.25rem]">01</p>
-          <div className="grid grid-cols-12 gap-4">
+          <div className="grid grid-cols-12 gap-6 w-full">
             {/* Profile Picture Upload */}
             <div className="xl:col-span-12 col-span-12 mb-4">
               <label className="form-label">Profile Picture (Optional)</label>

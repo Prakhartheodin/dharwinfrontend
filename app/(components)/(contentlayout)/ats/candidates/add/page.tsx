@@ -14,13 +14,11 @@ const AddCandidate = () => {
         activepage="Candidates"
         mainpage="Add Candidate"
       />
-      <div className="container">
-        <div className="grid grid-cols-12">
-          <div className="col-span-12">
-            <div className="box overflow-hidden">
-              <div className="box-body !p-0 product-checkout">
-                <Basicwizard />
-              </div>
+      <div className="grid grid-cols-12 gap-6">
+        <div className="xl:col-span-12 col-span-12">
+          <div className="box custom-box overflow-hidden">
+            <div className="box-body !p-0 product-checkout">
+              <Basicwizard />
             </div>
           </div>
         </div>

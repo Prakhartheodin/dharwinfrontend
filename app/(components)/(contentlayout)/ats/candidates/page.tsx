@@ -960,30 +960,30 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit Candidate</span>
                 </Link>
               </div>
-              <div className="hs-tooltip ti-main-tooltip">
+              {/* <div className="hs-tooltip ti-main-tooltip">
                 <button type="button" onClick={() => openDocumentsModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-secondary/10 text-secondary hover:bg-secondary hover:text-white" title="View Documents">
                   <i className="ri-file-list-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Documents</span>
                 </button>
-              </div>
-              <div className="hs-tooltip ti-main-tooltip">
+              </div>  */}
+              {/* <div className="hs-tooltip ti-main-tooltip">
                 <button type="button" onClick={() => openSalarySlipModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-warning/10 text-warning hover:bg-warning hover:text-white" title="Upload Salary Slip">
                   <i className="ri-file-add-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Upload Salary Slip</span>
                 </button>
-              </div>
+              </div> */}
               <div className="hs-tooltip ti-main-tooltip">
                 <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share Candidate">
                   <i className="ri-share-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share Candidate</span>
                 </button>
               </div>
-              <div className="hs-tooltip ti-main-tooltip">
+              {/* <div className="hs-tooltip ti-main-tooltip">
                 <button type="button" onClick={() => { setActionSuccess('Attendance is not configured for candidates in this environment'); setTimeout(() => setActionSuccess(null), 3000) }} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white" title="View Attendance">
                   <i className="ri-calendar-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Attendance</span>
                 </button>
-              </div>
+              </div> */}
               {c.isEmailVerified === false && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button type="button" onClick={() => handleResendVerification(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white" title="Resend Email Verification">
@@ -1004,7 +1004,7 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Add Feedback</span>
                 </button>
               </div>
-              <div className="hs-tooltip ti-main-tooltip">
+              {/* <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
                   onClick={() => handleDeleteCandidate(c)}
@@ -1019,8 +1019,8 @@ const Candidates = () => {
                   )}
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Delete</span>
                 </button>
-              </div>
-              <div className="inline-flex" data-more-menu-container>
+              </div> */}
+              {/* <div className="inline-flex" data-more-menu-container>
                 <button
                   type="button"
                   className="ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-gray-500/10 text-gray-600 dark:text-gray-400 hover:bg-gray-500 hover:text-white"
@@ -1041,7 +1041,7 @@ const Candidates = () => {
                 >
                   <i className="ri-more-2-fill"></i>
                 </button>
-              </div>
+              </div> */}
             </div>
           )
         },
