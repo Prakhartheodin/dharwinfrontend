@@ -28,7 +28,9 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/training/evaluation": "training.evaluation:",
   "/training/analytics": "training.analytics:",
   // Project Management (sidebar uses /apps/... and /task/...; app routes also use /project-management/...)
+  "/apps/projects/my-projects": "project.projects:",
   "/apps/projects/project-list": "project.projects:",
+  "/task/my-tasks": "project.tasks:",
   "/task/kanban-board": "project.tasks:",
   "/pages/team": "project.teams:",
   "/project-management/projects": "project.projects:",
@@ -79,6 +81,44 @@ export const COURSES_PERMISSION_PREFIX = "candidate.courses:";
 
 /** Permission prefix for attendance tracking. */
 export const ATTENDANCE_PERMISSION_PREFIX = "training.attendance:";
+
+/** Permission prefix for project management. */
+export const PROJECT_PROJECTS_PREFIX = "project.projects:";
+
+/** Permission prefix for task management. */
+export const PROJECT_TASKS_PREFIX = "project.tasks:";
+
+/**
+ * Returns true if the user can access My Projects (assigned projects view):
+ * - has any permission starting with project.projects:, OR
+ * - has a role whose name is "Student" (so students see their assigned projects).
+ */
+export function canAccessMyProjects(
+  userPermissions: string[],
+  roleNames: string[]
+): boolean {
+  if (hasPermissionForPath(userPermissions, PROJECT_PROJECTS_PREFIX)) return true;
+  const hasStudentRole = roleNames.some(
+    (name) => name?.toLowerCase() === "student"
+  );
+  return hasStudentRole;
+}
+
+/**
+ * Returns true if the user can access My Tasks (assigned tasks view):
+ * - has any permission starting with project.tasks:, OR
+ * - has a role whose name is "Student" or "Candidate" (so they see their assigned tasks).
+ */
+export function canAccessMyTasks(
+  userPermissions: string[],
+  roleNames: string[]
+): boolean {
+  if (hasPermissionForPath(userPermissions, PROJECT_TASKS_PREFIX)) return true;
+  const hasStudentOrCandidateRole = roleNames.some(
+    (name) => name?.toLowerCase() === "student" || name?.toLowerCase() === "candidate"
+  );
+  return hasStudentOrCandidateRole;
+}
 
 /**
  * Returns true if the user can access the /courses section:

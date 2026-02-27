@@ -42,6 +42,7 @@ export interface TasksListParams {
   status?: TaskStatus;
   projectId?: string;
   search?: string;
+  assignedToMe?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -64,8 +65,15 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 export async function listTasks(params?: TasksListParams): Promise<TasksListResponse> {
-  const { data } = await apiClient.get<TasksListResponse>("/tasks", { params });
+  const { data } = await apiClient.get<TasksListResponse>("/tasks", {
+    params: params ? { ...params, assignedToMe: params.assignedToMe === true ? "true" : undefined } : undefined,
+  });
   return data;
+}
+
+/** List tasks assigned to the current user (candidate view) */
+export async function listMyAssignedTasks(params?: Omit<TasksListParams, "assignedToMe">): Promise<TasksListResponse> {
+  return listTasks({ ...params, assignedToMe: true });
 }
 
 export async function getTaskById(id: string): Promise<Task> {

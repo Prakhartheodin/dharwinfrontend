@@ -21,7 +21,7 @@ import {
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
 import { listProjects } from "@/shared/lib/api/projects";
-import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
+import { listUsers } from "@/shared/lib/api/users";
 import { KanbanTaskCard } from "./KanbanTaskCard";
 import { TaskDetailModal } from "./TaskDetailModal";
 
@@ -42,7 +42,7 @@ const Kanbanboard = () => {
   const [search, setSearch] = useState("");
   const [projectFilterId, setProjectFilterId] = useState<string>("");
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
-  const [candidates, setCandidates] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -97,17 +97,17 @@ const Kanbanboard = () => {
       })
       .catch(() => setProjects([]));
 
-    // Load candidates once for assigning tasks
-    listCandidates({ limit: 200 })
+    // Load users (students/candidates) for assigning tasks
+    listUsers({ limit: 200 })
       .then((res) => {
-        const list = (res.results ?? []).map((c: CandidateListItem) => ({
-          id: (c.id ?? c._id) as string,
-          name: c.fullName,
-          email: c.email,
+        const list = (res.results ?? []).map((u) => ({
+          id: u.id ?? u._id ?? "",
+          name: u.name ?? "",
+          email: u.email ?? "",
         }));
-        setCandidates(list);
+        setUsers(list);
       })
-      .catch(() => setCandidates([]));
+      .catch(() => setUsers([]));
   }, []);
 
   useEffect(() => {
@@ -444,7 +444,7 @@ const Kanbanboard = () => {
                           if (t) openEditModal(t);
                         }}
                         onDelete={handleDelete}
-                        allCandidates={candidates}
+                        allCandidates={users}
                       />
                     ))}
                   </div>
@@ -468,7 +468,7 @@ const Kanbanboard = () => {
         onClose={closeDetailModal}
         onEdit={handleEditFromDetail}
         onDelete={handleDelete}
-        allCandidates={candidates}
+        allCandidates={users}
       />
 
       {addModalOpen && (
@@ -524,16 +524,16 @@ const Kanbanboard = () => {
                 />
               </div>
               <div>
-                <label className="form-label">Assign Candidates</label>
+                <label className="form-label">Assign Users</label>
                 <Select
                   isMulti
-                  placeholder="Select candidates to assign"
-                  options={candidates.map((c) => ({
+                  placeholder="Select users to assign"
+                  options={users.map((c) => ({
                     value: c.id,
                     label: `${c.name} - ${c.email}`,
                   }))}
                   value={addAssignedCandidateIds.map((id) => {
-                    const c = candidates.find((x) => x.id === id);
+                    const c = users.find((x) => x.id === id);
                     return c
                       ? { value: c.id, label: `${c.name} - ${c.email}` }
                       : { value: id, label: id };
@@ -662,16 +662,16 @@ const Kanbanboard = () => {
                 />
               </div>
               <div>
-                <label className="form-label">Assign Candidates</label>
+                <label className="form-label">Assign Users</label>
                 <Select
                   isMulti
-                  placeholder="Select candidates to assign"
-                  options={candidates.map((c) => ({
+                  placeholder="Select users to assign"
+                  options={users.map((c) => ({
                     value: c.id,
                     label: `${c.name} - ${c.email}`,
                   }))}
                   value={editAssignedCandidateIds.map((id) => {
-                    const c = candidates.find((x) => x.id === id);
+                    const c = users.find((x) => x.id === id);
                     return c
                       ? { value: c.id, label: `${c.name} - ${c.email}` }
                       : { value: id, label: id };
