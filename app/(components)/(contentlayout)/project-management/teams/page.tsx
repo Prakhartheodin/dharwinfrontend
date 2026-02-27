@@ -29,6 +29,7 @@ import {
   listTeamGroups,
   createTeamGroup,
 } from "@/shared/lib/api/projectTeams";
+import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -360,6 +361,7 @@ interface TeamMemberFormModalProps {
   isEdit: boolean;
   form: TeamMemberFormState;
   teamOptions: { value: string; label: string }[];
+  candidates: { id: string; name: string; email: string }[];
   onChange: (updates: Partial<TeamMemberFormState>) => void;
   onClose: () => void;
   onSubmit: () => void;
@@ -371,6 +373,7 @@ function TeamMemberFormModal({
   isEdit,
   form,
   teamOptions,
+  candidates,
   onChange,
   onClose,
   onSubmit,
@@ -397,29 +400,48 @@ function TeamMemberFormModal({
         <div className="ti-modal-body px-4 py-4 overflow-y-auto flex-1">
           <div className="grid grid-cols-12 gap-4">
             <div className="xl:col-span-12 col-span-12">
-              <label htmlFor="member-name" className="form-label">
-                Name
+              <label htmlFor="member-candidate" className="form-label">
+                Candidate
               </label>
-              <input
-                id="member-name"
-                type="text"
-                className="form-control"
-                placeholder="Enter Name"
-                value={form.name}
-                onChange={(e) => onChange({ name: e.target.value })}
-              />
-            </div>
-            <div className="xl:col-span-12 col-span-12">
-              <label htmlFor="member-email" className="form-label">
-                Email
-              </label>
-              <input
-                id="member-email"
-                type="email"
-                className="form-control"
-                placeholder="Enter Email"
-                value={form.email}
-                onChange={(e) => onChange({ email: e.target.value })}
+              <Select
+                inputId="member-candidate"
+                classNamePrefix="Select2"
+                className="basic-single-select"
+                menuPlacement="auto"
+                options={candidates.map((c) => ({
+                  value: c.id,
+                  label: `${c.name} (${c.email})`,
+                }))}
+                value={
+                  form.email
+                    ? (() => {
+                        const match = candidates.find((c) => c.email === form.email);
+                        if (match) {
+                          return {
+                            value: match.id,
+                            label: `${match.name} (${match.email})`,
+                          };
+                        }
+                        return null;
+                      })()
+                    : null
+                }
+                placeholder={
+                  candidates.length ? "Select candidate" : "No candidates available"
+                }
+                onChange={(opt) => {
+                  const option = opt as { value: string; label: string } | null;
+                  if (!option) {
+                    onChange({ name: "", email: "" });
+                    return;
+                  }
+                  const cand = candidates.find((c) => c.id === option.value);
+                  onChange({
+                    name: cand?.name ?? form.name,
+                    email: cand?.email ?? form.email,
+                  });
+                }}
+                isClearable
               />
             </div>
             <div className="xl:col-span-6 col-span-12">
@@ -606,6 +628,9 @@ const TeamsPage = () => {
   const [createTeamOpen, setCreateTeamOpen] = useState<boolean>(false);
   const [createTeamName, setCreateTeamName] = useState<string>("");
   const [createTeamSubmitting, setCreateTeamSubmitting] = useState<boolean>(false);
+  const [candidates, setCandidates] = useState<
+    { id: string; name: string; email: string }[]
+  >([]);
 
   const PAGE_SIZE = 12;
   const teamOptions = useMemo(
@@ -654,6 +679,17 @@ const TeamsPage = () => {
 
   useEffect(() => {
     fetchTeamGroups();
+    // Load candidates for team member selection (team members must be candidates)
+    listCandidates({ limit: 500 })
+      .then((res) => {
+        const list = (res.results ?? []).map((c: CandidateListItem) => ({
+          id: (c.id ?? c._id) as string,
+          name: c.fullName,
+          email: c.email,
+        }));
+        setCandidates(list);
+      })
+      .catch(() => setCandidates([]));
   }, [fetchTeamGroups]);
 
   const handleSearch = () => {
@@ -1091,6 +1127,7 @@ const TeamsPage = () => {
         isEdit={formIsEdit}
         form={formState}
         teamOptions={teamOptions}
+        candidates={candidates}
         onChange={handleFormChange}
         onClose={() => {
           if (submitting) return;

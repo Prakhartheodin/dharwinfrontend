@@ -14,9 +14,17 @@ export interface KanbanTaskCardProps {
   onView: (taskId: string) => void;
   onEdit: (taskId: string) => void;
   onDelete: (taskId: string) => void;
+  /** Optional candidate lookup so avatars can show initials from candidate name/email when assignedTo is just IDs. */
+  allCandidates?: { id: string; name: string; email: string }[];
 }
 
-export function KanbanTaskCard({ task, onView, onEdit, onDelete }: KanbanTaskCardProps) {
+export function KanbanTaskCard({
+  task,
+  onView,
+  onEdit,
+  onDelete,
+  allCandidates,
+}: KanbanTaskCardProps) {
   const taskId = getTaskId(task);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dueLabel = formatDueDate(task.dueDate, task.status);
@@ -100,6 +108,22 @@ export function KanbanTaskCard({ task, onView, onEdit, onDelete }: KanbanTaskCar
 
   const tags = task.tags ?? [];
   const assignedTo = task.assignedTo ?? [];
+
+  const getAssigneeDisplay = (u: unknown): { key: string; initial: string; title: string } => {
+    if (typeof u === "string") {
+      const cand = allCandidates?.find((c) => c.id === u);
+      const nameOrEmail = cand?.name || cand?.email || "";
+      const initial = nameOrEmail ? nameOrEmail.slice(0, 1).toUpperCase() : "?";
+      const title = nameOrEmail || u;
+      return { key: u, initial, title };
+    }
+    const obj = u as { id?: string; _id?: string; name?: string; email?: string };
+    const id = obj.id ?? obj._id ?? "";
+    const nameOrEmail = obj.name || obj.email || "";
+    const initial = nameOrEmail ? nameOrEmail.slice(0, 1).toUpperCase() : "?";
+    const title = nameOrEmail || id || "?";
+    return { key: id || title, initial, title };
+  };
 
   return (
     <div
@@ -215,15 +239,18 @@ export function KanbanTaskCard({ task, onView, onEdit, onDelete }: KanbanTaskCar
               </span>
             </div>
             <div className="avatar-list-stacked">
-              {assignedTo.slice(0, 4).map((u) => (
-                <span
-                  key={(u as { id?: string }).id ?? u._id}
-                  className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary"
-                  title={u.name ?? u.email}
-                >
-                  {(u.name ?? u.email ?? "?").slice(0, 1).toUpperCase()}
-                </span>
-              ))}
+              {assignedTo.slice(0, 4).map((u) => {
+                const { key, initial, title } = getAssigneeDisplay(u);
+                return (
+                  <span
+                    key={key}
+                    className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary"
+                    title={title}
+                  >
+                    {initial}
+                  </span>
+                );
+              })}
               {assignedTo.length === 0 && (
                 <span className="text-[#8c9097] text-[0.75rem]">Unassigned</span>
               )}

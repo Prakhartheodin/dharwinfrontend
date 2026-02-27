@@ -17,6 +17,8 @@ export interface TaskDetailModalProps {
   onClose: () => void;
   onEdit?: (taskId: string) => void;
   onDelete?: (taskId: string) => void;
+  /** Optional lookup of candidates (id, name, email) so we can show details even when assignedTo is just IDs. */
+  allCandidates?: { id: string; name: string; email: string }[];
 }
 
 function getProjectId(projectId: Task["projectId"]): string {
@@ -33,6 +35,7 @@ export function TaskDetailModal({
   onClose,
   onEdit,
   onDelete,
+  allCandidates,
 }: TaskDetailModalProps) {
   if (!open) return null;
 
@@ -147,21 +150,43 @@ export function TaskDetailModal({
                   </div>
                 </div>
               )}
-              {(task.assignedTo ?? []).length > 0 && (
-                <div>
-                  <div className="font-semibold mb-1 text-[0.875rem]">Assigned To</div>
+              <div>
+                <div className="font-semibold mb-1 text-[0.875rem]">Assigned Candidates</div>
+                {(task.assignedTo ?? []).length === 0 ? (
+                  <span className="text-[0.8125rem] text-[#8c9097] dark:text-white/50">
+                    Unassigned
+                  </span>
+                ) : (
                   <div className="flex flex-wrap gap-2">
-                    {(task.assignedTo ?? []).map((u) => (
-                      <span
-                        key={(u as { id?: string }).id ?? u._id}
-                        className="text-[0.8125rem]"
-                      >
-                        {u.name ?? u.email ?? (u as { id?: string }).id ?? u._id}
-                      </span>
-                    ))}
+                    {(task.assignedTo ?? []).map((u) => {
+                      // u may be an ObjectId string or a populated object
+                      if (typeof u === "string") {
+                        const c = allCandidates?.find((cand) => cand.id === u);
+                        const label = c ? `${c.name} (${c.email})` : u;
+                        return (
+                          <span
+                            key={u}
+                            className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[0.75rem]"
+                          >
+                            {label}
+                          </span>
+                        );
+                      }
+                      const obj = u as { id?: string; _id?: string; name?: string; email?: string };
+                      const id = obj.id ?? obj._id ?? "";
+                      const label = obj.name ?? obj.email ?? id;
+                      return (
+                        <span
+                          key={id || label}
+                          className="px-2 py-0.5 rounded-full bg-primary/10 text-primary text-[0.75rem]"
+                        >
+                          {label}
+                        </span>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>

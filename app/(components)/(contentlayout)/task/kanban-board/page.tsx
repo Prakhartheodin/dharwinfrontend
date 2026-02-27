@@ -21,6 +21,7 @@ import {
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
 import { listProjects } from "@/shared/lib/api/projects";
+import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 import { KanbanTaskCard } from "./KanbanTaskCard";
 import { TaskDetailModal } from "./TaskDetailModal";
 
@@ -41,6 +42,7 @@ const Kanbanboard = () => {
   const [search, setSearch] = useState("");
   const [projectFilterId, setProjectFilterId] = useState<string>("");
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [candidates, setCandidates] = useState<{ id: string; name: string; email: string }[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -52,6 +54,7 @@ const Kanbanboard = () => {
   const [addDueDate, setAddDueDate] = useState<Date | null>(null);
   const [addProjectId, setAddProjectId] = useState<string>("");
   const [addTags, setAddTags] = useState<string>("");
+  const [addAssignedCandidateIds, setAddAssignedCandidateIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
@@ -62,6 +65,7 @@ const Kanbanboard = () => {
   const [editProjectId, setEditProjectId] = useState<string>("");
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editAssignedCandidateIds, setEditAssignedCandidateIds] = useState<string[]>([]);
 
   const columnRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragulaRef = useRef<{ destroy: () => void } | null>(null);
@@ -92,6 +96,18 @@ const Kanbanboard = () => {
         setProjects(list);
       })
       .catch(() => setProjects([]));
+
+    // Load candidates once for assigning tasks
+    listCandidates({ limit: 200 })
+      .then((res) => {
+        const list = (res.results ?? []).map((c: CandidateListItem) => ({
+          id: (c.id ?? c._id) as string,
+          name: c.fullName,
+          email: c.email,
+        }));
+        setCandidates(list);
+      })
+      .catch(() => setCandidates([]));
   }, []);
 
   useEffect(() => {
@@ -162,11 +178,20 @@ const Kanbanboard = () => {
     setEditDescription(task.description ?? "");
     setEditStatus(task.status);
     setEditDueDate(task.dueDate ? new Date(task.dueDate) : null);
-    const pid = task.projectId && typeof task.projectId === "object"
-      ? ((task.projectId as { id?: string }).id ?? (task.projectId as { _id?: string })._id)
-      : "";
+    const pid =
+      task.projectId && typeof task.projectId === "object"
+        ? ((task.projectId as { id?: string }).id ?? (task.projectId as { _id?: string })._id)
+        : "";
     setEditProjectId(pid ?? "");
     setEditTags(task.tags ?? []);
+    const assignedIds = (task.assignedTo ?? [])
+      .map((u) => {
+        if (!u) return "";
+        if (typeof u === "string") return u;
+        return ((u as { id?: string }).id ?? (u as { _id?: string })._id ?? "") as string;
+      })
+      .filter((id) => !!id);
+    setEditAssignedCandidateIds(assignedIds);
     setEditOpen(true);
   }, []);
 
@@ -194,6 +219,9 @@ const Kanbanboard = () => {
         dueDate: editDueDate ? editDueDate.toISOString() : undefined,
         projectId: editProjectId || undefined,
         tags: editTags.length ? editTags : undefined,
+        ...(editAssignedCandidateIds.length
+          ? { assignedTo: editAssignedCandidateIds }
+          : {}),
       });
       setEditOpen(false);
       setEditTask(null);
@@ -212,14 +240,19 @@ const Kanbanboard = () => {
     editDueDate,
     editProjectId,
     editTags,
+    editAssignedCandidateIds,
     fetchTasks,
   ]);
 
-  const openAddTask = useCallback((status: TaskStatus) => {
-    setAddTaskStatus(status);
+  const openAddTask = useCallback((_status: TaskStatus) => {
+    // Always start new tasks in NEW status, regardless of which column button was clicked
+    setAddTaskStatus("new");
     setAddTitle("");
     setAddDescription("");
     setAddDueDate(null);
+    setAddProjectId("");
+    setAddTags("");
+    setAddAssignedCandidateIds([]);
     setAddModalOpen(true);
   }, []);
 
@@ -241,6 +274,9 @@ const Kanbanboard = () => {
         dueDate: addDueDate ? addDueDate.toISOString() : undefined,
         projectId: addProjectId || undefined,
         tags: tags.length ? tags : undefined,
+        ...(addAssignedCandidateIds.length
+          ? { assignedTo: addAssignedCandidateIds }
+          : {}),
       });
       setAddModalOpen(false);
       setAddTitle("");
@@ -248,6 +284,7 @@ const Kanbanboard = () => {
       setAddDueDate(null);
       setAddProjectId("");
       setAddTags("");
+      setAddAssignedCandidateIds([]);
       fetchTasks();
       Swal.fire("Created", "Task has been created.", "success");
     } catch {
@@ -255,7 +292,16 @@ const Kanbanboard = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [addTitle, addDescription, addTaskStatus, addDueDate, addProjectId, addTags, fetchTasks]);
+  }, [
+    addTitle,
+    addDescription,
+    addTaskStatus,
+    addDueDate,
+    addProjectId,
+    addTags,
+    addAssignedCandidateIds,
+    fetchTasks,
+  ]);
 
   useEffect(() => {
     if (loading) return;
@@ -272,7 +318,9 @@ const Kanbanboard = () => {
     dragulaRef.current = drake;
     drake.on("drop", (el: HTMLElement, target: HTMLElement) => {
       const taskId = el.getAttribute("data-task-id");
-      const newStatus = target.getAttribute("data-status") as TaskStatus | null;
+      // Ensure we read status from the column container even if drop happens on a child element
+      const statusContainer = target.closest("[data-status]") as HTMLElement | null;
+      const newStatus = statusContainer?.getAttribute("data-status") as TaskStatus | null;
       if (taskId && newStatus) {
         updateTaskStatus(taskId, newStatus)
           .then(() => fetchTasks())
@@ -317,7 +365,9 @@ const Kanbanboard = () => {
                           ? { value: projectFilterId, label: projects.find((p) => p.id === projectFilterId)?.name ?? projectFilterId }
                           : { value: "", label: "All projects" }
                       }
-                      onChange={(opt) => setProjectFilterId((opt?.value as string) ?? "")}
+                      onChange={(opt) =>
+                        setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")
+                      }
                       className="w-full !rounded-md"
                       menuPlacement="auto"
                       classNamePrefix="Select2"
@@ -394,6 +444,7 @@ const Kanbanboard = () => {
                           if (t) openEditModal(t);
                         }}
                         onDelete={handleDelete}
+                        allCandidates={candidates}
                       />
                     ))}
                   </div>
@@ -417,6 +468,7 @@ const Kanbanboard = () => {
         onClose={closeDetailModal}
         onEdit={handleEditFromDetail}
         onDelete={handleDelete}
+        allCandidates={candidates}
       />
 
       {addModalOpen && (
@@ -462,7 +514,9 @@ const Kanbanboard = () => {
                   placeholder="Select project (optional)"
                   options={projects.map((p) => ({ value: p.id, label: p.name }))}
                   value={addProjectId ? { value: addProjectId, label: projects.find((p) => p.id === addProjectId)?.name ?? addProjectId } : null}
-                  onChange={(opt) => setAddProjectId((opt?.value as string) ?? "")}
+                  onChange={(opt) =>
+                    setAddProjectId(((opt as { value: string } | null)?.value) ?? "")
+                  }
                   className="w-full !rounded-md"
                   menuPlacement="auto"
                   classNamePrefix="Select2"
@@ -470,11 +524,37 @@ const Kanbanboard = () => {
                 />
               </div>
               <div>
+                <label className="form-label">Assign Candidates</label>
+                <Select
+                  isMulti
+                  placeholder="Select candidates to assign"
+                  options={candidates.map((c) => ({
+                    value: c.id,
+                    label: `${c.name} - ${c.email}`,
+                  }))}
+                  value={addAssignedCandidateIds.map((id) => {
+                    const c = candidates.find((x) => x.id === id);
+                    return c
+                      ? { value: c.id, label: `${c.name} - ${c.email}` }
+                      : { value: id, label: id };
+                  })}
+                  onChange={(opts) =>
+                    setAddAssignedCandidateIds(
+                      ((opts ?? []) as { value: string }[]).map((o) => o.value)
+                    )
+                  }
+                  className="w-full !rounded-md"
+                  menuPlacement="auto"
+                  classNamePrefix="Select2"
+                />
+              </div>
+              <div>
                 <label className="form-label">Due Date</label>
                 <DatePicker
                   className="form-control w-full !rounded-md"
                   selected={addDueDate}
-                  onChange={(d) => setAddDueDate(d ?? null)}
+                  // react-datepicker can pass Date or null for single-date picker
+                  onChange={(d: Date | null) => setAddDueDate(d)}
                   dateFormat="MMMM d, yyyy"
                 />
               </div>
@@ -557,7 +637,10 @@ const Kanbanboard = () => {
                 <Select
                   value={{ value: editStatus, label: TASK_STATUS_LABELS[editStatus] }}
                   options={STATUS_COLUMNS.map((c) => ({ value: c.status, label: c.label }))}
-                  onChange={(opt) => opt && setEditStatus((opt.value as TaskStatus))}
+                  onChange={(opt) => {
+                    const v = (opt as { value: TaskStatus } | null)?.value;
+                    if (v) setEditStatus(v);
+                  }}
                   className="w-full !rounded-md"
                   menuPlacement="auto"
                   classNamePrefix="Select2"
@@ -569,7 +652,9 @@ const Kanbanboard = () => {
                   placeholder="Select project (optional)"
                   options={projects.map((p) => ({ value: p.id, label: p.name }))}
                   value={editProjectId ? { value: editProjectId, label: projects.find((p) => p.id === editProjectId)?.name ?? editProjectId } : null}
-                  onChange={(opt) => setEditProjectId((opt?.value as string) ?? "")}
+                  onChange={(opt) =>
+                    setEditProjectId(((opt as { value: string } | null)?.value) ?? "")
+                  }
                   className="w-full !rounded-md"
                   menuPlacement="auto"
                   classNamePrefix="Select2"
@@ -577,11 +662,36 @@ const Kanbanboard = () => {
                 />
               </div>
               <div>
+                <label className="form-label">Assign Candidates</label>
+                <Select
+                  isMulti
+                  placeholder="Select candidates to assign"
+                  options={candidates.map((c) => ({
+                    value: c.id,
+                    label: `${c.name} - ${c.email}`,
+                  }))}
+                  value={editAssignedCandidateIds.map((id) => {
+                    const c = candidates.find((x) => x.id === id);
+                    return c
+                      ? { value: c.id, label: `${c.name} - ${c.email}` }
+                      : { value: id, label: id };
+                  })}
+                  onChange={(opts) =>
+                    setEditAssignedCandidateIds(
+                      ((opts ?? []) as { value: string }[]).map((o) => o.value)
+                    )
+                  }
+                  className="w-full !rounded-md"
+                  menuPlacement="auto"
+                  classNamePrefix="Select2"
+                />
+              </div>
+              <div>
                 <label className="form-label">Due Date</label>
                 <DatePicker
                   className="form-control w-full !rounded-md"
                   selected={editDueDate}
-                  onChange={(d) => setEditDueDate(d ?? null)}
+                  onChange={(d: Date | null) => setEditDueDate(d)}
                   dateFormat="MMMM d, yyyy"
                 />
               </div>
