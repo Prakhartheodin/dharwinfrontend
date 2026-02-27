@@ -83,7 +83,7 @@ export default function CreateModuleWithAIPage() {
   const [outlineLoading, setOutlineLoading] = useState(false)
   const [outlineError, setOutlineError] = useState<string | null>(null)
   const [numBlogs, setNumBlogs] = useState(2)
-  const [numVideos, setNumVideos] = useState(0)
+  const [numVideos, setNumVideos] = useState(2)
   const [numQuizzes, setNumQuizzes] = useState(1)
   const [questionsPerQuiz, setQuestionsPerQuiz] = useState(4)
   const [numEssays, setNumEssays] = useState(1)
@@ -746,7 +746,7 @@ export default function CreateModuleWithAIPage() {
                             />
                           </div>
                           <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Videos (placeholders)</label>
+                            <label className="form-label text-[0.8125rem]">YouTube Videos (per module)</label>
                             <input
                               type="number"
                               min={0}

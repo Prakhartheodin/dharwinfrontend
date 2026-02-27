@@ -80,15 +80,35 @@ export default function SettingsUsersPage() {
   // Filter users in memory by search (name, email), roleIds, and status
   const filteredUsers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return users.filter((user) => {
+    const filtered = users.filter((user) => {
       if (q) {
         const name = (user.name ?? "").toLowerCase();
         const email = (user.email ?? "").toLowerCase();
         if (!name.includes(q) && !email.includes(q)) return false;
       }
-      if (roleFilter && !(user.roleIds ?? []).includes(roleFilter)) return false;
+      if (roleFilter === "__unassigned__") {
+        // Show only users with no roles assigned
+        if ((user.roleIds ?? []).length > 0) return false;
+      } else if (roleFilter && !(user.roleIds ?? []).includes(roleFilter)) {
+        return false;
+      }
       if (statusFilter && (user.status ?? "") !== statusFilter) return false;
       return true;
+    });
+    
+    // Sort: Users with assigned roles first, then unassigned users
+    return filtered.sort((a, b) => {
+      const aHasRoles = (a.roleIds ?? []).length > 0;
+      const bHasRoles = (b.roleIds ?? []).length > 0;
+      
+      // If one has roles and the other doesn't, prioritize the one with roles
+      if (aHasRoles && !bHasRoles) return -1;
+      if (!aHasRoles && bHasRoles) return 1;
+      
+      // If both have same role status, maintain original order (by createdAt or name)
+      const aDate = new Date(a.createdAt ?? 0).getTime();
+      const bDate = new Date(b.createdAt ?? 0).getTime();
+      return bDate - aDate; // Newer first
     });
   }, [users, searchQuery, roleFilter, statusFilter]);
 
@@ -262,6 +282,7 @@ export default function SettingsUsersPage() {
               onChange={(e) => setRoleFilter(e.target.value)}
             >
               <option value="">All roles</option>
+              <option value="__unassigned__">Unassigned</option>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}

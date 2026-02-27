@@ -8,7 +8,7 @@ export interface JobApplication {
   _id: string;
   id?: string;
   job: { _id: string; title?: string; organisation?: { name: string }; status?: string };
-  candidate: { _id: string; fullName?: string; email?: string; phoneNumber?: string };
+  candidate: { _id?: string; id?: string; fullName?: string; email?: string; phoneNumber?: string; countryCode?: string };
   status: JobApplicationStatus;
   coverLetter?: string | null;
   appliedBy?: { _id: string; name?: string; email?: string };

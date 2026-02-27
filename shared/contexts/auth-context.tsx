@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
 
     // Don't force-redirect away from public auth pages (sign-in, register,
-    // reset-password), public candidate onboarding, or public meeting join (no login).
+    // reset-password), public candidate onboarding, public job portal, or public meeting join (no login).
     if (typeof window !== "undefined") {
       const path = window.location.pathname;
       const normalized = path.replace(/\/$/, "") || "/";
@@ -62,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       // Public meeting join: /join/room/[roomId] — no login required
       if (normalized.startsWith("/join/room")) {
+        return;
+      }
+      // Public job portal: /public-job and /public-job/[jobId] — no login required
+      if (normalized.startsWith("/public-job")) {
         return;
       }
     }

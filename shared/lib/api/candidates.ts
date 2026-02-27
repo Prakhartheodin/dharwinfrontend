@@ -272,6 +272,45 @@ export async function uploadDocuments(
 }
 
 /**
+ * Import candidates from Excel file
+ */
+export interface ImportExcelResult {
+  message: string;
+  successful: Array<{
+    row: number;
+    candidateId: string;
+    fullName: string;
+    email: string;
+  }>;
+  failed: Array<{
+    row: number;
+    fullName: string;
+    email: string;
+    error: string;
+  }>;
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+  };
+}
+
+export async function importCandidatesFromExcel(file: File): Promise<ImportExcelResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  const { data } = await apiClient.post<ImportExcelResult>(
+    "/candidates/import/excel",
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+  
+  return data;
+}
+
+/**
  * Map API candidate to the shape expected by the ATS candidates page UI (id, name, displayPicture, phone, email, skills[], education, experience, bio).
  */
 export function mapCandidateToDisplay(c: CandidateListItem) {

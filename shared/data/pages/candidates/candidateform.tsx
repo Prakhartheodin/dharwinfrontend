@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
-import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments } from "@/shared/lib/api/candidates";
+import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
 import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import Swal from "sweetalert2";
@@ -528,6 +528,7 @@ export const Basicwizard = ({
     errors: string[];
   }>({ total: 0, processed: 0, successful: 0, failed: 0, errors: [] });
   const [excelImportLoading, setExcelImportLoading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // ------------------------------- Validation State -------------------------------
   const [fieldErrors, setFieldErrors] = useState<{[key: string]: string}>({});
@@ -1412,11 +1413,11 @@ export const Basicwizard = ({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!file.name.match(/\.(xlsx|xls|csv)$/i)) {
+    if (!file.name.match(/\.(xlsx|xls)$/i)) {
       await Swal.fire({
         icon: 'error',
         title: 'Invalid File Type',
-        text: 'Please upload an Excel file (.xlsx, .xls) or CSV file (.csv).',
+        text: 'Please upload an Excel file (.xlsx, .xls).',
         confirmButtonText: 'OK'
       });
       return;
@@ -1424,132 +1425,85 @@ export const Basicwizard = ({
 
     setExcelFile(file);
     
-    try {
-      const candidates = await parseMultiSheetExcel(file);
-      
-      // Validate all candidates
-      const validationErrors: string[] = [];
-      const validCandidates: any[] = [];
-      
-      candidates.forEach((candidate, index) => {
-        const validation = validateExcelCandidate(candidate, index);
-        if (validation.isValid) {
-          validCandidates.push(candidate);
-        } else {
-          validationErrors.push(validation.error!);
-        }
-      });
-      
-      if (validationErrors.length > 0) {
-        await Swal.fire({
-          icon: 'warning',
-          title: 'Validation Errors Found',
-          html: `Found ${validationErrors.length} validation errors:<br><br>${validationErrors.slice(0, 5).join('<br>')}${validationErrors.length > 5 ? '<br>... and more' : ''}`,
-          confirmButtonText: 'OK'
-        });
-      }
-      
-      setExcelData(validCandidates);
-      
-      if (validCandidates.length > 0) {
-        await Swal.fire({
-          icon: 'success',
-          title: 'File Parsed Successfully',
-          text: `Found ${validCandidates.length} valid candidates ready for import.`,
-          confirmButtonText: 'OK'
-        });
-      }
-    } catch (error: any) {
-      await Swal.fire({
-        icon: 'error',
-        title: 'File Parse Error',
-        text: error.message || 'Failed to parse Excel file.',
-        confirmButtonText: 'OK'
-      });
-    }
+    await Swal.fire({
+      icon: 'success',
+      title: 'File Selected',
+      text: `File "${file.name}" is ready for import. Click "Import Excel Data" to proceed.`,
+      confirmButtonText: 'OK'
+    });
   };
 
   const handleExcelImport = async () => {
-    if (excelData.length === 0) {
+    if (!excelFile) {
       await Swal.fire({
         icon: 'error',
-        title: 'No Data',
-        text: 'Please upload and parse an Excel file first.',
+        title: 'No File',
+        text: 'Please upload an Excel file first.',
         confirmButtonText: 'OK'
       });
       return;
     }
 
     setExcelImportLoading(true);
-    setExcelImportProgress({ total: excelData.length, processed: 0, successful: 0, failed: 0, errors: [] });
+    setExcelImportProgress({ total: 0, processed: 0, successful: 0, failed: 0, errors: [] });
 
     try {
-      // Process candidates in batches
-      const batchSize = 3;
-      const results = { successful: 0, failed: 0, errors: [] as string[] };
+      const result = await importCandidatesFromExcel(excelFile);
+      
+      setExcelImportProgress({
+        total: result.summary.total,
+        processed: result.summary.total,
+        successful: result.summary.successful,
+        failed: result.summary.failed,
+        errors: result.failed.map(f => `Row ${f.row} (${f.fullName}): ${f.error}`)
+      });
 
-      for (let i = 0; i < excelData.length; i += batchSize) {
-        const batch = excelData.slice(i, i + batchSize);
-        
-        try {
-          // Send each candidate individually using existing createCandidate API
-          for (const candidate of batch) {
-            try {
-              const response = await createCandidate(candidate);
-              if (response.success !== false) {
-                results.successful++;
-              } else {
-                results.failed++;
-                results.errors.push(`Candidate ${candidate.fullName}: ${response.message || 'Unknown error'}`);
-              }
-            } catch (error: any) {
-              results.failed++;
-              results.errors.push(`Candidate ${candidate.fullName}: ${error.message || 'Network error'}`);
-            }
-          }
-        } catch (error: any) {
-          results.failed += batch.length;
-          results.errors.push(`Batch ${Math.floor(i / batchSize) + 1}: ${error.message || 'Network error'}`);
-        }
-
-        setExcelImportProgress(prev => ({
-          ...prev,
-          processed: Math.min(i + batchSize, excelData.length),
-          successful: results.successful,
-          failed: results.failed,
-          errors: results.errors
-        }));
-
-        // Small delay between batches
-        if (i + batchSize < excelData.length) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-
-      // Show final results
-      if (results.failed === 0) {
+      if (result.summary.failed === 0) {
         await Swal.fire({
           icon: 'success',
-          title: 'Excel Import Successful!',
-          text: `Successfully imported ${results.successful} candidates.`,
-          confirmButtonText: 'OK',
-          timer: 3000,
-          timerProgressBar: true
+          title: 'Import Successful',
+          text: `Successfully imported ${result.summary.successful} candidates.`,
+          confirmButtonText: 'OK'
         });
         router.push("/ats/candidates");
+      } else if (result.summary.successful === 0) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'Import Failed',
+          html: `All ${result.summary.failed} candidates failed to import.<br><br>Errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
+          confirmButtonText: 'OK'
+        });
       } else {
         await Swal.fire({
           icon: 'warning',
-          title: 'Excel Import Completed with Errors',
-          text: `Successfully imported: ${results.successful}, Failed: ${results.failed}`,
+          title: 'Partial Import',
+          html: `Imported ${result.summary.successful} candidates successfully.<br>${result.summary.failed} candidates failed.<br><br>First few errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
           confirmButtonText: 'OK'
         });
+        router.push("/ats/candidates");
+      }
+
+      // Reset
+      setExcelFile(null);
+      setExcelData([]);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
     } catch (error: any) {
+      console.error('Excel import error:', error);
+      const errorMessage = error.response?.data?.message 
+        || error.response?.data?.error
+        || error.message 
+        || 'Failed to import candidates from Excel.';
+      
+      const errorDetails = error.response?.data?.failed 
+        ? `<br><br>Errors:<br>${error.response.data.failed.slice(0, 5).map((f: any) => `Row ${f.row}: ${f.error}`).join('<br>')}`
+        : '';
+      
       await Swal.fire({
         icon: 'error',
-        title: 'Excel Import Failed',
-        text: error.message || 'An error occurred during Excel import.',
+        title: 'Import Error',
+        html: errorMessage + errorDetails,
         confirmButtonText: 'OK'
       });
     } finally {
@@ -2100,6 +2054,7 @@ export const Basicwizard = ({
           <div className="col-span-12">
             <label className="form-label">Upload File</label>
             <input
+              ref={fileInputRef}
               type="file"
               accept=".xlsx,.xls,.csv"
               onChange={handleExcelFileUpload}
@@ -2118,22 +2073,16 @@ export const Basicwizard = ({
             </div>
           )}
 
-          {excelData.length > 0 && (
+          {excelFile && (
             <div className="col-span-12">
-              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                <h5 className="font-semibold text-green-800 dark:text-green-200 mb-2">Ready to Import:</h5>
-                <p className="text-sm text-green-700 dark:text-green-300">
-                  {excelData.length} valid candidates found and ready for import.
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <h5 className="font-semibold text-blue-800 dark:text-blue-200 mb-2">File Ready:</h5>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  {excelFile.name} ({(excelFile.size / 1024).toFixed(2)} KB) is ready for import.
                 </p>
-                <div className="mt-2">
-                  <h6 className="font-medium text-green-800 dark:text-green-200">Candidates Preview:</h6>
-                  <ul className="text-sm text-green-700 dark:text-green-300 mt-1">
-                    {excelData.slice(0, 3).map((candidate, index) => (
-                      <li key={index}>• {candidate.fullName} ({candidate.email})</li>
-                    ))}
-                    {excelData.length > 3 && <li>• ... and {excelData.length - 3} more</li>}
-                  </ul>
-                </div>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2">
+                  Click "Import Excel Data" below to process and import all candidates from this file.
+                </p>
               </div>
             </div>
           )}
@@ -2160,10 +2109,10 @@ export const Basicwizard = ({
           <div className="col-span-12 flex gap-4">
             <button
               onClick={handleExcelImport}
-              disabled={excelData.length === 0 || excelImportLoading}
+              disabled={!excelFile || excelImportLoading}
               className="ti-btn ti-btn-primary-full text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {excelImportLoading ? 'Importing...' : `Import ${excelData.length} Candidates`}
+              {excelImportLoading ? 'Importing...' : 'Import Excel Data'}
             </button>
             
             <button

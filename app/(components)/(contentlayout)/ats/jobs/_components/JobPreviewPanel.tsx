@@ -1,5 +1,5 @@
 "use client"
-import React from 'react'
+import React, { useState } from 'react'
 import Link from 'next/link'
 import { type JobApplication } from '@/shared/lib/api/jobApplications'
 
@@ -44,6 +44,92 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   getOrganisationPhone,
   handleApplyClick,
 }) => {
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set())
+  const [callingCandidates, setCallingCandidates] = useState<Set<string>>(new Set())
+
+  // Reset selections when switching tabs or closing panel
+  React.useEffect(() => {
+    if (jobPreviewTab !== 'applicants' || !previewJob) {
+      setSelectedCandidates(new Set())
+    }
+  }, [jobPreviewTab, previewJob])
+
+  const handleSelectCandidate = (candidateId: string) => {
+    setSelectedCandidates(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(candidateId)) {
+        newSet.delete(candidateId)
+      } else {
+        newSet.add(candidateId)
+      }
+      return newSet
+    })
+  }
+
+  const getCandidateId = (cand: any): string => cand?._id || cand?.id || ''
+
+  const handleSelectAllCandidates = () => {
+    if (selectedCandidates.size === previewJobApplications.length) {
+      setSelectedCandidates(new Set())
+    } else {
+      const allIds = previewJobApplications.map(app => getCandidateId(app.candidate)).filter(Boolean)
+      setSelectedCandidates(new Set(allIds))
+    }
+  }
+
+  const handleInitiateCandidateCall = async () => {
+    if (selectedCandidates.size === 0) {
+      alert('Please select at least one candidate to call')
+      return
+    }
+
+    const candidatesToCall = previewJobApplications.filter(app => {
+      const cand = app.candidate as any
+      const cId = getCandidateId(cand)
+      return cId && selectedCandidates.has(cId) && cand?.phoneNumber
+    })
+
+    if (candidatesToCall.length === 0) {
+      alert('Selected candidates do not have phone numbers')
+      return
+    }
+
+    setCallingCandidates(new Set(selectedCandidates))
+
+    try {
+      const { initiateCandidateVerificationCall } = await import('@/shared/lib/api/bolna')
+      
+      for (const app of candidatesToCall) {
+        const cand = app.candidate as any
+        const cId = getCandidateId(cand)
+        
+        try {
+          await initiateCandidateVerificationCall({
+            candidateId: cId,
+            candidateName: cand.fullName || 'Candidate',
+            email: cand.email || '',
+            phoneNumber: cand.phoneNumber || '',
+            countryCode: cand.countryCode || 'US',
+            jobId: previewJob.id,
+            jobTitle: previewJob.jobTitle,
+            companyName: previewJob.company,
+          })
+          console.log(`Call initiated for ${cand.fullName}`)
+        } catch (err) {
+          console.error(`Failed to call ${cand.fullName}:`, err)
+        }
+      }
+
+      alert(`Initiated calls for ${candidatesToCall.length} candidate(s)`)
+      setSelectedCandidates(new Set())
+    } catch (error) {
+      console.error('Error initiating calls:', error)
+      alert('Failed to initiate calls. Please try again.')
+    } finally {
+      setCallingCandidates(new Set())
+    }
+  }
+
   return (
       <div 
         id="job-preview-panel" 
@@ -238,6 +324,11 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                       <i className="ri-user-add-line text-primary"></i>
                       Applied ({previewJobApplications.length})
+                      {selectedCandidates.size > 0 && (
+                        <span className="text-sm font-normal text-gray-500">
+                          ({selectedCandidates.size} selected)
+                        </span>
+                      )}
                     </h6>
                     {previewJobApplicationsLoading ? (
                       <div className="flex justify-center py-4">
@@ -250,6 +341,14 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                         <table className="table table-hover table-sm mb-0 text-[0.8125rem] min-w-full whitespace-nowrap">
                           <thead>
                             <tr className="bg-gray-50 dark:bg-black/20">
+                              <th className="!py-2 !px-3 w-12">
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  checked={selectedCandidates.size === previewJobApplications.length && previewJobApplications.length > 0}
+                                  onChange={handleSelectAllCandidates}
+                                />
+                              </th>
                               <th className="!py-2 !px-3">Candidate</th>
                               <th className="!py-2 !px-3">Email</th>
                               <th className="!py-2 !px-3 w-28">Status</th>
@@ -258,11 +357,27 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           </thead>
                           <tbody>
                             {previewJobApplications.map((app) => {
-                              const cand = app.candidate as { _id?: string; fullName?: string; email?: string }
+                              const cand = app.candidate as any
                               const appId = app._id ?? app.id
+                              const candidateId = getCandidateId(cand)
                               return (
-                                <tr key={appId}>
-                                  <td className="font-medium !py-2 !px-3">{cand?.fullName ?? '—'}</td>
+                                <tr key={appId} className={selectedCandidates.has(candidateId) ? 'bg-primary/5' : ''}>
+                                  <td className="!py-2 !px-3">
+                                    <input
+                                      type="checkbox"
+                                      className="form-check-input"
+                                      checked={selectedCandidates.has(candidateId)}
+                                      onChange={() => handleSelectCandidate(candidateId)}
+                                      disabled={!cand?.phoneNumber}
+                                      title={!cand?.phoneNumber ? 'No phone number available' : ''}
+                                    />
+                                  </td>
+                                  <td className="font-medium !py-2 !px-3">
+                                    {cand?.fullName ?? '—'}
+                                    {!cand?.phoneNumber && (
+                                      <i className="ri-phone-line text-gray-400 ml-1" title="No phone number"></i>
+                                    )}
+                                  </td>
                                   <td className="!py-2 !px-3">{cand?.email ?? '—'}</td>
                                   <td className="!py-2 !px-3">
                                     <select
@@ -282,14 +397,14 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                   <td className="!py-2 !px-3 text-center overflow-visible">
                                     <div className="flex flex-wrap items-center justify-center gap-1.5">
                                       <Link
-                                        href={`/ats/interviews?jobId=${previewJob.id}&candidateId=${cand?._id ?? ''}`}
+                                        href={`/ats/interviews?jobId=${previewJob.id}&candidateId=${candidateId}`}
                                         className="ti-btn ti-btn-sm ti-btn-primary inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[8.5rem] overflow-visible"
                                       >
                                         Schedule Interview
                                       </Link>
-                                      {cand?._id && (
+                                      {candidateId && (
                                         <Link
-                                          href={`/ats/candidates/edit/?id=${cand._id}`}
+                                          href={`/ats/candidates/edit/?id=${candidateId}`}
                                           className="ti-btn ti-btn-sm ti-btn-light inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[5.5rem] overflow-visible"
                                           target="_blank"
                                           rel="noopener noreferrer"
@@ -320,14 +435,25 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       >
                         Close
                       </button>
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
-                        onClick={() => previewJob && handleInitiateCall(previewJob)}
-                        disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
-                      >
-                        {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
-                      </button>
+                      {jobPreviewTab === 'applicants' ? (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-success flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={handleInitiateCandidateCall}
+                          disabled={selectedCandidates.size === 0 || callingCandidates.size > 0}
+                        >
+                          {callingCandidates.size > 0 ? 'Calling Candidates...' : `Call Selected (${selectedCandidates.size})`}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => previewJob && handleInitiateCall(previewJob)}
+                          disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
+                        >
+                          {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"

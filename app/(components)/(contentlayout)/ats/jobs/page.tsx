@@ -305,9 +305,11 @@ const Jobs = () => {
   // Generate public URL for job
   const getJobPublicUrl = (jobId: string) => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/ats/jobs/${jobId}`
+      return `${window.location.origin}/public-job/${jobId}`
     }
-    return `https://example.com/ats/jobs/${jobId}`
+    // Use environment variable for SSR/build time (deployment-safe)
+    const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3001'
+    return `${baseUrl}/public-job/${jobId}`
   }
 
   // Copy URL to clipboard

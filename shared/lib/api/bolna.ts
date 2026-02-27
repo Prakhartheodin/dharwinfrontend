@@ -9,6 +9,17 @@ export type InitiateBolnaCallParams = {
   fromPhoneNumber?: string;
 };
 
+export type InitiateCandidateVerificationCallParams = {
+  candidateId: string;
+  candidateName: string;
+  email: string;
+  phoneNumber: string;
+  countryCode: string;
+  jobId: string;
+  jobTitle: string;
+  companyName: string;
+};
+
 export type InitiateBolnaCallResponse = {
   success: boolean;
   executionId: string;
@@ -94,10 +105,17 @@ export async function initiateBolnaCall(
   return data;
 }
 
+export async function initiateCandidateVerificationCall(
+  params: InitiateCandidateVerificationCallParams
+): Promise<InitiateBolnaCallResponse> {
+  const { data } = await apiClient.post<InitiateBolnaCallResponse>("/bolna/candidate-call", params);
+  return data;
+}
+
 export async function getBolnaCallStatus(
   executionId: string
 ): Promise<GetCallStatusResponse> {
-  const { data } = await apiClient.get<GetCallStatusResponse>(`/bolna/call-status/${executionId}`);
+  const { data} = await apiClient.get<GetCallStatusResponse>(`/bolna/call-status/${executionId}`);
   return data;
 }
 

@@ -164,3 +164,130 @@ export async function importJobsFromExcel(file: File): Promise<{
   });
   return data;
 }
+
+// ============================================
+// PUBLIC JOB APIS (No Authentication Required)
+// ============================================
+
+// Create a separate axios instance for public endpoints (no auth interceptors)
+import axios from "axios";
+
+const baseURL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" ? "/api/v1" : "");
+
+const publicApiClient = axios.create({
+  baseURL,
+  headers: { "Content-Type": "application/json" },
+});
+
+export interface PublicJobsListParams {
+  title?: string;
+  location?: string;
+  jobType?: string;
+  experienceLevel?: string;
+  limit?: number;
+  page?: number;
+}
+
+export interface PublicJob {
+  id: string;
+  title: string;
+  organisation: JobOrganisation;
+  jobDescription: string;
+  jobType: string;
+  location: string;
+  skillTags?: string[];
+  salaryRange?: JobSalaryRange;
+  experienceLevel?: string;
+  createdAt?: string;
+}
+
+export interface PublicJobsListResponse {
+  results: PublicJob[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export async function getPublicJobs(params?: PublicJobsListParams): Promise<PublicJobsListResponse> {
+  const { data } = await publicApiClient.get<PublicJobsListResponse>("/public/jobs", { params });
+  return data;
+}
+
+export async function getPublicJobById(id: string): Promise<PublicJob> {
+  const { data } = await publicApiClient.get<PublicJob>(`/public/jobs/${id}`);
+  return data;
+}
+
+export interface PublicApplyPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  phoneNumber: string;
+  countryCode: string;
+  coverLetter?: string;
+}
+
+export interface PublicApplyResponse {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+  candidate: {
+    id: string;
+    fullName: string;
+  };
+  application: {
+    id: string;
+    status: string;
+    jobTitle?: string;
+  };
+  tokens: {
+    access: { token: string; expires: string };
+    refresh: { token: string; expires: string };
+  };
+}
+
+export async function publicApplyToJob(
+  jobId: string,
+  payload: PublicApplyPayload,
+  resume: File,
+  documents?: File[]
+): Promise<PublicApplyResponse> {
+  const formData = new FormData();
+  
+  // Add text fields
+  formData.append("fullName", payload.fullName);
+  formData.append("email", payload.email);
+  formData.append("password", payload.password);
+  formData.append("phoneNumber", payload.phoneNumber);
+  formData.append("countryCode", payload.countryCode);
+  if (payload.coverLetter) {
+    formData.append("coverLetter", payload.coverLetter);
+  }
+  
+  // Add resume file
+  formData.append("resume", resume);
+  
+  // Add additional documents if provided
+  if (documents && documents.length > 0) {
+    documents.forEach((doc) => {
+      formData.append("documents", doc);
+    });
+  }
+  
+  const { data } = await publicApiClient.post<PublicApplyResponse>(
+    `/public/jobs/${jobId}/apply`,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+    }
+  );
+  
+  return data;
+}
+
