@@ -7,8 +7,12 @@ import {
   hasPermissionForPath,
   canAccessCourses,
   canAccessAttendance,
+  canAccessMyProjects,
+  canAccessMyTasks,
   COURSES_PERMISSION_PREFIX,
   ATTENDANCE_PERMISSION_PREFIX,
+  PROJECT_PROJECTS_PREFIX,
+  PROJECT_TASKS_PREFIX,
 } from "@/shared/lib/route-permissions";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -92,6 +96,16 @@ export function PermissionGuard({
     // Attendance: allow if user has training.attendance:* / students.read|manage OR has Student role
     if (required === ATTENDANCE_PERMISSION_PREFIX) {
       setAllowed(canAccessAttendance(userPermissions, roleNames));
+      return;
+    }
+    // My Projects: allow if user has project.projects:* OR has Student role
+    if (required === PROJECT_PROJECTS_PREFIX && (pathname ?? "").includes("/apps/projects/my-projects")) {
+      setAllowed(canAccessMyProjects(userPermissions, roleNames));
+      return;
+    }
+    // My Tasks: allow if user has project.tasks:* OR has Student/Candidate role
+    if (required === PROJECT_TASKS_PREFIX && (pathname ?? "").includes("/task/my-tasks")) {
+      setAllowed(canAccessMyTasks(userPermissions, roleNames));
       return;
     }
     // Candidates: allow if user has ats.candidates:* OR is a candidate (role 'user') editing own profile

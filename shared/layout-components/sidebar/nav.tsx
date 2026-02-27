@@ -380,6 +380,16 @@ export const MenuItems: any = [
 
       {
     icon: TaskIcon,
+    title: "My Tasks",
+    type: "link",
+    path: "/task/my-tasks",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+
+  {
+    icon: TaskIcon,
     title: "Task Board",
         type: "link",
     path: "/task/kanban-board",

@@ -19,8 +19,12 @@ import {
 	getRequiredPermissionForPath,
 	canAccessCourses,
 	canAccessAttendance,
+	canAccessMyProjects,
+	canAccessMyTasks,
 	COURSES_PERMISSION_PREFIX,
 	ATTENDANCE_PERMISSION_PREFIX,
+	PROJECT_PROJECTS_PREFIX,
+	PROJECT_TASKS_PREFIX,
 	isCandidateOnlyNav,
 	CANDIDATE_PROFILE_PATH,
 } from "@/shared/lib/route-permissions";
@@ -122,6 +126,14 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		if (requiredPrefix === ATTENDANCE_PERMISSION_PREFIX) {
 			return canAccessAttendance(userPermissions, roleNames);
 		}
+		// My Projects: allow if user has project.projects:* OR has Student role
+		if (requiredPrefix === PROJECT_PROJECTS_PREFIX && (menuPath === "/apps/projects/my-projects" || menuPath?.startsWith("/apps/projects/my-projects/"))) {
+			return canAccessMyProjects(userPermissions, roleNames);
+		}
+		// My Tasks: allow if user has project.tasks:* OR has Student/Candidate role
+		if (requiredPrefix === PROJECT_TASKS_PREFIX && (menuPath === "/task/my-tasks" || menuPath?.startsWith("/task/my-tasks/"))) {
+			return canAccessMyTasks(userPermissions, roleNames);
+		}
 		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
@@ -177,6 +189,18 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 					active: false,
 					selected: false,
 				});
+			}
+			const myProjectsItem = MenuItems.find((m: any) => m.path === "/apps/projects/my-projects");
+			if (myProjectsItem && canAccessMyProjects(userPermissions, roleNames)) {
+				out.push({ menutitle: "PROJECTS" });
+				out.push({ ...myProjectsItem, active: false, selected: false });
+			}
+			const myTasksItem = MenuItems.find((m: any) => m.path === "/task/my-tasks");
+			if (myTasksItem && canAccessMyTasks(userPermissions, roleNames)) {
+				if (!out.some((item) => item.menutitle === "TASKS")) {
+					out.push({ menutitle: "TASKS" });
+				}
+				out.push({ ...myTasksItem, active: false, selected: false });
 			}
 			if (out.length > 0) return out;
 		}
