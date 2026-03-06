@@ -1,0 +1,117 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { ROUTES } from "@/shared/lib/constants";
+import { useAuth } from "@/shared/contexts/auth-context";
+import * as rolesApi from "@/shared/lib/api/roles";
+import type { Role } from "@/shared/lib/types";
+
+function getActiveTab(pathname: string): "roles" | "users" | "attendance" | "personal-information" | null {
+  if (pathname.startsWith("/settings/roles")) return "roles";
+  if (pathname.startsWith("/settings/users")) return "users";
+  if (pathname.startsWith("/settings/attendance")) return "attendance";
+  if (pathname.startsWith("/settings/personal-information")) return "personal-information";
+  return null;
+}
+
+export default function SettingsLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user } = useAuth();
+  const activeTab = getActiveTab(pathname ?? "");
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+
+  // Determine if the current user has a role with name "Administrator"
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
+          setIsAdmin(false);
+          return;
+        }
+        const res = await rolesApi.listRoles({ limit: 100 });
+        const roles = res.results as Role[];
+        const roleMap = new Map<string, Role>();
+        roles.forEach((r) => roleMap.set(r.id, r));
+        const hasAdmin = (user.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Administrator");
+        setIsAdmin(hasAdmin);
+      } catch {
+        setIsAdmin(false);
+      }
+    };
+    checkAdmin();
+  }, [user]);
+
+  // If user is not admin, block direct access to roles/users/attendance paths and redirect
+  useEffect(() => {
+    if (isAdmin === null) return;
+    if (!isAdmin && (activeTab === "roles" || activeTab === "users" || activeTab === "attendance")) {
+      router.replace(ROUTES.settingsPersonalInfo);
+    }
+  }, [isAdmin, activeTab, router]);
+
+  const tabClass = (tab: "roles" | "users" | "attendance" | "personal-information") =>
+    `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
+      activeTab === tab
+        ? "bg-primary/10 text-primary"
+        : "text-defaulttextcolor dark:text-defaulttextcolor/70"
+    }`;
+
+  return (
+    <div className="container w-full max-w-full mx-auto">
+      <div className="grid grid-cols-12 gap-6 mb-[3rem]">
+        <div className="xl:col-span-12 col-span-12">
+          <div className="box">
+            <div className="box-header sm:flex block !justify-start">
+              <nav
+                aria-label="Settings tabs"
+                className="md:flex block !justify-start whitespace-nowrap"
+                role="tablist"
+              >
+                {isAdmin && (
+                  <>
+                    <Link
+                      href={ROUTES.settingsRoles}
+                      className={tabClass("roles")}
+                      aria-current={activeTab === "roles" ? "page" : undefined}
+                    >
+                      User Roles
+                    </Link>
+                    <Link
+                      href={ROUTES.settingsUsers}
+                      className={tabClass("users")}
+                      aria-current={activeTab === "users" ? "page" : undefined}
+                    >
+                      Users
+                    </Link>
+                    <Link
+                      href={ROUTES.settingsAttendance}
+                      className={tabClass("attendance")}
+                      aria-current={activeTab === "attendance" ? "page" : undefined}
+                    >
+                      Attendance
+                    </Link>
+                  </>
+                )}
+                <Link
+                  href={ROUTES.settingsPersonalInfo}
+                  className={tabClass("personal-information")}
+                  aria-current={activeTab === "personal-information" ? "page" : undefined}
+                >
+                  Personal Information
+                </Link>
+              </nav>
+            </div>
+            <div>{children}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

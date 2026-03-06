@@ -1,0 +1,109 @@
+@use "../public/assets/css/style.css" as *;
+
+// Packages css
+@use "filepond/dist/filepond.min.css" as *; // file pond css
+@use "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" as *; // dependencies plugin css for react file pond package
+@use "react-datepicker/dist/react-datepicker.css" as *; // (datepicker)
+
+@use "react-range-slider-input/dist/style.css" as *; // (rangeslider)
+
+@use "@simonwep/pickr/dist/themes/classic.min.css" as *;
+@use "@simonwep/pickr/dist/themes/monolith.min.css" as *;
+@use "@simonwep/pickr/dist/themes/nano.min.css" as *;
+
+@use "simplebar-react/dist/simplebar.min.css" as *;
+
+@use "swiper/css" as *;
+@use "swiper/css/pagination" as *;
+@use "swiper/css/navigation" as *;
+@use "swiper/css/effect-coverflow" as *;
+@use "swiper/css/thumbs" as *;
+@use "swiper/css/effect-flip" as *;
+@use "swiper/css/effect-fade" as *;
+@use "swiper/css/effect-cube" as *;
+@use "swiper/css/effect-cards" as *; // swiper effect-cards
+@use "swiper/css/zoom" as *; // Swiper Zoom css
+@use "swiper/css/scrollbar" as *;
+@use "swiper/css/free-mode" as *;
+
+@use "react-color-palette/css" as *;
+
+  @media (max-width: 991.98px) {
+    [data-toggled="open"] {
+      #responsive-overlay {
+        @apply visible #{!important};
+        --tw-bg-opacity: 0.5;
+
+      }
+    } 
+  }
+
+  @media screen and (min-width: 992px) {
+    [data-vertical-style=doublemenu] .app-sidebar .slide.has-sub.active > .slide-menu {
+        display: block !important;
+    }
+}
+
+// Ensure active menu items have the same highlight as hover
+.app-sidebar .side-menu__item.active {
+  @apply text-white bg-white/[0.05] before:border-white;
+  color: white !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  
+  .side-menu__label,
+  .side-menu__angle {
+    @apply text-white;
+    color: white !important;
+  }
+  
+  .side-menu__icon {
+    @apply fill-white text-white;
+    fill: white !important;
+    color: white !important;
+  }
+}
+
+// Ensure nested menu items (child menus) also have the same highlight
+.app-sidebar .slide-menu.child1 .side-menu__item.active,
+.app-sidebar .slide-menu.child2 .side-menu__item.active,
+.app-sidebar .slide-menu.child3 .side-menu__item.active {
+  @apply text-white;
+  color: white !important;
+  
+  .side-menu__angle {
+    @apply text-white;
+    color: white !important;
+  }
+  
+  &:before {
+    border-color: white !important;
+    opacity: 1 !important;
+  }
+}
+
+// White background for logo area in header
+.header-logo-container {
+  background-color: white !important;
+  
+  .horizontal-logo {
+    background-color: white !important;
+  }
+  
+  .header-logo {
+    background-color: white !important;
+  }
+}
+
+// White background for sidebar header
+.main-sidebar-header {
+  background-color: white !important;
+}
+
+.max-w-full{
+  max-width: 100% !important;
+  padding: 0 !important;
+}
+
+th.text-center{
+  text-align: center !important;
+}
