@@ -190,6 +190,25 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 					selected: false,
 				});
 			}
+			// Communication: show items student has permissions for
+			const commEmailItem = MenuItems.find((m: any) => m.path === "/communication/email");
+			const commChatsItem = MenuItems.find((m: any) => m.path === "/communication/chats");
+			const commCallingItem = MenuItems.find((m: any) => m.path === "/communication/calling");
+			const commRecordingsItem = MenuItems.find((m: any) => m.path === "/communication/recordings");
+			const commFilesItem = MenuItems.find((m: any) => m.path === "/communication/filemanager");
+			const hasCommEmail = commEmailItem && hasPermissionForPath(userPermissions, "communication.emails:");
+			const hasCommChats = commChatsItem && hasPermissionForPath(userPermissions, "communication.chats:");
+			const hasCommCalling = commCallingItem && hasPermissionForPath(userPermissions, "communication.calling:");
+			const hasCommRecordings = commRecordingsItem && hasPermissionForPath(userPermissions, "meetings");
+			const hasCommFiles = commFilesItem && hasPermissionForPath(userPermissions, "communication.files-storage:");
+			if (hasCommEmail || hasCommChats || hasCommCalling || hasCommRecordings || hasCommFiles) {
+				out.push({ menutitle: "COMMUNICATION" });
+				if (hasCommEmail) out.push({ ...commEmailItem, active: false, selected: false });
+				if (hasCommChats) out.push({ ...commChatsItem, active: false, selected: false });
+				if (hasCommCalling) out.push({ ...commCallingItem, active: false, selected: false });
+				if (hasCommRecordings) out.push({ ...commRecordingsItem, active: false, selected: false });
+				if (hasCommFiles) out.push({ ...commFilesItem, active: false, selected: false });
+			}
 			const myProjectsItem = MenuItems.find((m: any) => m.path === "/apps/projects/my-projects");
 			if (myProjectsItem && canAccessMyProjects(userPermissions, roleNames)) {
 				out.push({ menutitle: "PROJECTS" });
@@ -233,7 +252,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		return result;
-	}, [permissionsLoaded, userPermissions, isAdministrator]);
+	}, [permissionsLoaded, userPermissions, isAdministrator, isCandidateNav, roleNames]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {

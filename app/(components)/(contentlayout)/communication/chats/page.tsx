@@ -1,1347 +1,1954 @@
-"use client"
-import Seo from '@/shared/layout-components/seo/seo'
-import Link from 'next/link'
-import React, { useState } from 'react';
-import PerfectScrollbar from 'react-perfect-scrollbar';
-import 'react-perfect-scrollbar/dist/css/styles.css';
-import SimpleBar from 'simplebar-react';
+"use client";
 
-const Chat = () => {
+import Seo from "@/shared/layout-components/seo/seo";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import PerfectScrollbar from "react-perfect-scrollbar";
+import "react-perfect-scrollbar/dist/css/styles.css";
+import {
+  listConversations,
+  getMessages,
+  sendMessage,
+  markAsRead,
+  createConversation,
+  getConversation,
+  searchUsers,
+  addParticipants,
+  removeParticipant,
+  setParticipantRole,
+  updateGroupName,
+  listCalls,
+  initiateCall,
+  endCallByRoom,
+  getActiveCallForConversation,
+  getCallsForConversation,
+  deleteMessage,
+  reactToMessage,
+  uploadChatFiles,
+  type Conversation,
+  type Message,
+} from "@/shared/lib/api/chat";
+import { useSearchParams } from "next/navigation";
+import { useChatSocket, type IncomingCallData } from "@/shared/contexts/ChatSocketContext";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { format } from "date-fns";
 
-    const Photosmediadata = [
-        { id: 1, src: "../../assets/images/media/media-56.jpg" },
-        { id: 2, src: "../../assets/images/media/media-52.jpg" },
-        { id: 3, src: "../../assets/images/media/media-53.jpg" },
-        { id: 4, src: "../../assets/images/media/media-62.jpg" },
-        { id: 5, src: "../../assets/images/media/media-63.jpg" },
-        { id: 6, src: "../../assets/images/media/media-64.jpg" },
-        { id: 7, src: "../../assets/images/media/media-13.jpg" },
-        { id: 8, src: "../../assets/images/media/media-19.jpg" },
-        { id: 9, src: "../../assets/images/media/media-20.jpg" },
-    ];
+const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
-    const changeTheInfo = ({name, img, status}:any) => {
-        // Simulating the event target, you might want to update this based on your actual structure
-        const element:any = { closest: () => {} };
-        const closestListItem :any= element.closest("li");
-    
-        if (closestListItem) {
-          closestListItem.classList.add("active");
-        }
-    
-        document.querySelectorAll(".chatnameperson").forEach((ele:any) => {
-          ele.innerText = name;
-        });
-    
-        let image = `../../assets/images/faces/${img}.jpg`;
-        document.querySelectorAll(".chatimageperson").forEach((ele:any) => {
-          ele.src = image;
-        });
-    
-        document.querySelectorAll(".chatstatusperson").forEach((ele) => {
-          ele.classList.remove("online");
-          ele.classList.remove("offline");
-          ele.classList.add(status);
-        });
-    
-        const chatPersonStatus:any = document.querySelector(".chatpersonstatus");
-        if (chatPersonStatus) {
-          chatPersonStatus.innerText = status;
-        }
-    
-        const mainChartWrapper = document.querySelector(".main-chart-wrapper");
-        if (mainChartWrapper) {
-          mainChartWrapper.classList.add("responsive-chat-open");
-        }
-        
-      };
+const getId = (x: { id?: string; _id?: string } | null | undefined) =>
+  x && (x.id || (x as any)._id?.toString?.());
 
-const [isOpen, setIsOpen] = useState(false);
+function GroupInfoPanel({
+  conversation,
+  loading,
+  myId,
+  onlineUsers,
+  onRefresh,
+  onClose,
+  onLeave,
+  onCall,
+  addMemberSearch,
+  setAddMemberSearch,
+  addMemberResults,
+  setAddMemberResults,
+  addMemberSelected,
+  setAddMemberSelected,
+  handleSearchUsers,
+}: {
+  conversation: Conversation;
+  loading: boolean;
+  myId: string;
+  onlineUsers: Set<string>;
+  onRefresh: () => void;
+  onClose: () => void;
+  onLeave: () => void;
+  onCall: (t: "audio" | "video") => void;
+  addMemberSearch: string;
+  setAddMemberSearch: (v: string) => void;
+  addMemberResults: { id: string; name: string; email: string }[];
+  setAddMemberResults: (v: { id: string; name: string; email: string }[]) => void;
+  addMemberSelected: Set<string>;
+  setAddMemberSelected: (v: Set<string>) => void;
+  handleSearchUsers: () => void;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [editNameVal, setEditNameVal] = useState(conversation.name || "Group");
+  const [saving, setSaving] = useState(false);
+  const [adding, setAdding] = useState(false);
 
-const toggleOpenClass = () => {
-    setIsOpen(!isOpen);
+  const cid = getId(conversation);
+  const participants = (conversation.participants || []) as { user: { id?: string; _id?: string; name: string; email?: string }; role?: string }[];
+  const creatorId = (conversation.createdBy as any)?.id || (conversation.createdBy as any)?._id?.toString?.();
+  const myPart = participants.find((p: any) => {
+    const uid = (p.user as any)?.id || (p.user as any)?._id?.toString?.();
+    return uid && String(uid) === String(myId);
+  }) as any;
+  const amCreator = creatorId && String(creatorId) === String(myId);
+  const isAdmin = myPart?.role === "admin" || amCreator;
+  const avatarForGroup = (n?: string) =>
+    `https://ui-avatars.com/api/?name=${encodeURIComponent((n || "G").slice(0, 2).toUpperCase())}&size=80`;
+
+  const handleSaveName = async () => {
+    if (!cid || !isAdmin) return;
+    setSaving(true);
+    try {
+      await updateGroupName(cid, editNameVal.trim() || "Group");
+      setEditingName(false);
+      onRefresh();
+    } catch {
+      // ignore
+    } finally {
+      setSaving(false);
+    }
   };
-  const removeOpenClass = () => {
-    setIsOpen(false);
+
+  const handleAddMembers = async () => {
+    if (!cid || !isAdmin || addMemberSelected.size === 0) return;
+    setAdding(true);
+    try {
+      await addParticipants(cid, Array.from(addMemberSelected));
+      setAddMemberSelected(new Set());
+      setAddMemberSearch("");
+      setAddMemberResults([]);
+      onRefresh();
+    } catch {
+      // ignore
+    } finally {
+      setAdding(false);
+    }
   };
+
+  const handleRemove = async (userId: string) => {
+    if (!cid) return;
+    try {
+      await removeParticipant(cid, userId);
+      onRefresh();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleSetRole = async (userId: string, role: "admin" | "member") => {
+    if (!cid) return;
+    try {
+      await setParticipantRole(cid, userId, role);
+      onRefresh();
+    } catch {
+      // ignore
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const existing = new Set(addMemberSelected);
+    if (existing.has(id)) existing.delete(id);
+    else existing.add(id);
+    setAddMemberSelected(existing);
+  };
+
+  if (loading) {
     return (
-        <div>
-            <Seo title={"Chat"} />
-            <div className="main-chart-wrapper p-2 gap-2 lg:flex">
-                <div className="chat-info border dark:border-defaultborder/10">
-                    <Link aria-label="anchor" href="#!" scroll={false} className="ti-btn bg-secondary text-white !font-medium ti-btn-icon !rounded-full chat-add-icon">
-                        <i className="ri-add-line"></i>
-                    </Link>
-                    <div className="flex items-center justify-between w-full p-4 border-b dark:border-defaultborder/10">
-                        <div>
-                            <h5 className="font-semibold mb-0 text-[1.25rem] !text-defaulttextcolor dark:text-defaulttextcolor/70">Messages</h5>
-                        </div>
-                        <div className="hs-dropdown ti-dropdown">
-                            <button aria-label="button" className="ti-btn ti-btn-icon ti-btn-secondary text-secondary"
-                                type="button" aria-expanded="false">
-                                <i className="ri-settings-3-line"></i>
-                            </button>
-                            <ul className="hs-dropdown-menu ti-dropdown-menu hidden">
-                                <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                    href="#!" scroll={false}>Action</Link></li>
-                                <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                    href="#!" scroll={false}>Another action</Link></li>
-                                <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                    href="#!" scroll={false}>Something else here</Link></li>
-                            </ul>
-                        </div>
-                    </div>
-                    <div className="chat-search p-4 border-b dark:border-defaultborder/10">
-                        <div className="input-group">
-                            <input type="text" className="form-control !bg-light border-0 !rounded-s-md" placeholder="Search Chat"
-                                aria-describedby="button-addon2" />
-                            <button aria-label="button" className="ti-btn ti-btn-light !rounded-s-none !mb-0" type="button" id="button-addon2"><i
-                                className="ri-search-line text-[#8c9097] dark:text-white/50"></i></button>
-                        </div>
-                    </div>
-                    <nav className="flex border-b border-defaultborder dark:border-defaultborder/10" aria-label="Tabs" role="tablist">
-                        <Link href="#!" scroll={false} className="hs-tab-active:border-b-2 hs-tab-active:border-b-primary hs-tab-active:bg-primary/10 hs-tab-active:text-primary cursor-pointer border-e dark:border-defaultborder/10 text-defaulttextcolor py-2 px-4 flex-grow  text-sm font-medium text-center rounded-none active" id="users-item" data-hs-tab="#users-tab-pane" aria-controls="users-tab-pane">
-                            <i
-                                className="ri-history-line me-1 align-middle inline-block cursor-pointer w-[1.875rem] h-[1.875rem] ps-2 pt-1 rounded-full hs-tab-active:bg-primary/10 bg-light"></i>Recent
-                        </Link>
-                        <Link href="#!" scroll={false} className="hs-tab-active:border-b-2 hs-tab-active:border-b-primary hs-tab-active:bg-primary/10 hs-tab-active:text-primary cursor-pointer border-e dark:border-defaultborder/10 text-defaulttextcolor py-2 px-4 text-sm flex-grow font-medium text-center  rounded-none " id="groups-item" data-hs-tab="#groups-tab-pane" aria-controls="groups-tab-pane">
-                            <i
-                                className="ri-group-2-line me-1 align-middle inline-block w-[1.875rem] h-[1.875rem] ps-2 pt-1 rounded-full hs-tab-active:bg-primary/10 bg-light"></i>Groups
-                        </Link>
-                        <Link href="#!" scroll={false} className="hs-tab-active:border-b-2 hs-tab-active:border-b-primary hs-tab-active:bg-primary/10 hs-tab-active:text-primary cursor-pointer text-defaulttextcolor py-2 px-4 text-sm flex-grow font-medium text-center  rounded-none " id="calls-item" data-hs-tab="#calls-tab-pane" aria-controls="calls-tab-pane">
-                            <i className="ri-phone-line me-1 align-middle inline-block w-[1.875rem] h-[1.875rem] ps-2 pt-1 rounded-full hs-tab-active:bg-primary/10 bg-light"></i>Calls
-                        </Link>
-                    </nav>
-                    <div className="tab-content overflow-y-scroll" id="myTabContent">
+      <div className="p-4 flex items-center justify-center">
+        <i className="ri-loader-4-line animate-spin text-2xl text-primary" />
+      </div>
+    );
+  }
 
-                        <div className="tab-pane fade show active !border-0 chat-users-tab" id="users-tab-pane" aria-labelledby="users-item" role="tabpanel">
-                            <ul className="list-none mb-0 mt-2 chat-users-tab" id="chat-msg-scroll">
-                                <li className="!pb-0 !pt-0">
-                                    <p className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] font-semibold mb-2 opacity-[0.7]">ACTIVE CHATS</p>
-                                </li>
-                                <li className="checkforactive">
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Sujika', img:'5',status: 'online'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/5.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Sujika <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">1:32PM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Need to go for lunch?</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="checkforactive">
-                                    <Link href="#!" scroll={false}
-                                     onClick={(_e) => changeTheInfo({name:'Emiley Jackson', img:'2', status: 'online'})}
-                                     >
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/2.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Emiley Jackson <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">12:24PM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0 chat-msg-typing ">
-                                                    <span className="chat-msg text-truncate">Typing...</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                    <span
-                                                        className="badge bg-success/10 !rounded-full text-success ltr:float-right rtl:float-left">2</span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-msg-unread checkforactive" >
-                                    <Link href="#!" scroll={false}
-                                     onClick={(_e) => changeTheInfo({name:'McGreggor', img:'10', status:'online'})}
-                                     >
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/10.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    McGreggor <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">1:16PM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Nice to meet you 😊</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="checkforactive">
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Alissa',img: '8', status:'online'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/8.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Alissa <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">12:45PM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Chat with you
-                                                        later,bye</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="!pb-0 !pt-0">
-                                    <p className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] font-semibold mb-2 opacity-[0.7]">ALL CHATS</p>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Andreas', img:'11', status:'offline'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded" >
-                                                    <img src="../../assets/images/faces/11.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Andreas <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">11:54AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Congratulations on your new
-                                                        project</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Melissa Sean', img:'3', status:'offline'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/3.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Melissa Sean <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">9:45AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Nice work,Congrats
-                                                        👏</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Samantha Paul', img:'6', status:'offline'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/6.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Samantha Paul <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">8:31AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Great work keep it up
-                                                        :-)</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Megan Fox',img: '4', status:'offline'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/4.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Megan Fox <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">7:23AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">You are need to be
-                                                        appreaciated for what you have done,congs</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Nicholas Sams', img:'13', status:'offline'})} >
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/13.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Nicholas Sams <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">10:22AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Great Project</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                                <li className="chat-inactive checkforactive" >
-                                    <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Pope Johnson', img:'15', status:'offline'})}>
-                                        <div className="flex items-start">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/15.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow">
-                                                <p className="mb-0 font-semibold">
-                                                    Pope Johnson <span
-                                                        className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">9:10AM</span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="chat-msg text-truncate">Hike management
-                                                        fixed</span>
-                                                    <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                        className="ri-check-double-fill"></i></span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </Link>
-                                </li>
-                            </ul>
-                        </div>
-                            <div className="tab-pane fade hidden !border-0 chat-groups-tab" id="groups-tab-pane" aria-labelledby="groups-item" role="tabpanel">
-                                <ul className="list-none mb-0 mt-2">
-                                    <li className="!pb-0">
-                                        <p className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] font-semibold mb-1 opacity-[0.7]">MY CHAT GROUPS</p>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="mb-0">1) Family Together</p>
-                                                <p className="mb-0"><span className="badge bg-success/10 text-success">4
-                                                    Online</span></p>
-                                            </div>
-                                            <div className="avatar-list-stacked my-auto">
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/2.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/8.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/2.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/10.jpg" alt="img" />
-                                                </span>
-                                                <Link className="avatar avatar-sm bg-primary text-white avatar-rounded"
-                                                    href="#!" scroll={false}>
-                                                    +19
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="mb-0">2) Work Buddies </p>
-                                                <p className="mb-0"><span className="badge bg-secondary/10 text-secondary">32
-                                                    Online</span></p>
-                                            </div>
-                                            <div className="avatar-list-stacked my-auto">
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/1.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/7.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/3.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/9.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/12.jpg" alt="img" />
-                                                </span>
-                                                <Link className="avatar avatar-sm bg-primary text-white avatar-rounded"
-                                                    href="#!" scroll={false}>
-                                                    +123
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="mb-0">3) Friends Forever</p>
-                                                <p className="mb-0"><span className="badge bg-warning/10 text-warning">3
-                                                    Online</span></p>
-                                            </div>
-                                            <div className="avatar-list-stacked my-auto">
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/4.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/8.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/13.jpg" alt="img" />
-                                                </span>
-                                                <Link className="avatar avatar-sm bg-primary text-white avatar-rounded"
-                                                    href="#!" scroll={false}>
-                                                    +15
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="mb-0">4) Social Media Deals</p>
-                                                <p className="mb-0"><span className="badge bg-danger/10 text-danger">5
-                                                    Online</span></p>
-                                            </div>
-                                            <div className="avatar-list-stacked my-auto">
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/1.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/7.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/14.jpg" alt="img" />
-                                                </span>
-                                                <Link className="avatar avatar-sm bg-primary text-white avatar-rounded"
-                                                    href="#!" scroll={false}>
-                                                    +28
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <p className="mb-0">4) Apartment Group</p>
-                                                <p className="mb-0"><span className="badge bg-light text-dark">0 Online</span>
-                                                </p>
-                                            </div>
-                                            <div className="avatar-list-stacked my-auto">
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/5.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/6.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/12.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm avatar-rounded">
-                                                    <img src="../../assets/images/faces/3.jpg" alt="img" />
-                                                </span>
-                                                <Link className="avatar avatar-sm bg-primary text-white avatar-rounded"
-                                                    href="#!" scroll={false}>
-                                                    +53
-                                                </Link>
-                                            </div>
-                                        </div>
-                                    </li>
-                                </ul>
-                                <ul className="list-none !mb-0 mt-2 ">
-                                    <li className="!pb-0">
-                                        <p className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] font-semibold mb-1 opacity-[0.7]">GROUP CHATS</p>
-                                    </li>
-                                    <li className="checkforactive">
-                                        <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Family Together 😍', img:'17', status:'online'})}>
-                                            <div className="flex items-start">
-                                                <div className="me-1 leading-none">
-                                                    <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                        <img src="../../assets/images/faces/17.jpg" alt="img" />
-                                                    </span>
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="mb-0 font-semibold" >
-                                                        Family Together 😍 <span
-                                                            className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">12:24PM</span>
-                                                    </p>
-                                                    <p className="text-[0.75rem] mb-0 chat-msg-typing ">
-                                                        <span className="chat-msg text-truncate">Hira Typing...</span>
-                                                        <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                            className="ri-check-double-fill"></i></span>
-                                                        <span
-                                                            className="badge bg-success/10 !rounded-full !text-success ltr:float-right rtl:float-left">2</span>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                    <li className="chat-msg-unread checkforactive" >
-                                        <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Work Buddies', img:'18', status:'online'})}>
-                                            <div className="flex items-start">
-                                                <div className="me-1 leading-none">
-                                                    <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                        <img src="../../assets/images/faces/18.jpg" alt="img" />
-                                                    </span>
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="mb-0 font-semibold" >
-                                                        Work Buddies <span
-                                                            className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">1:16PM</span>
-                                                    </p>
-                                                    <p className="text-[0.75rem] mb-0">
-                                                        <span className="chat-msg text-truncate"><span
-                                                            className="group-indivudial">Rams:</span>Happy to be part of
-                                                            this group</span>
-                                                        <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                            className="ri-check-double-fill"></i></span>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                    <li className="chat-inactive checkforactive" >
-                                        <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name:'Friends Forever 😎', img:'19', status:'offline'})}>
-                                            <div className="flex items-start">
-                                                <div className="me-1 leading-none">
-                                                    <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                        <img src="../../assets/images/faces/19.jpg" alt="img" />
-                                                    </span>
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="mb-0 font-semibold">
-                                                        Friends Forever 😎 <span
-                                                            className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">3 days
-                                                            ago</span>
-                                                    </p>
-                                                    <p className="text-[0.75rem] mb-0">
-                                                        <span
-                                                            className="chat-msg text-truncate">Simon,Melissa,Amanda,Patrick,Siddique</span>
-                                                        <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                            className="ri-check-double-fill"></i></span>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                    <li className="chat-inactive checkforactive" >
-                                        <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Social Media Deals', img:'20', status:'offline'})}>
-                                            <div className="flex items-start">
-                                                <div className="me-1 leading-none">
-                                                    <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                        <img src="../../assets/images/faces/20.jpg" alt="img" />
-                                                    </span>
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="mb-0 font-semibold">
-                                                        Social Media Deals <span
-                                                            className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">5 days
-                                                            ago</span>
-                                                    </p>
-                                                    <p className="text-[0.75rem] mb-0">
-                                                        <span
-                                                            className="chat-msg text-truncate">Kamalan,Subha,Ambrose,Kiara,Jackson</span>
-                                                        <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                            className="ri-check-double-fill"></i></span>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                    <li className="chat-inactive checkforactive" >
-                                        <Link href="#!" scroll={false} onClick={(_e) => changeTheInfo({name: 'Apartment Group', img:'21', status:'offline'})}>
-                                            <div className="flex items-start">
-                                                <div className="me-1 leading-none">
-                                                    <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                        <img src="../../assets/images/faces/21.jpg" alt="img" />
-                                                    </span>
-                                                </div>
-                                                <div className="flex-grow">
-                                                    <p className="mb-0 font-semibold">
-                                                        Apartment Group <span
-                                                            className="ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[0.6875rem]">12 days
-                                                            ago</span>
-                                                    </p>
-                                                    <p className="text-[0.75rem] mb-0">
-                                                        <span
-                                                            className="chat-msg text-truncate">Subman,Rajen,Kairo,Dibasha,Alexa</span>
-                                                        <span className="chat-read-icon ltr:float-right rtl:float-left align-middle"><i
-                                                            className="ri-check-double-fill"></i></span>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    </li>
-                                </ul>
-                            </div>
-                        <div className="tab-pane fade hidden !border-0 chat-calls-tab" id="calls-tab-pane" role="tabpanel" aria-labelledby="calls-item">
-                            <PerfectScrollbar>
-                                <ul className="list-none !mb-0 mt-2 chat-calls-tab">
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/5.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Sujika
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] !mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">Today,12:47PM</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li >
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/7.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Melissa
-                                                    <span className="ms-1 outgoing-call-failed"><i
-                                                        className="ti ti-arrow-up-right"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">Today,10:27AM</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/21.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Sharukh Sam
-                                                    <span className="ms-1 outgoing-call-success"><i
-                                                        className="ti ti-arrow-up-right"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">Yesterday,12:45PM</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-video"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/15.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Kiram Kumal
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">3 Days ago</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/4.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Amanda Sams
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">22, Oct 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-video"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/16.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Azimo Peter
-                                                    <span className="ms-1 incoming-call-failed"><i
-                                                        className="ti ti-arrow-up-right"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">24, Oct 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/8.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Sierra Adams
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">22, Oct 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/3.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Dimple Kanns
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">13, Oct 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-video"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md online me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/9.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Adrea Jaremiah
-                                                    <span className="ms-1 outgoing-call-failed"><i
-                                                        className="ti ti-arrow-up-right"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">13, Sep 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/21.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Anjaneliyu
-                                                    <span className="ms-1 outgoing-call-success"><i
-                                                        className="ti ti-arrow-up-right"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">10, July 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                    <li>
-                                        <div className="flex items-center">
-                                            <div className="me-1 leading-none">
-                                                <span className="avatar avatar-md offline me-2 avatar-rounded">
-                                                    <img src="../../assets/images/faces/14.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                            <div className="flex-grow my-auto">
-                                                <p className="mb-0 font-semibold">
-                                                    Jason Steph
-                                                    <span className="ms-1 incoming-call-success"><i
-                                                        className="ti ti-arrow-down-left"></i></span>
-                                                </p>
-                                                <p className="text-[0.75rem] mb-0">
-                                                    <span className="text-[#8c9097] dark:text-white/50 text-truncate">1, Apr 2022</span>
-                                                </p>
-                                            </div>
-                                            <div className="">
-                                                <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-icon ti-btn-primary">
-                                                    <i className="ti ti-phone"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </li>
-                                </ul>
-                            </PerfectScrollbar>
-                        </div>
-
-                    </div>
-                </div>
-                <div className="main-chat-area border dark:border-defaultborder/10">
-                    <div className="sm:flex items-center p-2 border-b dark:border-defaultborder/10">
-                        <div className="flex items-center leading-none">
-                            <span className="avatar avatar-lg online me-4 avatar-rounded chatstatusperson">
-                                <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                            </span>
-                            <div className="flex-grow">
-                                <p className="mb-1 font-semibold text-[.875rem]">
-                                    <Link href="#!" scroll={false} onClick={toggleOpenClass} className="chatnameperson responsive-userinfo-open !text-defaulttextcolor dark:text-defaulttextcolor/70">Emiley Jackson</Link>
-                                </p>
-                                <p className="text-[#8c9097] dark:text-white/50 mb-0 chatpersonstatus !text-defaultsize">online</p>
-                            </div>
-                        </div>
-                        <div className="flex ms-auto">
-                            <button aria-label="button" type="button" className="ti-btn ti-btn-icon ti-btn-outline-light dark:border-defaultborder/10 !text-[0.95rem] !ms-2 font-semibold">
-                                <i className="ti ti-phone dark:text-defaulttextcolor/70"></i>
-                            </button>
-                            <button aria-label="button" type="button" className="ti-btn ti-btn-icon ti-btn-outline-light  !text-[0.95rem] !ms-2 font-semibold">
-                                <i className="ti ti-video dark:text-defaulttextcolor/70"></i>
-                            </button>
-                            <button aria-label="button" type="button" className="ti-btn ti-btn-icon ti-btn-outline-light  !text-[0.95rem] !ms-2 font-semibold responsive-userinfo-open"  onClick={toggleOpenClass}>
-                                <i className="ti ti-user-circle" id="responsive-chat-close"></i>
-                            </button>
-                            <div className="hs-dropdown ti-dropdown">
-                                <Link aria-label="anchor" href="#!" scroll={false}
-                                    className="ti-btn ti-btn-icon ti-btn-outline-light  !text-[0.95rem] !ms-2 font-semibold"
-                                    aria-expanded="false">
-                                    <i className="fe fe-more-vertical text-[0.8rem]"></i>
-                                </Link>
-                                <ul className="hs-dropdown-menu ti-dropdown-menu hidden">
-                                    <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                        href="#!" scroll={false}>Profile</Link></li>
-                                    <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                        href="#!" scroll={false}>Clear Chat</Link></li>
-                                    <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                        href="#!" scroll={false}>Delete User</Link></li>
-                                    <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                        href="#!" scroll={false}>Block User</Link></li>
-                                    <li><Link className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium block"
-                                        href="#!" scroll={false}>Report</Link></li>
-                                </ul>
-                            </div>
-                            <button aria-label="button" type="button" className="ti-btn ti-btn-icon ti-btn-outline-light  !text-[0.95rem] !ms-2 font-semibold responsive-chat-close">
-                                <i className="ri-close-line"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <PerfectScrollbar style={{ height: "750px" }}>
-                        <div className="chat-content" id="main-chat-content">
-
-                            <ul className="list-none">
-                                <li className="chat-day-label">
-                                    <span>Today</span>
-                                </li>
-                                <li className="chat-item-start">
-                                    <div className="chat-list-inner">
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded chatstatusperson">
-                                                <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                        <div className="ms-4">
-                                            <span className="chatting-user-info">
-                                                <span className="chatnameperson">Emiley Jackson</span> <span className="msg-sent-time">11:48PM</span>
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">Nice to meet you 😀</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-end">
-                                    <div className="chat-list-inner">
-                                        <div className="me-3">
-                                            <span className="chatting-user-info">
-                                                <span className="msg-sent-time"><span className="chat-read-mark align-middle inline-flex"><i
-                                                    className="ri-check-double-line"></i></span>11:50PM</span> You
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">It is a long established fact that a reader will be
-                                                        distracted by the readable content of a page when looking at its
-                                                        layout</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded">
-                                                <img src="../../assets/images/faces/15.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-start">
-                                    <div className="chat-list-inner">
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded chatstatusperson">
-                                                <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                        <div className="ms-3">
-                                            <span className="chatting-user-info">
-                                                <span className="chatnameperson">Emiley Jackson</span> <span className="msg-sent-time">11:51PM</span>
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">Who are you ?</p>
-                                                </div>
-                                                <div>
-                                                    <p className="mb-0">I don't know anyone named jeremiah.</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-end">
-                                    <div className="chat-list-inner">
-                                        <div className="me-3">
-                                            <span className="chatting-user-info">
-                                                <span className="msg-sent-time"><span className="chat-read-mark align-middle inline-flex"><i
-                                                    className="ri-check-double-line"></i></span>11:52PM</span> You
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">Some of the recent images taken are nice 👌</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded">
-                                                <img src="../../assets/images/faces/15.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-start">
-                                    <div className="chat-list-inner">
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded chatstatusperson">
-                                                <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                        <div className="ms-3">
-                                            <span className="chatting-user-info">
-                                                <span className="chatnameperson">Emiley Jackson</span> <span className="msg-sent-time">11:55PM</span>
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">Here are some of them have a look</p>
-                                                </div>
-                                                <div>
-                                                    <p className="mb-0 sm:flex block">
-                                                        <Link aria-label="anchor" href="/apps/gallery/" className="avatar avatar-xl m-1 "><img src="../../assets/images/media/media-64.jpg" alt="" className="rounded-md" /></Link>
-                                                        <Link aria-label="anchor" href="/apps/gallery/" className="avatar avatar-xl m-1 "><img src="../../assets/images/media/media-63.jpg" alt="" className="rounded-md" /></Link>
-                                                        <Link aria-label="anchor" href="/apps/gallery/" className="avatar avatar-xl m-1 "><img src="../../assets/images/media/media-62.jpg" alt="" className="rounded-md" /></Link>
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-end">
-                                    <div className="chat-list-inner">
-                                        <div className="me-4">
-                                            <span className="chatting-user-info">
-                                                <span className="msg-sent-time"><span className="chat-read-mark align-middle inline-flex"><i
-                                                    className="ri-check-double-line"></i></span>11:52PM</span> You
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div className="flex">
-                                                    <Link aria-label="anchor" href="#!" scroll={false} className="text-white"><i
-                                                        className="ri-play-circle-line align-middle"></i></Link>
-                                                    <span className="mx-1 flex flex-wrap">
-                                                        <svg width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                        <svg className="chat_audio" width="20" height="20">
-                                                            <defs></defs>
-                                                            <g transform="matrix(1,0,0,1,0,0)"><svg
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                data-name="Layer 3" viewBox="0 0 24 24" width="20"
-                                                                height="20">
-                                                                <path
-                                                                    d="M6 19a1 1 0 0 1-1-1V6A1 1 0 0 1 7 6V18A1 1 0 0 1 6 19zM12 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 12 18zM9 21a1 1 0 0 1-1-1V4a1 1 0 0 1 2 0V20A1 1 0 0 1 9 21zM3 17a1 1 0 0 1-1-1V8A1 1 0 0 1 4 8v8A1 1 0 0 1 3 17zM21 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 21 16zM15 16a1 1 0 0 1-1-1V9a1 1 0 0 1 2 0v6A1 1 0 0 1 15 16zM18 18a1 1 0 0 1-1-1V7a1 1 0 0 1 2 0V17A1 1 0 0 1 18 18z"
-                                                                    fill="rgba(255, 255, 255, 0.5)"
-                                                                ></path>
-                                                            </svg></g>
-                                                        </svg>
-                                                    </span>
-                                                    <Link aria-label="anchor" href="#!" scroll={false} className="text-white"><i
-                                                        className="ri-download-2-line align-middle"></i></Link>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded">
-                                                <img src="../../assets/images/faces/15.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="chat-item-start">
-                                    <div className="chat-list-inner">
-                                        <div className="chat-user-profile">
-                                            <span className="avatar avatar-md online avatar-rounded">
-                                                <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                                            </span>
-                                        </div>
-                                        <div className="ms-3">
-                                            <span className="chatting-user-info chatnameperson">
-                                                Emiley Jackson <span className="msg-sent-time">11:45PM</span>
-                                            </span>
-                                            <div className="main-chat-msg">
-                                                <div>
-                                                    <p className="mb-0">Happy to talk with you,chat you later 👋</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </li>
-                            </ul>
-
-                        </div>
-                    </PerfectScrollbar>
-                    <div className="chat-footer">
-                        <input className="form-control w-full !rounded-md" placeholder="Type your message here..." type="text" />
-                        <Link aria-label="anchor" className="ti-btn ti-btn-icon !mx-2 ti-btn-success" href="#!" scroll={false}>
-                            <i className="ri-emotion-line"></i>
-                        </Link>
-                        <Link aria-label="anchor" className="ti-btn bg-primary text-white  ti-btn-icon ti-btn-send" href="#!" scroll={false}>
-                            <i className="ri-send-plane-2-line"></i>
-                        </Link>
-                    </div>
-                </div>
-                <PerfectScrollbar className={`chat-user-details border dark:border-defaultborder/10 ${isOpen ? "open" : ''}`} id="chat-user-details">
-                    <button aria-label="button" type="button" className="ti-btn ti-btn-icon ti-btn-outline-light my-1 ms-2 responsive-chat-close2" onClick={removeOpenClass}> <i className="ri-close-line"></i> </button>
-                    <div className="text-center mb-[3rem]">
-                        <span className="avatar avatar-rounded online avatar-xxl me-2 mb-4 chatstatusperson">
-                            <img className="chatimageperson" src="../../assets/images/faces/2.jpg" alt="img" />
-                        </span>
-                        <p className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-defaulttextcolor/70 leading-none chatnameperson ">Emiley Jackson</p>
-                        <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 !mb-4"><span className="chatnameperson">emaileyjackson2134</span>@gmail.com</p>
-                        <p className="text-center mb-0">
-                            <button type="button" aria-label="button" className="ti-btn ti-btn-icon !rounded-full ti-btn-primary"><i
-                                className="ri-phone-line"></i></button>
-                            <button type="button" aria-label="button" className="ti-btn ti-btn-icon !rounded-full ti-btn-primary !ms-2"><i
-                                className="ri-video-add-line"></i></button>
-                            <button type="button" aria-label="button" className="ti-btn ti-btn-icon !rounded-full ti-btn-primary !ms-2"><i
-                                className="ri-chat-1-line"></i></button>
-                        </p>
-                    </div>
-                    <div className="mb-[3rem]">
-                        <div className="font-semibold mb-6 dark:text-defaulttextcolor/70  text-defaultsize">Shared Files
-                            <span className="badge bg-primary/10 !rounded-full text-primary ms-1">4</span>
-                            <span className="ltr:float-right rtl:float-left text-[0.6875rem]"><Link href="#!" scroll={false} className="text-primary underline"><u>View All</u></Link></span>
-                        </div>
-                        <ul className="shared-files list-none">
-                            <li className="!mb-4">
-                                <div className="flex items-center">
-                                    <div className="me-2">
-                                        <span className="shared-file-icon">
-                                            <i className="ti ti-file-text"></i>
-                                        </span>
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="text-[0.75rem] font-semibold mb-0 dark:text-defaulttextcolor/70 ">Project Details.pdf</p>
-                                        <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.6875rem]">24,Oct 2022 - 14:24PM</p>
-                                    </div>
-                                    <div className="!text-[1.125rem]">
-                                        <Link aria-label="anchor" href="#!" scroll={false}><i className="ri-download-2-line text-[#8c9097] dark:text-white/50"></i></Link>
-                                    </div>
-                                </div>
-                            </li>
-                            <li className="!mb-4">
-                                <div className="flex items-center">
-                                    <div className="me-2">
-                                        <span className="shared-file-icon">
-                                            <i className="ri-image-line"></i>
-                                        </span>
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="text-[0.75rem] font-semibold mb-0 dark:text-defaulttextcolor/70">Img_02.Jpg</p>
-                                        <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.6875rem]">22,Oct 2022 - 10:19AM</p>
-                                    </div>
-                                    <div className="!text-[1.125rem]">
-                                        <Link aria-label="anchor" href="#!" scroll={false}><i className="ri-download-2-line text-[#8c9097] dark:text-white/50"></i></Link>
-                                    </div>
-                                </div>
-                            </li>
-                            <li className="!mb-4">
-                                <div className="flex items-center">
-                                    <div className="me-2">
-                                        <span className="shared-file-icon">
-                                            <i className="ri-image-line"></i>
-                                        </span>
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="text-[0.75rem] font-semibold mb-0 dark:text-defaulttextcolor/70">Img_15.Jpg</p>
-                                        <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.6875rem]">22,Oct 2022 - 10:18AM</p>
-                                    </div>
-                                    <div className="!text-[1.125rem]">
-                                        <Link aria-label="anchor" href="#!" scroll={false}><i className="ri-download-2-line text-[#8c9097] dark:text-white/50"></i></Link>
-                                    </div>
-                                </div>
-                            </li>
-                            <li>
-                                <div className="flex items-center">
-                                    <div className="me-2">
-                                        <span className="shared-file-icon">
-                                            <i className="ri-video-line"></i>
-                                        </span>
-                                    </div>
-                                    <div className="flex-grow">
-                                        <p className="text-[0.75rem] font-semibold mb-0 dark:text-defaulttextcolor/70">Video_15_02_2022.MP4</p>
-                                        <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.6875rem]">22,Oct 2022 - 10:18AM</p>
-                                    </div>
-                                    <div className="">
-                                        <Link aria-label="anchor" href="#!" scroll={false}><i className="ri-download-2-line text-[#8c9097] dark:text-white/50 !text-[1.125rem]"></i></Link>
-                                    </div>
-                                </div>
-                            </li>
-                        </ul>
-                    </div>
-                    <div className="mb-0">
-                        <div className="font-semibold mb-4 text-defaultsize dark:text-defaulttextcolor/70">Photos &amp; Media
-                            <span className="badge bg-primary/10 !rounded-full text-primary ms-1">22</span>
-                            <span className="ltr:float-right rtl:float-left text-[0.6875rem]"><Link href="#!" scroll={false} className="text-primary underline"><u>View All</u></Link></span>
-                        </div>
-                        <div className="grid grid-cols-12 gap-x-[1rem]">
-                            {Photosmediadata.map((idx) => (
-                                <div className="xl:col-span-4 lg:col-span-4 md:col-span-4 sm:col-span-4 col-span-4" key={Math.random()}>
-                                    <Link aria-label="anchor" href="/apps/gallery/" className="chat-media">
-                                        <img src={idx.src} alt="" />
-                                    </Link>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </PerfectScrollbar>
-            </div>
+  return (
+    <div className="p-4 flex flex-col h-full">
+      <div className="flex items-center justify-between mb-4">
+        <h5 className="font-semibold">Group info</h5>
+        <button type="button" className="ti-btn ti-btn-icon ti-btn-ghost" onClick={onClose}>
+          <i className="ri-close-line" />
+        </button>
+      </div>
+      <div className="text-center mb-4">
+        <span className="avatar avatar-xxl avatar-rounded">
+          <img src={avatarForGroup(conversation.name)} alt="" />
+        </span>
+        {editingName ? (
+          <div className="flex flex-wrap items-center gap-2 justify-center mt-2">
+            <input
+              className="form-control !w-auto max-w-[180px] shrink-0"
+              value={editNameVal}
+              onChange={(e) => setEditNameVal(e.target.value)}
+              autoFocus
+            />
+            <button
+              type="button"
+              className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !px-3"
+              onClick={handleSaveName}
+              disabled={saving}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="ti-btn ti-btn-sm shrink-0 whitespace-nowrap !px-3"
+              onClick={() => setEditingName(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <p className="mb-0 font-semibold mt-2">
+            {conversation.name || "Group"}
+            {isAdmin && (
+              <button
+                type="button"
+                className="ms-2 ti-btn ti-btn-ghost ti-btn-icon !p-0 !min-w-0"
+                onClick={() => {
+                  setEditNameVal(conversation.name || "Group");
+                  setEditingName(true);
+                }}
+              >
+                <i className="ri-pencil-line text-sm" />
+              </button>
+            )}
+          </p>
+        )}
+      </div>
+      <PerfectScrollbar className="flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 24rem)" }}>
+        <div className="mb-4">
+          <p className="text-xs text-[#8c9097] mb-2">Participants ({participants.length})</p>
+          <ul className="list-none">
+            {participants.map((p: any) => {
+              const uid = (p.user as any)?.id || (p.user as any)?._id?.toString?.();
+              const name = (p.user as any)?.name || "Unknown";
+              const isMe = uid && String(uid) === String(myId);
+              const isPartCreator = uid && creatorId && String(uid) === String(creatorId);
+              return (
+                <li key={uid} className="flex items-center justify-between gap-3 py-2 border-b border-defaultborder/10 last:border-0">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className={`avatar avatar-sm avatar-rounded flex-shrink-0 ${onlineUsers.has(String(uid)) ? "online" : ""}`}>
+                      <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=40`} alt="" />
+                    </span>
+                    <span className="truncate">{name}</span>
+                    {p.role === "admin" && (
+                      <span className="badge bg-primary/20 text-primary text-[0.65rem] flex-shrink-0">Admin</span>
+                    )}
+                    {isPartCreator && <span className="text-[0.65rem] text-[#8c9097] flex-shrink-0">(creator)</span>}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {isMe ? (
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-sm ti-btn-outline-danger shrink-0 !px-4 !min-w-[4.5rem]"
+                        onClick={onLeave}
+                      >
+                        Leave
+                      </button>
+                    ) : !isPartCreator && (amCreator || (isAdmin && (p.role as string) !== "admin")) ? (
+                      <>
+                        {amCreator && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-icon ti-btn-ghost shrink-0"
+                            onClick={() => handleSetRole(uid, p.role === "admin" ? "member" : "admin")}
+                            title={p.role === "admin" ? "Demote" : "Make admin"}
+                          >
+                            <i className={p.role === "admin" ? "ri-arrow-down-s-line" : "ri-shield-star-line"} />
+                          </button>
+                        )}
+                        {(amCreator || (p.role as string) === "member") && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-icon ti-btn-ghost text-danger shrink-0"
+                            onClick={() => handleRemove(uid)}
+                            title="Remove"
+                          >
+                            <i className="ri-user-unfollow-line" />
+                          </button>
+                        )}
+                      </>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
-    )
+        {isAdmin && (
+          <div className="mb-4">
+            <p className="text-xs text-[#8c9097] mb-2">Add participants</p>
+            <div className="flex gap-2 mb-2">
+              <input
+                className="form-control flex-1 text-sm"
+                placeholder="Search users..."
+                value={addMemberSearch}
+                onChange={(e) => setAddMemberSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUsers())}
+              />
+              <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary" onClick={handleSearchUsers}>
+                <i className="ri-search-line" />
+              </button>
+            </div>
+            {addMemberResults.length > 0 && (
+              <ul className="list-none mb-2 max-h-32 overflow-y-auto">
+                {addMemberResults
+                  .filter((u) => !participants.some((p: any) => String((p.user as any)?.id || (p.user as any)?._id) === u.id))
+                  .map((u) => (
+                    <li key={u.id} className="flex items-center justify-between py-1">
+                      <span className="text-sm">{u.name}</span>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-sm"
+                        onClick={() => toggleSelect(u.id)}
+                      >
+                        {addMemberSelected.has(u.id) ? "Remove" : "Add"}
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            )}
+            {addMemberSelected.size > 0 && (
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm ti-btn-primary"
+                onClick={handleAddMembers}
+                disabled={adding}
+              >
+                Add {addMemberSelected.size} member{addMemberSelected.size > 1 ? "s" : ""}
+              </button>
+            )}
+          </div>
+        )}
+      </PerfectScrollbar>
+      <div className="flex flex-wrap justify-center gap-3 mt-4 pt-4 border-t border-defaultborder/10">
+        <button
+          type="button"
+          className="ti-btn ti-btn-outline-primary !inline-flex items-center gap-2 !py-1.5 !px-3 !text-sm"
+          onClick={() => onCall("audio")}
+        >
+          <i className="ri-phone-line shrink-0" />
+          <span className="whitespace-nowrap">Call</span>
+        </button>
+        <button
+          type="button"
+          className="ti-btn ti-btn-outline-primary !inline-flex items-center gap-2 !py-1.5 !px-3 !text-sm"
+          onClick={() => onCall("video")}
+        >
+          <i className="ri-vidicon-line shrink-0" />
+          <span className="whitespace-nowrap">Video</span>
+        </button>
+      </div>
+    </div>
+  );
 }
 
-export default Chat
+const Chat = () => {
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
+  const {
+    joinConversation,
+    leaveConversation,
+    onNewMessage,
+    onConversationUpdated,
+    onIncomingCall,
+    onCallEnded,
+    onMessageDeleted,
+    onMessageReacted,
+    onTyping,
+    onMessagesRead,
+    emitTyping,
+    emitMessageRead,
+    onlineUsers,
+  } = useChatSocket();
+
+  const [activeTab, setActiveTab] = useState<"recent" | "groups" | "calls">("recent");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [convCalls, setConvCalls] = useState<any[]>([]);
+  const [messageInput, setMessageInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [calls, setCalls] = useState<any[]>([]);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
+  const [userSearch, setUserSearch] = useState("");
+  const [searchResults, setSearchResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [groupName, setGroupName] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [activeCallForConv, setActiveCallForConv] = useState<{
+    id: string;
+    roomName: string;
+    callType: string;
+    participantCount?: number;
+    conversation: string;
+  } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const [groupInfoData, setGroupInfoData] = useState<Conversation | null>(null);
+  const [groupInfoLoading, setGroupInfoLoading] = useState(false);
+  const [addMemberSearch, setAddMemberSearch] = useState("");
+  const [addMemberResults, setAddMemberResults] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [addMemberSelected, setAddMemberSelected] = useState<Set<string>>(new Set());
+
+  const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTypingEmitRef = useRef<number>(0);
+  const chatContainerRef = useRef<HTMLElement | null>(null);
+
+  const myId = (user as any)?.id || (user as any)?._id?.toString?.();
+
+  // ── Auto-scroll to bottom ──
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = chatContainerRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
+  }, []);
+
+  // ── Fetch helpers ──
+  const fetchConversations = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await listConversations({ page: 1, limit: 50 });
+      setConversations(res.results || []);
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Failed to load conversations");
+      setConversations([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMessages = useCallback(async (convId: string) => {
+    if (!convId) return;
+    setLoadingMessages(true);
+    setHasMoreMessages(true);
+    try {
+      const [msgs, calls] = await Promise.all([
+        getMessages(convId, { limit: 50 }),
+        getCallsForConversation(convId, { limit: 50 }),
+      ]);
+      setMessages(msgs || []);
+      setConvCalls(calls || []);
+      setHasMoreMessages((msgs || []).length >= 50);
+      await markAsRead(convId);
+    } catch {
+      setMessages([]);
+      setConvCalls([]);
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, []);
+
+  const fetchOlderMessages = useCallback(async () => {
+    const cid = getId(selectedConversation);
+    if (!cid || loadingOlder || !hasMoreMessages) return;
+    const oldestId = messages.length > 0 ? (messages[0] as any).id || (messages[0] as any)._id : null;
+    if (!oldestId) return;
+    setLoadingOlder(true);
+    try {
+      const older = await getMessages(cid, { before: oldestId, limit: 50 });
+      if ((older || []).length < 50) setHasMoreMessages(false);
+      setMessages((prev) => [...(older || []), ...prev]);
+    } catch {
+      setHasMoreMessages(false);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [selectedConversation, loadingOlder, hasMoreMessages, messages]);
+
+  const fetchCalls = useCallback(async () => {
+    try {
+      const res = await listCalls({ page: 1, limit: 30 });
+      setCalls(res.results || []);
+    } catch {
+      setCalls([]);
+    }
+  }, []);
+
+  const fetchActiveCallForConv = useCallback(async (convId: string | null) => {
+    if (!convId) {
+      setActiveCallForConv(null);
+      return;
+    }
+    try {
+      const active = await getActiveCallForConversation(convId);
+      if (active?.livekitRoom) {
+        const convIdStr = (active.conversation as any)?.id || (active.conversation as any)?._id || active.conversation;
+        setActiveCallForConv({
+          id: active.id || (active as any)._id,
+          roomName: active.livekitRoom,
+          callType: active.callType || "audio",
+          participantCount: active.liveParticipantCount ?? active.participants?.length ?? 1,
+          conversation: String(convIdStr),
+        });
+      } else {
+        setActiveCallForConv(null);
+      }
+    } catch {
+      setActiveCallForConv(null);
+    }
+  }, []);
+
+  // ── Effects ──
+  useEffect(() => {
+    fetchConversations();
+  }, [fetchConversations]);
+
+  // Select conversation from ?conv= when returning from meeting
+  useEffect(() => {
+    const convParam = searchParams.get("conv");
+    if (convParam && conversations.length > 0 && (!selectedConversation || getId(selectedConversation) !== convParam)) {
+      const c = conversations.find((x) => getId(x) === convParam);
+      if (c) setSelectedConversation(c);
+    }
+  }, [searchParams, conversations, selectedConversation]);
+
+  const convId = getId(selectedConversation);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (messages.length > 0) scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    const onFocus = () => {
+      fetchConversations();
+      if (convId) fetchMessages(convId);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [convId, fetchConversations, fetchMessages]);
+
+  useEffect(() => {
+    if (convId) {
+      fetchMessages(convId);
+      joinConversation(convId);
+      setReplyingTo(null);
+      return () => leaveConversation(convId);
+    } else {
+      setMessages([]);
+      setReplyingTo(null);
+    }
+  }, [convId, fetchMessages, joinConversation, leaveConversation]);
+
+  // New message from socket
+  useEffect(() => {
+    const unsub = onNewMessage((msg: any) => {
+      const msgConvId = msg?.conversation;
+      if (msgConvId && convId && String(msgConvId) === String(convId)) {
+        setMessages((prev) => {
+          const msgId = String(msg?.id || msg?._id || "");
+          if (!msgId) return [...prev, msg as Message];
+          const exists = prev.some((m) => String((m as any)?.id || (m as any)?._id || "") === msgId);
+          if (exists) return prev;
+          return [...prev, msg as Message];
+        });
+        emitMessageRead(convId);
+      }
+      fetchConversations();
+    });
+    return unsub;
+  }, [onNewMessage, convId, fetchConversations, emitMessageRead]);
+
+  // Conversation updated (for persistence across users)
+  useEffect(() => {
+    const unsub = onConversationUpdated(() => {
+      fetchConversations();
+      if (isOpen && selectedConversation?.type === "group") {
+        const cid = getId(selectedConversation);
+        if (cid) getConversation(cid).then(setGroupInfoData).catch(() => {});
+      }
+    });
+    return unsub;
+  }, [onConversationUpdated, fetchConversations, isOpen, selectedConversation]);
+
+  // Typing indicator with proper cleanup
+  useEffect(() => {
+    setTypingUser(null);
+    if (typingDisplayRef.current) {
+      clearTimeout(typingDisplayRef.current);
+      typingDisplayRef.current = null;
+    }
+    const unsub = onTyping((data) => {
+      if (data.conversationId === convId && data.userId !== myId) {
+        setTypingUser(data.userName);
+        if (typingDisplayRef.current) clearTimeout(typingDisplayRef.current);
+        typingDisplayRef.current = setTimeout(() => setTypingUser(null), 3000);
+      }
+    });
+    return () => {
+      unsub();
+      if (typingDisplayRef.current) {
+        clearTimeout(typingDisplayRef.current);
+        typingDisplayRef.current = null;
+      }
+    };
+  }, [onTyping, convId, myId]);
+
+  // Read receipts
+  useEffect(() => {
+    const unsub = onMessagesRead((data) => {
+      if (data.conversationId === convId) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const senderId = (m.sender as any)?.id || (m.sender as any)?._id;
+            if (String(senderId) === myId && !(m.readBy || []).includes(data.userId)) {
+              return { ...m, readBy: [...(m.readBy || []), data.userId] };
+            }
+            return m;
+          })
+        );
+      }
+    });
+    return unsub;
+  }, [onMessagesRead, convId, myId]);
+
+  // Incoming call
+  useEffect(() => {
+    const unsub = onIncomingCall((data) => {
+      if (data.caller?.id !== myId) {
+        setIncomingCall(data);
+      }
+    });
+    return unsub;
+  }, [onIncomingCall, myId]);
+
+  // Calls tab
+  useEffect(() => {
+    if (activeTab === "calls") fetchCalls();
+  }, [activeTab, fetchCalls]);
+
+  // Active call for rejoin bar
+  useEffect(() => {
+    fetchActiveCallForConv(convId);
+    const interval = setInterval(() => fetchActiveCallForConv(convId), 8000);
+    return () => clearInterval(interval);
+  }, [convId, fetchActiveCallForConv]);
+
+  // Fetch group info when opening panel for a group
+  useEffect(() => {
+    if (!isOpen || !selectedConversation || selectedConversation.type !== "group") {
+      setGroupInfoData(null);
+      return;
+    }
+    const cid = getId(selectedConversation);
+    if (!cid) return;
+    setGroupInfoLoading(true);
+    getConversation(cid)
+      .then((data) => setGroupInfoData(data))
+      .catch(() => setGroupInfoData(null))
+      .finally(() => setGroupInfoLoading(false));
+  }, [isOpen, selectedConversation]);
+
+  // call_ended: clear active call for that conversation
+  useEffect(() => {
+    const unsub = onCallEnded((data) => {
+      if (data.conversationId && String(data.conversationId) === String(convId)) {
+        setActiveCallForConv(null);
+        fetchMessages(convId);
+      }
+      fetchCalls();
+    });
+    return unsub;
+  }, [onCallEnded, convId, fetchCalls, fetchMessages]);
+
+  useEffect(() => {
+    const unsub = onMessageReacted((data) => {
+      if (data.conversationId && String(data.conversationId) === String(convId) && data.message) {
+        const msg = data.message as any;
+        setMessages((prev) =>
+          prev.map((m) => {
+            const id = String((m as any).id || (m as any)._id);
+            if (id === String(msg?.id || msg?._id)) return { ...m, reactions: msg.reactions || [] };
+            return m;
+          })
+        );
+      }
+    });
+    return unsub;
+  }, [onMessageReacted, convId]);
+
+  useEffect(() => {
+    const unsub = onMessageDeleted((data) => {
+      if (data.conversationId && String(data.conversationId) === String(convId) && data.deleteFor === "everyone") {
+        setMessages((prev) =>
+          prev.map((m) => {
+            const id = String((m as any).id || (m as any)._id);
+            if (id === String(data.messageId)) {
+              return { ...m, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const };
+            }
+            return m;
+          })
+        );
+      }
+    });
+    return unsub;
+  }, [onMessageDeleted, convId]);
+
+  // Escape key to close lightbox
+  useEffect(() => {
+    if (!imagePreview) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setImagePreview(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [imagePreview]);
+
+  // ── Handlers ──
+  const addMessageIfNew = useCallback((prev: Message[], msg: Message) => {
+    const msgId = String((msg as any)?.id || (msg as any)?._id || "");
+    if (!msgId) return [...prev, msg];
+    const exists = prev.some((m) => String((m as any)?.id || (m as any)?._id || "") === msgId);
+    return exists ? prev : [...prev, msg];
+  }, []);
+
+  const handleSend = async () => {
+    const content = messageInput.trim();
+    const cid = getId(selectedConversation);
+    if (!content || !cid || sending) return;
+    setSending(true);
+    try {
+      const msg = await sendMessage(cid, content, {
+        replyTo: replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined,
+      });
+      setMessages((prev) => addMessageIfNew(prev, msg));
+      setMessageInput("");
+      setReplyingTo(null);
+      fetchConversations();
+    } catch {
+      // Error
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const cid = getId(selectedConversation);
+    if (!files.length || !cid) return;
+    setUploading(true);
+    try {
+      const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
+      const msg = await uploadChatFiles(cid, files, undefined, replyToId);
+      setMessages((prev) => addMessageIfNew(prev, msg));
+      setReplyingTo(null);
+      fetchConversations();
+    } catch {
+      // Error
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const startVoiceNote = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) return;
+    const cid = getId(selectedConversation);
+    if (!cid) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "audio/webm";
+      const recorder = new MediaRecorder(stream);
+      chunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size) chunksRef.current.push(e.data);
+      };
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(chunksRef.current, { type: mime });
+        if (blob.size < 1000) return; // too short, ignore
+        const file = new File([blob], "voice-note.webm", { type: blob.type });
+        setUploading(true);
+        try {
+          const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
+          const msg = await uploadChatFiles(cid, [file], undefined, replyToId);
+          setMessages((prev) => addMessageIfNew(prev, msg));
+          setReplyingTo(null);
+          fetchConversations();
+        } catch {
+          // Error
+        } finally {
+          setUploading(false);
+        }
+      };
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+    } catch {
+      // Permission denied or not supported
+    }
+  }, [selectedConversation, replyingTo]);
+
+  const stopVoiceNote = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+    }
+  }, []);
+
+  const handleTyping = () => {
+    const cid = getId(selectedConversation);
+    if (!cid) return;
+    const now = Date.now();
+    if (now - lastTypingEmitRef.current > 2000) {
+      emitTyping(cid);
+      lastTypingEmitRef.current = now;
+    }
+  };
+
+  const handleCall = async (callType: "audio" | "video") => {
+    const cid = getId(selectedConversation);
+    if (!cid) return;
+    try {
+      const { roomName } = await initiateCall(cid, callType);
+      const params = new URLSearchParams({ from: "chat", conv: cid });
+      if (callType === "audio") params.set("video", "0");
+      else params.set("video", "1");
+      const url = `/meetings/room/${encodeURIComponent(roomName)}?${params}`;
+      window.open(url, "_blank", "noopener");
+    } catch {
+      // Error
+    }
+  };
+
+  const acceptCall = () => {
+    if (!incomingCall) return;
+    const convId = incomingCall.conversationId;
+    const callType = incomingCall.callType || "video";
+    const params = new URLSearchParams();
+    if (convId) params.set("conv", convId);
+    params.set("from", "chat");
+    if (callType === "audio") params.set("video", "0");
+    else params.set("video", "1");
+    const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
+    window.open(url, "_blank", "noopener");
+    setIncomingCall(null);
+  };
+
+  const declineCall = () => {
+    setIncomingCall(null);
+  };
+
+  const handleSearchUsers = async () => {
+    if (!userSearch.trim()) return;
+    try {
+      const res = await searchUsers({ search: userSearch.trim(), limit: 20 });
+      setSearchResults(res.results || []);
+    } catch {
+      setSearchResults([]);
+    }
+  };
+
+  const handleStartChat = async (userOrId: { id?: string; _id?: string }) => {
+    const userId = (userOrId as any)?.id || (userOrId as any)?._id;
+    if (!userId) return;
+    try {
+      const conv = await createConversation({ type: "direct", participantIds: [String(userId)] });
+      setSelectedConversation(conv);
+      setShowNewChat(false);
+      setUserSearch("");
+      setSearchResults([]);
+      fetchConversations();
+    } catch {
+      // Error
+    }
+  };
+
+  const handleCreateGroup = async () => {
+    const ids = Array.from(selectedUserIds);
+    if (ids.length < 1) return;
+    setCreatingGroup(true);
+    try {
+      const conv = await createConversation({
+        type: "group",
+        participantIds: ids,
+        name: groupName.trim() || undefined,
+      });
+      setSelectedConversation(conv);
+      setShowNewChat(false);
+      setUserSearch("");
+      setSearchResults([]);
+      setSelectedUserIds(new Set());
+      setGroupName("");
+      setNewChatMode("direct");
+      fetchConversations();
+    } catch {
+      // Error
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const toggleUserForGroup = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const openNewChatModal = (mode: "direct" | "group" = "direct") => {
+    setNewChatMode(mode);
+    setSelectedUserIds(new Set());
+    setGroupName("");
+    setShowNewChat(true);
+  };
+
+  // ── Display helpers ──
+  const otherParticipants = (c: Conversation) =>
+    (c.participants || []).filter((p: any) => {
+      const pid = (p.user as any)?.id || (p.user as any)?._id?.toString?.();
+      return pid && myId && String(pid) !== String(myId);
+    });
+  const displayName = (c: Conversation) =>
+    c.displayName || c.name || (otherParticipants(c)[0] as any)?.user?.name || "Unknown";
+  const avatarFor = (c: Conversation) => {
+    const other = otherParticipants(c)[0] as any;
+    return other?.user?.name
+      ? `https://ui-avatars.com/api/?name=${encodeURIComponent(other.user.name)}&size=80`
+      : DEFAULT_AVATAR;
+  };
+  const isUserOnline = (c: Conversation) => {
+    const other = otherParticipants(c)[0] as any;
+    const uid = other?.user?.id || other?.user?._id;
+    return uid ? onlineUsers.has(String(uid)) : false;
+  };
+
+  const avatarForGroup = (name?: string) => {
+    const initials = (name || "G").slice(0, 2).toUpperCase();
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=80`;
+  };
+
+  const isGroupAdmin = (c: Conversation) => {
+    const p = (c.participants || []).find((x: any) => {
+      const pid = (x.user as any)?.id || (x.user as any)?._id?.toString?.();
+      return pid && myId && String(pid) === String(myId);
+    }) as any;
+    return p?.role === "admin";
+  };
+
+  const isCreator = (c: Conversation) => {
+    const creatorId = (c.createdBy as any)?.id || (c.createdBy as any)?._id?.toString?.();
+    return creatorId && myId && String(creatorId) === String(myId);
+  };
+
+  const recentConvs = conversations.filter((c) => c.type === "direct" || c.type === "group");
+  const groupConvs = conversations.filter((c) => c.type === "group");
+
+  const formatDateSeparatorForList = (d: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const date = new Date(d);
+    date.setHours(0, 0, 0, 0);
+    if (date.getTime() === today.getTime()) return "Today";
+    if (date.getTime() === yesterday.getTime()) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
+  };
+
+  const recentConvsByDate = React.useMemo(() => {
+    const groups: { label: string; convs: Conversation[] }[] = [];
+    let lastLabel = "";
+    for (const c of recentConvs) {
+      const d = (c as any).lastMessageAt ? new Date((c as any).lastMessageAt) : new Date();
+      const label = formatDateSeparatorForList(d);
+      if (label !== lastLabel) {
+        lastLabel = label;
+        groups.push({ label, convs: [] });
+      }
+      groups[groups.length - 1].convs.push(c);
+    }
+    return groups;
+  }, [recentConvs]);
+
+  const getReplyPreviewText = (r: { content?: string; type?: string }) => {
+    if (!r) return "";
+    if (r.type === "image") return "Photo";
+    if (r.type === "file") return "File";
+    if (r.type === "audio") return "Voice note";
+    return (r.content || "").slice(0, 60) + ((r.content || "").length > 60 ? "…" : "");
+  };
+
+  const renderMessageContent = (m: Message) => {
+    const isDeleted = !!(m as any).deletedAt;
+    if (isDeleted) {
+      return (
+        <p className="mb-0 italic text-[#8c9097]">
+          {(m as any).deletedFor === "everyone"
+            ? "This message was deleted"
+            : "You deleted this message"}
+        </p>
+      );
+    }
+    const replyTo = (m as any).replyTo;
+    const replyBlock = replyTo ? (
+      <div className="mb-2 pb-2 border-l-2 border-primary/50 pl-2 text-[0.8rem]">
+        <p className="mb-0 font-medium text-primary/90 truncate">
+          {(replyTo.sender as any)?.name || "Unknown"}
+        </p>
+        <p className="mb-0 text-[#8c9097] truncate">{getReplyPreviewText(replyTo)}</p>
+      </div>
+    ) : null;
+    if (m.type === "image" && m.attachments?.length) {
+      return (
+        <div>
+          {replyBlock}
+          {m.attachments.map((a, i) => (
+            <img
+              key={i}
+              src={a.url}
+              alt={a.originalName || "image"}
+              className="rounded max-w-[240px] max-h-[200px] cursor-pointer object-cover mb-1"
+              onClick={(e) => { e.stopPropagation(); setImagePreview(a.url); }}
+            />
+          ))}
+          {m.content && m.content !== "\ud83d\udcf7 Image" && <p className="mb-0 mt-1">{m.content}</p>}
+        </div>
+      );
+    }
+    if (m.type === "audio" && m.attachments?.length) {
+      return (
+        <div>
+          {replyBlock}
+          {m.attachments.map((a, i) => (
+            <div key={i} className="flex items-center gap-2 p-2 rounded bg-white/10">
+              <audio controls className="max-w-[200px] h-9" src={a.url} />
+              <span className="text-[0.7rem] text-[#8c9097]">Voice note</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (m.type === "file" && m.attachments?.length) {
+      return (
+        <div>
+          {replyBlock}
+          {m.attachments.map((a, i) => (
+            <a
+              key={i}
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 p-2 rounded bg-white/10 hover:bg-white/20 mb-1"
+            >
+              <i className="ri-file-line text-lg" />
+              <div className="min-w-0">
+                <p className="mb-0 text-sm font-medium truncate">{a.originalName || "File"}</p>
+                {a.size ? (
+                  <p className="mb-0 text-[0.7rem] text-[#8c9097]">
+                    {a.size >= 1048576
+                      ? `${(a.size / 1048576).toFixed(1)} MB`
+                      : `${(a.size / 1024).toFixed(1)} KB`}
+                  </p>
+                ) : null}
+              </div>
+              <i className="ri-download-2-line ms-auto" />
+            </a>
+          ))}
+          {m.content && m.content !== "\ud83d\udcce File" && <p className="mb-0 mt-1">{m.content}</p>}
+        </div>
+      );
+    }
+    return (
+      <div>
+        {replyBlock}
+        <p className="mb-0">{m.content}</p>
+      </div>
+    );
+  };
+
+  const formatDateSeparator = (d: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const date = new Date(d);
+    date.setHours(0, 0, 0, 0);
+    if (date.getTime() === today.getTime()) return "Today";
+    if (date.getTime() === yesterday.getTime()) return "Yesterday";
+    return format(date, "MMMM d, yyyy");
+  };
+
+  // Merge messages and calls for WhatsApp-style chat timeline, with date separators
+  type TimelineItem =
+    | { type: "message"; data: Message }
+    | { type: "call"; data: any }
+    | { type: "date"; data: string };
+  const chatTimeline = React.useMemo(() => {
+    const items: TimelineItem[] = [];
+    (messages || []).forEach((m) => items.push({ type: "message", data: m }));
+    (convCalls || []).forEach((c) => items.push({ type: "call", data: c }));
+    const getDate = (item: { type: string; data: any }) => {
+      if (item.type === "message") return (item.data as Message).createdAt;
+      if (item.type === "call") return (item.data as any).createdAt || (item.data as any).startedAt;
+      return null;
+    };
+    items.sort((a, b) => {
+      const da = getDate(a);
+      const db = getDate(b);
+      if (!da || !db) return 0;
+      return new Date(da).getTime() - new Date(db).getTime();
+    });
+    const withDateSeparators: TimelineItem[] = [];
+    let lastDateStr = "";
+    for (const item of items) {
+      const d = getDate(item);
+      if (d) {
+        const dateStr = formatDateSeparator(new Date(d));
+        if (dateStr !== lastDateStr) {
+          lastDateStr = dateStr;
+          withDateSeparators.push({ type: "date", data: dateStr });
+        }
+      }
+      withDateSeparators.push(item);
+    }
+    return withDateSeparators;
+  }, [messages, convCalls]);
+
+  const formatCallDuration = (seconds: number) => {
+    if (!seconds || seconds < 0) return "";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}:${s.toString().padStart(2, "0")}` : `${s}s`;
+  };
+
+  const renderReadStatus = (m: Message) => {
+    const senderId = (m.sender as any)?.id || (m.sender as any)?._id?.toString?.();
+    if (String(senderId) !== myId) return null;
+    const readCount = (m.readBy || []).length;
+    if (readCount > 0) {
+      return <i className="ri-check-double-line text-primary ms-1" title="Read" />;
+    }
+    return <i className="ri-check-double-line text-[#8c9097] ms-1" title="Delivered" />;
+  };
+
+  return (
+    <div>
+      <Seo title="Chat" />
+      <div className="main-chart-wrapper p-2 gap-2 lg:flex">
+        {/* ── Left sidebar ── */}
+        <div className="chat-info border dark:border-defaultborder/10">
+          <button
+            type="button"
+            aria-label="New chat or group"
+            onClick={() => openNewChatModal(activeTab === "groups" ? "group" : "direct")}
+            className="ti-btn bg-secondary text-white !font-medium ti-btn-icon !rounded-full chat-add-icon"
+          >
+            <i className="ri-add-line" />
+          </button>
+          <div className="flex items-center justify-between w-full p-4 border-b dark:border-defaultborder/10">
+            <h5 className="font-semibold mb-0 text-[1.25rem] !text-defaulttextcolor dark:text-defaulttextcolor/70">
+              Messages
+            </h5>
+          </div>
+          <div className="chat-search p-4 border-b dark:border-defaultborder/10">
+            <div className="input-group">
+              <input
+                type="text"
+                className="form-control !bg-light border-0 !rounded-s-md"
+                placeholder="Search Chat"
+                onChange={(e) => setUserSearch(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
+              />
+              <button type="button" className="ti-btn ti-btn-light !rounded-s-none !mb-0" onClick={handleSearchUsers}>
+                <i className="ri-search-line text-[#8c9097] dark:text-white/50" />
+              </button>
+            </div>
+          </div>
+          <nav className="flex border-b border-defaultborder dark:border-defaultborder/10">
+            {(["recent", "groups", "calls"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`flex-grow py-2 px-4 text-sm font-medium ${activeTab === tab ? "border-b-2 border-b-primary text-primary" : "text-defaulttextcolor"}`}
+              >
+                <i className={`me-1 ${tab === "recent" ? "ri-history-line" : tab === "groups" ? "ri-group-2-line" : "ri-phone-line"}`} />
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </nav>
+
+          <div className="tab-content overflow-y-scroll" style={{ maxHeight: "calc(100vh - 21rem)" }}>
+            {activeTab === "recent" && (
+              <div className="tab-pane fade show active !border-0 chat-users-tab p-4">
+                {loading ? (
+                  <p className="text-[#8c9097]">Loading...</p>
+                ) : error ? (
+                  <p className="text-danger">{error}</p>
+                ) : recentConvs.length === 0 ? (
+                  <p className="text-[#8c9097] dark:text-white/50">No conversations yet. Start a new chat.</p>
+                ) : (
+                  <ul className="list-none mb-0">
+                    {recentConvsByDate.map((g) => (
+                      <React.Fragment key={g.label}>
+                        <li className="px-2 py-1.5 text-[0.7rem] font-medium text-[#8c9097] uppercase tracking-wide sticky top-0 bg-white dark:bg-bodybg z-10">
+                          {g.label}
+                        </li>
+                        {g.convs.map((c) => (
+                          <li
+                            key={getId(c) || ""}
+                            className={`py-3 px-2 rounded cursor-pointer ${getId(selectedConversation) === getId(c) ? "bg-primary/10" : ""}`}
+                            onClick={() => setSelectedConversation(c)}
+                          >
+                            <div className="flex items-start">
+                              <span className={`avatar avatar-md me-2 avatar-rounded ${isUserOnline(c) ? "online" : ""}`}>
+                                <img src={avatarFor(c)} alt="" className="rounded-full" />
+                              </span>
+                              <div className="flex-grow min-w-0">
+                                <p className="mb-0 font-semibold truncate">{displayName(c)}</p>
+                                <p className="text-[0.75rem] mb-0 text-[#8c9097] truncate">
+                                  {c.lastMessage?.content || "No messages"}
+                                </p>
+                              </div>
+                              {(c.unreadCount || 0) > 0 && (
+                                <span className="badge bg-primary rounded-full">{c.unreadCount}</span>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                      </React.Fragment>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {activeTab === "groups" && (
+              <div className="tab-pane fade show active !border-0 p-4">
+                {groupConvs.length === 0 ? (
+                  <p className="text-[#8c9097]">No groups yet.</p>
+                ) : (
+                  <ul className="list-none mb-0">
+                    {groupConvs.map((c) => (
+                      <li
+                        key={getId(c) || ""}
+                        className="py-3 px-2 rounded cursor-pointer"
+                        onClick={() => setSelectedConversation(c)}
+                      >
+                        <div className="flex items-center">
+                          <span className="avatar avatar-md me-2 avatar-rounded">
+                            <img src={avatarFor(c)} alt="" />
+                          </span>
+                          <p className="mb-0 font-semibold">{displayName(c)}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {activeTab === "calls" && (
+              <div className="tab-pane fade show active !border-0 p-4">
+                {calls.length === 0 ? (
+                  <p className="text-[#8c9097]">No call history.</p>
+                ) : (
+                  <ul className="list-none mb-0">
+                    {calls.map((call) => (
+                      <li key={call.id} className="py-3 flex items-center justify-between">
+                        <span className="avatar avatar-md me-2 avatar-rounded">
+                          <img src={DEFAULT_AVATAR} alt="" />
+                        </span>
+                        <div className="flex-grow">
+                          <p className="mb-0 font-semibold">{(call.caller as any)?.name || "Unknown"}</p>
+                          <p className="text-[0.75rem] text-[#8c9097]">
+                            <i className={`me-1 ${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"}`} />
+                            {call.callType === "video" ? "Video" : "Voice"} call
+                            {call.status && call.status !== "ongoing" && (
+                              <> &middot; {call.status === "completed" ? "Ended" : call.status}</>
+                            )}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Main chat area ── */}
+        <div className="main-chat-area border dark:border-defaultborder/10 flex-1 flex flex-col">
+          {selectedConversation ? (
+            <>
+              {/* Rejoin bar (WhatsApp-style) */}
+              {activeCallForConv && String(activeCallForConv.conversation) === String(convId) && (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-primary/15 border-b border-primary/20 dark:border-primary/30">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="flex items-center gap-2 text-primary font-medium">
+                      <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} text-lg`} />
+                      {activeCallForConv.participantCount && activeCallForConv.participantCount > 1
+                        ? `${activeCallForConv.participantCount} in call`
+                        : "Call in progress"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-sm ti-btn-primary !rounded-full shrink-0"
+                    onClick={() => {
+                      const params = new URLSearchParams({ from: "chat", conv: activeCallForConv.conversation });
+                      params.set("video", activeCallForConv.callType === "audio" ? "0" : "1");
+                      const url = `/meetings/room/${encodeURIComponent(activeCallForConv.roomName)}?${params}`;
+                      window.open(url, "_blank", "noopener");
+                    }}
+                  >
+                    <i className="ri-phone-fill me-1" />
+                    Rejoin
+                  </button>
+                </div>
+              )}
+              <div className="sm:flex items-center justify-between p-4 border-b dark:border-defaultborder/10">
+                <div className="flex items-center">
+                  <span className={`avatar avatar-lg me-4 avatar-rounded ${isUserOnline(selectedConversation) ? "online" : ""}`}>
+                    <img src={selectedConversation.type === "group" ? avatarForGroup(selectedConversation.name) : avatarFor(selectedConversation)} alt="" />
+                  </span>
+                  <div>
+                    <p className="mb-0 font-semibold">
+                      {selectedConversation.type === "group" ? (
+                        <button
+                          type="button"
+                          className="hover:underline text-left"
+                          onClick={() => setIsOpen(true)}
+                        >
+                          {displayName(selectedConversation)}
+                        </button>
+                      ) : (
+                        displayName(selectedConversation)
+                      )}
+                    </p>
+                    <p className="text-[0.75rem] text-[#8c9097]">
+                      {typingUser
+                        ? `${typingUser} is typing...`
+                        : isUserOnline(selectedConversation)
+                          ? "online"
+                          : "offline"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-icon ti-btn-outline-primary !rounded-full"
+                    title="Voice call"
+                    onClick={() => handleCall("audio")}
+                  >
+                    <i className="ri-phone-line" />
+                  </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-icon ti-btn-outline-primary !rounded-full"
+                    title="Video call"
+                    onClick={() => handleCall("video")}
+                  >
+                    <i className="ri-vidicon-line" />
+                  </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full"
+                    title="Info"
+                    onClick={() => setIsOpen(!isOpen)}
+                  >
+                    <i className="ri-information-line" />
+                  </button>
+                </div>
+              </div>
+              <PerfectScrollbar
+                style={{ height: "calc(100vh - 18rem)" }}
+                containerRef={(el) => { chatContainerRef.current = el; }}
+              >
+                <div className="chat-content p-4">
+                  {hasMoreMessages && !loadingMessages && messages.length > 0 && (
+                    <div className="flex justify-center mb-4">
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-sm ti-btn-outline-secondary"
+                        onClick={fetchOlderMessages}
+                        disabled={loadingOlder}
+                      >
+                        {loadingOlder ? (
+                          <>
+                            <i className="ri-loader-4-line animate-spin me-1" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load older messages"
+                        )}
+                      </button>
+                    </div>
+                  )}
+                  {loadingMessages ? (
+                    <p className="text-[#8c9097]">Loading messages...</p>
+                  ) : chatTimeline.length === 0 ? (
+                    <p className="text-[#8c9097] text-center py-8">No messages yet. Say hello!</p>
+                  ) : (
+                    <ul className="list-none">
+                      {chatTimeline.map((item, idx) => {
+                        if (item.type === "date") {
+                          return (
+                            <li key={`date-${item.data}-${idx}`} className="flex justify-center my-4">
+                              <span className="px-4 py-1 rounded-full bg-light dark:bg-white/5 text-[#8c9097] text-xs font-medium">
+                                {item.data}
+                              </span>
+                            </li>
+                          );
+                        }
+                        if (item.type === "call") {
+                          const call = item.data as any;
+                          const callLabel = call.callType === "video" ? "Video call" : "Voice call";
+                          const duration = call.duration ? formatCallDuration(call.duration) : null;
+                          const callDate = call.endedAt || call.createdAt || call.startedAt;
+                          return (
+                            <li key={`call-${call.id || call._id}-${idx}`} className="mb-4 flex justify-center">
+                              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-light dark:bg-white/5 text-[#8c9097] text-sm">
+                                <i className={`${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} text-base`} />
+                                <span>
+                                  {callLabel}
+                                  {duration && ` (${duration})`}
+                                  {callDate && ` · ${format(new Date(callDate), "h:mm a")}`}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        }
+                        if (item.type !== "message") return null;
+                        const m = item.data;
+                        const senderId = (m.sender as any)?.id || (m.sender as any)?._id?.toString?.();
+                        const isMe = !!senderId && !!myId && String(senderId) === String(myId);
+                        return (
+                          <li
+                            key={m.id || (m as any)._id}
+                            className={`mb-4 flex ${isMe ? "justify-end" : "justify-start"} group`}
+                          >
+                            <div className={`flex ${isMe ? "flex-row-reverse" : ""} max-w-[80%]`}>
+                              <span className="avatar avatar-md avatar-rounded flex-shrink-0">
+                                <img
+                                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent((m.sender as any)?.name || "U")}&size=40`}
+                                  alt=""
+                                />
+                              </span>
+                              <div className={`ms-3 me-0 ${isMe ? "text-end" : ""}`}>
+                                <span className={`text-[0.75rem] text-[#8c9097] flex items-center gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+                                  {isMe && !(m as any).deletedAt && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                        title="Delete"
+                                        onClick={() => {
+                                          const cid = getId(selectedConversation);
+                                          if (!cid) return;
+                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "me").then(() => {
+                                            setMessages((prev) => prev.filter((x) => String((x as any).id || (x as any)._id) !== String((m as any).id || (m as any)._id)));
+                                          }).catch(() => {});
+                                        }}
+                                      >
+                                        <i className="ri-delete-bin-line text-sm" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                        title="Delete for everyone"
+                                        onClick={() => {
+                                          const cid = getId(selectedConversation);
+                                          if (!cid) return;
+                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "everyone").then(() => {
+                                            setMessages((prev) =>
+                                              prev.map((x) => {
+                                                if (String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)) {
+                                                  return { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const };
+                                                }
+                                                return x;
+                                              })
+                                            );
+                                          }).catch(() => {});
+                                        }}
+                                      >
+                                        <i className="ri-delete-bin-2-line text-sm" />
+                                      </button>
+                                    </>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                    title="Reply"
+                                    onClick={() => setReplyingTo(m)}
+                                  >
+                                    <i className="ri-reply-line text-sm" />
+                                  </button>
+                                  {(m.sender as any)?.name} &middot;{" "}
+                                  {m.createdAt ? format(new Date(m.createdAt), "h:mm a") : ""}
+                                  {isMe && renderReadStatus(m)}
+                                </span>
+                                <div className="relative">
+                                  <div className="main-chat-msg bg-light dark:bg-white/5 rounded p-2 mt-1">
+                                    {renderMessageContent(m)}
+                                  </div>
+                                  {(m as any).reactions?.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {Array.from(
+                                        new Map<string, number>(
+                                          ((m as any).reactions || []).map((r: any) => [
+                                            r.emoji,
+                                            ((m as any).reactions || []).filter((x: any) => x.emoji === r.emoji).length,
+                                          ]) as [string, number][]
+                                        ).entries()
+                                      ).map(([emoji, count]: [string, number]) => (
+                                        <span
+                                          key={emoji}
+                                          className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-white/10 text-sm"
+                                        >
+                                          {emoji} {count > 1 ? <span className="text-xs">{count}</span> : null}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {!(m as any).deletedAt && (
+                                    <>
+                                      {reactionPickerFor === (m.id || (m as any)._id) ? (
+                                        <div className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10">
+                                          {REACTION_EMOJIS.map((emoji) => (
+                                            <button
+                                              key={emoji}
+                                              type="button"
+                                              className="text-lg hover:scale-125 transition-transform p-0.5"
+                                              onClick={() => {
+                                                const cid = getId(selectedConversation);
+                                                if (!cid) return;
+                                                reactToMessage(cid, String((m as any).id || (m as any)._id), emoji)
+                                                  .then((updated) => {
+                                                    setMessages((prev) =>
+                                                      prev.map((x) =>
+                                                        String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
+                                                          ? { ...x, reactions: updated.reactions || [] }
+                                                          : x
+                                                      )
+                                                    );
+                                                  })
+                                                  .catch(() => {});
+                                                setReactionPickerFor(null);
+                                              }}
+                                            >
+                                              {emoji}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          className="opacity-0 group-hover:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
+                                          title="React"
+                                          onClick={() =>
+                                            setReactionPickerFor(
+                                              reactionPickerFor === (m.id || (m as any)._id) ? null : String((m as any).id || (m as any)._id)
+                                            )
+                                          }
+                                        >
+                                          <i className="ri-emotion-happy-line text-sm" />
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {typingUser && (
+                    <div className="flex items-center gap-2 text-[#8c9097] text-sm py-2">
+                      <span className="flex gap-1">
+                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
+                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                      </span>
+                      {typingUser} is typing...
+                    </div>
+                  )}
+                </div>
+              </PerfectScrollbar>
+              {replyingTo && (
+                <div className="px-4 py-2 border-t dark:border-defaultborder/10 flex items-center justify-between gap-2 bg-light/50 dark:bg-white/5">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[0.75rem] font-medium text-primary mb-0">Replying to {(replyingTo.sender as any)?.name}</p>
+                    <p className="text-[0.75rem] text-[#8c9097] truncate mb-0">{getReplyPreviewText(replyingTo)}</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-icon ti-btn-ghost-danger !rounded-full shrink-0"
+                    title="Cancel reply"
+                    onClick={() => setReplyingTo(null)}
+                  >
+                    <i className="ri-close-line" />
+                  </button>
+                </div>
+              )}
+              <div className="chat-footer flex items-center gap-2 p-4 border-t dark:border-defaultborder/10">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  multiple
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar"
+                  onChange={handleFileSelect}
+                />
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full flex-shrink-0"
+                  title="Attach file"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading && !isRecording ? (
+                    <i className="ri-loader-4-line animate-spin" />
+                  ) : (
+                    <i className="ri-attachment-2" />
+                  )}
+                </button>
+                {typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function" ? (
+                  isRecording ? (
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-icon !rounded-full flex-shrink-0 bg-danger text-white animate-pulse"
+                      title="Stop recording"
+                      onClick={stopVoiceNote}
+                    >
+                      <i className="ri-stop-circle-fill" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full flex-shrink-0"
+                      title="Record voice note"
+                      onClick={startVoiceNote}
+                      disabled={uploading}
+                    >
+                      <i className="ri-mic-line" />
+                    </button>
+                  )
+                ) : null}
+                <input
+                  className="form-control flex-1 !rounded-md"
+                  placeholder="Type your message here..."
+                  value={messageInput}
+                  onChange={(e) => {
+                    setMessageInput(e.target.value);
+                    handleTyping();
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                />
+                <button
+                  type="button"
+                  className="ti-btn bg-primary text-white ti-btn-icon ti-btn-send"
+                  onClick={handleSend}
+                  disabled={sending || !messageInput.trim()}
+                >
+                  <i className="ri-send-plane-2-line" />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center justify-center h-full text-[#8c9097]">
+              Select a conversation or start a new chat
+            </div>
+          )}
+        </div>
+
+        {/* ── Right details panel ── */}
+        <div className={`chat-user-details border dark:border-defaultborder/10 ${isOpen ? "open" : ""}`}>
+          {selectedConversation && selectedConversation.type === "group" && (
+            <GroupInfoPanel
+              conversation={groupInfoData || selectedConversation}
+              loading={groupInfoLoading}
+              myId={myId || ""}
+              onlineUsers={onlineUsers}
+              onRefresh={() => {
+                const cid = getId(selectedConversation);
+                if (cid) getConversation(cid).then(setGroupInfoData).catch(() => {});
+              }}
+              onClose={() => setIsOpen(false)}
+              onLeave={() => {
+                const cid = getId(selectedConversation);
+                if (cid && myId)
+                  removeParticipant(cid, myId).then(() => {
+                    setSelectedConversation(null);
+                    setIsOpen(false);
+                    setGroupInfoData(null);
+                    fetchConversations();
+                  });
+              }}
+              onCall={handleCall}
+              addMemberSearch={addMemberSearch}
+              setAddMemberSearch={setAddMemberSearch}
+              addMemberResults={addMemberResults}
+              setAddMemberResults={setAddMemberResults}
+              addMemberSelected={addMemberSelected}
+              setAddMemberSelected={setAddMemberSelected}
+              handleSearchUsers={async () => {
+                if (!addMemberSearch.trim()) return;
+                const res = await searchUsers({ search: addMemberSearch.trim(), limit: 20 });
+                setAddMemberResults(res.results || []);
+              }}
+            />
+          )}
+          {selectedConversation && selectedConversation.type !== "group" && (
+            <div className="p-4">
+              <div className="text-center mb-4">
+                <span className={`avatar avatar-xxl avatar-rounded ${isUserOnline(selectedConversation) ? "online" : ""}`}>
+                  <img src={avatarFor(selectedConversation)} alt="" />
+                </span>
+                <p className="mb-1 font-semibold mt-2">{displayName(selectedConversation)}</p>
+                <p className="text-[0.75rem] text-[#8c9097]">
+                  {(otherParticipants(selectedConversation)[0] as any)?.user?.email || ""}
+                </p>
+                <p className="text-[0.75rem] mt-1">
+                  <span className={`inline-block w-2 h-2 rounded-full me-1 ${isUserOnline(selectedConversation) ? "bg-success" : "bg-gray-400"}`} />
+                  {isUserOnline(selectedConversation) ? "Online" : "Offline"}
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-3 mb-4">
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-outline-primary !inline-flex items-center justify-center gap-2 !py-1.5 !px-3 !text-sm !w-auto !min-w-0"
+                  onClick={() => handleCall("audio")}
+                >
+                  <i className="ri-phone-line shrink-0 text-base" />
+                  <span className="whitespace-nowrap">Call</span>
+                </button>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-outline-primary !inline-flex items-center justify-center gap-2 !py-1.5 !px-3 !text-sm !w-auto !min-w-0"
+                  onClick={() => handleCall("video")}
+                >
+                  <i className="ri-vidicon-line shrink-0 text-base" />
+                  <span className="whitespace-nowrap">Video</span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── New chat / New group modal ── */}
+      {showNewChat && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNewChat(false)}>
+          <div
+            className="bg-white dark:bg-bodybg rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 border-b border-defaultborder dark:border-white/10">
+              <h5 className="text-lg font-semibold mb-4 text-defaulttextcolor dark:text-defaulttextcolor/90">
+                {newChatMode === "group" ? "New Group" : "New Chat"}
+              </h5>
+              <div className="inline-flex p-0.5 rounded-lg bg-light dark:bg-white/5">
+                <button
+                  type="button"
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    newChatMode === "direct"
+                      ? "bg-white dark:bg-white/10 text-primary shadow-sm"
+                      : "text-defaulttextcolor/70 hover:text-defaulttextcolor"
+                  }`}
+                  onClick={() => setNewChatMode("direct")}
+                >
+                  <i className="ri-chat-3-line me-1.5 align-middle" />
+                  Direct Chat
+                </button>
+                <button
+                  type="button"
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                    newChatMode === "group"
+                      ? "bg-white dark:bg-white/10 text-primary shadow-sm"
+                      : "text-defaulttextcolor/70 hover:text-defaulttextcolor"
+                  }`}
+                  onClick={() => setNewChatMode("group")}
+                >
+                  <i className="ri-group-2-line me-1.5 align-middle" />
+                  Group
+                </button>
+              </div>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1">
+              {newChatMode === "group" && (
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-defaulttextcolor/80 mb-1.5">Group name</label>
+                  <input
+                    className="form-control rounded-lg"
+                    placeholder="Enter group name"
+                    value={groupName}
+                    onChange={(e) => setGroupName(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-defaulttextcolor/80 mb-1.5">Add participants</label>
+                <div className="flex gap-2">
+                  <input
+                    className="form-control flex-1 rounded-lg"
+                    placeholder="Search users by name or email..."
+                    value={userSearch}
+                    onChange={(e) => setUserSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUsers())}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary rounded-lg shrink-0"
+                    onClick={handleSearchUsers}
+                  >
+                    <i className="ri-search-line" />
+                  </button>
+                </div>
+              </div>
+              <div className="mb-4">
+                <p className="text-xs text-defaulttextcolor/60 mb-2">
+                  {newChatMode === "group"
+                    ? "Select at least one user. Click a user to toggle selection."
+                    : "Click a user to start a chat."}
+                </p>
+                <ul className="list-none max-h-52 overflow-y-auto rounded-lg border border-defaultborder dark:border-white/10 divide-y divide-defaultborder dark:divide-white/10">
+                  {searchResults.length === 0 ? (
+                    <li className="py-8 text-center text-defaulttextcolor/60 text-sm">
+                      {userSearch.trim() ? "No users found. Try a different search." : "Search for users to add."}
+                    </li>
+                  ) : (
+                    searchResults.map((u) => {
+                      const uid = (u as any).id || (u as any)._id;
+                      const isSelected = selectedUserIds.has(String(uid));
+                      return (
+                        <li
+                          key={uid}
+                          className={`py-3 px-3 cursor-pointer flex items-center gap-3 transition-colors ${
+                            newChatMode === "group" && isSelected
+                              ? "bg-primary/10 dark:bg-primary/20"
+                              : "hover:bg-light dark:hover:bg-white/5"
+                          }`}
+                          onClick={() =>
+                            newChatMode === "group" ? toggleUserForGroup(String(uid)) : handleStartChat(u)
+                          }
+                        >
+                          {newChatMode === "group" && (
+                            <span
+                              className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center ${
+                                isSelected ? "bg-primary border-primary" : "border-defaultborder dark:border-white/20"
+                              }`}
+                            >
+                              {isSelected && <i className="ri-check-line text-white text-xs" />}
+                            </span>
+                          )}
+                          <span className="avatar avatar-sm avatar-rounded flex-shrink-0">
+                            <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(u.name)}&size=40`} alt="" />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="mb-0 font-medium truncate">{u.name}</p>
+                            <p className="text-[0.75rem] text-defaulttextcolor/60 truncate">{u.email}</p>
+                          </div>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
+            </div>
+            <div className="p-5 border-t border-defaultborder dark:border-white/10 flex gap-3 justify-end">
+              <button
+                type="button"
+                className="ti-btn ti-btn-outline-secondary rounded-lg"
+                onClick={() => setShowNewChat(false)}
+              >
+                Cancel
+              </button>
+              {newChatMode === "group" && (
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary rounded-lg min-w-[140px]"
+                  onClick={handleCreateGroup}
+                  disabled={selectedUserIds.size < 1 || creatingGroup}
+                >
+                  {creatingGroup ? (
+                    <>
+                      <i className="ri-loader-4-line animate-spin me-1.5" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-add-circle-line me-1.5" />
+                      Create Group {selectedUserIds.size > 0 && `(${selectedUserIds.size})`}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Incoming call modal ── */}
+      {incomingCall && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
+          <div className="bg-white dark:bg-bodybg rounded-xl p-8 w-full max-w-sm text-center shadow-xl">
+            <div className="mb-4">
+              <span className="avatar avatar-xxl avatar-rounded mx-auto">
+                <img
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(incomingCall.caller?.name || "U")}&size=80`}
+                  alt=""
+                />
+              </span>
+            </div>
+            <h5 className="mb-1">{incomingCall.caller?.name || "Unknown"}</h5>
+            <p className="text-[#8c9097] mb-6">
+              Incoming {incomingCall.callType} call...
+            </p>
+            <div className="flex justify-center gap-4">
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-danger !rounded-full !w-14 !h-14"
+                onClick={declineCall}
+                title="Decline"
+              >
+                <i className="ri-phone-fill text-xl rotate-[135deg]" />
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-success !rounded-full !w-14 !h-14"
+                onClick={acceptCall}
+                title="Accept"
+              >
+                <i className={`text-xl ${incomingCall.callType === "video" ? "ri-vidicon-fill" : "ri-phone-fill"}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Image preview lightbox ── */}
+      {imagePreview && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] cursor-pointer"
+          onClick={() => setImagePreview(null)}
+        >
+          <img
+            src={imagePreview}
+            alt=""
+            className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Chat;

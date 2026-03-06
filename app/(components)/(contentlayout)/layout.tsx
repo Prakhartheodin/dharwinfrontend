@@ -8,11 +8,14 @@ import { ThemeChanger } from "@/shared/redux/action"
 import store from "@/shared/redux/store"
 import { Fragment, useState } from "react"
 import { connect } from "react-redux"
+import { usePathname } from "next/navigation"
 import { ProtectedRoute } from "@/shared/components/protected-route"
 import { PermissionGuard } from "@/shared/components/permission-guard"
 
 const Layout = ({ children }: any) => {
   const [MyclassName, setMyClass] = useState("");
+  const pathname = usePathname();
+  const isMeetingRoom = pathname?.startsWith("/meetings/room/");
 
   const Bodyclickk = () => {
     const theme = store.getState();
@@ -24,6 +27,19 @@ const Layout = ({ children }: any) => {
         ThemeChanger({ ...theme, iconOverlay: "" });
       }
     }
+  }
+
+  if (isMeetingRoom) {
+    return (
+      <ProtectedRoute>
+        <PermissionGuard>
+          <div className="fixed inset-0 z-[9999] w-screen h-screen overflow-hidden bg-[#0f1012]">
+            {children}
+          </div>
+          <PrelineScript />
+        </PermissionGuard>
+      </ProtectedRoute>
+    );
   }
 
   return (

@@ -17,6 +17,7 @@ import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { updateMeeting } from "@/shared/lib/api/meetings";
+import { endCallByRoom } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -63,10 +64,17 @@ function RoomContent({
       }
 
       if (reason === DisconnectReason.CLIENT_INITIATED) {
-        console.log("Client initiated disconnect, not reconnecting");
         isManuallyLeavingRef.current = true;
         setMeetingEndedToast(true);
-        setTimeout(() => onLeave(), 2000);
+        setTimeout(() => onLeave(), 800);
+        return;
+      }
+
+      // Call ended by server (e.g. other person left in 1-on-1) – don't reconnect
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED || reason === DisconnectReason.ROOM_DELETED) {
+        isManuallyLeavingRef.current = true;
+        setMeetingEndedToast(true);
+        setTimeout(() => onLeave(), 800);
         return;
       }
 
@@ -100,15 +108,12 @@ function RoomContent({
           if (!isManuallyLeavingRef.current) {
             onLeave();
           }
-        }, 2000);
+        }, 800);
       }
     };
 
     const handleConnectionStateChange = (state: ConnectionState) => {
-      const previousState = connectionStateRef.current;
-      console.log("Connection state changed:", state, "Previous:", previousState);
       connectionStateRef.current = state;
-
       if (state === ConnectionState.Connected) {
         setReconnecting(false);
         setReconnectAttempts(0);
@@ -116,24 +121,16 @@ function RoomContent({
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
-      } else if (state === ConnectionState.Disconnected) {
-        if (previousState !== ConnectionState.Disconnected) {
-          handleDisconnect();
-        }
       } else if (state === ConnectionState.Reconnecting) {
         setReconnecting(true);
       }
+      // Do NOT call handleDisconnect on Disconnected - the "disconnected" event fires
+      // with the reason; connectionStateChanged fires first without reason and would
+      // incorrectly trigger reconnect logic when user intentionally leaves.
     };
 
     room.on("disconnected", handleDisconnect);
     room.on("connectionStateChanged", handleConnectionStateChange);
-
-    if (
-      room.state === ConnectionState.Disconnected &&
-      !isManuallyLeavingRef.current
-    ) {
-      handleDisconnect();
-    }
 
     return () => {
       room.off("disconnected", handleDisconnect);
@@ -529,7 +526,7 @@ function RoomContent({
           height: 100%;
           min-height: 0;
           width: 100%;
-          background: #202124;
+          background: linear-gradient(180deg, #0f1012 0%, #181a1d 50%, #0f1012 100%);
         }
         .room-meeting-container .lk-video-conference {
           flex: 1;
@@ -546,14 +543,50 @@ function RoomContent({
         }
         .room-meeting-container .lk-grid-layout {
           min-height: 0;
+          gap: 0.75rem;
+          padding: 1rem;
+        }
+        .room-meeting-container .lk-participant-tile {
+          min-height: 140px;
+          border-radius: 12px;
+          overflow: hidden;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+        .room-meeting-container .lk-participant-placeholder,
+        .room-meeting-container [class*="placeholder"] {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: linear-gradient(135deg, rgba(99,102,241,0.15) 0%, rgba(139,92,246,0.1) 100%) !important;
+        }
+        .room-meeting-container .lk-participant-placeholder svg,
+        .room-meeting-container [class*="placeholder"] svg {
+          width: 64px;
+          height: 64px;
+          opacity: 0.5;
         }
         .room-meeting-container .lk-control-bar {
           flex-shrink: 0;
-          background: #202124;
-          border-top-color: rgba(255,255,255,0.12);
+          background: rgba(15,16,18,0.95);
+          backdrop-filter: blur(12px);
+          border-top: 1px solid rgba(255,255,255,0.08);
+          padding: 1rem 1.5rem;
+          gap: 0.5rem;
         }
-        .room-meeting-container .lk-participant-tile {
-          min-height: 120px;
+        .room-meeting-container .lk-control-bar button {
+          border-radius: 10px;
+          transition: all 0.2s ease;
+        }
+        .room-meeting-container .lk-control-bar button:hover {
+          background: rgba(255,255,255,0.1);
+        }
+        .room-meeting-container .lk-disconnect-button {
+          background: rgba(239,68,68,0.2) !important;
+          color: #f87171 !important;
+        }
+        .room-meeting-container .lk-disconnect-button:hover {
+          background: rgba(239,68,68,0.35) !important;
         }
         #recording-button-slot .lk-button {
           position: relative;
@@ -561,6 +594,13 @@ function RoomContent({
           align-items: center;
           justify-content: center;
           gap: 0.375rem;
+        }
+        .room-meeting-container .lk-participant-name {
+          background: rgba(0,0,0,0.6);
+          backdrop-filter: blur(8px);
+          padding: 0.25rem 0.5rem;
+          border-radius: 6px;
+          font-size: 0.8rem;
         }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
@@ -576,15 +616,16 @@ function RoomContent({
         }
       `}} />
       <div className="room-meeting-container relative">
-        {/* Top bar: duration + participant count */}
-        <div className="absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-4 py-2 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+        {/* Top bar: call info */}
+        <div className="absolute top-0 left-0 right-0 z-[100] flex items-center justify-between px-5 py-3 bg-gradient-to-b from-black/70 via-black/40 to-transparent pointer-events-none">
           <div className="flex items-center gap-3 pointer-events-auto">
-            <span className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/40 text-white text-sm font-medium tabular-nums">
-              <i className="ti ti-clock text-base opacity-80" />
+            <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md text-white text-sm font-medium tabular-nums border border-white/10">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <i className="ti ti-clock text-base opacity-90" />
               {formatDuration(elapsedSeconds)}
             </span>
-            <span className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/40 text-white text-sm font-medium">
-              <i className="ti ti-users text-base opacity-80" />
+            <span className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/10 backdrop-blur-md text-white text-sm font-medium border border-white/10">
+              <i className="ti ti-users text-base opacity-90" />
               {participantCount} {participantCount === 1 ? "participant" : "participants"}
             </span>
           </div>
@@ -636,19 +677,19 @@ function RoomContent({
         />
       )}
       {reconnecting && (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center z-[200]">
-          <div className="text-center text-white max-w-sm px-6">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full border-2 border-primary/50 mb-4">
-              <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
+        <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200]">
+          <div className="text-center text-white max-w-sm px-8 py-8 rounded-2xl bg-white/5 border border-white/10">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/20 border border-primary/40 mb-5">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
             </div>
-            <p className="text-lg font-medium mb-1">Reconnecting…</p>
-            <p className="text-sm text-gray-400 mb-4">
+            <p className="text-lg font-semibold mb-1">Reconnecting…</p>
+            <p className="text-sm text-gray-400 mb-6">
               Attempt {reconnectAttempts} of {MAX_RECONNECT_ATTEMPTS}
             </p>
             <button
               type="button"
               onClick={() => onReconnect()}
-              className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:opacity-90"
+              className="px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-medium hover:opacity-90 transition-opacity"
             >
               Rejoin now
             </button>
@@ -672,6 +713,7 @@ export default function MeetingRoomClient() {
   const [isHost, setIsHost] = useState(false);
   const [isInWaitingRoom, setIsInWaitingRoom] = useState(false);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
+  const [mediaFailureKind, setMediaFailureKind] = useState<string | null>(null);
 
   // Try to get user from auth context
   let user = null;
@@ -683,6 +725,8 @@ export default function MeetingRoomClient() {
   }
 
   const roomId = params.roomId as string;
+  const fromChat = searchParams.get("from") === "chat";
+  const returnConvId = searchParams.get("conv") || null;
   const participantName = useMemo(() => {
     return (
       searchParams.get("name") || user?.name || user?.email || `user-${Math.random().toString(36).substr(2, 9)}`
@@ -737,13 +781,26 @@ export default function MeetingRoomClient() {
     fetchToken();
   }, [fetchToken, reconnectKey]);
 
-  const handleLeave = useCallback(() => {
+  const handleLeave = useCallback(async () => {
     const roomName = decodeURIComponent(roomId);
-    if (isHost) {
-      updateMeeting(roomName, { status: "ended" }).catch(() => {});
+    if (fromChat && roomName.startsWith("chat-")) {
+      await endCallByRoom(roomName).catch(() => {});
+      try {
+        window.close();
+      } catch {
+        /* ignore */
+      }
+      const returnUrl = returnConvId
+        ? `/communication/chats?conv=${encodeURIComponent(returnConvId)}`
+        : "/communication/chats";
+      router.push(returnUrl);
+    } else {
+      if (isHost) {
+        updateMeeting(roomName, { status: "ended" }).catch(() => {});
+      }
+      router.push("/meetings/pre-join/");
     }
-    router.push("/meetings/pre-join/");
-  }, [router, roomId, isHost]);
+  }, [router, roomId, isHost, fromChat, returnConvId]);
 
   const handleDisconnect = useCallback(() => {
     console.log("Disconnected from room - RoomContent will handle reconnection");
@@ -794,31 +851,65 @@ export default function MeetingRoomClient() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f1012]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Connecting to room...</p>
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-primary/20 border border-primary/40 mb-5">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+          </div>
+          <p className="text-white font-medium">Connecting to call...</p>
+          <p className="text-gray-400 text-sm mt-1">Please wait</p>
         </div>
       </div>
     );
   }
 
   if (error) {
+    const isVideoPermissionError = mediaFailureKind === "videoinput";
+    const tryAudioOnly = () => {
+      setError("");
+      setMediaFailureKind(null);
+      setToken("");
+      const url = new URL(window.location.href);
+      url.searchParams.set("video", "0");
+      window.location.href = url.toString();
+    };
+
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="bg-red-900 border border-red-700 rounded-lg p-6 max-w-md">
-          <h2 className="text-xl font-bold text-white mb-2">Connection Error</h2>
-          <p className="text-red-200 mb-4">{error}</p>
-          <div className="flex gap-2">
+      <div className="min-h-screen flex items-center justify-center bg-[#0f1012] p-4">
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 max-w-md w-full">
+          <div className="flex items-center justify-center w-14 h-14 rounded-full bg-red-500/20 mb-6">
+            <i className="ti ti-alert-circle text-2xl text-red-400" />
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2 text-center">Connection Error</h2>
+          <p className="text-gray-400 mb-6 text-center">{error}</p>
+          <div className="space-y-3 text-sm text-gray-500 mb-6">
+            <p className="font-medium text-gray-400">To fix camera/microphone access:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Click the lock or camera icon in your browser&apos;s address bar</li>
+              <li>Allow camera and microphone for this site</li>
+              <li>Reload the page and try again</li>
+              <li>Ensure you&apos;re using HTTPS (required for media access)</li>
+            </ul>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            {isVideoPermissionError && (
+              <button
+                onClick={tryAudioOnly}
+                className="ti-btn ti-btn-primary rounded-xl"
+              >
+                <i className="ti ti-microphone me-2" />
+                Join with audio only
+              </button>
+            )}
             <button
-              onClick={fetchToken}
-              className="ti-btn ti-btn-primary"
+              onClick={() => { setError(""); setMediaFailureKind(null); fetchToken(); }}
+              className="ti-btn ti-btn-outline-primary rounded-xl"
             >
               Retry
             </button>
             <button
               onClick={handleLeave}
-              className="ti-btn ti-btn-danger"
+              className="ti-btn ti-btn-outline-secondary rounded-xl text-gray-300 hover:text-white border-white/20"
             >
               Go Back
             </button>
@@ -844,7 +935,7 @@ export default function MeetingRoomClient() {
           dynacast: true,
         }}
         data-lk-theme="default"
-        className="room-page h-screen"
+        className="room-page !h-full !min-h-screen w-full"
       >
         <WaitingRoom
           participantName={participantName}
@@ -872,8 +963,10 @@ export default function MeetingRoomClient() {
       onMediaDeviceFailure={(failure, kind) => {
         console.error("Media device failure:", failure, kind);
         if (failure) {
+          setMediaFailureKind(kind || null);
+          const deviceName = kind === "videoinput" ? "camera" : kind === "audioinput" ? "microphone" : "media device";
           setError(
-            `Failed to access ${kind || "media device"}. Please check your browser permissions.`
+            `Failed to access ${deviceName}. Please check your browser permissions or try joining with audio only.`
           );
         }
       }}
@@ -885,7 +978,7 @@ export default function MeetingRoomClient() {
         },
       }}
       data-lk-theme="default"
-      className="room-page h-screen"
+      className="room-page !h-full !min-h-screen w-full"
     >
       <RoomContent
         onLeave={handleLeave}
