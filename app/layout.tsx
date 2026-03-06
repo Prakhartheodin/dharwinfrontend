@@ -7,6 +7,7 @@ import PrelineScript from "./PrelineScript";
 import { useState } from "react";
 import { Initialload } from "@/shared/contextapi";
 import { AuthProvider } from "@/shared/contexts/auth-context";
+import { ChatSocketProvider } from "@/shared/contexts/ChatSocketContext";
 
 const RootLayout = ({ children }: any) => {
   const [pageloading, setpageloading] = useState(false);
@@ -14,9 +15,11 @@ const RootLayout = ({ children }: any) => {
     <>
       <Provider store={store}>
         <AuthProvider>
-          <Initialload.Provider value={{ pageloading, setpageloading }}>
-            {children}
-          </Initialload.Provider>
+          <ChatSocketProvider>
+            <Initialload.Provider value={{ pageloading, setpageloading }}>
+              {children}
+            </Initialload.Provider>
+          </ChatSocketProvider>
         </AuthProvider>
       </Provider>
       <PrelineScript />
