@@ -24,7 +24,7 @@ export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [users, setUsers] = useState<{ id: string; roleIds?: string[] }[]>([]);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(100);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,6 +40,15 @@ export default function RolesPage() {
     });
     return map;
   }, [users]);
+
+  const sortedRoles = useMemo(() => {
+    const list = [...roles];
+    return list.sort((a, b) => {
+      if (a.name === "Administrator") return -1;
+      if (b.name === "Administrator") return 1;
+      return (a.name ?? "").localeCompare(b.name ?? "");
+    });
+  }, [roles]);
 
   const fetchRoles = async () => {
     setLoading(true);
@@ -160,14 +169,14 @@ export default function RolesPage() {
                             Loading...
                           </td>
                         </tr>
-                      ) : roles.length === 0 ? (
+                      ) : sortedRoles.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                             No roles found.
                           </td>
                         </tr>
                       ) : (
-                        roles.map((role, index) => {
+                        sortedRoles.map((role, index) => {
                           const isAdministratorRole = role.name === "Administrator";
                           return (
                           <tr key={role.id} className="border-b border-defaultborder">
@@ -257,7 +266,7 @@ export default function RolesPage() {
                     </tbody>
                   </table>
                 </div>
-                {!loading && roles.length > 0 && (
+                {!loading && sortedRoles.length > 0 && (
                   <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-defaultborder">
                     <p className="text-[0.8125rem] text-defaulttextcolor/70 mb-0">
                       Showing {start} to {end} of {totalResults} entries

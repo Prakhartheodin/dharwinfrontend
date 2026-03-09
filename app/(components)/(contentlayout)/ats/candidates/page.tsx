@@ -844,21 +844,30 @@ const Candidates = () => {
       {
         Header: 'Skills',
         accessor: 'skills',
+        minWidth: 140,
+        maxWidth: 200,
         Cell: ({ row }: any) => {
           const candidate = row.original
+          const raw = candidate.skills ?? []
+          const normalized = raw.flatMap((s: string) =>
+            typeof s === 'string' && s.includes(',') ? s.split(',').map((x: string) => x.trim()).filter(Boolean) : [s]
+          )
+          const display = normalized.slice(0, 4)
+          const extra = normalized.length - 4
           return (
-            <div className="flex flex-wrap gap-1.5">
-              {candidate.skills?.slice(0, 3).map((skill: string, index: number) => (
+            <div className="flex flex-wrap gap-1.5 min-w-0" title={normalized.join(', ')}>
+              {display.map((skill: string, index: number) => (
                 <span
                   key={index}
-                  className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-md text-xs font-medium"
+                  className="inline-flex items-center badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-md text-xs font-medium break-words"
+                  title={skill}
                 >
                   {skill}
                 </span>
               ))}
-              {candidate.skills?.length > 3 && (
+              {extra > 0 && (
                 <span className="badge bg-gray-100 dark:bg-black/20 text-gray-600 dark:text-gray-400 px-2 py-1 rounded-md text-xs font-medium">
-                  +{candidate.skills.length - 3}
+                  +{extra}
                 </span>
               )}
             </div>
