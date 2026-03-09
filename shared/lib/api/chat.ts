@@ -39,7 +39,7 @@ export interface Message {
 
 export interface ChatCall {
   id: string;
-  conversation: string;
+  conversation: string | { id: string };
   caller: { id: string; name: string; email: string };
   participants: { id: string; name: string; email: string }[];
   callType: "audio" | "video";
@@ -47,6 +47,8 @@ export interface ChatCall {
   livekitRoom?: string;
   duration?: number;
   createdAt: string;
+  /** Presigned playback URL when call was recorded via LiveKit Egress */
+  recordingUrl?: string | null;
 }
 
 const BASE = "/chats";

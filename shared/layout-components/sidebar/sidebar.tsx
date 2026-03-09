@@ -166,7 +166,10 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 					selected: false,
 				});
 			}
-			if (browseJobsItem || myApplicationsItem || myProfileItem || coursesItem) {
+			const showCourses = coursesItem && canAccessCourses(userPermissions, roleNames);
+			const showAttendance = attendanceItem && canAccessAttendance(userPermissions, roleNames);
+			const hasAtsItems = browseJobsItem || myApplicationsItem || myProfileItem || showCourses;
+			if (hasAtsItems) {
 				out.push({ menutitle: "ATS" });
 				if (browseJobsItem) {
 					out.push({ ...browseJobsItem, active: false, selected: false });
@@ -177,11 +180,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 				if (myProfileItem) {
 					out.push({ ...myProfileItem, active: false, selected: false });
 				}
-				if (coursesItem) {
+				if (showCourses) {
 					out.push({ ...coursesItem, active: false, selected: false });
 				}
 			}
-			if (attendanceItem) {
+			if (showAttendance) {
 				out.push({ menutitle: "ATTENDANCE" });
 				out.push({
 					...attendanceItem,
@@ -199,7 +202,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			const hasCommEmail = commEmailItem && hasPermissionForPath(userPermissions, "communication.emails:");
 			const hasCommChats = commChatsItem && hasPermissionForPath(userPermissions, "communication.chats:");
 			const hasCommCalling = commCallingItem && hasPermissionForPath(userPermissions, "communication.calling:");
-			const hasCommRecordings = commRecordingsItem && hasPermissionForPath(userPermissions, "meetings");
+			const hasCommRecordings = commRecordingsItem && hasPermissionForPath(userPermissions, "communication.meetings:");
 			const hasCommFiles = commFilesItem && hasPermissionForPath(userPermissions, "communication.files-storage:");
 			if (hasCommEmail || hasCommChats || hasCommCalling || hasCommRecordings || hasCommFiles) {
 				out.push({ menutitle: "COMMUNICATION" });

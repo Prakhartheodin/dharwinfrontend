@@ -41,7 +41,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/communication/email": "communication.emails:",
   "/communication/chats": "communication.chats:",
   "/communication/filemanager": "communication.files-storage:",
-  "/communication/recordings": "meetings",
+  "/communication/recordings": "communication.meetings:",
 };
 
 /** Path prefixes that require permission, sorted by length descending for longest-match. */

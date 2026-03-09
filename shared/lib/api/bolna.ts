@@ -69,6 +69,13 @@ export type CallRecord = {
   errorMessage?: string | null;
   completedAt?: string | null;
   extractedData?: unknown;
+  purpose?: string | null;
+  job?: string;
+  candidate?: string;
+  /** Computed: Job/Recruiter | Student/Candidate | Other */
+  displayCategory?: string;
+  /** Company name (Job/Recruiter) or student name (Student/Candidate); fallback to phone */
+  displayName?: string | null;
 };
 
 export type GetCallRecordsParams = {

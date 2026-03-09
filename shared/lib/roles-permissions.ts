@@ -45,6 +45,7 @@ export const PERMISSION_SECTIONS: {
       { id: "campaigns", label: "Campaigns" },
       { id: "chats", label: "Chats" },
       { id: "calling", label: "Calling" },
+      { id: "meetings", label: "Meetings & Recordings" },
       { id: "files-storage", label: "Files Storage" },
     ],
   },
