@@ -15,6 +15,7 @@ import {
   type TaskStatus,
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
+import { TaskCommentsSection } from "../TaskCommentsSection";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -160,6 +161,11 @@ function TaskCard({ task, onStatusChange }: TaskCardProps) {
             </span>
           </div>
         </div>
+        <TaskCommentsSection
+          taskId={taskId}
+          initialComments={task.comments}
+          onCommentAdded={undefined}
+        />
       </div>
     </div>
   );

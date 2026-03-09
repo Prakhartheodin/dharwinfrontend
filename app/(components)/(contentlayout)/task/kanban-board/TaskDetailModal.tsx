@@ -8,6 +8,7 @@ import {
   TASK_STATUS_LABELS,
   formatCreatedDate,
 } from "@/shared/lib/api/tasks";
+import { TaskCommentsSection } from "../TaskCommentsSection";
 
 export interface TaskDetailModalProps {
   open: boolean;
@@ -19,6 +20,8 @@ export interface TaskDetailModalProps {
   onDelete?: (taskId: string) => void;
   /** Optional lookup of candidates (id, name, email) so we can show details even when assignedTo is just IDs. */
   allCandidates?: { id: string; name: string; email: string }[];
+  /** Called after a comment is added; parent can refetch task to update commentsCount. */
+  onCommentAdded?: () => void;
 }
 
 function getProjectId(projectId: Task["projectId"]): string {
@@ -36,6 +39,7 @@ export function TaskDetailModal({
   onEdit,
   onDelete,
   allCandidates,
+  onCommentAdded,
 }: TaskDetailModalProps) {
   if (!open) return null;
 
@@ -187,6 +191,13 @@ export function TaskDetailModal({
                   </div>
                 )}
               </div>
+              {task && (
+                <TaskCommentsSection
+                  taskId={getTaskId(task)}
+                  initialComments={task.comments}
+                  onCommentAdded={onCommentAdded}
+                />
+              )}
             </div>
           )}
         </div>

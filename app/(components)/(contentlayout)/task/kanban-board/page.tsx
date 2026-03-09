@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
@@ -37,10 +38,12 @@ const STATUS_COLUMNS: { status: TaskStatus; label: string; className: string }[]
 ];
 
 const Kanbanboard = () => {
+  const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [projectFilterId, setProjectFilterId] = useState<string>("");
+  const [assignedToMe, setAssignedToMe] = useState(false);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -70,13 +73,20 @@ const Kanbanboard = () => {
   const columnRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dragulaRef = useRef<{ destroy: () => void } | null>(null);
 
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const fetchTasks = useCallback(async () => {
     setLoading(true);
     try {
       const res = await listTasks({
         limit: 500,
-        ...(search.trim() && { search: search.trim() }),
+        ...(debouncedSearch && { search: debouncedSearch }),
         ...(projectFilterId && { projectId: projectFilterId }),
+        ...(assignedToMe && { assignedToMe: true }),
       });
       setTasks(res.results ?? []);
     } catch {
@@ -84,7 +94,7 @@ const Kanbanboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, projectFilterId]);
+  }, [debouncedSearch, projectFilterId, assignedToMe]);
 
   useEffect(() => {
     listProjects({ limit: 200 })
@@ -194,6 +204,38 @@ const Kanbanboard = () => {
     setEditAssignedCandidateIds(assignedIds);
     setEditOpen(true);
   }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (addModalOpen) setAddModalOpen(false);
+      else if (editOpen) setEditOpen(false);
+      else if (detailOpen) closeDetailModal();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [addModalOpen, editOpen, detailOpen, closeDetailModal]);
+
+  const editTaskIdProcessed = useRef(false);
+  useEffect(() => {
+    const editTaskId = searchParams.get("editTaskId");
+    if (!editTaskId?.trim() || loading || editTaskIdProcessed.current) return;
+    editTaskIdProcessed.current = true;
+    const existing = tasks.find((t) => getTaskId(t) === editTaskId);
+    if (existing) {
+      openEditModal(existing);
+      window.history.replaceState({}, "", "/task/kanban-board");
+    } else {
+      getTaskById(editTaskId)
+        .then((task) => {
+          openEditModal(task);
+          window.history.replaceState({}, "", "/task/kanban-board");
+        })
+        .catch(() => {
+          editTaskIdProcessed.current = false;
+        });
+    }
+  }, [searchParams, loading, tasks, openEditModal]);
 
   const handleEditFromDetail = useCallback((taskId: string) => {
     const task = tasks.find((t) => getTaskId(t) === taskId) ?? detailTask;
@@ -352,7 +394,7 @@ const Kanbanboard = () => {
                       <i className="ri-add-line !text-[1rem]" /> New Task
                     </button>
                   </div>
-                  <div className="xl:col-span-7 col-span-12">
+                  <div className="xl:col-span-7 col-span-12 flex items-center gap-3">
                     <Select
                       name="project"
                       placeholder="All projects"
@@ -368,30 +410,41 @@ const Kanbanboard = () => {
                       onChange={(opt) =>
                         setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")
                       }
-                      className="w-full !rounded-md"
+                      className="flex-1 !rounded-md"
                       menuPlacement="auto"
                       classNamePrefix="Select2"
                     />
+                    <label className="flex items-center gap-1.5 cursor-pointer shrink-0 text-[0.8125rem]">
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        checked={assignedToMe}
+                        onChange={(e) => setAssignedToMe(e.target.checked)}
+                      />
+                      Assigned to me
+                    </label>
                   </div>
                 </div>
                 <div className="avatar-list-stacked my-3 md:my-0">
                   <span className="avatar avatar-rounded bg-primary/10 text-primary text-xs">+</span>
                 </div>
-                <div className="flex" role="search">
+                <div className="flex gap-2" role="search">
                   <input
-                    className="form-control w-full !rounded-sm me-2"
+                    className="form-control flex-1 !rounded-sm min-w-0"
                     type="search"
-                    placeholder="Search"
+                    placeholder="Search (debounced)"
                     aria-label="Search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !mb-0"
+                    className="ti-btn ti-btn-light !mb-0 shrink-0"
                     onClick={() => fetchTasks()}
+                    disabled={loading}
+                    title="Refresh"
                   >
-                    Search
+                    <i className="ri-refresh-line" />
                   </button>
                 </div>
               </div>
@@ -430,23 +483,37 @@ const Kanbanboard = () => {
                     ref={(el) => {
                       columnRefs.current[colIndex] = el;
                     }}
-                    className="firstdrag"
+                    className="firstdrag min-h-[120px]"
                     data-status={col.status}
                     data-view-btn={`${col.status}-tasks`}
                   >
-                    {(tasksByStatus[col.status] ?? []).map((task) => (
-                      <KanbanTaskCard
-                        key={getTaskId(task)}
-                        task={task}
-                        onView={handleView}
-                        onEdit={(id) => {
-                          const t = tasks.find((x) => getTaskId(x) === id);
-                          if (t) openEditModal(t);
-                        }}
-                        onDelete={handleDelete}
-                        allCandidates={users}
-                      />
-                    ))}
+                    {(tasksByStatus[col.status] ?? []).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-12 px-4 text-center text-[#8c9097] dark:text-white/50 min-w-0">
+                        <p className="text-[0.8125rem] mb-3 whitespace-nowrap">No tasks in this column</p>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-sm ti-btn-primary !min-w-[7.5rem] !px-4 whitespace-nowrap shrink-0 inline-flex items-center justify-center"
+                          onClick={() => openAddTask(col.status)}
+                        >
+                          <i className="ri-add-line me-1 shrink-0" /> <span>Add Task</span>
+                        </button>
+                      </div>
+                    ) : (
+                      (tasksByStatus[col.status] ?? []).map((task) => (
+                        <KanbanTaskCard
+                          key={getTaskId(task)}
+                          task={task}
+                          onView={handleView}
+                          onEdit={(id) => {
+                            const t = tasks.find((x) => getTaskId(x) === id);
+                            if (t) openEditModal(t);
+                          }}
+                          onDelete={handleDelete}
+                          allCandidates={users}
+                          projectsMap={projects}
+                        />
+                      ))
+                    )}
                   </div>
                 </PerfectScrollbar>
               </div>
@@ -469,6 +536,11 @@ const Kanbanboard = () => {
         onEdit={handleEditFromDetail}
         onDelete={handleDelete}
         allCandidates={users}
+        onCommentAdded={
+          detailTask
+            ? () => getTaskById(getTaskId(detailTask)).then(setDetailTask)
+            : undefined
+        }
       />
 
       {addModalOpen && (

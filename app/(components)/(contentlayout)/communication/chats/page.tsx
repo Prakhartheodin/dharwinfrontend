@@ -24,6 +24,7 @@ import {
   deleteMessage,
   reactToMessage,
   uploadChatFiles,
+  deleteConversation as deleteConversationApi,
   type Conversation,
   type Message,
 } from "@/shared/lib/api/chat";
@@ -342,6 +343,7 @@ const Chat = () => {
     leaveConversation,
     onNewMessage,
     onConversationUpdated,
+    onConversationDeleted,
     onIncomingCall,
     onCallEnded,
     onMessageDeleted,
@@ -570,6 +572,23 @@ const Chat = () => {
     });
     return unsub;
   }, [onConversationUpdated, fetchConversations, isOpen, selectedConversation]);
+
+  // Conversation deleted (remove from list and clear selection)
+  useEffect(() => {
+    const unsub = onConversationDeleted((data) => {
+      const deletedId = data?.conversationId && String(data.conversationId);
+      if (!deletedId) return;
+      setConversations((prev) => prev.filter((c) => getId(c) !== deletedId));
+      setSelectedConversation((prev) => {
+        if (prev && getId(prev) === deletedId) {
+          setIsOpen(false);
+          return null;
+        }
+        return prev;
+      });
+    });
+    return unsub;
+  }, [onConversationDeleted]);
 
   // Typing indicator with proper cleanup
   useEffect(() => {
@@ -819,6 +838,30 @@ const Chat = () => {
       window.open(url, "_blank", "noopener");
     } catch {
       // Error
+    }
+  };
+
+  const [deletingChat, setDeletingChat] = useState(false);
+  const handleDeleteChat = async () => {
+    const cid = getId(selectedConversation);
+    if (!cid) return;
+    const isGroup = selectedConversation?.type === "group";
+    const msg = isGroup
+      ? "Permanently delete this group chat for everyone? This cannot be undone."
+      : "Delete this chat? It will be removed for both participants.";
+    if (!window.confirm(msg)) return;
+    setDeletingChat(true);
+    setError(null);
+    try {
+      await deleteConversationApi(cid);
+      setSelectedConversation(null);
+      setIsOpen(false);
+      await fetchConversations();
+    } catch (e: any) {
+      const message = e?.response?.data?.message || "Failed to delete chat.";
+      setError(message);
+    } finally {
+      setDeletingChat(false);
     }
   };
 
@@ -1363,8 +1406,22 @@ const Chat = () => {
                   >
                     <i className="ri-information-line" />
                   </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-icon ti-btn-outline-danger !rounded-full"
+                    title="Delete chat"
+                    disabled={deletingChat}
+                    onClick={handleDeleteChat}
+                  >
+                    <i className="ri-delete-bin-line" />
+                  </button>
                 </div>
               </div>
+              {error && (
+                <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-sm">
+                  {error}
+                </div>
+              )}
               <PerfectScrollbar
                 style={{ height: "calc(100vh - 18rem)" }}
                 containerRef={(el) => { chatContainerRef.current = el; }}

@@ -12,6 +12,15 @@ export interface TaskUser {
   email?: string;
 }
 
+export interface TaskComment {
+  _id: string;
+  id?: string;
+  content: string;
+  commentedBy?: TaskUser;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface Task {
   _id: string;
   /** Backend toJSON may return id instead of _id */
@@ -26,6 +35,7 @@ export interface Task {
   projectId?: { _id: string; id?: string; name?: string };
   likesCount: number;
   commentsCount: number;
+  comments?: TaskComment[];
   imageUrl?: string;
   order?: number;
   createdBy?: TaskUser;
@@ -132,6 +142,18 @@ export async function updateTaskStatus(
 
 export async function deleteTask(id: string): Promise<void> {
   await apiClient.delete(`/tasks/${id}`);
+}
+
+/** Get comments for a task (createdBy and assignedTo can view) */
+export async function getTaskComments(taskId: string): Promise<TaskComment[]> {
+  const { data } = await apiClient.get<TaskComment[]>(`/tasks/${taskId}/comments`);
+  return data ?? [];
+}
+
+/** Add a comment to a task (createdBy and assignedTo can add) */
+export async function addTaskComment(taskId: string, content: string): Promise<TaskComment> {
+  const { data } = await apiClient.post<TaskComment>(`/tasks/${taskId}/comments`, { content });
+  return data!;
 }
 
 /** Format due date for display; returns "X days left" or "Done" for past/completed */

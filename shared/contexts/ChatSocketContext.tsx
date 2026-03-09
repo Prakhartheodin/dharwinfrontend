@@ -36,6 +36,7 @@ interface ChatSocketContextValue {
   leaveConversation: (conversationId: string) => void;
   onNewMessage: (callback: (msg: unknown) => void) => () => void;
   onConversationUpdated: (callback: () => void) => () => void;
+  onConversationDeleted: (callback: (data: { conversationId: string }) => void) => () => void;
   onIncomingCall: (callback: (data: IncomingCallData) => void) => () => void;
   onCallEnded: (callback: (data: { conversationId: string; roomName: string }) => void) => () => void;
   onMessageDeleted: (callback: (data: { conversationId: string; messageId: string; deleteFor?: string }) => void) => () => void;
@@ -55,6 +56,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
 
   const newMsgListeners = useRef<Set<(msg: unknown) => void>>(new Set());
   const convUpdateListeners = useRef<Set<() => void>>(new Set());
+  const convDeletedListeners = useRef<Set<(data: { conversationId: string }) => void>>(new Set());
   const incomingCallListeners = useRef<Set<(data: IncomingCallData) => void>>(new Set());
   const callEndedListeners = useRef<Set<(data: { conversationId: string; roomName: string }) => void>>(new Set());
   const messageDeletedListeners = useRef<Set<(data: { conversationId: string; messageId: string; deleteFor?: string }) => void>>(new Set());
@@ -70,6 +72,11 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const onConversationUpdated = useCallback((cb: () => void) => {
     convUpdateListeners.current.add(cb);
     return () => { convUpdateListeners.current.delete(cb); };
+  }, []);
+
+  const onConversationDeleted = useCallback((cb: (data: { conversationId: string }) => void) => {
+    convDeletedListeners.current.add(cb);
+    return () => { convDeletedListeners.current.delete(cb); };
   }, []);
 
   const onIncomingCall = useCallback((cb: (data: IncomingCallData) => void) => {
@@ -159,6 +166,10 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           convUpdateListeners.current.forEach((cb) => cb());
         });
 
+        sock.on("conversation_deleted", (data: { conversationId: string }) => {
+          convDeletedListeners.current.forEach((cb) => cb(data));
+        });
+
         sock.on("incoming_call", (data: IncomingCallData) => {
           incomingCallListeners.current.forEach((cb) => cb(data));
         });
@@ -222,6 +233,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     leaveConversation,
     onNewMessage,
     onConversationUpdated,
+    onConversationDeleted,
     onIncomingCall,
     onCallEnded,
     onMessageDeleted,

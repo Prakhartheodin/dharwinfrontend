@@ -10,29 +10,17 @@ import Menuloop from "./menuloop";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import {
 	PATH_PERMISSION_PREFIX,
 	hasPermissionForPath,
 	getRequiredPermissionForPath,
-	canAccessCourses,
-	canAccessAttendance,
-	canAccessMyProjects,
-	canAccessMyTasks,
-	COURSES_PERMISSION_PREFIX,
-	ATTENDANCE_PERMISSION_PREFIX,
-	PROJECT_PROJECTS_PREFIX,
-	PROJECT_TASKS_PREFIX,
-	isCandidateOnlyNav,
-	CANDIDATE_PROFILE_PATH,
 } from "@/shared/lib/route-permissions";
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
 	const { user } = useAuth();
-	const { isCandidate, isLoading: isCandidateLoading } = useIsCandidate();
 	const [userPermissions, setUserPermissions] = useState<string[]>([]);
 	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 	const [roles, setRoles] = useState<Role[]>([]);
@@ -85,28 +73,10 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		[]
 	);
 
-	const roleNames = useMemo(() => {
-		if (!user?.roleIds?.length || !roles.length) return [];
-		const roleMap = new Map(roles.map((r) => [r.id, r]));
-		return (user.roleIds as string[])
-			.map((id) => roleMap.get(id)?.name)
-			.filter((n): n is string => Boolean(n));
-	}, [user?.roleIds, roles]);
-
 	const isPathAllowed = (menuPath?: string) => {
-		// My Profile: hide from sidebar for non-candidates (recruiters see it in header dropdown or we show in candidate nav)
-		if (menuPath === CANDIDATE_PROFILE_PATH || menuPath?.startsWith(CANDIDATE_PROFILE_PATH + "/")) {
-			return false;
-		}
-		// Browse Jobs and My Applications: only show in candidate nav, hide from recruiter menu
-		if (menuPath === "/ats/browse-jobs" || menuPath === "/ats/my-applications") {
-			return false;
-		}
-
-		// Until permissions are loaded, hide protected links to avoid flashes
-		// of unauthorized items. Unprotected (no prefix) remain visible.
+		// Until permissions are loaded, hide protected links to avoid flashes of unauthorized items.
 		if (!permissionsLoaded) {
-			if (!menuPath || !PATH_PERMISSION_PREFIX[menuPath]) return true;
+			if (!menuPath || !getRequiredPermissionForPath(menuPath)) return true;
 			return false;
 		}
 
@@ -118,117 +88,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		if (!menuPath) return true;
 		const requiredPrefix = getRequiredPermissionForPath(menuPath);
 		if (!requiredPrefix) return true;
-		// Courses: allow if user has candidate.courses:* OR has Candidate role
-		if (requiredPrefix === COURSES_PERMISSION_PREFIX) {
-			return canAccessCourses(userPermissions, roleNames);
-		}
-		// Attendance: allow if user has training.attendance / students.* OR has Student role (portal)
-		if (requiredPrefix === ATTENDANCE_PERMISSION_PREFIX) {
-			return canAccessAttendance(userPermissions, roleNames);
-		}
-		// My Projects: allow if user has project.projects:* OR has Student role
-		if (requiredPrefix === PROJECT_PROJECTS_PREFIX && (menuPath === "/apps/projects/my-projects" || menuPath?.startsWith("/apps/projects/my-projects/"))) {
-			return canAccessMyProjects(userPermissions, roleNames);
-		}
-		// My Tasks: allow if user has project.tasks:* OR has Student/Candidate role
-		if (requiredPrefix === PROJECT_TASKS_PREFIX && (menuPath === "/task/my-tasks" || menuPath?.startsWith("/task/my-tasks/"))) {
-			return canAccessMyTasks(userPermissions, roleNames);
-		}
 		return hasPermissionForPath(userPermissions, requiredPrefix);
 	};
 
-	const isCandidateNav = useMemo(
-		() =>
-			permissionsLoaded &&
-			!isCandidateLoading &&
-			!isAdministrator &&
-			(isCandidate || isCandidateOnlyNav(roleNames, isAdministrator)),
-		[permissionsLoaded, isCandidateLoading, isAdministrator, isCandidate, roleNames]
-	);
-
 	const filteredMenuItems = useMemo(() => {
-		// For candidates (record-based or Student/Candidate role): show Dashboard, Browse Jobs, My Applications, My Profile, Courses, Attendance.
-		if (permissionsLoaded && isCandidateNav) {
-			const dashboardItem = MenuItems.find((m: any) => m.path === "/dashboard");
-			const browseJobsItem = MenuItems.find((m: any) => m.path === "/ats/browse-jobs");
-			const myApplicationsItem = MenuItems.find((m: any) => m.path === "/ats/my-applications");
-			const myProfileItem = MenuItems.find((m: any) => m.path === "/ats/my-profile");
-			const coursesItem = MenuItems.find((m: any) => m.path === "/courses");
-			const attendanceItem = MenuItems.find(
-				(m: any) => m.path === "/training/attendance"
-			);
-			const out: any[] = [];
-			if (dashboardItem) {
-				out.push({ menutitle: "MAIN" });
-				out.push({
-					...dashboardItem,
-					active: false,
-					selected: false,
-				});
-			}
-			const showCourses = coursesItem && canAccessCourses(userPermissions, roleNames);
-			const showAttendance = attendanceItem && canAccessAttendance(userPermissions, roleNames);
-			const hasAtsItems = browseJobsItem || myApplicationsItem || myProfileItem || showCourses;
-			if (hasAtsItems) {
-				out.push({ menutitle: "ATS" });
-				if (browseJobsItem) {
-					out.push({ ...browseJobsItem, active: false, selected: false });
-				}
-				if (myApplicationsItem) {
-					out.push({ ...myApplicationsItem, active: false, selected: false });
-				}
-				if (myProfileItem) {
-					out.push({ ...myProfileItem, active: false, selected: false });
-				}
-				if (showCourses) {
-					out.push({ ...coursesItem, active: false, selected: false });
-				}
-			}
-			if (showAttendance) {
-				out.push({ menutitle: "ATTENDANCE" });
-				out.push({
-					...attendanceItem,
-					title: "Attendance",
-					active: false,
-					selected: false,
-				});
-			}
-			// Communication: show items student has permissions for
-			const commEmailItem = MenuItems.find((m: any) => m.path === "/communication/email");
-			const commChatsItem = MenuItems.find((m: any) => m.path === "/communication/chats");
-			const commCallingItem = MenuItems.find((m: any) => m.path === "/communication/calling");
-			const commRecordingsItem = MenuItems.find((m: any) => m.path === "/communication/recordings");
-			const commFilesItem = MenuItems.find((m: any) => m.path === "/communication/filemanager");
-			const hasCommEmail = commEmailItem && hasPermissionForPath(userPermissions, "communication.emails:");
-			const hasCommChats = commChatsItem && hasPermissionForPath(userPermissions, "communication.chats:");
-			const hasCommCalling = commCallingItem && hasPermissionForPath(userPermissions, "communication.calling:");
-			const hasCommRecordings = commRecordingsItem && hasPermissionForPath(userPermissions, "communication.meetings:");
-			const hasCommFiles = commFilesItem && hasPermissionForPath(userPermissions, "communication.files-storage:");
-			if (hasCommEmail || hasCommChats || hasCommCalling || hasCommRecordings || hasCommFiles) {
-				out.push({ menutitle: "COMMUNICATION" });
-				if (hasCommEmail) out.push({ ...commEmailItem, active: false, selected: false });
-				if (hasCommChats) out.push({ ...commChatsItem, active: false, selected: false });
-				if (hasCommCalling) out.push({ ...commCallingItem, active: false, selected: false });
-				if (hasCommRecordings) out.push({ ...commRecordingsItem, active: false, selected: false });
-				if (hasCommFiles) out.push({ ...commFilesItem, active: false, selected: false });
-			}
-			const myProjectsItem = MenuItems.find((m: any) => m.path === "/apps/projects/my-projects");
-			if (myProjectsItem && canAccessMyProjects(userPermissions, roleNames)) {
-				out.push({ menutitle: "PROJECTS" });
-				out.push({ ...myProjectsItem, active: false, selected: false });
-			}
-			const myTasksItem = MenuItems.find((m: any) => m.path === "/task/my-tasks");
-			if (myTasksItem && canAccessMyTasks(userPermissions, roleNames)) {
-				if (!out.some((item) => item.menutitle === "TASKS")) {
-					out.push({ menutitle: "TASKS" });
-				}
-				out.push({ ...myTasksItem, active: false, selected: false });
-			}
-			if (out.length > 0) return out;
-		}
-
-		// Build a menu where section titles are only kept
-		// if they have at least one visible child link.
+		// Build menu from MenuItems: section titles only shown if they have at least one visible child.
 		const result: any[] = [];
 
 		for (let i = 0; i < MenuItems.length; i++) {
@@ -255,7 +119,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		return result;
-	}, [permissionsLoaded, userPermissions, isAdministrator, isCandidateNav, roleNames]);
+	}, [permissionsLoaded, userPermissions, isAdministrator]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {

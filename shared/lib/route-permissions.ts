@@ -8,6 +8,8 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // ATS
   "/ats/jobs": "ats.jobs:",
   "/ats/candidates": "ats.candidates:",
+  // Browse Jobs and My Applications are public - no permission required
+  "/ats/my-profile": "ats.candidates:",
   "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",
@@ -31,10 +33,10 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/apps/projects/my-projects": "project.projects:",
   "/apps/projects/project-list": "project.projects:",
   "/task/my-tasks": "project.tasks:",
-  "/task/kanban-board": "project.tasks:",
+  "/task/kanban-board": "project.kanban:",
   "/pages/team": "project.teams:",
   "/project-management/projects": "project.projects:",
-  "/project-management/task": "project.tasks:",
+  "/project-management/task": "project.kanban:",
   "/project-management/teams": "project.teams:",
   "/project-management/analytics": "project.analytics:",
   // Communication (app routes under /communication/...)
@@ -88,82 +90,3 @@ export const PROJECT_PROJECTS_PREFIX = "project.projects:";
 /** Permission prefix for task management. */
 export const PROJECT_TASKS_PREFIX = "project.tasks:";
 
-/**
- * Returns true if the user can access My Projects (assigned projects view):
- * - has any permission starting with project.projects:, OR
- * - has a role whose name is "Student" (so students see their assigned projects).
- */
-export function canAccessMyProjects(
-  userPermissions: string[],
-  roleNames: string[]
-): boolean {
-  if (hasPermissionForPath(userPermissions, PROJECT_PROJECTS_PREFIX)) return true;
-  const hasStudentRole = roleNames.some(
-    (name) => name?.toLowerCase() === "student"
-  );
-  return hasStudentRole;
-}
-
-/**
- * Returns true if the user can access My Tasks (assigned tasks view):
- * - has any permission starting with project.tasks:, OR
- * - has a role whose name is "Student" or "Candidate" (so they see their assigned tasks).
- */
-export function canAccessMyTasks(
-  userPermissions: string[],
-  roleNames: string[]
-): boolean {
-  if (hasPermissionForPath(userPermissions, PROJECT_TASKS_PREFIX)) return true;
-  const hasStudentOrCandidateRole = roleNames.some(
-    (name) => name?.toLowerCase() === "student" || name?.toLowerCase() === "candidate"
-  );
-  return hasStudentOrCandidateRole;
-}
-
-/**
- * Returns true if the user can access the /courses section:
- * - has any permission starting with candidate.courses:, OR
- * - has a role whose name is "Candidate" or "candidate" (so candidates see Courses even without that permission).
- */
-export function canAccessCourses(
-  userPermissions: string[],
-  roleNames: string[]
-): boolean {
-  if (hasPermissionForPath(userPermissions, COURSES_PERMISSION_PREFIX)) return true;
-  const hasCandidateRole = roleNames.some(
-    (name) => name?.toLowerCase() === "candidate"
-  );
-  return hasCandidateRole;
-}
-
-/**
- * Returns true if the user can access Attendance Tracking (punch in/out in their portal or admin view):
- * - has any permission starting with training.attendance:, OR
- * - has students.read / students.manage (admin), OR
- * - has a role whose name is "Student" (so students see Attendance in their portal like Courses).
- */
-export function canAccessAttendance(
-  userPermissions: string[],
-  roleNames: string[]
-): boolean {
-  if (hasPermissionForPath(userPermissions, ATTENDANCE_PERMISSION_PREFIX)) return true;
-  if (userPermissions.some((p) => p.startsWith("training.attendance") || p.startsWith("students.read") || p.startsWith("students.manage"))) return true;
-  const hasStudentRole = roleNames.some(
-    (name) => name?.toLowerCase() === "student"
-  );
-  return hasStudentRole;
-}
-
-/**
- * Returns true if the user should see only the candidate/student portal menu
- * (Dashboard, Browse Jobs, My Applications, My Profile, Courses, Attendance).
- */
-export function isCandidateOnlyNav(
-  roleNames: string[],
-  isAdministrator: boolean
-): boolean {
-  if (isAdministrator) return false;
-  const hasStudentRole = roleNames.some((name) => name?.toLowerCase() === "student");
-  const hasCandidateRole = roleNames.some((name) => name?.toLowerCase() === "candidate");
-  return hasStudentRole || hasCandidateRole;
-}

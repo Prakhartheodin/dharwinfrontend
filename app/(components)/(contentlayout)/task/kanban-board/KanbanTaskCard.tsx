@@ -16,6 +16,8 @@ export interface KanbanTaskCardProps {
   onDelete: (taskId: string) => void;
   /** Optional candidate lookup so avatars can show initials from candidate name/email when assignedTo is just IDs. */
   allCandidates?: { id: string; name: string; email: string }[];
+  /** Optional project lookup for name when projectId is not populated. */
+  projectsMap?: { id: string; name: string }[];
 }
 
 export function KanbanTaskCard({
@@ -24,12 +26,21 @@ export function KanbanTaskCard({
   onEdit,
   onDelete,
   allCandidates,
+  projectsMap,
 }: KanbanTaskCardProps) {
   const taskId = getTaskId(task);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const dueLabel = formatDueDate(task.dueDate, task.status);
   const isCompleted = task.status === "completed";
-  const projectName = task.projectId?.name;
+  const projectIdRaw = task.projectId;
+  const projectId =
+    typeof projectIdRaw === "string"
+      ? projectIdRaw
+      : (projectIdRaw as { id?: string })?.id ??
+        (projectIdRaw as { _id?: string })?._id;
+  const projectName =
+    (typeof projectIdRaw === "object" && projectIdRaw?.name) ??
+    (projectId && projectsMap?.find((p) => p.id === projectId)?.name);
 
   const toggleDropdown = (e: React.MouseEvent) => {
     e.preventDefault();

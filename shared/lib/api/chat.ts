@@ -75,6 +75,10 @@ export async function getConversation(id: string): Promise<Conversation> {
   return data;
 }
 
+export async function deleteConversation(conversationId: string): Promise<void> {
+  await apiClient.delete(`${BASE}/conversations/${conversationId}`);
+}
+
 export async function getMessages(
   conversationId: string,
   params?: { before?: string; limit?: number }

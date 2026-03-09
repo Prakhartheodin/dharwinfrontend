@@ -5,14 +5,6 @@ import { ROUTES } from "@/shared/lib/constants";
 import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
-  canAccessCourses,
-  canAccessAttendance,
-  canAccessMyProjects,
-  canAccessMyTasks,
-  COURSES_PERMISSION_PREFIX,
-  ATTENDANCE_PERMISSION_PREFIX,
-  PROJECT_PROJECTS_PREFIX,
-  PROJECT_TASKS_PREFIX,
 } from "@/shared/lib/route-permissions";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -38,7 +30,6 @@ export function PermissionGuard({
   const router = useRouter();
   const { user } = useAuth();
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
-  const [roleNames, setRoleNames] = useState<string[]>([]);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [allowed, setAllowed] = useState<boolean | null>(null);
 
@@ -50,7 +41,6 @@ export function PermissionGuard({
     const load = async () => {
       if (!user?.roleIds?.length) {
         setUserPermissions([]);
-        setRoleNames([]);
         setPermissionsLoaded(true);
         return;
       }
@@ -59,17 +49,13 @@ export function PermissionGuard({
         const roles = (res.results ?? []) as Role[];
         const roleMap = new Map(roles.map((r) => [r.id, r]));
         const perms = new Set<string>();
-        const names: string[] = [];
         (user.roleIds as string[]).forEach((id) => {
           const role = roleMap.get(id);
           role?.permissions?.forEach((p) => perms.add(p));
-          if (role?.name) names.push(role.name);
         });
         setUserPermissions(Array.from(perms));
-        setRoleNames(names);
       } catch {
         setUserPermissions([]);
-        setRoleNames([]);
       } finally {
         setPermissionsLoaded(true);
       }
@@ -88,36 +74,8 @@ export function PermissionGuard({
       setAllowed(true);
       return;
     }
-    // Courses: allow if user has candidate.courses:* OR has Candidate role
-    if (required === COURSES_PERMISSION_PREFIX) {
-      setAllowed(canAccessCourses(userPermissions, roleNames));
-      return;
-    }
-    // Attendance: allow if user has training.attendance:* / students.read|manage OR has Student role
-    if (required === ATTENDANCE_PERMISSION_PREFIX) {
-      setAllowed(canAccessAttendance(userPermissions, roleNames));
-      return;
-    }
-    // My Projects: allow if user has project.projects:* OR has Student role
-    if (required === PROJECT_PROJECTS_PREFIX && (pathname ?? "").includes("/apps/projects/my-projects")) {
-      setAllowed(canAccessMyProjects(userPermissions, roleNames));
-      return;
-    }
-    // My Tasks: allow if user has project.tasks:* OR has Student/Candidate role
-    if (required === PROJECT_TASKS_PREFIX && (pathname ?? "").includes("/task/my-tasks")) {
-      setAllowed(canAccessMyTasks(userPermissions, roleNames));
-      return;
-    }
-    // Candidates: allow if user has ats.candidates:* OR is a candidate (role 'user') editing own profile
-    if (required === "ats.candidates:") {
-      const hasCandidatesPermission = hasPermissionForPath(userPermissions, required);
-      const isCandidate = user?.role === "user";
-      const isOwnProfileEdit = (pathname ?? "").includes("/ats/candidates/edit");
-      setAllowed(hasCandidatesPermission || (isCandidate && isOwnProfileEdit));
-      return;
-    }
     setAllowed(hasPermissionForPath(userPermissions, required));
-  }, [permissionsLoaded, pathname, userPermissions, roleNames]);
+  }, [permissionsLoaded, pathname, userPermissions]);
 
   // Redirect when not allowed
   useEffect(() => {
