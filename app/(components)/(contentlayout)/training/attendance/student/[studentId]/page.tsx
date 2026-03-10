@@ -17,7 +17,8 @@ export async function generateStaticParams() {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to fetch students: ${response.statusText}`);
+      // Auth not available at build time (401) or API unreachable – return placeholder
+      return [{ studentId: "_" }];
     }
     
     const data = await response.json();
