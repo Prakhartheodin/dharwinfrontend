@@ -610,7 +610,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     </li>
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/pages/chat/">
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/support-tickets">
                         <i className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support
                       </Link>
                     </li>

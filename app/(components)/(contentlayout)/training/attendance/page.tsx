@@ -20,7 +20,6 @@ const ELAPSED_UPDATE_MS = 1000;
 const AUTO_PUNCH_OUT_HOURS = 12;
 const AUTO_PUNCH_OUT_WARNING_BEFORE_MS = 15 * 60 * 1000;
 
-/** Detect timezone from browser (used for punch-in; no user selection required). */
 function getDetectedTimezone(): string {
   if (typeof window === "undefined") return "UTC";
   try {
@@ -47,11 +46,7 @@ function getHolidayNameFromNotes(notes?: string): string {
 
 function formatTime(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleTimeString(undefined, {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return new Date(dateStr).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch {
     return dateStr;
   }
@@ -59,12 +54,7 @@ function formatTime(dateStr: string): string {
 
 function formatDate(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleDateString(undefined, {
-      weekday: "short",
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    return new Date(dateStr).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
   } catch {
     return dateStr;
   }
@@ -72,30 +62,19 @@ function formatDate(dateStr: string): string {
 
 const tz = (zone: string) => zone || "UTC";
 
-/** Format date+time in record's timezone (for admin tables). */
 function formatTimeInTimezone(dateStr: string | null, timezone: string): string {
   if (!dateStr) return "—";
   try {
-    return new Date(dateStr).toLocaleString(undefined, {
-      timeZone: tz(timezone),
-      dateStyle: "short",
-      timeStyle: "medium",
-    });
+    return new Date(dateStr).toLocaleString(undefined, { timeZone: tz(timezone), dateStyle: "short", timeStyle: "medium" });
   } catch {
     return new Date(dateStr).toLocaleString();
   }
 }
 
-/** Format time only in record's timezone so punch in/out are consistent with auto punch-out. */
 function formatTimeOnlyInTimezone(dateStr: string | null, timezone: string): string {
   if (!dateStr) return "—";
   try {
-    return new Date(dateStr).toLocaleTimeString(undefined, {
-      timeZone: tz(timezone),
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
+    return new Date(dateStr).toLocaleTimeString(undefined, { timeZone: tz(timezone), hour: "2-digit", minute: "2-digit", second: "2-digit" });
   } catch {
     return new Date(dateStr).toLocaleTimeString();
   }
@@ -110,7 +89,6 @@ function formatDurationFromMs(ms: number | null): string {
   return `${mins}m`;
 }
 
-/** YYYY-MM-DD in local time for calendar key (backend date is UTC midnight). */
 function getLocalDateKey(isoDateStr: string): string {
   if (!isoDateStr) return "";
   const d = new Date(isoDateStr);
@@ -126,9 +104,12 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 export default function AttendanceTracking() {
   const { user } = useAuth();
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
+  const [myWeekOff, setMyWeekOff] = useState<string[]>([]);
   const [loadingStudent, setLoadingStudent] = useState(true);
   const [status, setStatus] = useState<attendanceApi.PunchStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -154,59 +135,39 @@ export default function AttendanceTracking() {
   const [myAttendanceViewMode, setMyAttendanceViewMode] = useState<"list" | "calendar">("list");
   const [myCalendarYear, setMyCalendarYear] = useState(() => new Date().getFullYear());
   const [myCalendarMonth, setMyCalendarMonth] = useState(() => new Date().getMonth());
-  /** Tick every second to update live duration for punched-in students in Track view. */
   const [trackLiveTick, setTrackLiveTick] = useState(0);
   const [showRequestModal, setShowRequestModal] = useState(false);
   const [requestEntries, setRequestEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [submittingRequest, setSubmittingRequest] = useState(false);
 
+  /* ─── data fetching (unchanged logic) ─── */
   const fetchStatus = useCallback(async (studentId: string) => {
     setStatusLoading(true);
-    try {
-      const res = await attendanceApi.getPunchInOutStatus(studentId);
-      setStatus(res);
-    } catch {
-      setStatus(null);
-    } finally {
-      setStatusLoading(false);
-    }
+    try { const res = await attendanceApi.getPunchInOutStatus(studentId); setStatus(res); } catch { setStatus(null); } finally { setStatusLoading(false); }
   }, []);
 
   const fetchList = useCallback(async (studentId: string, params?: attendanceApi.ListAttendanceParams) => {
     setListLoading(true);
-    try {
-      const res = await attendanceApi.listAttendance(studentId, params ?? { limit: 500, page: 1 });
-      setAttendanceList(res.results ?? []);
-    } catch {
-      setAttendanceList([]);
-    } finally {
-      setListLoading(false);
-    }
+    try { const res = await attendanceApi.listAttendance(studentId, params ?? { limit: 500, page: 1 }); setAttendanceList(res.results ?? []); } catch { setAttendanceList([]); } finally { setListLoading(false); }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      setLoadingStudent(true);
-      setError(null);
+      setLoadingStudent(true); setError(null);
       try {
         const student = await attendanceApi.getMyStudentForAttendance();
         if (!cancelled && student?.id) {
           setMyStudentId(student.id);
+          const wo = (student as { weekOff?: string[] }).weekOff;
+          if (Array.isArray(wo)) setMyWeekOff(wo);
         }
       } catch (e: unknown) {
-        if (!cancelled) {
-          const status = (e as { response?: { status?: number } })?.response?.status;
-          if (status !== 404) setError("Failed to load your profile.");
-        }
-      } finally {
-        if (!cancelled) setLoadingStudent(false);
-      }
+        if (!cancelled) { const s = (e as { response?: { status?: number } })?.response?.status; if (s !== 404) setError("Failed to load your profile."); }
+      } finally { if (!cancelled) setLoadingStudent(false); }
     };
     load();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const refetchMyMonth = useCallback(() => {
@@ -219,17 +180,13 @@ export default function AttendanceTracking() {
 
   useEffect(() => {
     if (!myStudentId) return;
-    fetchStatus(myStudentId);
-    refetchMyMonth();
+    fetchStatus(myStudentId); refetchMyMonth();
     const id = setInterval(() => fetchStatus(myStudentId), POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [myStudentId, myAttendanceViewMode, myCalendarYear, myCalendarMonth, fetchStatus, refetchMyMonth]);
 
   useEffect(() => {
-    if (!status?.isPunchedIn || !status?.record?.punchIn) {
-      setElapsedDisplay("");
-      return;
-    }
+    if (!status?.isPunchedIn || !status?.record?.punchIn) { setElapsedDisplay(""); return; }
     const update = () => {
       const start = new Date(status!.record!.punchIn).getTime();
       elapsedRef.current = Date.now() - start;
@@ -246,10 +203,7 @@ export default function AttendanceTracking() {
   }, [status?.isPunchedIn, status?.record?.punchIn, autoWarningShown]);
 
   useEffect(() => {
-    if (status?.isPunchedIn === false && prevPunchedInRef.current === true) {
-      setToastMessage("You have been punched out.");
-      setAutoWarningShown(false);
-    }
+    if (status?.isPunchedIn === false && prevPunchedInRef.current === true) { setToastMessage("You have been punched out."); setAutoWarningShown(false); }
     prevPunchedInRef.current = status?.isPunchedIn ?? null;
   }, [status?.isPunchedIn]);
 
@@ -258,153 +212,72 @@ export default function AttendanceTracking() {
     attendanceApi.getAttendanceStatistics(myStudentId).then(setSummaryStats).catch(() => setSummaryStats(null));
   }, [myStudentId]);
 
-  useEffect(() => {
-    if (toastMessage) {
-      const t = setTimeout(() => setToastMessage(null), 5000);
-      return () => clearTimeout(t);
-    }
-  }, [toastMessage]);
+  useEffect(() => { if (toastMessage) { const t = setTimeout(() => setToastMessage(null), 5000); return () => clearTimeout(t); } }, [toastMessage]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      if (status?.isPunchedIn) {
-        e.preventDefault();
-      }
-    };
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => { if (status?.isPunchedIn) e.preventDefault(); };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [status?.isPunchedIn]);
 
   const handlePunchIn = async () => {
-    if (!myStudentId) return;
-    setPunchLoading(true);
-    setError(null);
-    try {
-      const timezone = getDetectedTimezone();
-      await attendanceApi.punchInAttendance(myStudentId, { timezone });
-      await fetchStatus(myStudentId);
-      refetchMyMonth();
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg ?? "Punch in failed.");
-    } finally {
-      setPunchLoading(false);
-    }
+    if (!myStudentId) return; setPunchLoading(true); setError(null);
+    try { await attendanceApi.punchInAttendance(myStudentId, { timezone: getDetectedTimezone() }); await fetchStatus(myStudentId); refetchMyMonth(); }
+    catch (e: unknown) { setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch in failed."); }
+    finally { setPunchLoading(false); }
   };
 
   const handlePunchOut = async () => {
-    if (!myStudentId) return;
-    setPunchLoading(true);
-    setError(null);
-    try {
-      await attendanceApi.punchOutAttendance(myStudentId, { punchOutTime: new Date().toISOString() });
-      await fetchStatus(myStudentId);
-      refetchMyMonth();
-    } catch (e: unknown) {
-      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setError(msg ?? "Punch out failed.");
-    } finally {
-      setPunchLoading(false);
-    }
+    if (!myStudentId) return; setPunchLoading(true); setError(null);
+    try { await attendanceApi.punchOutAttendance(myStudentId, { punchOutTime: new Date().toISOString() }); await fetchStatus(myStudentId); refetchMyMonth(); }
+    catch (e: unknown) { setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch out failed."); }
+    finally { setPunchLoading(false); }
   };
 
+  /* Backdated request handlers */
   const defaultTimezone = getDetectedTimezone();
-  const openRequestModal = () => {
-    setRequestEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
-    setShowRequestModal(true);
-  };
-  const addRequestEntry = () => {
-    setRequestEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
-  };
-  const removeRequestEntry = (index: number) => {
-    if (requestEntries.length > 1) setRequestEntries((prev) => prev.filter((_, i) => i !== index));
-  };
+  const openRequestModal = () => { setRequestEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]); setShowRequestModal(true); };
+  const addRequestEntry = () => { setRequestEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]); };
+  const removeRequestEntry = (index: number) => { if (requestEntries.length > 1) setRequestEntries((prev) => prev.filter((_, i) => i !== index)); };
   const updateRequestEntry = (index: number, field: keyof typeof requestEntries[0], value: string) => {
-    setRequestEntries((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
+    setRequestEntries((prev) => { const next = [...prev]; next[index] = { ...next[index], [field]: value }; return next; });
   };
   const handleSubmitRequest = async () => {
     if (!myStudentId) return;
     const valid = requestEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
-    if (valid.length === 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
-      return;
-    }
+    if (valid.length === 0) { await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time." }); return; }
     const invalid = requestEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
-    if (invalid.length > 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
-      return;
-    }
+    if (invalid.length > 0) { await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both times." }); return; }
     setSubmittingRequest(true);
     try {
       const attendanceEntries = valid.map((entry) => {
-        const punchInStr = entry.punchInTime.includes(":") ? entry.punchInTime : `${entry.punchInTime}:00`;
-        const punchOutStr = entry.punchOutTime.includes(":") ? entry.punchOutTime : `${entry.punchOutTime}:00`;
-        const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
-        let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
-        if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
-        return {
-          date: new Date(entry.date).toISOString().slice(0, 10),
-          punchIn: punchInDateTime.toISOString(),
-          punchOut: punchOutDateTime.toISOString(),
-          timezone: entry.timezone || defaultTimezone,
-          notes: entry.notes || undefined,
-        };
+        const pIn = entry.punchInTime.includes(":") ? entry.punchInTime : entry.punchInTime + ":00";
+        const pOut = entry.punchOutTime.includes(":") ? entry.punchOutTime : entry.punchOutTime + ":00";
+        const punchInDt = new Date(entry.date + "T" + pIn);
+        let punchOutDt = new Date(entry.date + "T" + pOut);
+        if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+        return { date: new Date(entry.date).toISOString().slice(0, 10), punchIn: punchInDt.toISOString(), punchOut: punchOutDt.toISOString(), timezone: entry.timezone || defaultTimezone, notes: entry.notes || undefined };
       });
       const notes = requestEntries.map((e) => e.notes).filter(Boolean).join("; ") || undefined;
-      await createBackdatedAttendanceRequest(myStudentId, {
-        attendanceEntries: attendanceEntries.map((e) => ({
-          date: e.date,
-          punchIn: e.punchIn,
-          punchOut: e.punchOut ?? null,
-          timezone: e.timezone,
-        })),
-        notes,
-      });
-      await Swal.fire({
-        icon: "success",
-        title: "Request Submitted",
-        text: "Your backdated attendance request has been submitted. An admin will review it shortly.",
-        confirmButtonText: "OK",
-      });
+      await createBackdatedAttendanceRequest(myStudentId, { attendanceEntries: attendanceEntries.map((e) => ({ date: e.date, punchIn: e.punchIn, punchOut: e.punchOut ?? null, timezone: e.timezone })), notes });
+      await Swal.fire({ icon: "success", title: "Request Submitted", text: "An admin will review it shortly.", confirmButtonText: "OK" });
       setShowRequestModal(false);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to submit request.";
-      await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
-    } finally {
-      setSubmittingRequest(false);
-    }
+      await Swal.fire({ icon: "error", title: "Error", text: msg });
+    } finally { setSubmittingRequest(false); }
   };
 
+  /* Admin data */
   useEffect(() => {
     if (myStudentId !== null) return;
-    let cancelled = false;
-    setTrackListLoading(true);
-    setCanTrackAll(false);
-    attendanceApi
-      .getAttendanceTrackList()
-      .then((res) => {
-        if (!cancelled) {
-          setTrackList(res.results ?? []);
-          setCanTrackAll(true);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTrackList([]);
-          setCanTrackAll(false);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTrackListLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    let cancelled = false; setTrackListLoading(true); setCanTrackAll(false);
+    attendanceApi.getAttendanceTrackList()
+      .then((res) => { if (!cancelled) { setTrackList(res.results ?? []); setCanTrackAll(true); } })
+      .catch(() => { if (!cancelled) { setTrackList([]); setCanTrackAll(false); } })
+      .finally(() => { if (!cancelled) setTrackListLoading(false); });
+    return () => { cancelled = true; };
   }, [myStudentId]);
 
   useEffect(() => {
@@ -413,25 +286,11 @@ export default function AttendanceTracking() {
     rolesApi.listRoles({ limit: 100 }).then((res) => {
       const roles = (res.results ?? []) as Role[];
       const roleMap = new Map(roles.map((r) => [r.id, r]));
-      let admin = false;
-      const perms = new Set<string>();
-      (user!.roleIds as string[]).forEach((id) => {
-        const role = roleMap.get(id);
-        if (!role) return;
-        role.permissions?.forEach((p) => perms.add(p));
-        if (role.name === "Administrator") admin = true;
-      });
-      if (!cancelled) {
-        setCanPunchOutOthers(
-          admin || Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"))
-        );
-      }
-    }).catch(() => {
-      if (!cancelled) setCanPunchOutOthers(false);
-    });
-    return () => {
-      cancelled = true;
-    };
+      let admin = false; const perms = new Set<string>();
+      (user!.roleIds as string[]).forEach((id) => { const role = roleMap.get(id); if (!role) return; role.permissions?.forEach((p) => perms.add(p)); if (role.name === "Administrator") admin = true; });
+      if (!cancelled) setCanPunchOutOthers(admin || Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage")));
+    }).catch(() => { if (!cancelled) setCanPunchOutOthers(false); });
+    return () => { cancelled = true; };
   }, [user?.roleIds, myStudentId]);
 
   const handleAdminPunchOut = useCallback(async (studentId: string) => {
@@ -441,57 +300,29 @@ export default function AttendanceTracking() {
       await attendanceApi.getAttendanceTrackList().then((res) => setTrackList(res.results ?? []));
       const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10) } : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10) } : {};
       attendanceApi.getAttendanceTrackHistory(params).then((res) => setHistoryList(res.results ?? []));
-    } catch {
-      // keep list as is
-    } finally {
-      setPunchOutLoadingId(null);
-    }
+    } catch { /* keep as is */ } finally { setPunchOutLoadingId(null); }
   }, [historyRange]);
 
   const fetchHistoryList = useCallback(() => {
     if (!canTrackAll || myStudentId !== null) return;
-    const params =
-      historyRange === "7d"
-        ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 }
-        : historyRange === "30d"
-          ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 }
-          : { limit: 500 };
+    const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 }
+      : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 } : { limit: 500 };
     setHistoryLoading(true);
-    attendanceApi
-      .getAttendanceTrackHistory(params)
-      .then((res) => setHistoryList(res.results ?? []))
-      .catch(() => setHistoryList([]))
-      .finally(() => setHistoryLoading(false));
+    attendanceApi.getAttendanceTrackHistory(params).then((res) => setHistoryList(res.results ?? [])).catch(() => setHistoryList([])).finally(() => setHistoryLoading(false));
   }, [canTrackAll, myStudentId, historyRange]);
 
-  useEffect(() => {
-    fetchHistoryList();
-  }, [fetchHistoryList]);
+  useEffect(() => { fetchHistoryList(); }, [fetchHistoryList]);
 
-  const switchToHistory = useCallback(() => {
-    setAttendanceView("history");
-    fetchHistoryList();
-  }, [fetchHistoryList]);
-
-  const switchToDashboard = useCallback(() => {
-    setAttendanceView("dashboard");
-    fetchHistoryList();
-  }, [fetchHistoryList]);
+  const switchToHistory = useCallback(() => { setAttendanceView("history"); fetchHistoryList(); }, [fetchHistoryList]);
+  const switchToDashboard = useCallback(() => { setAttendanceView("dashboard"); fetchHistoryList(); }, [fetchHistoryList]);
 
   const fetchTrackList = useCallback((silent = false) => {
     if (myStudentId !== null) return;
     if (!silent) setTrackListLoading(true);
-    attendanceApi
-      .getAttendanceTrackList()
-      .then((res) => setTrackList(res.results ?? []))
-      .catch(() => setTrackList([]))
-      .finally(() => { if (!silent) setTrackListLoading(false); });
+    attendanceApi.getAttendanceTrackList().then((res) => setTrackList(res.results ?? [])).catch(() => setTrackList([])).finally(() => { if (!silent) setTrackListLoading(false); });
   }, [myStudentId]);
 
-  const switchToTrack = useCallback(() => {
-    setAttendanceView("track");
-    fetchTrackList();
-  }, [fetchTrackList]);
+  const switchToTrack = useCallback(() => { setAttendanceView("track"); fetchTrackList(); }, [fetchTrackList]);
 
   useEffect(() => {
     if (attendanceView !== "track" || !trackList.some((r) => r.isPunchedIn)) return;
@@ -505,136 +336,64 @@ export default function AttendanceTracking() {
     return () => clearInterval(id);
   }, [canTrackAll, myStudentId, attendanceView, fetchTrackList]);
 
+  /* CSV exports */
   const exportMyAttendanceCsv = useCallback(() => {
     const rows = attendanceList.map((r) => {
-      const tz = r.timezone ?? "UTC";
-      return {
-        Date: formatDate(r.date),
-        Day: r.day ?? "",
-        PunchIn: formatTimeOnlyInTimezone(r.punchIn, tz),
-        PunchOut: r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, tz) : "",
-        Duration: r.duration != null ? formatDuration(r.duration) : "",
-      };
+      const t = r.timezone ?? "UTC";
+      return { Date: formatDate(r.date), Day: r.day ?? "", PunchIn: formatTimeOnlyInTimezone(r.punchIn, t), PunchOut: r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, t) : "", Duration: r.duration != null ? formatDuration(r.duration) : "" };
     });
-    downloadCsv(
-      `my-attendance-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        { key: "Date", label: "Date" },
-        { key: "Day", label: "Day" },
-        { key: "PunchIn", label: "Punch In" },
-        { key: "PunchOut", label: "Punch Out" },
-        { key: "Duration", label: "Duration" },
-      ],
-      rows
-    );
+    downloadCsv(`my-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "PunchIn", label: "Punch In" }, { key: "PunchOut", label: "Punch Out" }, { key: "Duration", label: "Duration" }], rows);
   }, [attendanceList]);
 
   const exportTrackCsv = useCallback(() => {
-    const rows = trackList.map((row) => ({
-      Name: row.studentName,
-      Email: row.email,
-      Status: row.isPunchedIn ? "Punched In" : "Punched Out",
-      "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "",
-      "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "",
-      Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null),
-      Timezone: row.timezone,
-    }));
-    downloadCsv(
-      `track-attendance-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        { key: "Name", label: "Name" },
-        { key: "Email", label: "Email" },
-        { key: "Status", label: "Status" },
-        { key: "Punch In", label: "Punch In" },
-        { key: "Punch Out", label: "Punch Out" },
-        { key: "Duration", label: "Duration" },
-        { key: "Timezone", label: "Timezone" },
-      ],
-      rows
-    );
+    const rows = trackList.map((row) => ({ Name: row.studentName, Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+    downloadCsv(`track-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Status", label: "Status" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
   }, [trackList]);
 
   const exportHistoryCsv = useCallback(() => {
-    const rows = historyList.map((row) => ({
-      Name: row.studentName,
-      Email: row.email,
-      Date: formatDate(row.date),
-      Day: row.day ?? "",
-      "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "",
-      "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "",
-      Duration: formatDurationFromMs(row.durationMs ?? null),
-      Timezone: row.timezone,
-    }));
-    downloadCsv(
-      `attendance-history-${new Date().toISOString().slice(0, 10)}.csv`,
-      [
-        { key: "Name", label: "Name" },
-        { key: "Email", label: "Email" },
-        { key: "Date", label: "Date" },
-        { key: "Day", label: "Day" },
-        { key: "Punch In", label: "Punch In" },
-        { key: "Punch Out", label: "Punch Out" },
-        { key: "Duration", label: "Duration" },
-        { key: "Timezone", label: "Timezone" },
-      ],
-      rows
-    );
+    const rows = historyList.map((row) => ({ Name: row.studentName, Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+    downloadCsv(`attendance-history-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
   }, [historyList]);
 
   const canPunch = !!myStudentId;
   const isCandidateOnly = canPunch && !canTrackAll;
 
-  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; totalHours: number }> => {
-    const year = myCalendarYear;
-    const month = myCalendarMonth;
-    const firstDay = new Date(year, month, 1);
-    const startDayOfWeek = firstDay.getDay();
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const byDate: Record<string, { present: boolean; incomplete: boolean; totalMs: number }> = {};
+  /* Calendar */
+  const DAY_NAME_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> => {
+    const year = myCalendarYear; const month = myCalendarMonth;
+    const firstDay = new Date(year, month, 1); const startDayOfWeek = firstDay.getDay();
+    const lastDay = new Date(year, month + 1, 0); const daysInMonth = lastDay.getDate();
+    const weekOffSet = new Set(myWeekOff.map((d) => d.trim()));
+    const byDate: Record<string, { present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; totalMs: number; holidayName: string }> = {};
     attendanceList.forEach((r) => {
-      const dateKey = getLocalDateKey(r.date ?? "");
-      if (!dateKey) return;
-      const hasOut = !!r.punchOut;
-      const ms = (r.duration ?? 0) || 0;
-      if (!byDate[dateKey]) byDate[dateKey] = { present: false, incomplete: false, totalMs: 0 };
-      if (hasOut) {
-        byDate[dateKey].present = true;
-        byDate[dateKey].totalMs += ms;
-      } else {
-        byDate[dateKey].incomplete = true;
-      }
+      const dateKey = getLocalDateKey(r.date ?? ""); if (!dateKey) return;
+      const hasOut = !!r.punchOut; const ms = (r.duration ?? 0) || 0;
+      const recStatus = r.status;
+      if (!byDate[dateKey]) byDate[dateKey] = { present: false, incomplete: false, holiday: false, leave: false, absent: false, totalMs: 0, holidayName: "" };
+      if (recStatus === "Holiday") { byDate[dateKey].holiday = true; byDate[dateKey].holidayName = getHolidayNameFromNotes(r.notes) || "Holiday"; }
+      else if (recStatus === "Leave") { byDate[dateKey].leave = true; }
+      else if (recStatus === "Absent") { byDate[dateKey].absent = true; }
+      else if (hasOut) { byDate[dateKey].present = true; byDate[dateKey].totalMs += ms; }
+      else { byDate[dateKey].incomplete = true; }
     });
-    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; totalHours: number }> = [];
-    for (let i = 0; i < startDayOfWeek; i++) {
-      cells.push({
-        day: 0,
-        date: new Date(year, month, -startDayOfWeek + 1 + i),
-        present: false,
-        incomplete: false,
-        totalHours: 0,
-      });
-    }
+    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
+    for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, absent: false, weekOff: false, totalHours: 0, holidayName: "" });
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const info = byDate[dateKey] || { present: false, incomplete: false, totalMs: 0 };
-      const totalHours = Math.round((info.totalMs / (1000 * 60 * 60)) * 100) / 100;
-      cells.push({
-        day,
-        date,
-        present: info.present,
-        incomplete: info.incomplete && !info.present,
-        totalHours,
-      });
+      const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, absent: false, totalMs: 0, holidayName: "" };
+      const dayName = DAY_NAME_MAP[date.getDay()];
+      const isWeekOff = weekOffSet.has(dayName) && !info.present && !info.holiday && !info.leave && !info.incomplete;
+      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((info.totalMs / 3600000) * 100) / 100, holidayName: info.holidayName });
     }
     return cells;
-  }, [attendanceList, myCalendarYear, myCalendarMonth]);
+  }, [attendanceList, myCalendarYear, myCalendarMonth, myWeekOff]);
 
-  const refreshMyAttendanceList = useCallback(() => {
-    refetchMyMonth();
-  }, [refetchMyMonth]);
+  const refreshMyAttendanceList = useCallback(() => { refetchMyMonth(); }, [refetchMyMonth]);
 
+  /* ═══ RENDER ═══ */
   return (
     <Fragment>
       <Seo title={isCandidateOnly ? "Attendance" : "Attendance Tracking"} />
@@ -644,307 +403,435 @@ export default function AttendanceTracking() {
         mainpage={isCandidateOnly ? "Attendance" : "Attendance Tracking"}
       />
 
+      {/* Sticky Active Banner */}
       {canPunch && status?.isPunchedIn && (
-        <div className="sticky top-0 z-10 mx-4 mb-4 rounded-lg bg-success/15 border border-success/30 px-4 py-2 text-sm text-success flex flex-wrap items-center justify-between gap-2">
-          <span>You&apos;re clocked in — {elapsedDisplay}</span>
-          <span className="text-defaulttextcolor/70 text-xs">Timezone: {getDetectedTimezone()}</span>
+        <div className="sticky top-0 z-10 mx-4 mb-4">
+          <div className="flex items-center justify-between gap-3 rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
+              </span>
+              <span className="text-[0.8125rem] font-medium text-success">
+                {"You're clocked in"}
+              </span>
+              <span className="text-[0.9375rem] font-semibold text-success">{elapsedDisplay}</span>
+            </div>
+            <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50">
+              <i className="ri-global-line me-1" />
+              {getDetectedTimezone()}
+            </span>
+          </div>
         </div>
       )}
 
+      {/* Toast */}
       {toastMessage && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-defaulttextcolor text-white px-4 py-3 shadow-lg text-sm animate-fade-in">
+        <div className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-md bg-defaulttextcolor text-white px-4 py-3 shadow-lg text-[0.8125rem]">
+          <i className="ri-information-line" />
           {toastMessage}
         </div>
       )}
 
       <div className="container w-full max-w-full mx-auto">
-        {loadingStudent ? (
-          <div className="py-8 text-defaulttextcolor/70">Loading…</div>
-        ) : error ? (
-          <div className="mb-4 p-4 bg-danger/10 border border-danger/30 text-danger rounded-lg text-sm">
-            {error}
+        {/* Loading / Error */}
+        {loadingStudent && (
+          <div className="py-12 flex flex-col items-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="mt-2 text-[0.8125rem] text-[#8c9097]">Loading your profile...</p>
           </div>
-        ) : null}
-
-        {canPunch && summaryStats && (
-          <div className="box mb-6">
-            <div className="box-header">
-              <div className="box-title">Summary</div>
-            </div>
-            <div className="box-body grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-[0.8125rem]">
-              <div><span className="text-defaulttextcolor/70">Total days</span><div className="font-medium">{summaryStats.totalDays}</div></div>
-              <div><span className="text-defaulttextcolor/70">Total hours</span><div className="font-medium">{summaryStats.totalHours}</div></div>
-              <div><span className="text-defaulttextcolor/70">This week</span><div className="font-medium">{summaryStats.totalHoursWeek ?? "—"} h</div></div>
-              <div><span className="text-defaulttextcolor/70">This month</span><div className="font-medium">{summaryStats.totalHoursMonth ?? "—"} h</div></div>
-              <div><span className="text-defaulttextcolor/70">Avg session</span><div className="font-medium">{summaryStats.averageSessionMinutes != null ? `${summaryStats.averageSessionMinutes} m` : "—"}</div></div>
-              <div><span className="text-defaulttextcolor/70">Late in / Early out</span><div className="font-medium">{summaryStats.latePunchInCount ?? 0} / {summaryStats.earlyPunchOutCount ?? 0}</div></div>
-            </div>
+        )}
+        {error && (
+          <div className="mb-4 flex items-center gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3">
+            <i className="ri-error-warning-line text-danger text-[1.25rem]" />
+            <span className="text-[0.8125rem] text-danger">{error}</span>
           </div>
         )}
 
+        {/* ═══ STUDENT / CANDIDATE VIEW ═══ */}
         {canPunch && (
-          <div className="grid grid-cols-12 gap-6 mb-6">
-            <div className="col-span-12 lg:col-span-6">
-              <div className="box">
-                <div className="box-header flex items-center justify-between">
-                  <div className="box-title">Punch In / Out</div>
-                  <button
-                    type="button"
-                    onClick={openRequestModal}
-                    className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 flex items-center gap-2 text-sm"
-                    title="Request Backdated Attendance"
-                  >
-                    <i className="ri-calendar-check-line text-base" />
-                    Request Backdated Attendance
-                  </button>
-                </div>
-                <div className="box-body space-y-4">
-                  <p className="text-[0.75rem] text-defaulttextcolor/60">
-                    Timezone: {getDetectedTimezone()}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span
-                      className={`badge ${status?.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
-                    >
-                      {statusLoading ? "…" : status?.isPunchedIn ? "Active (Punched In)" : "Inactive (Punched Out)"}
-                    </span>
-                    {status?.isPunchedIn && status?.record?.punchIn && (
-                      <span className="text-sm text-defaulttextcolor/70">
-                        Since {formatTimeOnlyInTimezone(status.record.punchIn, status.record.timezone ?? "UTC")}
-                        {elapsedDisplay ? ` · ${elapsedDisplay}` : ""}
+          <>
+            {/* Summary Stats */}
+            {summaryStats && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 mb-6">
+                {[
+                  { label: "Total Days", value: String(summaryStats.totalDays), icon: "ri-calendar-check-line", color: "primary" },
+                  { label: "Total Hours", value: String(summaryStats.totalHours), icon: "ri-time-line", color: "secondary" },
+                  { label: "This Week", value: (summaryStats.totalHoursWeek ?? "—") + "h", icon: "ri-calendar-todo-line", color: "info" },
+                  { label: "This Month", value: (summaryStats.totalHoursMonth ?? "—") + "h", icon: "ri-calendar-2-line", color: "success" },
+                  { label: "Avg Session", value: summaryStats.averageSessionMinutes != null ? summaryStats.averageSessionMinutes + "m" : "—", icon: "ri-timer-line", color: "warning" },
+                  { label: "Late / Early", value: (summaryStats.latePunchInCount ?? 0) + " / " + (summaryStats.earlyPunchOutCount ?? 0), icon: "ri-alarm-warning-line", color: "danger" },
+                ].map((s, i) => (
+                  <div key={i} className="box !mb-0">
+                    <div className="box-body !p-3 flex items-center gap-2.5">
+                      <span className={"avatar avatar-sm rounded-md bg-" + s.color + "/10 text-" + s.color}>
+                        <i className={s.icon + " text-[0.9rem]"} />
                       </span>
-                    )}
+                      <div className="min-w-0">
+                        <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0 truncate">{s.label}</p>
+                        <p className="text-[1rem] font-semibold text-defaulttextcolor dark:text-white mb-0">{s.value}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-3">
+                ))}
+              </div>
+            )}
+
+            {/* Punch Clock Card */}
+            <div className="grid grid-cols-12 gap-6 mb-6">
+              <div className="col-span-12 lg:col-span-7">
+                <div className="box !mb-0">
+                  <div className="box-header flex items-center justify-between">
+                    <div className="box-title flex items-center gap-2">
+                      <i className="ri-fingerprint-line text-primary text-[1.1rem]" />
+                      Time Clock
+                    </div>
                     <button
                       type="button"
-                      className="ti-btn ti-btn-primary min-w-[7.5rem]"
-                      onClick={handlePunchIn}
-                      disabled={punchLoading || status?.isPunchedIn}
+                      onClick={openRequestModal}
+                      className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 !py-1 !px-2.5 !text-[0.7rem] whitespace-nowrap"
+                      title="Request Backdated Attendance"
                     >
-                      {punchLoading ? "…" : "Punch In"}
+                      <i className="ri-calendar-check-line me-1" />
+                      Backdate Request
                     </button>
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-outline-danger min-w-[7.5rem]"
-                      onClick={handlePunchOut}
-                      disabled={punchLoading || !status?.isPunchedIn}
-                    >
-                      {punchLoading ? "…" : "Punch Out"}
-                    </button>
+                  </div>
+                  <div className="box-body">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                      {/* Status indicator */}
+                      <div className={"flex-shrink-0 flex items-center justify-center h-20 w-20 rounded-full border-[3px] " + (status?.isPunchedIn ? "border-success bg-success/5" : "border-defaultborder bg-gray-50 dark:bg-black/10")}>
+                        {status?.isPunchedIn ? (
+                          <i className="ri-play-circle-fill text-[2rem] text-success" />
+                        ) : (
+                          <i className="ri-pause-circle-line text-[2rem] text-[#8c9097]" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
+                          {status?.isPunchedIn ? (
+                            <span className="inline-flex items-center gap-1.5 badge bg-success/10 text-success !rounded-full !text-[0.75rem] !py-1 !px-2.5">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success" />
+                              </span>
+                              Active
+                            </span>
+                          ) : (
+                            <span className="badge bg-gray-100 dark:bg-white/10 text-[#8c9097] !rounded-full !text-[0.75rem] !py-1 !px-2.5">
+                              {statusLoading ? "Checking..." : "Inactive"}
+                            </span>
+                          )}
+                          {status?.isPunchedIn && status?.record?.punchIn && (
+                            <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                              Since {formatTimeOnlyInTimezone(status.record.punchIn, status.record.timezone ?? "UTC")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-success ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"
+                            onClick={handlePunchIn}
+                            disabled={punchLoading || !!status?.isPunchedIn}
+                          >
+                            {punchLoading && !status?.isPunchedIn ? (
+                              <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Punching In...</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5"><i className="ri-login-box-line" /> Punch In</span>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-danger ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"
+                            onClick={handlePunchOut}
+                            disabled={punchLoading || !status?.isPunchedIn}
+                          >
+                            {punchLoading && status?.isPunchedIn ? (
+                              <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Punching Out...</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5"><i className="ri-logout-box-r-line" /> Punch Out</span>
+                            )}
+                          </button>
+                        </div>
+                        <p className="mt-2 text-[0.6875rem] text-[#8c9097] dark:text-white/50">
+                          <i className="ri-global-line me-1" />{getDetectedTimezone()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {/* Quick info card */}
+              <div className="col-span-12 lg:col-span-5">
+                <div className="box !mb-0 h-full">
+                  <div className="box-header">
+                    <div className="box-title">Today</div>
+                  </div>
+                  <div className="box-body flex flex-col justify-center">
+                    <div className="text-center">
+                      <p className="text-[2rem] font-bold text-defaulttextcolor dark:text-white mb-1">
+                        {new Date().toLocaleDateString("en-US", { weekday: "long" })}
+                      </p>
+                      <p className="text-[0.9375rem] text-[#8c9097] dark:text-white/50">
+                        {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                      </p>
+                      {status?.isPunchedIn && elapsedDisplay && (
+                        <div className="mt-3">
+                          <span className="text-[1.5rem] font-bold text-success">{elapsedDisplay}</span>
+                          <p className="text-[0.6875rem] text-[#8c9097] mt-0.5">elapsed today</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
 
-        {canPunch && (
-          <div className="box mb-6">
-            <div className="box-header flex flex-wrap items-center justify-between gap-2">
-              <div className="box-title">My Attendance</div>
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="text-sm text-defaulttextcolor/80">View:</span>
-                <button
-                  type="button"
-                  className={`ti-btn !py-1.5 !px-3 !text-[0.8125rem] ${myAttendanceViewMode === "list" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                  onClick={() => setMyAttendanceViewMode("list")}
-                >
-                  List
-                </button>
-                <button
-                  type="button"
-                  className={`ti-btn !py-1.5 !px-3 !text-[0.8125rem] ${myAttendanceViewMode === "calendar" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                  onClick={() => setMyAttendanceViewMode("calendar")}
-                >
-                  <i className="ri-calendar-line me-1" />
-                  Calendar
-                </button>
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-                  onClick={refreshMyAttendanceList}
-                  disabled={listLoading}
-                >
-                  {listLoading ? "…" : "Refresh"}
-                </button>
-                <button type="button" className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]" onClick={exportMyAttendanceCsv} disabled={attendanceList.length === 0}>
-                  Export CSV
-                </button>
-              </span>
-            </div>
-            <div className="box-body">
-              {myAttendanceViewMode === "list" && (
-                <>
-                  {listLoading && attendanceList.length === 0 ? (
-                    <div className="py-8 text-center text-defaulttextcolor/70">Loading…</div>
-                  ) : attendanceList.length === 0 ? (
-                    <div className="py-8 text-center text-defaulttextcolor/70">No attendance records yet. Punch in to start; use Refresh to update.</div>
-                  ) : (
-                    <div className="table-responsive">
-                      <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
-                        <thead>
-                          <tr className="bg-gray-50 dark:bg-white/5">
-                            <th className="!text-start">Date</th>
-                            <th className="!text-start">Day</th>
-                            <th className="!text-start">Status</th>
-                            <th className="!text-end">Punch In</th>
-                            <th className="!text-end">Punch Out</th>
-                            <th className="!text-end">Duration</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {attendanceList.map((r) => {
-                            const recordTz = r.timezone ?? "UTC";
-                            const recStatus = (r as { status?: string }).status;
-                            const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
+            {/* My Attendance */}
+            <div className="box mb-6">
+              <div className="box-header flex flex-wrap items-center justify-between gap-2">
+                <div className="box-title">My Attendance</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* View toggle */}
+                  <div className="inline-flex rounded-md border border-defaultborder overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setMyAttendanceViewMode("list")}
+                      className={"inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 text-[0.75rem] font-medium transition-colors " + (myAttendanceViewMode === "list" ? "bg-primary text-white" : "bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white hover:bg-gray-50")}
+                    >
+                      <i className="ri-list-unordered" />
+                      <span>List</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMyAttendanceViewMode("calendar")}
+                      className={"inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 text-[0.75rem] font-medium transition-colors border-l border-defaultborder " + (myAttendanceViewMode === "calendar" ? "bg-primary text-white" : "bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white hover:bg-gray-50")}
+                    >
+                      <i className="ri-calendar-line" />
+                      <span>Calendar</span>
+                    </button>
+                  </div>
+                  <button type="button" className="ti-btn ti-btn-sm ti-btn-light !py-1 !px-2.5 !text-[0.75rem] inline-flex items-center gap-1.5" onClick={refreshMyAttendanceList} disabled={listLoading} title="Refresh list">
+                    <i className={"ri-refresh-line" + (listLoading ? " animate-spin" : "")} />
+                    <span className="whitespace-nowrap">Refresh</span>
+                  </button>
+                  <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary !py-1 !px-2.5 !text-[0.75rem] inline-flex items-center gap-1.5 whitespace-nowrap" onClick={exportMyAttendanceCsv} disabled={attendanceList.length === 0} title="Export as CSV">
+                    <i className="ri-download-2-line" />
+                    <span>Export CSV</span>
+                  </button>
+                </div>
+              </div>
+              <div className="box-body !p-0">
+                {/* List View */}
+                {myAttendanceViewMode === "list" && (
+                  <>
+                    {listLoading && attendanceList.length === 0 ? (
+                      <div className="p-5 space-y-3">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <div key={n} className="flex items-center gap-4 animate-pulse">
+                            <div className="h-4 w-20 rounded bg-black/5 dark:bg-white/10" />
+                            <div className="h-4 w-12 rounded bg-black/5 dark:bg-white/10" />
+                            <div className="h-5 w-16 rounded-full bg-black/5 dark:bg-white/10" />
+                            <div className="h-4 w-20 rounded bg-black/5 dark:bg-white/10 ml-auto" />
+                            <div className="h-4 w-20 rounded bg-black/5 dark:bg-white/10" />
+                            <div className="h-4 w-14 rounded bg-black/5 dark:bg-white/10" />
+                          </div>
+                        ))}
+                      </div>
+                    ) : attendanceList.length === 0 ? (
+                      <div className="py-12 text-center">
+                        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/5">
+                          <i className="ri-calendar-check-line text-[1.5rem] text-primary/40" />
+                        </div>
+                        <p className="text-[0.8125rem] text-[#8c9097]">No attendance records yet</p>
+                        <p className="text-[0.75rem] text-[#8c9097]/70">Punch in to start tracking</p>
+                      </div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="table table-hover whitespace-nowrap min-w-full">
+                          <thead>
+                            <tr className="border-b border-defaultborder dark:border-defaultborder/10">
+                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Date</th>
+                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Day</th>
+                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Status</th>
+                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch In</th>
+                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch Out</th>
+                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Duration</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {attendanceList.map((r) => {
+                              const recordTz = r.timezone ?? "UTC";
+                              const recStatus = (r as { status?: string }).status;
+                              const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
+                              return (
+                                <tr key={r.id} className={"border-b border-defaultborder dark:border-defaultborder/10 transition-colors " + (isHolidayOrLeave ? "bg-info/[0.02]" : "hover:bg-gray-50/50 dark:hover:bg-light/5")}>
+                                  <td className="!py-3 text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white">{formatDate(r.date)}</td>
+                                  <td className="!py-3 text-[0.8125rem] text-[#8c9097]">{r.day ?? "—"}</td>
+                                  <td className="!py-3">
+                                    {recStatus === "Holiday" ? (
+                                      <span className="badge bg-info/10 text-info !rounded-full !text-[0.6875rem]">
+                                        <i className="ri-sun-line me-1 text-[0.55rem]" />
+                                        {(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}
+                                      </span>
+                                    ) : recStatus === "Leave" ? (
+                                      <span className="badge bg-secondary/10 text-secondary !rounded-full !text-[0.6875rem]">
+                                        <i className="ri-hotel-bed-line me-1 text-[0.55rem]" />Leave
+                                      </span>
+                                    ) : recStatus === "Absent" ? (
+                                      <span className="badge bg-danger/10 text-danger !rounded-full !text-[0.6875rem]">
+                                        <i className="ri-close-circle-line me-1 text-[0.55rem]" />Absent
+                                      </span>
+                                    ) : (
+                                      <span className="badge bg-success/10 text-success !rounded-full !text-[0.6875rem]">
+                                        <i className="ri-checkbox-circle-line me-1 text-[0.55rem]" />Present
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="!py-3 !text-end text-[0.8125rem] text-defaulttextcolor dark:text-white">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
+                                  <td className="!py-3 !text-end text-[0.8125rem] text-defaulttextcolor dark:text-white">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : <span className="text-[#8c9097] italic">Active</span>)}</td>
+                                  <td className="!py-3 !text-end">
+                                    <span className={"text-[0.8125rem] font-medium " + (!isHolidayOrLeave && !r.punchOut && status?.isPunchedIn && status?.record?.id === r.id ? "text-success" : "text-defaulttextcolor dark:text-white")}>
+                                      {isHolidayOrLeave ? "—" : r.punchOut ? (r.duration != null ? formatDuration(r.duration) : "—") : status?.isPunchedIn && status?.record?.id === r.id ? elapsedDisplay || "..." : "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Calendar View */}
+                {myAttendanceViewMode === "calendar" && (
+                  <div className="p-5 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <h4 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
+                        {MONTH_NAMES[myCalendarMonth]} {myCalendarYear}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button type="button" onClick={() => { const prev = myCalendarMonth === 0 ? 11 : myCalendarMonth - 1; setMyCalendarMonth(prev); if (myCalendarMonth === 0) setMyCalendarYear((y) => y - 1); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
+                          <i className="ri-arrow-left-s-line" />
+                        </button>
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-sm ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem]"
+                          onClick={() => { setMyCalendarYear(new Date().getFullYear()); setMyCalendarMonth(new Date().getMonth()); }}
+                        >
+                          Today
+                        </button>
+                        <button type="button" onClick={() => { const next = myCalendarMonth === 11 ? 0 : myCalendarMonth + 1; setMyCalendarMonth(next); if (myCalendarMonth === 11) setMyCalendarYear((y) => y + 1); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
+                          <i className="ri-arrow-right-s-line" />
+                        </button>
+                        <select className="form-control !w-auto !py-1 !px-2 !text-[0.75rem] !rounded-md" value={myCalendarYear} onChange={(e) => setMyCalendarYear(parseInt(e.target.value, 10))}>
+                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-wrap items-center gap-4 text-[0.6875rem]">
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" /> Present</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-warning" /> Incomplete</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-info" /> Holiday</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-secondary" /> Leave</span>
+                      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-danger" /> Absent</span>
+                      {myWeekOff.length > 0 && (
+                        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> Week Off</span>
+                      )}
+                    </div>
+
+                    {listLoading && attendanceList.length === 0 ? (
+                      <div className="py-8 text-center text-[#8c9097]">Loading calendar...</div>
+                    ) : (
+                      <div className="rounded-md border border-defaultborder overflow-hidden">
+                        <div className="grid grid-cols-7 bg-gray-50/80 dark:bg-black/10">
+                          {DAY_HEADERS.map((d) => (
+                            <div key={d} className="py-2 text-center text-[0.6875rem] font-semibold text-[#8c9097] dark:text-white/50 uppercase tracking-wider">{d}</div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7">
+                          {getMyAttendanceCalendarData().map((cell, idx) => {
+                            const today = new Date(); today.setHours(0, 0, 0, 0);
+                            const cellDate = new Date(cell.date); cellDate.setHours(0, 0, 0, 0);
+                            const isToday = cellDate.getTime() === today.getTime();
+                            const isEmpty = cell.day === 0;
+                            const isFuture = cellDate > today;
+
+                            let cellBg = "";
+                            let dotColor = "";
+                            if (cell.holiday) { cellBg = "bg-info/[0.06]"; dotColor = "bg-info"; }
+                            else if (cell.leave) { cellBg = "bg-secondary/[0.06]"; dotColor = "bg-secondary"; }
+                            else if (cell.absent) { cellBg = "bg-danger/[0.06]"; dotColor = "bg-danger"; }
+                            else if (cell.present) { cellBg = "bg-success/[0.04]"; dotColor = "bg-success"; }
+                            else if (cell.incomplete) { cellBg = "bg-warning/[0.04]"; dotColor = "bg-warning"; }
+                            else if (cell.weekOff) { cellBg = "bg-gray-100/60 dark:bg-white/5"; dotColor = "bg-gray-400"; }
+
                             return (
-                              <tr key={r.id} className={isHolidayOrLeave ? "bg-info/5" : ""}>
-                                <td>{formatDate(r.date)}</td>
-                                <td>{r.day ?? "—"}</td>
-                                <td>
-                                  {recStatus === "Holiday" ? (
-                                    <span className="badge bg-info/10 text-info">{(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}</span>
-                                  ) : recStatus === "Leave" ? (
-                                    <span className="badge bg-secondary/10 text-secondary">Leave</span>
-                                  ) : recStatus === "Absent" ? (
-                                    <span className="badge bg-danger/10 text-danger">Absent</span>
-                                  ) : (
-                                    <span className="badge bg-success/10 text-success">Present</span>
-                                  )}
-                                </td>
-                                <td className="text-end">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
-                                <td className="text-end">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : "—")}</td>
-                                <td className="text-end">
-                                  {isHolidayOrLeave
-                                    ? "—"
-                                    : r.punchOut
-                                      ? (r.duration != null ? formatDuration(r.duration) : "—")
-                                      : status?.isPunchedIn && status?.record?.id === r.id
-                                        ? elapsedDisplay || "…"
-                                        : "—"}
-                                </td>
-                              </tr>
+                              <div
+                                key={idx}
+                                className={"min-h-[76px] p-2 border border-defaultborder/40 transition-colors " + (isToday ? "ring-2 ring-primary ring-inset bg-primary/[0.02] " : "") + (isEmpty || isFuture ? "bg-gray-50/30 dark:bg-black/5 " : "") + cellBg}
+                              >
+                                {cell.day > 0 && (
+                                  <div className="flex flex-col h-full">
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className={"text-[0.75rem] font-medium " + (isToday ? "text-primary font-bold" : "text-defaulttextcolor/80 dark:text-white/70")}>
+                                        {cell.day}
+                                      </span>
+                                      {dotColor && <span className={"h-1.5 w-1.5 rounded-full " + dotColor} />}
+                                    </div>
+                                    {cell.holiday && (
+                                      <span className="text-[0.55rem] text-info font-medium truncate">{cell.holidayName || "Holiday"}</span>
+                                    )}
+                                    {cell.leave && <span className="text-[0.55rem] text-secondary font-medium">Leave</span>}
+                                    {cell.absent && <span className="text-[0.55rem] text-danger font-medium">Absent</span>}
+                                    {cell.weekOff && <span className="text-[0.55rem] text-gray-400 font-medium">Week Off</span>}
+                                    {cell.present && cell.totalHours > 0 && (
+                                      <span className="text-[0.6rem] text-success font-semibold mt-auto">{cell.totalHours}h</span>
+                                    )}
+                                    {cell.incomplete && <span className="text-[0.55rem] text-warning font-medium">Active</span>}
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
-              )}
-              {myAttendanceViewMode === "calendar" && (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-4">
-                    <h4 className="text-sm font-semibold text-defaulttextcolor">
-                      {MONTH_NAMES[myCalendarMonth]} {myCalendarYear}
-                    </h4>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="text-sm text-defaulttextcolor/80">Year:</label>
-                      <select
-                        className="form-control !w-auto !min-w-[5rem] !py-1.5 !px-2 !text-[0.8125rem]"
-                        value={myCalendarYear}
-                        onChange={(e) => setMyCalendarYear(parseInt(e.target.value, 10))}
-                      >
-                        {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
-                          <option key={y} value={y}>{y}</option>
-                        ))}
-                      </select>
-                      <label className="text-sm text-defaulttextcolor/80 ml-2">Month:</label>
-                      <select
-                        className="form-control !w-auto !min-w-[8rem] !py-1.5 !px-2 !text-[0.8125rem]"
-                        value={myCalendarMonth}
-                        onChange={(e) => setMyCalendarMonth(parseInt(e.target.value, 10))}
-                      >
-                        {MONTH_NAMES.map((name, i) => (
-                          <option key={name} value={i}>{name}</option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-soft-primary !py-1.5 !px-2 !text-[0.8125rem]"
-                        onClick={() => {
-                          const now = new Date();
-                          setMyCalendarYear(now.getFullYear());
-                          setMyCalendarMonth(now.getMonth());
-                        }}
-                      >
-                        This month
-                      </button>
-                    </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {listLoading && attendanceList.length === 0 ? (
-                    <div className="py-8 text-center text-defaulttextcolor/70">Loading calendar…</div>
-                  ) : (
-                    <div className="border border-defaultborder rounded-lg overflow-hidden">
-                      <div className="grid grid-cols-7 bg-gray-50 dark:bg-white/5">
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                          <div key={d} className="p-2 text-center text-[0.75rem] font-medium text-defaulttextcolor/80">{d}</div>
-                        ))}
-                      </div>
-                      <div className="grid grid-cols-7 bg-white dark:bg-bodydark">
-                        {getMyAttendanceCalendarData().map((cell, idx) => {
-                          const today = new Date();
-                          today.setHours(0, 0, 0, 0);
-                          const cellDate = new Date(cell.date);
-                          cellDate.setHours(0, 0, 0, 0);
-                          const isToday = cellDate.getTime() === today.getTime();
-                          const isEmpty = cell.day === 0;
-                          return (
-                            <div
-                              key={idx}
-                              className={`min-h-[72px] p-2 border border-defaultborder/50 ${isToday ? "ring-2 ring-primary ring-inset" : ""} ${isEmpty ? "bg-gray-50/50 dark:bg-white/5" : ""}`}
-                            >
-                              {cell.day > 0 && (
-                                <>
-                                  <div className="text-[0.75rem] font-medium text-defaulttextcolor/80">{cell.day}</div>
-                                  {cell.present && (
-                                    <div className="mt-1 text-[0.7rem] text-success font-medium" title="Present">P</div>
-                                  )}
-                                  {cell.incomplete && (
-                                    <div className="mt-1 text-[0.7rem] text-warning font-medium" title="Punched in, no punch out">—</div>
-                                  )}
-                                  {cell.present && cell.totalHours > 0 && (
-                                    <div className="mt-0.5 text-[0.65rem] text-defaulttextcolor/70">{cell.totalHours}h</div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
+          </>
         )}
 
+        {/* ═══ ADMIN VIEW ═══ */}
         {!canPunch && !loadingStudent && (canTrackAll || trackList.length > 0) && (
           <>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <button
-                type="button"
-                className={`ti-btn ${attendanceView === "track" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                onClick={switchToTrack}
-              >
-                Track Attendance
-              </button>
-              <button
-                type="button"
-                className={`ti-btn ${attendanceView === "history" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                onClick={switchToHistory}
-              >
-                Attendance history
-              </button>
-              <button
-                type="button"
-                className={`ti-btn ${attendanceView === "dashboard" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                onClick={switchToDashboard}
-              >
-                Dashboard
-              </button>
+            {/* Tab Navigation */}
+            <div className="mb-4">
+              <div className="inline-flex rounded-md border border-defaultborder overflow-hidden">
+                {([
+                  { key: "track" as const, label: "Live Track", icon: "ri-radar-line", onClick: switchToTrack },
+                  { key: "history" as const, label: "History", icon: "ri-history-line", onClick: switchToHistory },
+                  { key: "dashboard" as const, label: "Dashboard", icon: "ri-dashboard-line", onClick: switchToDashboard },
+                ]).map((tab, i) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    onClick={tab.onClick}
+                    className={"!py-2 !px-4 text-[0.8125rem] font-medium transition-colors " + (i > 0 ? "border-l border-defaultborder " : "") + (attendanceView === tab.key ? "bg-primary text-white" : "bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white hover:bg-gray-50 dark:hover:bg-black/10")}
+                  >
+                    <i className={tab.icon + " me-1.5"} />
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {attendanceView === "track" && (
@@ -962,190 +849,209 @@ export default function AttendanceTracking() {
             )}
 
             {attendanceView === "history" && (
-          <div className="box">
-            <div className="box-header flex flex-wrap items-center justify-between gap-2">
-              <div className="box-title">Attendance history</div>
-              <span className="flex flex-wrap items-center gap-2">
-                <button type="button" className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]" onClick={exportHistoryCsv} disabled={historyList.length === 0}>
-                  Export CSV
-                </button>
-                <select
-                className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
-                value={historyRange}
-                onChange={(e) => setHistoryRange((e.target.value as "7d" | "30d" | "all") || "30d")}
-              >
-                <option value="7d">Last 7 days</option>
-                <option value="30d">Last 30 days</option>
-                <option value="all">All time</option>
-              </select>
-              </span>
-            </div>
-            <div className="box-body">
-              {historyLoading ? (
-                <div className="py-8 text-center text-defaulttextcolor/70">Loading history…</div>
-              ) : historyList.length === 0 ? (
-                <div className="py-8 text-center text-defaulttextcolor/70">No attendance records in this period.</div>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
-                    <thead>
-                      <tr className="bg-gray-50 dark:bg-white/5">
-                        <th className="!text-start">Name</th>
-                        <th className="!text-start">Email</th>
-                        <th className="!text-start">Date</th>
-                        <th className="!text-start">Day</th>
-                        <th className="!text-start">Punch In (timezone)</th>
-                        <th className="!text-start">Punch Out (timezone)</th>
-                        <th className="!text-start">Duration</th>
-                        <th className="!text-start">Timezone</th>
-                        <th className="!text-start">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {historyList.map((row) => (
-                        <tr key={row.id}>
-                          <td>{row.studentName}</td>
-                          <td>{row.email}</td>
-                          <td>{formatDate(row.date)}</td>
-                          <td>{row.day ?? "—"}</td>
-                          <td>{formatTimeInTimezone(row.punchIn, row.timezone)}</td>
-                          <td>{row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "In progress"}</td>
-                          <td>{row.punchOut ? formatDurationFromMs(row.durationMs ?? null) : "In progress"}</td>
-                          <td>{row.timezone}</td>
-                          <td>
-                            {row.studentId && row.studentExists ? (
-                              <Link
-                                href={`/training/attendance/student/${row.studentId}`}
-                                className="text-primary hover:underline text-[0.8125rem]"
-                              >
-                                View
-                              </Link>
-                            ) : (
-                              <span className="text-defaulttextcolor/60 text-[0.8125rem]" title={row.studentId && !row.studentExists ? "Student no longer exists" : undefined}>
-                                —
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              <div className="box">
+                <div className="box-header flex flex-wrap items-center justify-between gap-2">
+                  <div className="box-title">Attendance History</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 !text-[0.75rem]" onClick={exportHistoryCsv} disabled={historyList.length === 0} title="Export as CSV">
+                      <i className="ri-download-2-line" />
+                      <span>Export CSV</span>
+                    </button>
+                    <select
+                      className="form-control !w-auto !py-1 !px-3 !text-[0.75rem] !rounded-md"
+                      value={historyRange}
+                      onChange={(e) => setHistoryRange((e.target.value as "7d" | "30d" | "all") || "30d")}
+                    >
+                      <option value="7d">Last 7 days</option>
+                      <option value="30d">Last 30 days</option>
+                      <option value="all">All time</option>
+                    </select>
+                  </div>
                 </div>
-              )}
-            </div>
-          </div>
+                <div className="box-body !p-0">
+                  {historyLoading ? (
+                    <div className="p-5 space-y-3">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <div key={n} className="flex items-center gap-4 animate-pulse">
+                          <div className="h-8 w-8 rounded-full bg-black/5 dark:bg-white/10" />
+                          <div className="h-4 flex-1 rounded bg-black/5 dark:bg-white/10" />
+                          <div className="h-4 w-20 rounded bg-black/5 dark:bg-white/10" />
+                          <div className="h-4 w-20 rounded bg-black/5 dark:bg-white/10" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : historyList.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/5">
+                        <i className="ri-history-line text-[1.5rem] text-primary/40" />
+                      </div>
+                      <p className="text-[0.8125rem] text-[#8c9097]">No records in this period</p>
+                    </div>
+                  ) : (
+                    <div className="table-responsive">
+                      <table className="table table-hover whitespace-nowrap min-w-full">
+                        <thead>
+                          <tr className="border-b border-defaultborder dark:border-defaultborder/10">
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Student</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Date</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Day</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch In</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch Out</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Duration</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">TZ</th>
+                            <th className="!text-center !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historyList.map((row) => {
+                            const initials = (row.studentName || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
+                            const isActive = !row.punchOut;
+                            return (
+                              <tr key={row.id} className="border-b border-defaultborder dark:border-defaultborder/10 hover:bg-gray-50/50 dark:hover:bg-light/5 transition-colors">
+                                <td className="!py-3">
+                                  <div className="flex items-center gap-2.5">
+                                    <span className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.55rem] font-bold">{initials}</span>
+                                    <div>
+                                      <p className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white mb-0">{row.studentName}</p>
+                                      <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">{row.email}</p>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{formatDate(row.date)}</td>
+                                <td className="!py-3 text-[0.8125rem] text-[#8c9097]">{row.day ?? "—"}</td>
+                                <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{formatTimeInTimezone(row.punchIn, row.timezone)}</td>
+                                <td className="!py-3 text-[0.8125rem]">
+                                  {isActive ? <span className="text-warning italic">In progress</span> : <span className="text-defaulttextcolor dark:text-white">{formatTimeInTimezone(row.punchOut, row.timezone)}</span>}
+                                </td>
+                                <td className="!py-3">
+                                  <span className={"text-[0.8125rem] font-medium " + (isActive ? "text-warning" : "text-defaulttextcolor dark:text-white")}>
+                                    {isActive ? "In progress" : formatDurationFromMs(row.durationMs ?? null)}
+                                  </span>
+                                </td>
+                                <td className="!py-3 text-[0.6875rem] text-[#8c9097]">{row.timezone}</td>
+                                <td className="!py-3 !text-center">
+                                  {row.studentId && row.studentExists ? (
+                                    <Link href={"/training/attendance/student/" + row.studentId} className="ti-btn ti-btn-icon ti-btn-xs ti-btn-soft-primary ti-btn-wave" title="View Student">
+                                      <i className="ri-eye-line" />
+                                    </Link>
+                                  ) : (
+                                    <span className="text-[#8c9097]/40">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {attendanceView === "dashboard" && (
-              <AttendanceDashboard
-                historyList={historyList}
-                historyLoading={historyLoading}
-              />
+              <AttendanceDashboard historyList={historyList} historyLoading={historyLoading} />
             )}
           </>
         )}
 
+        {/* No Access */}
         {!canPunch && !loadingStudent && !canTrackAll && trackList.length === 0 && !trackListLoading && (
-          <div className="py-8 text-center text-defaulttextcolor/70">
-            You do not have a student profile. Contact an administrator to get access to attendance.
+          <div className="py-16 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/5">
+              <i className="ri-user-unfollow-line text-[2rem] text-primary/30" />
+            </div>
+            <h3 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">No student profile found</h3>
+            <p className="mt-1 text-[0.8125rem] text-[#8c9097]">Contact an administrator to get access to attendance tracking.</p>
           </div>
         )}
       </div>
 
-      {/* Request Backdated Attendance Modal */}
+      {/* ═══ BACKDATED REQUEST MODAL ═══ */}
       {showRequestModal && myStudentId && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex min-h-full items-center justify-center p-4">
-            <div className="fixed inset-0 bg-black/50" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} aria-hidden />
-            <div className="relative bg-white dark:bg-bodydark rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-              <div className="px-4 sm:px-6 py-4 border-b border-defaultborder">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-defaulttextcolor">Request Backdated Attendance</h3>
-                    <p className="text-sm text-defaulttextcolor/70 mt-1">
-                      Submit a request for past dates. An admin will review and approve.
-                    </p>
-                  </div>
-                  <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="text-defaulttextcolor/70 hover:text-defaulttextcolor">
-                    <i className="ri-close-line text-2xl" />
-                  </button>
+        <div className="fixed inset-0 z-[105] overflow-y-auto">
+          <div className="flex min-h-full items-start justify-center p-4 pt-[5vh]">
+            <div className="fixed inset-0 bg-black/50" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} />
+            <div className="relative w-full max-w-2xl rounded-md bg-white dark:bg-bodybg shadow-lg flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-defaultborder px-5 py-4">
+                <div>
+                  <h6 className="flex items-center gap-2 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
+                    <i className="ri-calendar-check-line text-primary" />
+                    Request Backdated Attendance
+                  </h6>
+                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-0.5 mb-0">Submit for past dates you missed. An admin will review.</p>
                 </div>
+                <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
+                  <i className="ri-close-line" />
+                </button>
               </div>
-              <div className="px-4 sm:px-6 py-4 overflow-y-auto flex-1">
-                <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-defaulttextcolor">
-                  <i className="ri-information-line me-2 text-primary" />
-                  Add entries for past dates you forgot to punch in/out. Each entry requires date, punch-in, and punch-out time.
+
+              {/* Body */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                <div className="flex items-start gap-2 rounded-md bg-info/5 border border-info/20 p-3">
+                  <i className="ri-information-line text-info mt-0.5" />
+                  <p className="text-[0.75rem] text-defaulttextcolor dark:text-white/80 mb-0">
+                    Each entry requires a date, punch-in time, and punch-out time.
+                  </p>
                 </div>
+
                 {requestEntries.map((entry, index) => (
-                  <div key={index} className="p-4 border border-defaultborder rounded-lg bg-black/5 dark:bg-white/5 mb-4">
+                  <div key={index} className="rounded-md border border-defaultborder p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-defaulttextcolor">Entry {index + 1}</span>
+                      <span className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
+                        <span className="avatar avatar-xs rounded-md bg-primary/10 text-primary text-[0.6rem] font-bold">{index + 1}</span>
+                        Entry {index + 1}
+                      </span>
                       {requestEntries.length > 1 && (
-                        <button type="button" onClick={() => removeRequestEntry(index)} className="text-danger hover:opacity-80" title="Remove">
-                          <i className="ri-delete-bin-line text-lg" />
+                        <button type="button" onClick={() => removeRequestEntry(index)} className="ti-btn ti-btn-icon ti-btn-xs ti-btn-soft-danger !rounded-full" title="Remove">
+                          <i className="ri-delete-bin-5-line" />
                         </button>
                       )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Date *</label>
-                        <input
-                          type="date"
-                          value={entry.date}
-                          max={new Date().toISOString().slice(0, 10)}
-                          onChange={(e) => updateRequestEntry(index, "date", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
+                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Date <span className="text-danger">*</span></label>
+                        <input type="date" value={entry.date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestEntry(index, "date", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
-                        <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{entry.timezone}</div>
+                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Timezone</label>
+                        <div className="form-control !rounded-md !text-[0.8125rem] !bg-gray-50 dark:!bg-black/10">{entry.timezone}</div>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
-                        <input
-                          type="time"
-                          value={entry.punchInTime}
-                          onChange={(e) => updateRequestEntry(index, "punchInTime", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
+                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch In <span className="text-danger">*</span></label>
+                        <input type="time" value={entry.punchInTime} onChange={(e) => updateRequestEntry(index, "punchInTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
-                        <input
-                          type="time"
-                          value={entry.punchOutTime}
-                          onChange={(e) => updateRequestEntry(index, "punchOutTime", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
+                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch Out <span className="text-danger">*</span></label>
+                        <input type="time" value={entry.punchOutTime} onChange={(e) => updateRequestEntry(index, "punchOutTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
-                        <input
-                          type="text"
-                          value={entry.notes}
-                          onChange={(e) => updateRequestEntry(index, "notes", e.target.value)}
-                          placeholder="Notes for this entry"
-                          className="ti-form-input w-full !py-1.5"
-                        />
+                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Notes <span className="text-[0.6875rem] font-normal">(optional)</span></label>
+                        <input type="text" value={entry.notes} onChange={(e) => updateRequestEntry(index, "notes", e.target.value)} placeholder="Reason for backdated entry..." className="form-control !rounded-md !text-[0.8125rem]" />
                       </div>
                     </div>
                   </div>
                 ))}
+
                 <button
                   type="button"
                   onClick={addRequestEntry}
-                  className="w-full py-2 border-2 border-dashed border-defaultborder rounded-lg text-defaulttextcolor/70 hover:border-primary hover:text-primary flex items-center justify-center gap-2"
+                  className="w-full py-2.5 border-2 border-dashed border-defaultborder rounded-md text-[#8c9097] hover:border-primary hover:text-primary flex items-center justify-center gap-2 transition-colors text-[0.8125rem]"
                 >
                   <i className="ri-add-line" /> Add Another Entry
                 </button>
               </div>
-              <div className="px-4 sm:px-6 py-3 border-t border-defaultborder flex justify-end gap-2">
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-defaultborder px-5 py-4">
                 <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-light" disabled={submittingRequest}>
                   Cancel
                 </button>
-                <button type="button" onClick={handleSubmitRequest} className="ti-btn ti-btn-primary" disabled={submittingRequest}>
-                  {submittingRequest ? "Submitting…" : "Submit Request"}
+                <button type="button" onClick={handleSubmitRequest} className="ti-btn ti-btn-primary ti-btn-wave" disabled={submittingRequest}>
+                  {submittingRequest ? (
+                    <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Submitting...</span>
+                  ) : "Submit Request"}
                 </button>
               </div>
             </div>

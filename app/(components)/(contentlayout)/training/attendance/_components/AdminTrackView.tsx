@@ -1,6 +1,7 @@
 "use client"
 
 import React from "react"
+import Link from "next/link"
 import type { AttendanceTrackItem } from "@/shared/lib/api/attendance"
 
 export interface AdminTrackViewProps {
@@ -26,89 +27,186 @@ export default function AdminTrackView({
   formatDuration,
   formatDurationFromMs,
 }: AdminTrackViewProps) {
+  const punchedInCount = trackList.filter((r) => r.isPunchedIn).length
+  const punchedOutCount = trackList.length - punchedInCount
+
   return (
-    <div className="box">
-      <div className="box-header flex flex-wrap items-center justify-between gap-2">
-        <div className="box-title">Track Attendance</div>
-        <button
-          type="button"
-          className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-          onClick={onExportCsv}
-          disabled={trackList.length === 0}
-        >
-          Export CSV
-        </button>
-      </div>
-      <div className="box-body">
-        {trackListLoading ? (
-          <div className="py-8 text-center text-defaulttextcolor/70">Loading…</div>
-        ) : trackList.length === 0 ? (
-          <div className="py-8 text-center text-defaulttextcolor/70">No students found.</div>
-        ) : (
-          <div className="table-responsive">
-            <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
-              <thead>
-                <tr className="bg-gray-50 dark:bg-white/5">
-                  <th className="!text-start">Name</th>
-                  <th className="!text-start">Email</th>
-                  <th className="!text-start">Status</th>
-                  <th className="!text-start">Punch In (timezone)</th>
-                  <th className="!text-start">Punch Out (timezone)</th>
-                  <th className="!text-start">Duration</th>
-                  <th className="!text-start">Timezone</th>
-                  <th className="!text-start">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trackList.map((row) => (
-                  <tr key={row.studentId}>
-                    <td>{row.studentName}</td>
-                    <td>{row.email}</td>
-                    <td>
-                      <span
-                        className={`badge ${row.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
-                      >
-                        {row.isPunchedIn ? "Punched In" : "Punched Out"}
-                      </span>
-                    </td>
-                    <td>{formatTimeInTimezone(row.punchIn, row.timezone)}</td>
-                    <td>{formatTimeInTimezone(row.punchOut, row.timezone)}</td>
-                    <td>
-                      {row.isPunchedIn && row.punchIn
-                        ? formatDuration(Date.now() - new Date(row.punchIn).getTime())
-                        : formatDurationFromMs(row.durationMs ?? null)}
-                    </td>
-                    <td>{row.timezone}</td>
-                    <td>
-                      <span className="flex flex-wrap items-center gap-2">
-                        {canPunchOutOthers && row.isPunchedIn ? (
-                          <button
-                            type="button"
-                            className="ti-btn ti-btn-outline-danger !py-1 !px-2"
-                            onClick={() => onPunchOut(row.studentId)}
-                            disabled={punchOutLoadingId === row.studentId}
-                            title="Punch Out"
-                          >
-                            {punchOutLoadingId === row.studentId ? (
-                              <i className="ri-loader-4-line animate-spin text-lg" />
-                            ) : (
-                              <>
-                                <i className="ri-logout-box-r-line text-lg" />
-                                <span className="ms-1">Punch Out</span>
-                              </>
-                            )}
-                          </button>
-                        ) : (
-                          <span className="text-defaulttextcolor/50">—</span>
-                        )}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="space-y-4">
+      {/* Quick stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="box !mb-0">
+          <div className="box-body !p-4 flex items-center gap-3">
+            <span className="avatar avatar-sm rounded-md bg-primary/10 text-primary">
+              <i className="ti ti-users text-[1rem]" />
+            </span>
+            <div>
+              <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">Total Students</p>
+              <p className="text-[1.125rem] font-semibold text-defaulttextcolor dark:text-white mb-0">{trackList.length}</p>
+            </div>
           </div>
-        )}
+        </div>
+        <div className="box !mb-0">
+          <div className="box-body !p-4 flex items-center gap-3">
+            <span className="avatar avatar-sm rounded-md bg-success/10 text-success">
+              <i className="ri-user-follow-line text-[1rem]" />
+            </span>
+            <div>
+              <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">Clocked In</p>
+              <p className="text-[1.125rem] font-semibold text-success mb-0">{punchedInCount}</p>
+            </div>
+          </div>
+        </div>
+        <div className="box !mb-0">
+          <div className="box-body !p-4 flex items-center gap-3">
+            <span className="avatar avatar-sm rounded-md bg-gray-100 dark:bg-white/10 text-[#8c9097]">
+              <i className="ri-user-unfollow-line text-[1rem]" />
+            </span>
+            <div>
+              <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">Clocked Out</p>
+              <p className="text-[1.125rem] font-semibold text-defaulttextcolor dark:text-white mb-0">{punchedOutCount}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="box !mb-0">
+        <div className="box-header flex flex-wrap items-center justify-between gap-2">
+          <div className="box-title flex items-center gap-2">
+            Live Attendance
+            {punchedInCount > 0 && (
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 !text-[0.75rem]"
+            onClick={onExportCsv}
+            disabled={trackList.length === 0}
+            title="Export as CSV"
+          >
+            <i className="ri-download-2-line" />
+            <span>Export CSV</span>
+          </button>
+        </div>
+        <div className="box-body !p-0">
+          {trackListLoading ? (
+            <div className="p-5 space-y-3">
+              {[1, 2, 3, 4].map((n) => (
+                <div key={n} className="flex items-center gap-4 animate-pulse">
+                  <div className="h-8 w-8 rounded-full bg-black/5 dark:bg-white/10" />
+                  <div className="h-4 flex-1 rounded bg-black/5 dark:bg-white/10" />
+                  <div className="h-5 w-20 rounded-full bg-black/5 dark:bg-white/10" />
+                  <div className="h-4 w-24 rounded bg-black/5 dark:bg-white/10" />
+                </div>
+              ))}
+            </div>
+          ) : trackList.length === 0 ? (
+            <div className="py-12 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/5">
+                <i className="ri-group-line text-[1.5rem] text-primary/40" />
+              </div>
+              <p className="text-[0.8125rem] text-[#8c9097]">No students found</p>
+            </div>
+          ) : (
+            <div className="table-responsive">
+              <table className="table table-hover whitespace-nowrap min-w-full">
+                <thead>
+                  <tr className="border-b border-defaultborder dark:border-defaultborder/10">
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Student</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Status</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Punch In</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Punch Out</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Duration</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Timezone</th>
+                    <th className="!text-center !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trackList.map((row) => {
+                    const initials = (row.studentName || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
+                    const liveDuration = row.isPunchedIn && row.punchIn
+                      ? formatDuration(Date.now() - new Date(row.punchIn).getTime())
+                      : formatDurationFromMs(row.durationMs ?? null)
+
+                    return (
+                      <tr
+                        key={row.studentId}
+                        className="border-b border-defaultborder dark:border-defaultborder/10 hover:bg-gray-50/50 dark:hover:bg-light/5 transition-colors"
+                      >
+                        <td className="!py-3">
+                          <div className="flex items-center gap-3">
+                            <span className={"avatar avatar-sm avatar-rounded text-[0.65rem] font-bold " + (row.isPunchedIn ? "bg-success/10 text-success" : "bg-gray-100 dark:bg-white/10 text-[#8c9097]")}>
+                              {initials}
+                            </span>
+                            <div>
+                              <p className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white mb-0">
+                                {row.studentName}
+                              </p>
+                              <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">{row.email}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="!py-3">
+                          {row.isPunchedIn ? (
+                            <span className="inline-flex items-center gap-1.5 badge bg-success/10 text-success !rounded-full">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-success" />
+                              </span>
+                              Active
+                            </span>
+                          ) : (
+                            <span className="badge bg-gray-100 dark:bg-white/10 text-[#8c9097] !rounded-full">
+                              Offline
+                            </span>
+                          )}
+                        </td>
+                        <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">
+                          {row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "—"}
+                        </td>
+                        <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">
+                          {row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : (row.isPunchedIn ? <span className="text-[#8c9097] italic">In progress</span> : "—")}
+                        </td>
+                        <td className="!py-3">
+                          <span className={"text-[0.8125rem] font-medium " + (row.isPunchedIn ? "text-success" : "text-defaulttextcolor dark:text-white")}>
+                            {liveDuration}
+                          </span>
+                        </td>
+                        <td className="!py-3 text-[0.75rem] text-[#8c9097] dark:text-white/50">{row.timezone}</td>
+                        <td className="!py-3 !text-center">
+                          {canPunchOutOthers && row.isPunchedIn ? (
+                            <button
+                              type="button"
+                              className="ti-btn ti-btn-sm ti-btn-soft-danger ti-btn-wave inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-2.5 !text-[0.75rem]"
+                              onClick={() => onPunchOut(row.studentId)}
+                              disabled={punchOutLoadingId === row.studentId}
+                              title="Force Punch Out"
+                            >
+                              {punchOutLoadingId === row.studentId ? (
+                                <i className="ri-loader-4-line animate-spin" />
+                              ) : (
+                                <>
+                                  <i className="ri-logout-box-r-line" />
+                                  <span>Clock Out</span>
+                                </>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="text-[#8c9097]/40">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

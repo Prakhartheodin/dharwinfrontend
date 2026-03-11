@@ -42,7 +42,7 @@ function validateNewPassword(password: string): string | null {
 }
 
 export default function PersonalInformationPage() {
-  const { user, logout, sessions, checkAuth } = useAuth();
+  const { user, logout, sessions, checkAuth, refreshUser } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
 
   const [firstName, setFirstName] = useState("");
@@ -175,7 +175,7 @@ export default function PersonalInformationPage() {
           mimeType: result.mimeType,
         },
       });
-      await checkAuth();
+      await refreshUser();
       setSaveSuccess("Profile picture updated.");
       setTimeout(() => setSaveSuccess(""), 2000);
     } catch (err) {
@@ -192,7 +192,7 @@ export default function PersonalInformationPage() {
     setAvatarRemoveLoading(true);
     try {
       await usersApi.updateUser(user.id, { profilePicture: null });
-      await checkAuth();
+      await refreshUser();
       setSaveSuccess("Profile picture removed.");
       setTimeout(() => setSaveSuccess(""), 2000);
     } catch (err) {

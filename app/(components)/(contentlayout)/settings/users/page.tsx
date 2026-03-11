@@ -203,7 +203,7 @@ export default function SettingsUsersPage() {
 
     setImpersonatingUserId(targetUser.id);
     try {
-      await startImpersonation(targetUser.id);
+      await startImpersonation(targetUser.id, nameOrEmail);
     } catch (err) {
       setImpersonatingUserId(null);
       const msg =

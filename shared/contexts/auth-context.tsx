@@ -17,11 +17,15 @@ interface AuthContextValue {
   isAdministrator: boolean;
   permissionsLoaded: boolean;
   isLoading: boolean;
+  /** Shown during impersonation start/stop (e.g. "Logging in as John", "Logging out from John"). */
+  loadingMessage: string | null;
   isChecked: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  startImpersonation: (userId: string) => Promise<void>;
+  /** Refresh only user/impersonation/sessions from getMe (e.g. after profile update). Does not re-fetch permissions. */
+  refreshUser: () => Promise<void>;
+  startImpersonation: (userId: string, targetUserName?: string) => Promise<void>;
   stopImpersonation: () => Promise<void>;
 }
 
@@ -46,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAdministrator, setIsAdministrator] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [isChecked, setIsChecked] = useState(false);
   const router = useRouter();
 
@@ -121,8 +126,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(me.user ?? null);
         setImpersonation(me.impersonation ?? null);
         setSessions(me.sessions ?? []);
-        setPermissionsLoaded(false);
-        await fetchAndSetPermissions();
+        try {
+          setPermissionsLoaded(false);
+          await fetchAndSetPermissions();
+        } catch {
+          setPermissionsLoaded(true);
+        }
       } else {
         setUser(null);
         setImpersonation(null);
@@ -142,6 +151,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPermissionsLoaded(true);
     }
   }, [fetchAndSetPermissions]);
+
+  const refreshUser = useCallback(async () => {
+    try {
+      const me = await authApi.getMe();
+      if (me) {
+        setUser(me.user ?? null);
+        setImpersonation(me.impersonation ?? null);
+        setSessions(me.sessions ?? []);
+      }
+    } catch {
+      // Do not clear user on getMe failure here; caller may retry or use checkAuth
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -239,7 +261,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const startImpersonation = useCallback(
-    async (userId: string) => {
+    async (userId: string, targetUserName?: string) => {
+      const name = targetUserName ?? "user";
+      setLoadingMessage(`Logging in as ${name}`);
       setIsLoading(true);
       try {
         const res = await authApi.impersonate(userId);
@@ -259,6 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissionsLoaded(true);
         router.push(ROUTES.defaultAfterLogin);
       } finally {
+        setLoadingMessage(null);
         setIsLoading(false);
       }
     },
@@ -266,6 +291,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const stopImpersonationAction = useCallback(async () => {
+    const name = user?.name ?? user?.email ?? "user";
+    setLoadingMessage(`Logging out from ${name}`);
     setIsLoading(true);
     try {
       const res = await authApi.stopImpersonation();
@@ -285,9 +312,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPermissionsLoaded(true);
       router.refresh();
     } finally {
+      setLoadingMessage(null);
       setIsLoading(false);
     }
-  }, [router]);
+  }, [router, user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -299,10 +327,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdministrator,
       permissionsLoaded,
       isLoading,
+      loadingMessage,
       isChecked,
       login,
       logout,
       checkAuth,
+      refreshUser,
       startImpersonation,
       stopImpersonation: stopImpersonationAction,
     }),
@@ -315,10 +345,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAdministrator,
       permissionsLoaded,
       isLoading,
+      loadingMessage,
       isChecked,
       login,
       logout,
       checkAuth,
+      refreshUser,
       startImpersonation,
       stopImpersonationAction,
     ]

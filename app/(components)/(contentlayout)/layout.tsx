@@ -11,10 +11,12 @@ import { connect } from "react-redux"
 import { usePathname } from "next/navigation"
 import { ProtectedRoute } from "@/shared/components/protected-route"
 import { PermissionGuard } from "@/shared/components/permission-guard"
+import { useAuth } from "@/shared/contexts/auth-context"
 
 const Layout = ({ children }: any) => {
   const [MyclassName, setMyClass] = useState("");
   const pathname = usePathname();
+  const { isLoading, loadingMessage } = useAuth();
   const isMeetingRoom = pathname?.startsWith("/meetings/room/");
 
   const Bodyclickk = () => {
@@ -33,6 +35,14 @@ const Layout = ({ children }: any) => {
     return (
       <ProtectedRoute>
         <PermissionGuard>
+          {isLoading && loadingMessage && (
+            <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-[#0f1012]/95 backdrop-blur-sm">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+                <p className="text-white font-medium">{loadingMessage}</p>
+              </div>
+            </div>
+          )}
           <div className="fixed inset-0 z-[9999] w-screen h-screen overflow-hidden bg-[#0f1012]">
             {children}
           </div>
@@ -47,6 +57,14 @@ const Layout = ({ children }: any) => {
     <Fragment>
       <ProtectedRoute>
         <PermissionGuard>
+          {isLoading && loadingMessage && (
+            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/90 dark:bg-bodybg/90 backdrop-blur-sm">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+                <p className="text-defaulttextcolor dark:text-white/90 font-medium">{loadingMessage}</p>
+              </div>
+            </div>
+          )}
           <div className='page'>
             <Header/>
             <Sidebar/>
