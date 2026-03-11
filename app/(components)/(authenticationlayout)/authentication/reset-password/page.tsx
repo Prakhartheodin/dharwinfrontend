@@ -3,12 +3,6 @@
 import React, { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Swiper, SwiperSlide } from "swiper/react";
-import { Autoplay, Pagination, Navigation } from "swiper/modules";
-import "swiper/css";
-import "swiper/css/pagination";
-import "swiper/css/navigation";
-
 import Seo from "@/shared/layout-components/seo/seo";
 import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
@@ -19,81 +13,55 @@ export default function ResetPasswordPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  // If token is present, we are on the "set new password" step.
   const token = searchParams.get("token") ?? "";
   const isResetStep = Boolean(token);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordVisible, setPasswordVisible] = useState(false);
-  const [confirmPasswordVisible, setConfirmPasswordVisible] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
 
-  // Countdown timer for resend link
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
-
     const timer = setInterval(() => {
-      setCooldownSeconds((prev) => {
-        if (prev <= 1) {
-          return 0;
-        }
-        return prev - 1;
-      });
+      setCooldownSeconds((prev) => (prev <= 1 ? 0 : prev - 1));
     }, 1000);
-
     return () => clearInterval(timer);
   }, [cooldownSeconds]);
 
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
+    setError(""); setSuccess("");
     const trimmedEmail = email.trim();
-    if (!trimmedEmail) {
-      setError("Email is required.");
-      return;
-    }
+    if (!trimmedEmail) { setError("Email is required."); return; }
     setLoading(true);
     try {
       await authApi.forgotPassword({ email: trimmedEmail });
-      const msg =
-        "If this email is registered, we’ve sent a link to reset your password.";
+      const msg = "If this email is registered, we've sent a link to reset your password.";
       setSuccess(msg);
       setCooldownSeconds(60);
       await Swal.fire("Reset link sent", msg, "success");
     } catch (err) {
       let message = "We could not send a reset link. Please try again later.";
       if (err instanceof AxiosError) {
-        if (err.response?.status === 400) {
-          message = "Please enter a valid email address.";
-        } else if (err.response?.data?.message) {
-          message = String(err.response.data.message);
-        }
+        if (err.response?.status === 400) message = "Please enter a valid email address.";
+        else if (err.response?.data?.message) message = String(err.response.data.message);
       }
       setError(message);
       await Swal.fire("Request failed", message, "error");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-    setSuccess("");
-    if (!password || !confirmPassword) {
-      setError("Please enter and confirm your new password.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+    setError(""); setSuccess("");
+    if (!password || !confirmPassword) { setError("Please enter and confirm your new password."); return; }
+    if (password !== confirmPassword) { setError("Passwords do not match."); return; }
     if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
       setError("Password must be at least 8 characters long and include at least one letter and one number.");
       return;
@@ -101,8 +69,7 @@ export default function ResetPasswordPage() {
     setLoading(true);
     try {
       await authApi.resetPassword({ token, password });
-      const msg =
-        "Your password has been reset successfully. You can now sign in with your new password.";
+      const msg = "Your password has been reset successfully. You can now sign in with your new password.";
       setSuccess(msg);
       await Swal.fire("Password reset", msg, "success");
       router.push(ROUTES.signIn);
@@ -111,285 +78,207 @@ export default function ResetPasswordPage() {
         const status = err.response?.status;
         if (status === 400) {
           setError("Invalid reset link or password does not meet requirements.");
-          await Swal.fire(
-            "Cannot reset password",
-            "Invalid reset link or password does not meet requirements.",
-            "error"
-          );
+          await Swal.fire("Cannot reset password", "Invalid reset link or password does not meet requirements.", "error");
         } else if (status === 401) {
           setError("This reset link is invalid or has expired. Please request a new password reset.");
-          await Swal.fire(
-            "Link invalid or expired",
-            "This reset link is invalid or has expired. Please request a new password reset.",
-            "error"
-          );
+          await Swal.fire("Link invalid or expired", "This reset link is invalid or has expired. Please request a new password reset.", "error");
         } else if (err.response?.data?.message) {
           const message = String(err.response.data.message);
           setError(message);
           await Swal.fire("Cannot reset password", message, "error");
         } else {
-          const message = "We could not reset your password. Please try again later.";
-          setError(message);
-          await Swal.fire("Cannot reset password", message, "error");
+          setError("We could not reset your password. Please try again later.");
+          await Swal.fire("Cannot reset password", "We could not reset your password. Please try again later.", "error");
         }
       } else {
-        const message = "We could not reset your password. Please try again later.";
-        setError(message);
-        await Swal.fire("Cannot reset password", message, "error");
+        setError("We could not reset your password. Please try again later.");
+        await Swal.fire("Cannot reset password", "We could not reset your password. Please try again later.", "error");
       }
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const onSubmit = isResetStep ? handleResetSubmit : handleForgotSubmit;
 
+  const inputBase: React.CSSProperties = {
+    width: "100%", height: 48, padding: "12px 16px",
+    border: "1px solid #D0D5DD", borderRadius: 8,
+    fontSize: 14, fontWeight: 400, color: "#344054",
+    outline: "none", fontFamily: "'Poppins', sans-serif",
+    boxSizing: "border-box" as const,
+  };
+
+  const EyeIcon = ({ visible, color = "#98A2B3" }: { visible: boolean; color?: string }) => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      {!visible && <path d="M2 2L22 22" stroke={color} strokeWidth="1.5" strokeLinecap="round" />}
+    </svg>
+  );
+
   return (
     <Fragment>
       <Seo title={isResetStep ? "Reset Password" : "Forgot Password"} />
-      <div className="grid grid-cols-12 authentication mx-0 text-defaulttextcolor text-defaultsize">
-        <div className="xxl:col-span-7 xl:col-span-7 lg:col-span-12 col-span-12 bg-white dark:!bg-bodybg">
-          <div className="grid grid-cols-12 items-center h-full ">
-            <div className="xxl:col-span-3 xl:col-span-3 lg:col-span-3 md:col-span-3 sm:col-span-2"></div>
-            <div className="xxl:col-span-6 xl:col-span-6 lg:col-span-6 md:col-span-6 sm:col-span-8 col-span-12">
-              <div className="p-[3rem]">
-                <div className="mb-4">
-                  <Link aria-label="anchor" href={ROUTES.defaultAfterLogin}>
-                    <img
-                      src="../../../assets/images/brand-logos/desktop-logo.png"
-                      alt=""
-                      className="authentication-brand desktop-logo"
-                    />
-                    <img
-                      src="../../../assets/images/brand-logos/desktop-dark.png"
-                      alt=""
-                      className="authentication-brand desktop-dark"
-                    />
-                  </Link>
-                </div>
-                <p className="h5 font-semibold mb-2">
-                  {isResetStep ? "Create New Password" : "Forgot Password"}
-                </p>
-                <p className="mb-4 text-[#8c9097] dark:text-white/50 opacity-[0.7] font-normal">
-                  {isResetStep
-                    ? "Enter a strong new password for your account."
-                    : "Enter the email address associated with your account and we’ll send you a link to reset your password."}
-                </p>
+      <div className="min-h-screen relative" style={{ fontFamily: "'Poppins', sans-serif", background: "#FBFBFB" }}>
 
-                <form
-                  onSubmit={onSubmit}
-                  className="grid grid-cols-12 gap-y-4"
-                >
-                  {error && (
-                    <div className="xl:col-span-12 col-span-12 p-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
-                      {error}
-                    </div>
-                  )}
-                  {success && (
-                    <div className="xl:col-span-12 col-span-12 p-4 bg-success/10 border border-success/30 text-success rounded-md text-sm">
-                      {success}
-                    </div>
-                  )}
-
-                  {!isResetStep && (
-                    <div className="xl:col-span-12 col-span-12 mt-0">
-                      <label
-                        htmlFor="forgot-email"
-                        className="form-label text-default"
-                      >
-                        Email
-                      </label>
-                      <input
-                        type="email"
-                        id="forgot-email"
-                        className="form-control form-control-lg w-full !rounded-md"
-                        placeholder="email@example.com"
-                        value={email}
-                        onChange={(e) => {
-                          setEmail(e.target.value);
-                          setError("");
-                          setSuccess("");
-                        }}
-                        autoComplete="email"
-                        required
-                      />
-                    </div>
-                  )}
-
-                  {isResetStep && (
-                    <>
-                      <div className="xl:col-span-12 col-span-12">
-                        <label
-                          htmlFor="reset-password"
-                          className="form-label text-default"
-                        >
-                          New Password
-                        </label>
-                        <div className="input-group">
-                          <input
-                            type={passwordVisible ? "text" : "password"}
-                            id="reset-password"
-                            className="form-control form-control-lg !border-s !rounded-e-none"
-                            placeholder="New password"
-                            value={password}
-                            onChange={(e) => {
-                              setPassword(e.target.value);
-                              setError("");
-                              setSuccess("");
-                            }}
-                            autoComplete="new-password"
-                            required
-                          />
-                          <button
-                            aria-label="toggle password"
-                            type="button"
-                            className="ti-btn ti-btn-light !rounded-s-none !mb-0"
-                            onClick={() => setPasswordVisible((v) => !v)}
-                          >
-                            <i
-                              className={`${
-                                passwordVisible
-                                  ? "ri-eye-line"
-                                  : "ri-eye-off-line"
-                              } align-middle`}
-                            ></i>
-                          </button>
-                        </div>
-                      </div>
-                      <div className="xl:col-span-12 col-span-12">
-                        <label
-                          htmlFor="reset-confirm-password"
-                          className="form-label text-default"
-                        >
-                          Confirm Password
-                        </label>
-                        <div className="input-group">
-                          <input
-                            type={confirmPasswordVisible ? "text" : "password"}
-                            id="reset-confirm-password"
-                            className="form-control form-control-lg !border-s !rounded-e-none"
-                            placeholder="Confirm password"
-                            value={confirmPassword}
-                            onChange={(e) => {
-                              setConfirmPassword(e.target.value);
-                              setError("");
-                              setSuccess("");
-                            }}
-                            autoComplete="new-password"
-                            required
-                          />
-                          <button
-                            aria-label="toggle password"
-                            type="button"
-                            className="ti-btn ti-btn-light !rounded-s-none !mb-0"
-                            onClick={() =>
-                              setConfirmPasswordVisible((v) => !v)
-                            }
-                          >
-                            <i
-                              className={`${
-                                confirmPasswordVisible
-                                  ? "ri-eye-line"
-                                  : "ri-eye-off-line"
-                              } align-middle`}
-                            ></i>
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )}
-
-                  <div className="xl:col-span-12 col-span-12 grid gap-2">
-                    <button
-                      type="submit"
-                      disabled={loading || (!isResetStep && cooldownSeconds > 0)}
-                      className="ti-btn ti-btn-lg bg-primary text-white !font-medium dark:border-defaultborder/10 disabled:opacity-60"
-                    >
-                      {isResetStep
-                        ? loading
-                          ? "Saving password…"
-                          : "Save Password"
-                        : cooldownSeconds > 0
-                        ? `Resend in ${cooldownSeconds}s`
-                        : loading
-                        ? "Sending link…"
-                        : "Send Reset Link"}
-                    </button>
-                    {!isResetStep && cooldownSeconds > 0 && (
-                      <p className="text-[0.8rem] text-defaulttextcolor/70 text-center">
-                        You can request another reset link in{" "}
-                        <span className="font-semibold">{cooldownSeconds}s</span>.
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="xl:col-span-12 col-span-12 text-[0.875rem] text-[#8c9097] dark:text-white/50 text-center mt-2 mb-0">
-                    Remembered your password?{" "}
-                    <Link href={ROUTES.signIn} className="text-primary font-medium">
-                      Back to Sign In
-                    </Link>
-                  </p>
-                </form>
-              </div>
-            </div>
-            <div className="xxl:col-span-3 xl:col-span-3 lg:col-span-3 md:col-span-3 sm:col-span-2"></div>
+        {/* LEFT PANEL — photo with gradient overlay + logo */}
+        <div className="hidden lg:block absolute top-0 left-0 bottom-0 overflow-hidden" style={{ width: "50%" }}>
+          <img
+            src="/assets/images/authentication/login-bg.png"
+            alt=""
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(299.33deg, #053367 12.79%, #34B34C 101.09%)", opacity: 0.75 }}
+          />
+          <div className="relative z-10" style={{ padding: "63px 85px" }}>
+            <img
+              src="/assets/images/brand-logos/dharwin-white-logo.png"
+              alt="Dharwin Business Solutions"
+              style={{ height: 73, width: "auto" }}
+            />
           </div>
         </div>
 
-        <div className="xxl:col-span-5 xl:col-span-5 lg:col-span-5 col-span-12 xl:block hidden px-0">
-          <div className="authentication-cover">
-            <div className="aunthentication-cover-content rounded">
-              <div className="swiper keyboard-control">
-                <Swiper
-                  spaceBetween={30}
-                  navigation={true}
-                  centeredSlides={true}
-                  autoplay={{ delay: 2500, disableOnInteraction: false }}
-                  pagination={{ clickable: true }}
-                  modules={[Pagination, Autoplay, Navigation]}
-                  className="mySwiper"
-                >
-                  <SwiperSlide>
-                    <div className="text-white text-center p-[3rem] flex items-center justify-center">
-                      <div>
-                        <div className="mb-[3rem]">
-                          <img
-                            src="../../../assets/images/authentication/2.png"
-                            className="authentication-image"
-                            alt=""
-                          />
-                        </div>
-                        <h6 className="font-semibold text-[1rem]">
-                          Secure Access
-                        </h6>
-                        <p className="font-normal text-[.875rem] opacity-[0.7]">
-                          Reset your password securely and get back to your
-                          work.
-                        </p>
-                      </div>
-                    </div>
-                  </SwiperSlide>
-                  <SwiperSlide>
-                    <div className="text-white text-center p-[3rem] flex items-center justify-center">
-                      <div>
-                        <div className="mb-[3rem]">
-                          <img
-                            src="../../../assets/images/authentication/3.png"
-                            className="authentication-image"
-                            alt=""
-                          />
-                        </div>
-                        <h6 className="font-semibold text-[1rem]">
-                          Keep Your Account Safe
-                        </h6>
-                        <p className="font-normal text-[.875rem] opacity-[0.7]">
-                          Use a strong, unique password to protect your data.
-                        </p>
-                      </div>
-                    </div>
-                  </SwiperSlide>
-                </Swiper>
+        {/* RIGHT DECORATION — geometric shapes */}
+        <div className="absolute hidden xl:block" style={{ right: "-80px", top: "50%", transform: "translateY(-50%)", opacity: 0.09, zIndex: 0 }}>
+          <div style={{ width: 611, height: 614, background: "#053367" }} />
+          <div style={{ position: "absolute", width: 340, height: 343, right: -60, bottom: -60, border: "80px solid #34B34C", borderRadius: 65, boxSizing: "border-box" }} />
+        </div>
+
+        {/* CENTERED FORM CARD */}
+        <div className="relative z-20 min-h-screen flex items-center justify-center">
+          <div className="w-full mx-4" style={{ maxWidth: 540 }}>
+            <div style={{ background: "#FFFFFF", boxShadow: "0px 12px 12.6px rgba(0, 0, 0, 0.1)", borderRadius: 20, padding: "48px 72px" }}>
+
+              {/* Title */}
+              <div className="text-center" style={{ marginBottom: 16 }}>
+                <h1 style={{ fontSize: 28, fontWeight: 600, color: "#101828", lineHeight: "100%", margin: 0 }}>
+                  {isResetStep ? "Create New Password" : "Forgot Password"}
+                </h1>
               </div>
+              <p style={{ fontSize: 14, color: "#5A5A5D", textAlign: "center", marginBottom: 36 }}>
+                {isResetStep
+                  ? "Enter a strong new password for your account."
+                  : "Enter the email address associated with your account and we'll send you a link to reset your password."}
+              </p>
+
+              {error && (
+                <div style={{ marginBottom: 20, padding: "12px 16px", background: "#fdecea", border: "1px solid #f5c6cb", color: "#c62828", borderRadius: 8, fontSize: 14 }}>
+                  {error}
+                </div>
+              )}
+              {success && (
+                <div style={{ marginBottom: 20, padding: "12px 16px", background: "#e8f5e9", border: "1px solid #c8e6c9", color: "#2e7d32", borderRadius: 8, fontSize: 14 }}>
+                  {success}
+                </div>
+              )}
+
+              <form onSubmit={onSubmit}>
+                {/* Forgot step: Email */}
+                {!isResetStep && (
+                  <div style={{ marginBottom: 24 }}>
+                    <label htmlFor="forgot-email" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
+                      Email
+                    </label>
+                    <input
+                      type="email" id="forgot-email" placeholder="email@example.com"
+                      value={email}
+                      onChange={(e) => { setEmail(e.target.value); setError(""); setSuccess(""); }}
+                      autoComplete="email" required
+                      style={{ ...inputBase, border: "3px solid #D1E9FF" }}
+                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                      onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
+                    />
+                  </div>
+                )}
+
+                {/* Reset step: New Password + Confirm */}
+                {isResetStep && (
+                  <>
+                    <div style={{ marginBottom: 24 }}>
+                      <label htmlFor="reset-password" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
+                        New Password
+                      </label>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          type={showPassword ? "text" : "password"} id="reset-password" placeholder="New password"
+                          value={password}
+                          onChange={(e) => { setPassword(e.target.value); setError(""); setSuccess(""); }}
+                          autoComplete="new-password" required
+                          style={{ ...inputBase, paddingRight: 48 }}
+                          onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                          onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                        />
+                        <button type="button" aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)}
+                          style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+                          <EyeIcon visible={showPassword} />
+                        </button>
+                      </div>
+                      <p style={{ fontSize: 12, color: "#98A2B3", marginTop: 6 }}>At least 8 characters, 1 letter and 1 number.</p>
+                    </div>
+
+                    <div style={{ marginBottom: 28 }}>
+                      <label htmlFor="reset-confirm" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
+                        Confirm Password
+                      </label>
+                      <div style={{ position: "relative" }}>
+                        <input
+                          type={showConfirmPassword ? "text" : "password"} id="reset-confirm" placeholder="Confirm password"
+                          value={confirmPassword}
+                          onChange={(e) => { setConfirmPassword(e.target.value); setError(""); setSuccess(""); }}
+                          autoComplete="new-password" required
+                          style={{ ...inputBase, paddingRight: 48 }}
+                          onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                          onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                        />
+                        <button type="button" aria-label="toggle confirm password visibility" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
+                          <EyeIcon visible={showConfirmPassword} />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loading || (!isResetStep && cooldownSeconds > 0)}
+                  style={{
+                    width: "100%", height: 52, background: "#34B34C", borderRadius: 8, border: "none",
+                    cursor: (loading || (!isResetStep && cooldownSeconds > 0)) ? "not-allowed" : "pointer",
+                    opacity: (loading || (!isResetStep && cooldownSeconds > 0)) ? 0.6 : 1,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 16, fontWeight: 600, color: "#FCFCFD", fontFamily: "'Poppins', sans-serif",
+                    transition: "background 0.2s", marginBottom: 24,
+                  }}
+                  onMouseEnter={(e) => { if (!loading) (e.target as HTMLElement).style.background = "#2da043"; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "#34B34C"; }}
+                >
+                  {isResetStep
+                    ? loading ? "Saving password..." : "Save Password"
+                    : cooldownSeconds > 0
+                      ? `Resend in ${cooldownSeconds}s`
+                      : loading ? "Sending link..." : "Send Reset Link"}
+                </button>
+
+                {!isResetStep && cooldownSeconds > 0 && (
+                  <p style={{ fontSize: 13, color: "#5A5A5D", textAlign: "center", marginBottom: 16 }}>
+                    You can request another reset link in <strong>{cooldownSeconds}s</strong>.
+                  </p>
+                )}
+
+                {/* Back to Sign In */}
+                <div style={{ textAlign: "center" }}>
+                  <span style={{ fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
+                    Remembered your password ?{" "}
+                  </span>
+                  <Link href={ROUTES.signIn} style={{ fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
+                    Sign In
+                  </Link>
+                </div>
+              </form>
             </div>
           </div>
         </div>
@@ -397,4 +286,3 @@ export default function ResetPasswordPage() {
     </Fragment>
   );
 }
-

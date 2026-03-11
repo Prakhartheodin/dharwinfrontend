@@ -1,19 +1,329 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
+import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Link from "next/link";
-import { useEffect } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getMyCandidate } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useIsCandidateForProfile } from "@/shared/hooks/use-is-candidate-for-profile";
 import { ROUTES } from "@/shared/lib/constants";
-import Profile from "@/app/(components)/(contentlayout)/pages/profile/page";
+import { listActivityLogs } from "@/shared/lib/api/activity-logs";
+import * as rolesApi from "@/shared/lib/api/roles";
+import type { User, ActivityLog, Role } from "@/shared/lib/types";
 
-/**
- * My Profile page. For candidates (share-candidate-form, no Administrator): fetches candidate record and redirects to edit.
- * For admins/others: shows generic profile (no /candidates/me API call).
- */
+function getInitial(name: string | undefined | null): string {
+  if (!name) return "?";
+  return name.charAt(0).toUpperCase();
+}
+
+function formatActivityDate(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return "";
+  }
+}
+
+function actionIcon(action: string): { bg: string; icon: string } {
+  const a = action.toLowerCase();
+  if (a.includes("create") || a.includes("add"))
+    return { bg: "bg-primary/10 !text-primary", icon: "ri-add-circle-line" };
+  if (a.includes("update") || a.includes("edit"))
+    return { bg: "bg-warning/10 !text-warning", icon: "ri-edit-line" };
+  if (a.includes("delete") || a.includes("remove"))
+    return { bg: "bg-danger/10 !text-danger", icon: "ri-delete-bin-line" };
+  if (a.includes("login") || a.includes("auth"))
+    return { bg: "bg-success/10 !text-success", icon: "ri-login-circle-line" };
+  if (a.includes("logout"))
+    return { bg: "bg-secondary/10 !text-secondary", icon: "ri-logout-circle-line" };
+  return { bg: "bg-info/10 !text-info", icon: "ri-information-line" };
+}
+
+function humanizeAction(action: string): string {
+  return action
+    .replace(/[._-]/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function DynamicProfileView() {
+  const { user } = useAuth();
+  const [activities, setActivities] = useState<ActivityLog[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [roles, setRoles] = useState<Role[]>([]);
+
+  const u = user as (User & { phoneNumber?: string; countryCode?: string; location?: string; profileSummary?: string; education?: string; domain?: string[] }) | null;
+
+  const rolesById = useMemo(() => {
+    const map = new Map<string, Role>();
+    roles.forEach((r) => map.set(r.id, r));
+    return map;
+  }, [roles]);
+
+  const roleDisplayName = useMemo(() => {
+    if (!u) return "—";
+    const ids = u.roleIds ?? [];
+    if (ids.length === 0) {
+      const r = (u.role ?? "User").toString();
+      return r.charAt(0).toUpperCase() + r.slice(1);
+    }
+    const names = ids.map((id) => rolesById.get(id)?.name).filter(Boolean);
+    return names.length > 0 ? names.join(", ") : (u.role ?? "User").toString();
+  }, [u, rolesById]);
+
+  useEffect(() => {
+    rolesApi.listRoles({ limit: 100 }).then((r) => setRoles(r.results)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!u) return;
+    listActivityLogs({ actor: u.id, limit: 20, sortBy: "createdAt:desc" })
+      .then((res) => setActivities(res.results))
+      .catch(() => {})
+      .finally(() => setActivitiesLoading(false));
+  }, [u]);
+
+  if (!u) {
+    return (
+      <div className="text-center py-12 text-defaulttextcolor/70">
+        Please sign in to view your profile.
+      </div>
+    );
+  }
+
+  const personalInfo = [
+    { label: "Name :", value: u.name ?? "—" },
+    { label: "Email :", value: u.email ?? "—" },
+    ...(u.phoneNumber ? [{ label: "Phone :", value: `${u.countryCode ? u.countryCode + " " : ""}${u.phoneNumber}` }] : []),
+    { label: "Role :", value: roleDisplayName },
+    ...(u.location ? [{ label: "Location :", value: u.location }] : []),
+    ...(u.education ? [{ label: "Education :", value: u.education }] : []),
+    ...(u.domain && u.domain.length > 0 ? [{ label: "Domain :", value: u.domain.join(", ") }] : []),
+  ];
+
+  return (
+    <div className="grid grid-cols-12 gap-x-6">
+      {/* Left sidebar */}
+      <div className="xxl:col-span-4 xl:col-span-12 col-span-12">
+        <div className="box overflow-hidden">
+          <div className="box-body !p-0">
+            {/* Profile cover */}
+            <div className="sm:flex items-start p-6 main-profile-cover">
+              <div>
+                {u.profilePicture?.url ? (
+                  <span className="avatar avatar-xxl avatar-rounded online me-4">
+                    <img src={u.profilePicture.url} alt="" />
+                  </span>
+                ) : (
+                  <span className="avatar avatar-xxl avatar-rounded me-4 flex items-center justify-center bg-primary/10 text-primary font-semibold text-[1.5rem]">
+                    {getInitial(u.name ?? u.email)}
+                  </span>
+                )}
+              </div>
+              <div className="flex-grow main-profile-info">
+                <div className="flex items-center !justify-between">
+                  <h6 className="font-semibold mb-1 text-white text-[1rem]">
+                    {u.name ?? u.email ?? "—"}
+                  </h6>
+                  <Link
+                    href="/settings/personal-information/"
+                    className="ti-btn ti-btn-light !font-medium !gap-0 !py-1 !px-3 !w-auto !h-auto whitespace-nowrap"
+                  >
+                    <i className="ri-edit-line me-1 align-middle inline-block" />
+                    Edit Profile
+                  </Link>
+                </div>
+                <p className="mb-1 !text-white opacity-[0.7]">{roleDisplayName}</p>
+                <p className="text-[0.75rem] text-white mb-6 opacity-[0.5]">
+                  {u.location ? (
+                    <span className="inline-flex">
+                      <i className="ri-map-pin-line me-1 align-middle" />
+                      {u.location}
+                    </span>
+                  ) : (
+                    <span className="opacity-0">—</span>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Bio */}
+            {u.profileSummary && (
+              <div className="p-6 border-b border-dashed dark:border-defaultborder/10">
+                <p className="text-[.9375rem] mb-2 font-semibold">Professional Bio :</p>
+                <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] mb-0">
+                  {u.profileSummary}
+                </p>
+              </div>
+            )}
+
+            {/* Contact */}
+            <div className="p-6 border-b border-dashed dark:border-defaultborder/10">
+              <p className="text-[.9375rem] mb-2 me-6 font-semibold">Contact Information :</p>
+              <div className="text-[#8c9097] dark:text-white/50">
+                <p className="mb-2">
+                  <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
+                    <i className="ri-mail-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
+                  </span>
+                  {u.email ?? "—"}
+                </p>
+                {u.phoneNumber && (
+                  <p className="mb-2">
+                    <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
+                      <i className="ri-phone-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
+                    </span>
+                    {u.countryCode ? `${u.countryCode} ` : ""}{u.phoneNumber}
+                  </p>
+                )}
+                {u.location && (
+                  <p className="mb-0">
+                    <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
+                      <i className="ri-map-pin-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
+                    </span>
+                    {u.location}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Skills / Domain */}
+            {u.domain && u.domain.length > 0 && (
+              <div className="p-6 border-b dark:border-defaultborder/10 border-dashed">
+                <p className="text-[.9375rem] mb-2 me-6 font-semibold">Domain :</p>
+                <div>
+                  {u.domain.map((d) => (
+                    <span key={d} className="badge bg-light text-[#8c9097] dark:text-white/50 m-1">
+                      {d}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Quick actions */}
+            <div className="p-6">
+              <p className="text-[.9375rem] mb-3 font-semibold">Quick actions</p>
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/settings/personal-information/"
+                  className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap"
+                >
+                  <i className="ri-user-settings-line me-1" />
+                  Personal Information
+                </Link>
+                <Link
+                  href="/settings/"
+                  className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap"
+                >
+                  <i className="ri-settings-3-line me-1" />
+                  Settings
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right content */}
+      <div className="xxl:col-span-8 xl:col-span-12 col-span-12">
+        <div className="grid grid-cols-12 gap-x-6">
+          {/* Activity log */}
+          <div className="xl:col-span-12 col-span-12">
+            <div className="box">
+              <div className="box-body !p-0">
+                <div className="!p-4 border-b dark:border-defaultborder/10 border-dashed flex items-center justify-between">
+                  <nav className="-mb-0.5 flex" role="tablist">
+                    <span className="flex font-semibold text-white bg-primary rounded-md py-2 px-4 text-sm">
+                      <i className="ri-history-line align-middle inline-block me-1" />
+                      Activity Log
+                    </span>
+                  </nav>
+                </div>
+                <div className="!p-4">
+                  {activitiesLoading ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
+                      <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading activity...</p>
+                    </div>
+                  ) : activities.length === 0 ? (
+                    <div className="text-center py-8">
+                      <i className="ri-history-line text-4xl text-[#8c9097]/40 mb-2 block" />
+                      <p className="text-[#8c9097] dark:text-white/50 text-sm">No activity recorded yet.</p>
+                    </div>
+                  ) : (
+                    <ul className="list-none profile-timeline">
+                      {activities.map((log) => {
+                        const ai = actionIcon(log.action);
+                        return (
+                          <li key={log.id}>
+                            <div>
+                              <span className={`avatar avatar-sm avatar-rounded profile-timeline-avatar ${ai.bg}`}>
+                                <i className={ai.icon} />
+                              </span>
+                              <p className="mb-2">
+                                <b>{humanizeAction(log.action)}</b>
+                                {log.entityType && (
+                                  <span className="text-[#8c9097] dark:text-white/50">
+                                    {" "}on <b>{log.entityType}</b>
+                                    {log.entityId && <span className="text-xs"> ({log.entityId.slice(-6)})</span>}
+                                  </span>
+                                )}
+                                <span className="ltr:float-right rtl:float-left text-[.6875rem] text-[#8c9097] dark:text-white/50">
+                                  {formatActivityDate(log.createdAt)}
+                                </span>
+                              </p>
+                              {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                <p className="text-[#8c9097] dark:text-white/50 text-xs mb-0">
+                                  {Object.entries(log.metadata)
+                                    .filter(([, v]) => v != null && v !== "")
+                                    .slice(0, 3)
+                                    .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+                                    .join(" · ")}
+                                </p>
+                              )}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Personal Info box */}
+          <div className="xl:col-span-12 col-span-12">
+            <div className="box">
+              <div className="box-header">
+                <div className="box-title">Personal Info</div>
+              </div>
+              <div className="box-body">
+                <ul className="list-group">
+                  {personalInfo.map((item) => (
+                    <li className="list-group-item" key={item.label}>
+                      <div className="flex flex-wrap items-center">
+                        <div className="me-2 font-semibold">{item.label}</div>
+                        <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                          {item.value}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MyProfilePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -21,23 +331,26 @@ export default function MyProfilePage() {
 
   useEffect(() => {
     if (!user || !isCandidate || rolesLoading) return;
-
     getMyCandidate()
       .then((c) => {
-        const id = (c as any).id ?? (c as any)._id;
+        const id = (c as { id?: string; _id?: string }).id ?? (c as { id?: string; _id?: string })._id;
         if (id) router.replace(`/ats/candidates/edit/?id=${id}`);
       })
       .catch(() => {});
   }, [user, isCandidate, rolesLoading, router]);
 
-  // Non-candidates (admins, etc.): show generic profile — never call getMyCandidate
   if (user && !isCandidate && !rolesLoading) {
-    return <Profile />;
+    return (
+      <Fragment>
+        <Seo title="My Profile" />
+        <Pageheader currentpage="My Profile" activepage="ATS" mainpage="My Profile" />
+        <DynamicProfileView />
+      </Fragment>
+    );
   }
 
-  // Candidates: loading until redirect to edit
   return (
-    <>
+    <Fragment>
       <Seo title="My Profile" />
       <div className="min-h-[40vh] flex items-center justify-center">
         <div className="text-center">
@@ -50,6 +363,6 @@ export default function MyProfilePage() {
           </p>
         </div>
       </div>
-    </>
+    </Fragment>
   );
 }

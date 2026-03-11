@@ -32,6 +32,26 @@ export interface MeResponse {
   sessions?: Session[];
 }
 
+/** Response from GET /v1/auth/my-permissions. */
+export interface MyPermissionsResponse {
+  permissions: string[];
+  roleNames: string[];
+  isAdministrator: boolean;
+}
+
+/**
+ * Get current user's resolved permissions (GET /v1/auth/my-permissions).
+ * Auth required; no specific permission needed.
+ */
+export async function getMyPermissions(): Promise<MyPermissionsResponse | null> {
+  try {
+    const { data } = await apiClient.get<MyPermissionsResponse>(AUTH_ENDPOINTS.myPermissions);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get current authenticated user (GET /v1/auth/me).
  * Use to restore user state on app load when cookies are still valid.

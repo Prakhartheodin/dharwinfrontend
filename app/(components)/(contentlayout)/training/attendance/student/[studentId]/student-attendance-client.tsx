@@ -8,7 +8,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import * as studentsApi from "@/shared/lib/api/students";
-import { getMyStudent } from "@/shared/lib/api/student-courses";
+import { createBackdatedAttendanceRequest } from "@/shared/lib/api/backdated-attendance-requests";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -114,6 +114,9 @@ export default function StudentAttendancePage() {
   const [showBackDateModal, setShowBackDateModal] = useState(false);
   const [backDateEntries, setBackDateEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [addingBackDate, setAddingBackDate] = useState(false);
+  const [showRequestModal, setShowRequestModal] = useState(false);
+  const [requestEntries, setRequestEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
+  const [submittingRequest, setSubmittingRequest] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
   const { user } = useAuth();
@@ -136,7 +139,7 @@ export default function StudentAttendancePage() {
       if (!studentId) return;
       setListLoading(true);
       try {
-        const res = await attendanceApi.listAttendance(studentId, params ?? { limit: 100, page: 1 });
+        const res = await attendanceApi.listAttendance(studentId, params ?? { limit: 500, page: 1 });
         setAttendanceList(res.results ?? []);
       } catch {
         setAttendanceList([]);
@@ -146,6 +149,13 @@ export default function StudentAttendancePage() {
     },
     [studentId]
   );
+
+  const refetchForMonth = useCallback(() => {
+    const last = new Date(calendarYear, calendarMonth + 1, 0);
+    const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
+    const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
+    fetchList({ startDate, endDate, limit: 500, page: 1 });
+  }, [calendarYear, calendarMonth, fetchList]);
 
   useEffect(() => {
     if (!studentId) return;
@@ -162,7 +172,7 @@ export default function StudentAttendancePage() {
 
   useEffect(() => {
     let cancelled = false;
-    getMyStudent()
+    attendanceApi.getMyStudentForAttendance()
       .then((s) => {
         if (!cancelled && s?.id) setMyStudentId(s.id);
       })
@@ -198,34 +208,20 @@ export default function StudentAttendancePage() {
   useEffect(() => {
     if (!studentId) return;
     fetchStatus();
-    if (viewMode === "list") {
-      fetchList({ limit: 100, page: 1 });
-    } else {
-      const last = new Date(calendarYear, calendarMonth + 1, 0);
-      const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-      const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-      fetchList({ startDate, endDate, limit: 100, page: 1 });
-    }
+    refetchForMonth();
     const id = setInterval(fetchStatus, POLL_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [studentId, viewMode, calendarYear, calendarMonth, fetchStatus, fetchList]);
+  }, [studentId, viewMode, calendarYear, calendarMonth, fetchStatus, refetchForMonth]);
 
   useEffect(() => {
     if (!studentId) return;
     const onVisible = () => {
       fetchStatus();
-      if (viewMode === "list") {
-        fetchList({ limit: 100, page: 1 });
-      } else {
-        const last = new Date(calendarYear, calendarMonth + 1, 0);
-        const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-        const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-        fetchList({ startDate, endDate, limit: 100, page: 1 });
-      }
+      refetchForMonth();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [studentId, viewMode, calendarYear, calendarMonth, fetchList, fetchStatus]);
+  }, [studentId, viewMode, calendarYear, calendarMonth, refetchForMonth, fetchStatus]);
 
   useEffect(() => {
     if (!status?.isPunchedIn || !status?.record?.punchIn) {
@@ -248,13 +244,7 @@ export default function StudentAttendancePage() {
     try {
       await attendanceApi.punchInAttendance(studentId, { timezone: getDetectedTimezone() });
       await fetchStatus();
-      if (viewMode === "list") fetchList({ limit: 100, page: 1 });
-      else {
-        const last = new Date(calendarYear, calendarMonth + 1, 0);
-        const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-        const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-        fetchList({ startDate, endDate, limit: 100, page: 1 });
-      }
+      refetchForMonth();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg ?? "Punch in failed.");
@@ -270,13 +260,7 @@ export default function StudentAttendancePage() {
     try {
       await attendanceApi.punchOutAttendance(studentId, { punchOutTime: new Date().toISOString() });
       await fetchStatus();
-      if (viewMode === "list") fetchList({ limit: 100, page: 1 });
-      else {
-        const last = new Date(calendarYear, calendarMonth + 1, 0);
-        const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-        const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-        fetchList({ startDate, endDate, limit: 100, page: 1 });
-      }
+      refetchForMonth();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg ?? "Punch out failed.");
@@ -289,6 +273,75 @@ export default function StudentAttendancePage() {
   const openRegularizationModal = () => {
     setBackDateEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
     setShowBackDateModal(true);
+  };
+  const openRequestModal = () => {
+    setRequestEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+    setShowRequestModal(true);
+  };
+  const addRequestEntry = () => {
+    setRequestEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+  };
+  const removeRequestEntry = (index: number) => {
+    if (requestEntries.length > 1) setRequestEntries((prev) => prev.filter((_, i) => i !== index));
+  };
+  const updateRequestEntry = (index: number, field: keyof typeof requestEntries[0], value: string) => {
+    setRequestEntries((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+  const handleSubmitRequest = async () => {
+    if (!studentId) return;
+    const valid = requestEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
+    if (valid.length === 0) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
+      return;
+    }
+    const invalid = requestEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
+    if (invalid.length > 0) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
+      return;
+    }
+    setSubmittingRequest(true);
+    try {
+      const attendanceEntries = valid.map((entry) => {
+        const punchInStr = entry.punchInTime.includes(":") ? entry.punchInTime : `${entry.punchInTime}:00`;
+        const punchOutStr = entry.punchOutTime.includes(":") ? entry.punchOutTime : `${entry.punchOutTime}:00`;
+        const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
+        let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
+        if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
+        return {
+          date: new Date(entry.date).toISOString().slice(0, 10),
+          punchIn: punchInDateTime.toISOString(),
+          punchOut: punchOutDateTime.toISOString(),
+          timezone: entry.timezone || defaultTimezone,
+          notes: entry.notes || undefined,
+        };
+      });
+      const notes = requestEntries.map((e) => e.notes).filter(Boolean).join("; ") || undefined;
+      await createBackdatedAttendanceRequest(studentId, {
+        attendanceEntries: attendanceEntries.map((e) => ({
+          date: e.date,
+          punchIn: e.punchIn,
+          punchOut: e.punchOut ?? null,
+          timezone: e.timezone,
+        })),
+        notes,
+      });
+      await Swal.fire({
+        icon: "success",
+        title: "Request Submitted",
+        text: "Your backdated attendance request has been submitted. An admin will review it shortly.",
+        confirmButtonText: "OK",
+      });
+      setShowRequestModal(false);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to submit request.";
+      await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
+    } finally {
+      setSubmittingRequest(false);
+    }
   };
   const addBackDateEntry = () => {
     setBackDateEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
@@ -339,13 +392,7 @@ export default function StudentAttendancePage() {
         confirmButtonText: "OK",
       });
       setShowBackDateModal(false);
-      if (viewMode === "list") fetchList({ limit: 100, page: 1 });
-      else {
-        const last = new Date(calendarYear, calendarMonth + 1, 0);
-        const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-        const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-        fetchList({ startDate, endDate, limit: 100, page: 1 });
-      }
+      refetchForMonth();
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to add attendance.";
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
@@ -488,8 +535,10 @@ export default function StudentAttendancePage() {
   const weekOffDays = student?.weekOff ?? [];
   const isWeekOffDay = useCallback(
     (date: Date) => {
-      if (weekOffDays.length === 0) return false;
       const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
+      if (weekOffDays.length === 0) {
+        return dayName === "Saturday" || dayName === "Sunday";
+      }
       return weekOffDays.includes(dayName);
     },
     [weekOffDays]
@@ -697,8 +746,17 @@ export default function StudentAttendancePage() {
           <div className="grid grid-cols-12 gap-6 mb-6">
             <div className="col-span-12 lg:col-span-6">
               <div className="box">
-                <div className="box-header">
+                <div className="box-header flex items-center justify-between">
                   <div className="box-title">Punch In / Out</div>
+                  <button
+                    type="button"
+                    onClick={openRequestModal}
+                    className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 flex items-center gap-2 text-sm"
+                    title="Request Backdated Attendance"
+                  >
+                    <i className="ri-calendar-check-line text-base" />
+                    Request Backdated Attendance
+                  </button>
                 </div>
                 <div className="box-body space-y-4">
                   <p className="text-[0.75rem] text-defaulttextcolor/60">
@@ -837,13 +895,7 @@ export default function StudentAttendancePage() {
                 className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
                 onClick={() => {
                   fetchStatus();
-                  if (viewMode === "list") fetchList({ limit: 100, page: 1 });
-                  else {
-                    const last = new Date(calendarYear, calendarMonth + 1, 0);
-                    const startDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-01`;
-                    const endDate = `${calendarYear}-${String(calendarMonth + 1).padStart(2, "0")}-${String(last.getDate()).padStart(2, "0")}`;
-                    fetchList({ startDate, endDate, limit: 100, page: 1 });
-                  }
+                  refetchForMonth();
                 }}
                 disabled={listLoading}
               >
@@ -865,6 +917,7 @@ export default function StudentAttendancePage() {
                         <tr className="bg-gray-50 dark:bg-white/5">
                           <th className="!text-start">Date</th>
                           <th className="!text-start">Day</th>
+                          <th className="!text-start">Status</th>
                           <th className="!text-end">Punch In</th>
                           <th className="!text-end">Punch Out</th>
                           <th className="!text-end">Duration</th>
@@ -873,18 +926,33 @@ export default function StudentAttendancePage() {
                       <tbody>
                         {attendanceList.map((r) => {
                           const recordTz = r.timezone ?? "UTC";
+                          const recStatus = (r as { status?: string }).status;
+                          const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
                           return (
-                            <tr key={r.id}>
+                            <tr key={r.id} className={isHolidayOrLeave ? "bg-info/5" : ""}>
                               <td>{formatDate(r.date)}</td>
                               <td>{r.day ?? "—"}</td>
-                              <td className="text-end">{formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
-                              <td className="text-end">{r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : "—"}</td>
+                              <td>
+                                {recStatus === "Holiday" ? (
+                                  <span className="badge bg-info/10 text-info">{(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}</span>
+                                ) : recStatus === "Leave" ? (
+                                  <span className="badge bg-secondary/10 text-secondary">Leave</span>
+                                ) : recStatus === "Absent" ? (
+                                  <span className="badge bg-danger/10 text-danger">Absent</span>
+                                ) : (
+                                  <span className="badge bg-success/10 text-success">Present</span>
+                                )}
+                              </td>
+                              <td className="text-end">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
+                              <td className="text-end">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : "—")}</td>
                               <td className="text-end">
-                                {r.punchOut
-                                  ? (r.duration != null ? formatDuration(r.duration) : "—")
-                                  : status?.isPunchedIn && status?.record?.id === r.id
-                                    ? elapsedDisplay || "…"
-                                    : "—"}
+                                {isHolidayOrLeave
+                                  ? "—"
+                                  : r.punchOut
+                                    ? (r.duration != null ? formatDuration(r.duration) : "—")
+                                    : status?.isPunchedIn && status?.record?.id === r.id
+                                      ? elapsedDisplay || "…"
+                                      : "—"}
                               </td>
                             </tr>
                           );
@@ -1070,8 +1138,11 @@ export default function StudentAttendancePage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-lg font-semibold text-defaulttextcolor">Add Back-Dated Attendance</h3>
-                    <p className="text-sm text-defaulttextcolor/70 mt-1">
-                      {student?.user?.name ?? "Student"} – {student?.user?.email ?? ""}
+                    <p className="text-sm font-medium text-primary mt-2">
+                      Student: {student?.user?.name ?? "—"} ({student?.user?.email ?? "—"})
+                    </p>
+                    <p className="text-xs text-defaulttextcolor/70 mt-1">
+                      Adding attendance for the student above
                     </p>
                   </div>
                   <button type="button" onClick={() => { if (!addingBackDate) { setShowBackDateModal(false); if (excelFileInputRef.current) excelFileInputRef.current.value = ""; } }} className="text-defaulttextcolor/70 hover:text-defaulttextcolor">
@@ -1189,6 +1260,107 @@ export default function StudentAttendancePage() {
                 </button>
                 <button type="button" onClick={handleSubmitBackDate} className="ti-btn ti-btn-primary" disabled={addingBackDate}>
                   {addingBackDate ? "Adding…" : "Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Student Request Backdated Attendance Modal */}
+      {showRequestModal && myStudentId === studentId && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-full items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black/50" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} aria-hidden />
+            <div className="relative bg-white dark:bg-bodydark rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="px-4 sm:px-6 py-4 border-b border-defaultborder">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-defaulttextcolor">Request Backdated Attendance</h3>
+                    <p className="text-sm text-defaulttextcolor/70 mt-1">
+                      Submit a request for past dates. An admin will review and approve.
+                    </p>
+                  </div>
+                  <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="text-defaulttextcolor/70 hover:text-defaulttextcolor">
+                    <i className="ri-close-line text-2xl" />
+                  </button>
+                </div>
+              </div>
+              <div className="px-4 sm:px-6 py-4 overflow-y-auto flex-1">
+                <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-defaulttextcolor">
+                  <i className="ri-information-line me-2 text-primary" />
+                  Add entries for past dates you forgot to punch in/out. Each entry requires date, punch-in, and punch-out time.
+                </div>
+                {requestEntries.map((entry, index) => (
+                  <div key={index} className="p-4 border border-defaultborder rounded-lg bg-black/5 dark:bg-white/5 mb-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-sm font-medium text-defaulttextcolor">Entry {index + 1}</span>
+                      {requestEntries.length > 1 && (
+                        <button type="button" onClick={() => removeRequestEntry(index)} className="text-danger hover:opacity-80" title="Remove">
+                          <i className="ri-delete-bin-line text-lg" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Date *</label>
+                        <input
+                          type="date"
+                          value={entry.date}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => updateRequestEntry(index, "date", e.target.value)}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
+                        <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{entry.timezone}</div>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
+                        <input
+                          type="time"
+                          value={entry.punchInTime}
+                          onChange={(e) => updateRequestEntry(index, "punchInTime", e.target.value)}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
+                        <input
+                          type="time"
+                          value={entry.punchOutTime}
+                          onChange={(e) => updateRequestEntry(index, "punchOutTime", e.target.value)}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
+                        <input
+                          type="text"
+                          value={entry.notes}
+                          onChange={(e) => updateRequestEntry(index, "notes", e.target.value)}
+                          placeholder="Notes for this entry"
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addRequestEntry}
+                  className="w-full py-2 border-2 border-dashed border-defaultborder rounded-lg text-defaulttextcolor/70 hover:border-primary hover:text-primary flex items-center justify-center gap-2"
+                >
+                  <i className="ri-add-line" /> Add Another Entry
+                </button>
+              </div>
+              <div className="px-4 sm:px-6 py-3 border-t border-defaultborder flex justify-end gap-2">
+                <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-light" disabled={submittingRequest}>
+                  Cancel
+                </button>
+                <button type="button" onClick={handleSubmitRequest} className="ti-btn ti-btn-primary" disabled={submittingRequest}>
+                  {submittingRequest ? "Submitting…" : "Submit Request"}
                 </button>
               </div>
             </div>

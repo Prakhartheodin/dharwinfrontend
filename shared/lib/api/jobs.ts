@@ -104,6 +104,36 @@ export async function deleteJob(id: string): Promise<void> {
   await apiClient.delete(`/jobs/${id}`);
 }
 
+export interface BrowseJobsParams {
+  search?: string;
+  jobType?: string;
+  location?: string;
+  experienceLevel?: string;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+}
+
+export async function browseJobs(params?: BrowseJobsParams): Promise<JobsListResponse> {
+  const { data } = await apiClient.get<JobsListResponse>("/jobs/browse", { params });
+  return data;
+}
+
+export async function browseJobById(id: string): Promise<Job> {
+  const { data } = await apiClient.get<Job>(`/jobs/browse/${id}`);
+  return data;
+}
+
+export interface BrowseApplyResponse {
+  application: unknown;
+  candidateId: string;
+}
+
+export async function browseApplyToJob(jobId: string): Promise<BrowseApplyResponse> {
+  const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`);
+  return data;
+}
+
 export async function exportJobsToExcel(params?: JobsListParams): Promise<Blob> {
   const { data } = await apiClient.get<Blob>("/jobs/export/excel", {
     params,

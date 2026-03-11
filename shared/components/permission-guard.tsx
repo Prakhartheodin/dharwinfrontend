@@ -6,10 +6,8 @@ import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 
 interface PermissionGuardProps {
   children: ReactNode;
@@ -28,53 +26,16 @@ export function PermissionGuard({
 }: PermissionGuardProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuth();
-  const [userPermissions, setUserPermissions] = useState<string[]>([]);
-  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
-  const [allowed, setAllowed] = useState<boolean | null>(null);
+  const { permissions: userPermissions, permissionsLoaded } = useAuth();
 
   const targetRedirect =
     redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
 
-  // Load permissions and role names from user's roleIds
-  useEffect(() => {
-    const load = async () => {
-      if (!user?.roleIds?.length) {
-        setUserPermissions([]);
-        setPermissionsLoaded(true);
-        return;
-      }
-      try {
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const roleMap = new Map(roles.map((r) => [r.id, r]));
-        const perms = new Set<string>();
-        (user.roleIds as string[]).forEach((id) => {
-          const role = roleMap.get(id);
-          role?.permissions?.forEach((p) => perms.add(p));
-        });
-        setUserPermissions(Array.from(perms));
-      } catch {
-        setUserPermissions([]);
-      } finally {
-        setPermissionsLoaded(true);
-      }
-    };
-    load();
-  }, [user?.roleIds]);
-
-  // Decide if current path is allowed
-  useEffect(() => {
-    if (!permissionsLoaded) {
-      setAllowed(null);
-      return;
-    }
+  const allowed = useMemo(() => {
+    if (!permissionsLoaded) return null;
     const required = getRequiredPermissionForPath(pathname ?? "");
-    if (required == null) {
-      setAllowed(true);
-      return;
-    }
-    setAllowed(hasPermissionForPath(userPermissions, required));
+    if (required == null) return true;
+    return hasPermissionForPath(userPermissions, required);
   }, [permissionsLoaded, pathname, userPermissions]);
 
   // Redirect when not allowed

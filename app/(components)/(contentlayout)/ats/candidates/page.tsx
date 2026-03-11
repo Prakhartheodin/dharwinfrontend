@@ -1,5 +1,4 @@
 "use client"
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useCallback, useMemo, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
@@ -84,6 +83,11 @@ const Candidates = () => {
   const [shareSubmitting, setShareSubmitting] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
   
+  const [apiPage, setApiPage] = useState(1)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [pageSize, setPageSize] = useState(10)
+  
   const [filters, setFilters] = useState<FilterState>({
     name: [],
     skills: [],
@@ -121,42 +125,55 @@ const Candidates = () => {
   const [moreMenuState, setMoreMenuState] = useState<{ candidate: CandidateDisplay; top: number; left: number } | null>(null)
 
   // Experience range from data (for slider min/max)
-  const experienceRanges = useMemo(() => {
-    const ex = candidates.map((c) => c.experience ?? 0)
-    if (!ex.length) return { min: DEFAULT_EXPERIENCE_RANGE[0], max: DEFAULT_EXPERIENCE_RANGE[1] }
-    return { min: Math.min(...ex), max: Math.max(...ex) }
-  }, [candidates])
+  const fetchParams = useMemo(() => {
+    const params: Record<string, unknown> = {
+      limit: pageSize,
+      sortBy: 'createdAt:desc',
+    }
+    if (filters.name?.length) params.fullName = filters.name[0]
+    if (filters.skills?.length) params.skills = filters.skills
+    if (filters.education?.length) params.degree = filters.education[0]
+    if (filters.email?.trim()) params.email = filters.email.trim()
+    if (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]) {
+      params.minYearsOfExperience = filters.experience[0]
+      params.maxYearsOfExperience = filters.experience[1]
+    }
+    return params
+  }, [filters, pageSize])
 
-  const refreshCandidates = useCallback(() => {
+  const refreshCandidates = useCallback((resetPage = false) => {
+    const page = resetPage ? 1 : apiPage
+    if (resetPage) setApiPage(1)
     setCandidatesLoading(true)
     setCandidatesError(null)
-    listCandidates({ limit: 500 })
-      .then((res) => setCandidates(res.results.map(mapCandidateToDisplay)))
+    listCandidates({ ...fetchParams, page })
+      .then((res) => {
+        setCandidates(res.results.map(mapCandidateToDisplay))
+        setTotalResults(res.totalResults ?? res.results.length)
+        setTotalPages(res.totalPages ?? 1)
+      })
       .catch((err) => {
         setCandidatesError(err?.message ?? 'Failed to load candidates')
         setCandidates([])
+        setTotalResults(0)
+        setTotalPages(0)
       })
       .finally(() => setCandidatesLoading(false))
-  }, [])
+  }, [apiPage, fetchParams])
 
   useEffect(() => {
-    refreshCandidates()
-  }, [refreshCandidates])
+    refreshCandidates(false)
+  }, [apiPage, fetchParams])
 
-  // Sync experience filter to data bounds when candidates load (fixes badge showing 1 with no user selection)
+  const prevFiltersRef = React.useRef(filters)
   useEffect(() => {
-    setFilters(prev => {
-      const isStillDefault =
-        prev.experience[0] === DEFAULT_EXPERIENCE_RANGE[0] &&
-        prev.experience[1] === DEFAULT_EXPERIENCE_RANGE[1]
-      const needsSync =
-        prev.experience[0] !== experienceRanges.min || prev.experience[1] !== experienceRanges.max
-      if (isStillDefault && needsSync) {
-        return { ...prev, experience: [experienceRanges.min, experienceRanges.max] }
-      }
-      return prev
-    })
-  }, [experienceRanges.min, experienceRanges.max])
+    if (prevFiltersRef.current !== filters) {
+      prevFiltersRef.current = filters
+      setApiPage(1)
+    }
+  }, [filters])
+
+  // Note: Experience filter sync disabled with server-side pagination (data is paged)
 
   // Close "More" menu when clicking outside
   useEffect(() => {
@@ -191,7 +208,7 @@ const Candidates = () => {
         skills,
       })
       setCreateForm({ fullName: '', email: '', phoneNumber: '', shortBio: '', skillsText: '' })
-      refreshCandidates()
+      refreshCandidates(true)
       const closeBtn = document.querySelector('[data-hs-overlay="#create-candidate-modal"]')
       if (closeBtn instanceof HTMLElement) closeBtn.click()
     } catch (err: any) {
@@ -375,7 +392,7 @@ const Candidates = () => {
       await deleteSalarySlip(candidateId, index)
       setSalarySlipsFromCandidate((prev) => prev.filter((_, i) => i !== index))
       setActionSuccess('Salary slip removed')
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 2000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
@@ -417,7 +434,7 @@ const Candidates = () => {
       setSalarySlipCandidate(null)
       setSalarySlipForm({ month: '', year: '', file: null })
       setTimeout(() => document.querySelector('[data-hs-overlay="#salary-slip-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add salary slip')
@@ -444,7 +461,7 @@ const Candidates = () => {
       setFeedbackCandidate(null)
       setFeedbackForm({ feedback: '', rating: 3 })
       setTimeout(() => document.querySelector('[data-hs-overlay="#feedback-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add feedback')
@@ -458,7 +475,7 @@ const Candidates = () => {
     try {
       await resendVerificationEmail(candidate.id)
       setActionSuccess('Verification email sent')
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to send verification email')
@@ -610,7 +627,7 @@ const Candidates = () => {
       }
       setSelectedRows(new Set())
       setActionSuccess('Selected candidates deleted')
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
@@ -640,7 +657,7 @@ const Candidates = () => {
       setAssignRecruiterCandidate(null)
       setAssignRecruiterId('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#assign-recruiter-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign recruiter')
@@ -667,7 +684,7 @@ const Candidates = () => {
       setJoiningDateCandidate(null)
       setJoiningDateValue('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#joining-date-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update joining date')
@@ -694,7 +711,7 @@ const Candidates = () => {
       setResignDateCandidate(null)
       setResignDateValue('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#resign-date-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
@@ -726,7 +743,7 @@ const Candidates = () => {
       setWeekOffCandidateIds([])
       setWeekOffDays([])
       setTimeout(() => document.querySelector('[data-hs-overlay="#week-off-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update week-off')
@@ -759,7 +776,7 @@ const Candidates = () => {
       setAssignShiftCandidateIds([])
       setAssignShiftId('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#assign-shift-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates()
+      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign shift')
@@ -827,7 +844,13 @@ const Candidates = () => {
                   )}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <div className="flex items-center gap-1">
+                  {(candidate._raw?.employeeId) && (
+                    <div className="flex items-center gap-1">
+                      <i className="ri-id-card-line"></i>
+                      {candidate._raw.employeeId}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 mt-0.5">
                     <i className="ri-phone-line"></i>
                     {candidate.phone}
                   </div>
@@ -1056,48 +1079,8 @@ const Candidates = () => {
     [selectedRows, moreMenuState, deletingCandidateId]
   )
 
-  // Filter data based on filter state
-  const filteredData = useMemo(() => {
-    return candidates.filter((candidate) => {
-      // Name filter (array)
-      if (filters.name.length > 0 && !filters.name.some(name => 
-        candidate.name.toLowerCase().includes(name.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Skills filter (array)
-      if (filters.skills.length > 0 && !filters.skills.some(skill => 
-        candidate.skills?.some(candidateSkill => 
-          candidateSkill.toLowerCase().includes(skill.toLowerCase())
-        )
-      )) {
-        return false
-      }
-      
-      // Education filter (array)
-      if (filters.education.length > 0 && !filters.education.some(edu => 
-        candidate.education.toLowerCase().includes(edu.toLowerCase())
-      )) {
-        return false
-      }
-      
-      // Email filter (string)
-      if (filters.email && !candidate.email.toLowerCase().includes(filters.email.toLowerCase())) {
-        return false
-      }
-      
-      // Experience filter (range)
-      if (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max) {
-        const candidateExperience = candidate.experience || 0
-        if (candidateExperience < filters.experience[0] || candidateExperience > filters.experience[1]) {
-          return false
-        }
-      }
-      
-      return true
-    })
-  }, [candidates, filters, experienceRanges.min, experienceRanges.max])
+  // Server-side filtering: API returns filtered results, no client-side filter
+  const filteredData = useMemo(() => candidates, [candidates])
 
   const data = useMemo(() => filteredData, [filteredData])
 
@@ -1167,7 +1150,7 @@ const Candidates = () => {
       skills: [],
       education: [],
       email: '',
-      experience: [experienceRanges.min, experienceRanges.max]
+      experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
     })
     setSearchName('')
     setSearchSkills('')
@@ -1179,21 +1162,27 @@ const Candidates = () => {
     filters.skills.length > 0 ||
     filters.education.length > 0 ||
     filters.email !== '' ||
-    filters.experience[0] !== experienceRanges.min ||
-    filters.experience[1] !== experienceRanges.max
+    filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] ||
+    filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]
 
   const activeFilterCount = 
     filters.name.length +
     filters.skills.length +
     filters.education.length +
     (filters.email !== '' ? 1 : 0) +
-    (filters.experience[0] !== experienceRanges.min || filters.experience[1] !== experienceRanges.max ? 1 : 0)
+    (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1] ? 1 : 0)
 
   const tableInstance: any = useTable(
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      initialState: { pageIndex: 0, pageSize: 25 },
+      manualPagination: true,
+      pageCount: totalPages || 1,
+      state: {
+        pageIndex: apiPage - 1,
+        pageSize,
+      },
     },
     useSortBy,
     usePagination
@@ -1213,11 +1202,10 @@ const Candidates = () => {
     pageOptions,
     gotoPage,
     pageCount,
-    setPageSize,
     setSortBy,
   } = tableInstance
 
-  const { pageIndex, pageSize } = state
+  const { pageIndex } = state
 
   // Handle sort selection
   const handleSortChange = (sortOption: string) => {
@@ -1268,8 +1256,7 @@ const Candidates = () => {
   return (
     <Fragment>
       <Seo title="Candidates" />
-      <Pageheader currentpage="Candidates" activepage="ATS" mainpage="Candidates" />
-      <div className="container-fluid">
+      <div className="container-fluid pt-6">
       {candidatesLoading && (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
@@ -1305,7 +1292,10 @@ const Candidates = () => {
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value))
+                    setApiPage(1)
+                  }}
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -1559,17 +1549,17 @@ const Candidates = () => {
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
+                  Showing {totalResults === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, totalResults)} of {totalResults} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
                   <nav aria-label="Page navigation" className="pagination-style-4">
                     <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
+                      <li className={`page-item ${apiPage <= 1 ? 'disabled' : ''}`}>
                         <button
                           className="page-link px-3 py-[0.375rem]"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
+                          onClick={() => setApiPage((p) => Math.max(1, p - 1))}
+                          disabled={apiPage <= 1}
                         >
                           Prev
                         </button>
@@ -1597,7 +1587,7 @@ const Candidates = () => {
                               <li className="page-item">
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(0)}
+                                  onClick={() => setApiPage(1)}
                                 >
                                   1
                                 </button>
@@ -1625,7 +1615,7 @@ const Candidates = () => {
                               >
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageNum)}
+                                  onClick={() => setApiPage(pageNum + 1)}
                                 >
                                   {pageNum + 1}
                                 </button>
@@ -1642,7 +1632,7 @@ const Candidates = () => {
                               <li className="page-item">
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => gotoPage(pageCount - 1)}
+                                  onClick={() => setApiPage(pageCount)}
                                 >
                                   {pageCount}
                                 </button>
@@ -1651,11 +1641,11 @@ const Candidates = () => {
                           )}
                         </>
                       )}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
+                      <li className={`page-item ${apiPage >= totalPages ? 'disabled' : ''}`}>
                         <button
                           className="page-link px-3 py-[0.375rem] text-primary"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
+                          onClick={() => setApiPage((p) => Math.min(totalPages, p + 1))}
+                          disabled={apiPage >= totalPages}
                         >
                           Next
                         </button>
@@ -1686,7 +1676,7 @@ const Candidates = () => {
         setSearchSkills={setSearchSkills}
         searchEducation={searchEducation}
         setSearchEducation={setSearchEducation}
-        experienceRanges={experienceRanges}
+        experienceRanges={{ min: DEFAULT_EXPERIENCE_RANGE[0], max: DEFAULT_EXPERIENCE_RANGE[1] }}
         handleMultiSelectChange={handleMultiSelectChange}
         handleRemoveFilter={handleRemoveFilter}
         handleExperienceRangeChange={handleExperienceRangeChange}

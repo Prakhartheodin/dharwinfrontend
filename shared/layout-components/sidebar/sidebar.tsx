@@ -10,8 +10,6 @@ import Menuloop from "./menuloop";
 import { usePathname, useRouter } from "next/navigation";
 import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
 import {
 	PATH_PERMISSION_PREFIX,
 	hasPermissionForPath,
@@ -20,52 +18,9 @@ import {
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
-	const { user } = useAuth();
-	const [userPermissions, setUserPermissions] = useState<string[]>([]);
-	const [permissionsLoaded, setPermissionsLoaded] = useState(false);
-	const [roles, setRoles] = useState<Role[]>([]);
-	const [isAdministrator, setIsAdministrator] = useState(false);
+	const { user, permissions: userPermissions, permissionsLoaded, isAdministrator } = useAuth();
 
-	const path = usePathname()	
-
-	// Load permissions (and Administrator role flag) for the current user from their roleIds.
-	useEffect(() => {
-		const loadPermissions = async () => {
-			try {
-				if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
-					setUserPermissions([]);
-					setPermissionsLoaded(true);
-					setRoles([]);
-					setIsAdministrator(false);
-					return;
-				}
-				const res = await rolesApi.listRoles({ limit: 100 });
-				const roles = (res.results ?? []) as Role[];
-				setRoles(roles);
-				const roleMap = new Map<string, Role>();
-				roles.forEach((r) => roleMap.set(r.id, r));
-				const perms = new Set<string>();
-				let admin = false;
-				(user.roleIds as string[]).forEach((id) => {
-					const role = roleMap.get(id);
-					if (!role) return;
-					role.permissions?.forEach((p) => perms.add(p));
-					if (role.name === "Administrator") {
-						admin = true;
-					}
-				});
-				setUserPermissions(Array.from(perms));
-				setIsAdministrator(admin);
-			} catch {
-				setUserPermissions([]);
-				setRoles([]);
-				setIsAdministrator(false);
-			} finally {
-				setPermissionsLoaded(true);
-			}
-		};
-		loadPermissions();
-	}, [user]);
+	const path = usePathname()
 
 	// Paths that should only be visible to Administrator role users in the sidebar.
 	const ADMIN_ONLY_PATHS = useMemo(

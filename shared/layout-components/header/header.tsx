@@ -568,7 +568,13 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
 
                 <button id="dropdown-profile" type="button"
                   className="hs-dropdown-toggle ti-dropdown-toggle !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent ">
-                  <img className="inline-block rounded-full " src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/faces/9.jpg`} width="32" height="32" alt="Image Description" />
+                  {user?.profilePicture?.url ? (
+                    <img className="inline-block rounded-full object-cover" src={user.profilePicture.url} width="32" height="32" alt="" />
+                  ) : (
+                    <span className="inline-flex justify-center items-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-[0.875rem]">
+                      {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                  )}
                 </button>
                 <div className="md:block hidden dropdown-profile">
                   <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">{user?.name ?? user?.email ?? "User"}</p>
@@ -579,33 +585,36 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   aria-labelledby="dropdown-profile">
 
                   <ul className="text-defaulttextcolor font-medium dark:text-[#8c9097] dark:text-white/50 list-none !m-0 !p-0">
-                    {/* Account */}
                     <li>
                       <Link
                         className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]"
-                        href={ROUTES.candidateProfile}
+                        href="/ats/my-profile/"
                       >
                         <i className="ti ti-user-circle text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>My Profile
                       </Link>
                     </li>
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem] " href="/pages/email/mail-app/"><i
-                        className="ti ti-inbox text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Inbox <span
-                          className="!py-1 !px-[0.45rem] !font-semibold !rounded-sm text-success text-[0.75em] bg-success/10 ms-auto">25</span>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/communication/email">
+                        <i className="ti ti-inbox text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Inbox
                       </Link>
                     </li>
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/pages/todo-list/"><i
-                      className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager</Link></li>
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/"><i
-                      className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings</Link></li>
+                    <li>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={user?.role === "admin" ? "/task/kanban-board" : "/task/my-tasks"}>
+                        <i className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager
+                      </Link>
+                    </li>
+                    <li>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/">
+                        <i className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings
+                      </Link>
+                    </li>
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
-                    {/* Support */}
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem] " href="#!" scroll={false}><i
-                      className="ti ti-wallet text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Bal: $7,12,950</Link></li>
-                    <li><Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/pages/chat/"><i
-                      className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support</Link></li>
+                    <li>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/pages/chat/">
+                        <i className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support
+                      </Link>
+                    </li>
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
-                    {/* Log Out */}
                     <li>
                       <button type="button" onClick={() => logout()} className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex !text-start !border-0 !bg-transparent"><i
                         className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</button>

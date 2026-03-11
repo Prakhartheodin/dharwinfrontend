@@ -19,6 +19,8 @@ export const AUTH_ENDPOINTS = {
   /** Public candidate onboarding – no auth; creates User + Candidate for ATS list. */
   publicRegisterCandidate: `${BASE_API_URL}/public/register-candidate`,
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
+  /** Current user's resolved permissions (auth only, no permission required). */
+  myPermissions: `${BASE_API_URL}/auth/my-permissions`,
   refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
   logout: `${BASE_API_URL}/auth/logout`,
   impersonate: `${BASE_API_URL}/auth/impersonate`,

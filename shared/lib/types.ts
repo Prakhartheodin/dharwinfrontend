@@ -1,3 +1,12 @@
+/** Profile picture subdocument from backend. */
+export interface ProfilePicture {
+  url?: string;
+  key?: string;
+  originalName?: string;
+  size?: number;
+  mimeType?: string;
+}
+
 /** User from backend (login/me). Matches guide: id, email, name, role, roleIds, status, createdAt, lastLoginAt. */
 export interface User {
   id: string;
@@ -6,6 +15,7 @@ export interface User {
   role?: string;
   roleIds?: string[];
   status?: string;
+  profilePicture?: ProfilePicture | null;
   createdAt?: string;
   lastLoginAt?: string;
   [key: string]: unknown;

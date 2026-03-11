@@ -26,6 +26,7 @@ export const PERMISSION_SECTIONS: {
     id: "ats",
     label: "ATS",
     features: [
+      { id: "my-profile", label: "My Profile" },
       { id: "jobs", label: "Jobs" },
       { id: "candidates", label: "Candidates" },
       { id: "recruiters", label: "Recruiters" },
