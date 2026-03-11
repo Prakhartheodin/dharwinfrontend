@@ -4,16 +4,13 @@ import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import React, { Fragment, useState, useEffect } from "react";
-import { listJobs, type Job } from "@/shared/lib/api/jobs";
-import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
+import { browseJobs as browseJobsApi, type Job } from "@/shared/lib/api/jobs";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
-import { ROUTES } from "@/shared/lib/constants";
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Freelance"];
 const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior Level", "Executive"];
 
 export default function BrowseJobsPage() {
-  const { isCandidate, isLoading: candidateLoading } = useIsCandidate();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -27,9 +24,7 @@ export default function BrowseJobsPage() {
 
   useEffect(() => {
     setLoading(true);
-    listJobs({
-      forCandidates: true,
-      status: "Active",
+    browseJobsApi({
       limit: 12,
       page,
       search: search || undefined,
@@ -50,27 +45,6 @@ export default function BrowseJobsPage() {
       })
       .finally(() => setLoading(false));
   }, [page, search, jobType, location, experienceLevel, sortBy]);
-
-  if (!candidateLoading && !isCandidate) {
-    return (
-      <>
-        <Seo title="Browse Jobs" />
-        <Pageheader currentpage="Browse Jobs" activepage="ATS" mainpage="Browse Jobs" />
-        <div className="container">
-          <div className="box custom-box">
-            <div className="box-body text-center py-8">
-              <p className="text-defaulttextcolor dark:text-white/70">
-                You need a candidate profile to browse and apply for jobs.
-              </p>
-              <Link href={ROUTES.defaultAfterLogin} className="ti-btn ti-btn-primary mt-3">
-                Go to Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
 
   return (
     <Fragment>

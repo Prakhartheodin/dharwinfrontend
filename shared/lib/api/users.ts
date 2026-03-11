@@ -147,6 +147,14 @@ export interface NotificationPreferences {
   recruiterUpdates?: boolean;
 }
 
+export interface ProfilePicturePayload {
+  url: string;
+  key?: string;
+  originalName?: string;
+  size?: number;
+  mimeType?: string;
+}
+
 export interface UpdateUserPayload {
   name?: string;
   email?: string;
@@ -158,6 +166,7 @@ export interface UpdateUserPayload {
   domain?: string[];
   location?: string;
   profileSummary?: string;
+  profilePicture?: ProfilePicturePayload | null;
   notificationPreferences?: NotificationPreferences;
 }
 

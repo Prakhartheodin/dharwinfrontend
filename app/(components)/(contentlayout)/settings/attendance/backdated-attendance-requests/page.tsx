@@ -11,6 +11,7 @@ import {
   type AttendanceEntry,
 } from "@/shared/lib/api/backdated-attendance-requests";
 import { listStudents, type Student } from "@/shared/lib/api/students";
+import * as attendanceApi from "@/shared/lib/api/attendance";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
@@ -18,11 +19,22 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 
+function getDetectedTimezone(): string {
+  if (typeof window === "undefined") return "UTC";
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
 function getStudentName(request: BackdatedAttendanceRequest): string {
   const s = request.student;
-  if (!s) return "Unknown";
-  if (typeof s === "object" && s.user?.name) return s.user.name;
+  if (typeof s === "object" && s?.user?.name) return s.user.name;
   if (typeof s === "object" && (s as { fullName?: string }).fullName) return (s as { fullName: string }).fullName;
+  // When student.user is not populated (e.g. missing ref), use requestedBy — student applies for self
+  if (request.requestedBy?.name) return request.requestedBy.name;
+  if (request.studentEmail) return request.studentEmail;
   return "Unknown";
 }
 
@@ -44,6 +56,11 @@ export default function SettingsAttendanceBackdatedPage() {
     totalPages: 1,
     totalResults: 0,
   });
+
+  const [showAddSection, setShowAddSection] = useState(false);
+  const [addStudentId, setAddStudentId] = useState<string>("");
+  const [addEntries, setAddEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
+  const [addingBackDate, setAddingBackDate] = useState(false);
 
   useEffect(() => {
     const check = async () => {
@@ -111,6 +128,73 @@ export default function SettingsAttendanceBackdatedPage() {
     fetchRequests();
   }, [fetchRequests]);
 
+  const defaultTimezone = getDetectedTimezone();
+  const openAddSection = () => {
+    setAddStudentId("");
+    setAddEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+    setShowAddSection(true);
+  };
+  const addAddEntry = () => {
+    setAddEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+  };
+  const removeAddEntry = (index: number) => {
+    if (addEntries.length > 1) setAddEntries((prev) => prev.filter((_, i) => i !== index));
+  };
+  const updateAddEntry = (index: number, field: keyof typeof addEntries[0], value: string) => {
+    setAddEntries((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  };
+  const handleSubmitAddBackdated = async () => {
+    if (!addStudentId) {
+      await Swal.fire({ icon: "warning", title: "Select Student", text: "Please select the student who needs backdated attendance.", confirmButtonText: "OK" });
+      return;
+    }
+    const valid = addEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
+    if (valid.length === 0) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
+      return;
+    }
+    const invalid = addEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
+    if (invalid.length > 0) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
+      return;
+    }
+    setAddingBackDate(true);
+    try {
+      const attendanceEntries = valid.map((entry) => {
+        const punchInStr = entry.punchInTime.includes(":") ? entry.punchInTime : `${entry.punchInTime}:00`;
+        const punchOutStr = entry.punchOutTime.includes(":") ? entry.punchOutTime : `${entry.punchOutTime}:00`;
+        const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
+        let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
+        if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
+        return {
+          date: new Date(entry.date).toISOString().slice(0, 10),
+          punchIn: punchInDateTime.toISOString(),
+          punchOut: punchOutDateTime.toISOString(),
+          timezone: entry.timezone || defaultTimezone,
+          notes: entry.notes || undefined,
+        };
+      });
+      const result = await attendanceApi.regularizeAttendance(addStudentId, attendanceEntries);
+      await Swal.fire({
+        icon: "success",
+        title: "Done",
+        text: result.message ?? `Added ${result.createdOrUpdated ?? 0} attendance record(s).`,
+        confirmButtonText: "OK",
+      });
+      setShowAddSection(false);
+      fetchRequests();
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to add attendance.";
+      await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
+    } finally {
+      setAddingBackDate(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       return new Date(dateString).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
@@ -119,9 +203,12 @@ export default function SettingsAttendanceBackdatedPage() {
     }
   };
 
-  const formatDateTime = (dateString: string) => {
+  const formatDateTime = (dateString: string | undefined | null) => {
+    if (dateString == null || dateString === "") return "—";
     try {
-      return new Date(dateString).toLocaleString("en-US", {
+      const d = new Date(dateString);
+      if (Number.isNaN(d.getTime())) return "—";
+      return d.toLocaleString("en-US", {
         year: "numeric",
         month: "short",
         day: "numeric",
@@ -129,7 +216,7 @@ export default function SettingsAttendanceBackdatedPage() {
         minute: "2-digit",
       });
     } catch {
-      return dateString;
+      return "—";
     }
   };
 
@@ -254,8 +341,8 @@ export default function SettingsAttendanceBackdatedPage() {
         const punchOut = (document.getElementById("punchOut") as HTMLInputElement)?.value;
         const timezone = (document.getElementById("timezone") as HTMLInputElement)?.value;
         const notes = (document.getElementById("notes") as HTMLTextAreaElement)?.value;
-        if (!date || !punchIn) {
-          Swal.showValidationMessage("Date and punch in are required");
+        if (!date || !punchIn || !punchOut) {
+          Swal.showValidationMessage("Date, punch in, and punch out are required");
           return false;
         }
         return { date, punchIn, punchOut, timezone, notes };
@@ -356,6 +443,111 @@ export default function SettingsAttendanceBackdatedPage() {
       <Seo title="Backdated Attendance" />
       <Pageheader currentpage="Backdated Attendance" activepage="Settings" mainpage="Attendance" />
       <div className="space-y-6 mt-3">
+        <div className="box">
+          <div className="box-header flex items-center justify-between">
+            <div className="box-title">Add Backdated Attendance (Admin)</div>
+            {!showAddSection ? (
+              <button type="button" onClick={openAddSection} className="ti-btn ti-btn-primary !py-1.5 !px-3">
+                <i className="ri-add-line me-1" />
+                Add for Student
+              </button>
+            ) : (
+              <button type="button" onClick={() => setShowAddSection(false)} className="ti-btn ti-btn-light !py-1.5 !px-3">
+                Cancel
+              </button>
+            )}
+          </div>
+          {showAddSection && (
+            <div className="box-body border-t border-defaultborder pt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-defaulttextcolor mb-2">Student *</label>
+                <select
+                  value={addStudentId}
+                  onChange={(e) => setAddStudentId(e.target.value)}
+                  className="ti-form-input w-full"
+                  required
+                >
+                  <option value="">Select student who needs backdated attendance</option>
+                  {students.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.user?.name ?? "Unknown"} ({s.user?.email ?? ""})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-defaulttextcolor">
+                <i className="ri-information-line me-2 text-primary" />
+                Add entries for past dates. Each entry requires date, punch-in, and punch-out time.
+              </div>
+              {addEntries.map((entry, index) => (
+                <div key={index} className="p-4 border border-defaultborder rounded-lg bg-black/5 dark:bg-white/5">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-defaulttextcolor">Entry {index + 1}</span>
+                    {addEntries.length > 1 && (
+                      <button type="button" onClick={() => removeAddEntry(index)} className="text-danger hover:opacity-80" title="Remove">
+                        <i className="ri-delete-bin-line text-lg" />
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-defaulttextcolor mb-1">Date *</label>
+                      <input
+                        type="date"
+                        value={entry.date}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => updateAddEntry(index, "date", e.target.value)}
+                        className="ti-form-input w-full !py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
+                      <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{entry.timezone}</div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
+                      <input
+                        type="time"
+                        value={entry.punchInTime}
+                        onChange={(e) => updateAddEntry(index, "punchInTime", e.target.value)}
+                        className="ti-form-input w-full !py-1.5"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
+                      <input
+                        type="time"
+                        value={entry.punchOutTime}
+                        onChange={(e) => updateAddEntry(index, "punchOutTime", e.target.value)}
+                        className="ti-form-input w-full !py-1.5"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
+                      <input
+                        type="text"
+                        value={entry.notes}
+                        onChange={(e) => updateAddEntry(index, "notes", e.target.value)}
+                        placeholder="Notes for this entry"
+                        className="ti-form-input w-full !py-1.5"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <button type="button" onClick={addAddEntry} className="ti-btn ti-btn-light !py-1.5 !px-3">
+                  <i className="ri-add-line me-1" />
+                  Add Another Entry
+                </button>
+                <button type="button" onClick={handleSubmitAddBackdated} className="ti-btn ti-btn-primary" disabled={addingBackDate}>
+                  {addingBackDate ? "Adding…" : "Add Attendance"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="box">
           <div className="box-header">
             <div className="box-title">Filters</div>

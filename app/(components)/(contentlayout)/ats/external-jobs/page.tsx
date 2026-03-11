@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from "react";
 import { useTable, useSortBy, usePagination } from "react-table";
@@ -317,7 +316,6 @@ export default function ExternalJobsPage() {
   return (
     <Fragment>
       <Seo title="External Jobs" />
-      <Pageheader currentpage="External Jobs" activepage="ATS" mainpage="External Jobs" />
 
       {/* Summary Cards */}
       <div className="grid grid-cols-12 gap-4 mb-4">

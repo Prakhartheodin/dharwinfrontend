@@ -843,6 +843,22 @@ const Jobs = () => {
     )
   }
 
+  if (jobsLoading) {
+    return (
+      <Fragment>
+        <Seo title="Jobs" />
+        <div className="container-fluid pt-6">
+          <div className="flex items-center justify-center py-16">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent mx-auto mb-3" />
+              <p className="text-defaulttextcolor dark:text-white/70">Loading jobs...</p>
+            </div>
+          </div>
+        </div>
+      </Fragment>
+    )
+  }
+
   return (
     <Fragment>
   

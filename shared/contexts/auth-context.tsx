@@ -11,6 +11,11 @@ interface AuthContextValue {
   user: User | null;
   impersonation: ImpersonationInfo | null;
   sessions: Session[];
+  /** Resolved permissions from user's roleIds (raw domain format, e.g. ats.jobs:view,create). */
+  permissions: string[];
+  roleNames: string[];
+  isAdministrator: boolean;
+  permissionsLoaded: boolean;
   isLoading: boolean;
   isChecked: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -30,13 +35,40 @@ function clearAuthFromLocalStorage() {
   AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
+const EMPTY_PERMISSIONS = { permissions: [] as string[], roleNames: [] as string[], isAdministrator: false };
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [impersonation, setImpersonation] = useState<ImpersonationInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [permissions, setPermissions] = useState<string[]>([]);
+  const [roleNames, setRoleNames] = useState<string[]>([]);
+  const [isAdministrator, setIsAdministrator] = useState(false);
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isChecked, setIsChecked] = useState(false);
   const router = useRouter();
+
+  const fetchAndSetPermissions = useCallback(async () => {
+    try {
+      const perm = await authApi.getMyPermissions();
+      if (perm) {
+        setPermissions(perm.permissions ?? []);
+        setRoleNames(perm.roleNames ?? []);
+        setIsAdministrator(perm.isAdministrator ?? false);
+      } else {
+        setPermissions(EMPTY_PERMISSIONS.permissions);
+        setRoleNames(EMPTY_PERMISSIONS.roleNames);
+        setIsAdministrator(false);
+      }
+    } catch {
+      setPermissions(EMPTY_PERMISSIONS.permissions);
+      setRoleNames(EMPTY_PERMISSIONS.roleNames);
+      setIsAdministrator(false);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
     clearAuthFromLocalStorage();
@@ -44,6 +76,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const handleSessionExpired = useCallback(() => {
     setUser(null);
+    setPermissions(EMPTY_PERMISSIONS.permissions);
+    setRoleNames(EMPTY_PERMISSIONS.roleNames);
+    setIsAdministrator(false);
+    setPermissionsLoaded(true);
 
     // Don't force-redirect away from public auth pages (sign-in, register,
     // reset-password), public candidate onboarding, public job portal, or public meeting join (no login).
@@ -85,17 +121,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(me.user ?? null);
         setImpersonation(me.impersonation ?? null);
         setSessions(me.sessions ?? []);
+        setPermissionsLoaded(false);
+        await fetchAndSetPermissions();
       } else {
         setUser(null);
         setImpersonation(null);
         setSessions([]);
+        setPermissions(EMPTY_PERMISSIONS.permissions);
+        setRoleNames(EMPTY_PERMISSIONS.roleNames);
+        setIsAdministrator(false);
+        setPermissionsLoaded(true);
       }
     } catch {
       setUser(null);
       setImpersonation(null);
       setSessions([]);
+      setPermissions(EMPTY_PERMISSIONS.permissions);
+      setRoleNames(EMPTY_PERMISSIONS.roleNames);
+      setIsAdministrator(false);
+      setPermissionsLoaded(true);
     }
-  }, []);
+  }, [fetchAndSetPermissions]);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,19 +152,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(me.user ?? null);
           setImpersonation(me.impersonation ?? null);
           setSessions(me.sessions ?? []);
+          setPermissionsLoaded(false);
+          const perm = await authApi.getMyPermissions();
+          if (!cancelled && perm) {
+            setPermissions(perm.permissions ?? []);
+            setRoleNames(perm.roleNames ?? []);
+            setIsAdministrator(perm.isAdministrator ?? false);
+          } else if (!cancelled) {
+            setPermissions(EMPTY_PERMISSIONS.permissions);
+            setRoleNames(EMPTY_PERMISSIONS.roleNames);
+            setIsAdministrator(false);
+          }
         } else if (!cancelled) {
           setUser(null);
           setImpersonation(null);
           setSessions([]);
+          setPermissions(EMPTY_PERMISSIONS.permissions);
+          setRoleNames(EMPTY_PERMISSIONS.roleNames);
+          setIsAdministrator(false);
         }
       } catch {
         if (!cancelled) {
           setUser(null);
           setImpersonation(null);
           setSessions([]);
+          setPermissions(EMPTY_PERMISSIONS.permissions);
+          setRoleNames(EMPTY_PERMISSIONS.roleNames);
+          setIsAdministrator(false);
         }
       } finally {
-        if (!cancelled) setIsChecked(true);
+        if (!cancelled) {
+          setPermissionsLoaded(true);
+          setIsChecked(true);
+        }
       }
     })();
     return () => {
@@ -132,6 +198,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await authApi.login({ email, password });
         setUser(res.user);
+        setPermissionsLoaded(false);
+        const perm = await authApi.getMyPermissions();
+        if (perm) {
+          setPermissions(perm.permissions ?? []);
+          setRoleNames(perm.roleNames ?? []);
+          setIsAdministrator(perm.isAdministrator ?? false);
+        } else {
+          setPermissions(EMPTY_PERMISSIONS.permissions);
+          setRoleNames(EMPTY_PERMISSIONS.roleNames);
+          setIsAdministrator(false);
+        }
+        setPermissionsLoaded(true);
         // Candidates (role 'user' from share-candidate-form) go to their profile on first login
         const isCandidate = res.user?.role === "user";
         router.push(isCandidate ? ROUTES.candidateProfile : ROUTES.defaultAfterLogin);
@@ -150,6 +228,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setImpersonation(null);
       setSessions([]);
+      setPermissions(EMPTY_PERMISSIONS.permissions);
+      setRoleNames(EMPTY_PERMISSIONS.roleNames);
+      setIsAdministrator(false);
+      setPermissionsLoaded(true);
       clearAuthFromLocalStorage();
       setIsLoading(false);
       router.push(ROUTES.signIn);
@@ -163,6 +245,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await authApi.impersonate(userId);
         setUser(res.user);
         setImpersonation(res.impersonation);
+        setPermissionsLoaded(false);
+        const perm = await authApi.getMyPermissions();
+        if (perm) {
+          setPermissions(perm.permissions ?? []);
+          setRoleNames(perm.roleNames ?? []);
+          setIsAdministrator(perm.isAdministrator ?? false);
+        } else {
+          setPermissions(EMPTY_PERMISSIONS.permissions);
+          setRoleNames(EMPTY_PERMISSIONS.roleNames);
+          setIsAdministrator(false);
+        }
+        setPermissionsLoaded(true);
         router.push(ROUTES.defaultAfterLogin);
       } finally {
         setIsLoading(false);
@@ -177,6 +271,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await authApi.stopImpersonation();
       setUser(res.user);
       setImpersonation(null);
+      setPermissionsLoaded(false);
+      const perm = await authApi.getMyPermissions();
+      if (perm) {
+        setPermissions(perm.permissions ?? []);
+        setRoleNames(perm.roleNames ?? []);
+        setIsAdministrator(perm.isAdministrator ?? false);
+      } else {
+        setPermissions(EMPTY_PERMISSIONS.permissions);
+        setRoleNames(EMPTY_PERMISSIONS.roleNames);
+        setIsAdministrator(false);
+      }
+      setPermissionsLoaded(true);
       router.refresh();
     } finally {
       setIsLoading(false);
@@ -188,6 +294,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       impersonation,
       sessions,
+      permissions,
+      roleNames,
+      isAdministrator,
+      permissionsLoaded,
       isLoading,
       isChecked,
       login,
@@ -196,7 +306,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       startImpersonation,
       stopImpersonation: stopImpersonationAction,
     }),
-    [user, impersonation, sessions, isLoading, isChecked, login, logout, checkAuth, startImpersonation, stopImpersonationAction]
+    [
+      user,
+      impersonation,
+      sessions,
+      permissions,
+      roleNames,
+      isAdministrator,
+      permissionsLoaded,
+      isLoading,
+      isChecked,
+      login,
+      logout,
+      checkAuth,
+      startImpersonation,
+      stopImpersonationAction,
+    ]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -8,6 +8,7 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
 import * as rolesApi from "@/shared/lib/api/roles";
 import * as usersApi from "@/shared/lib/api/users";
+import { uploadDocument } from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
 import type { Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
@@ -52,6 +53,9 @@ export default function PersonalInformationPage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveSuccess, setSaveSuccess] = useState("");
+  const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
+  const [avatarRemoveLoading, setAvatarRemoveLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -142,6 +146,60 @@ export default function PersonalInformationPage() {
       setTimeout(() => {
         setSaveSuccess("");
       }, 2000);
+    }
+  };
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    e.target.value = "";
+    const allowed = ["image/jpeg", "image/jpg", "image/png"];
+    if (!allowed.includes(file.type)) {
+      setSaveError("Please upload a JPEG or PNG image (max 5MB).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveError("Image must be smaller than 5MB.");
+      return;
+    }
+    setSaveError("");
+    setAvatarUploadLoading(true);
+    try {
+      const result = await uploadDocument(file);
+      await usersApi.updateUser(user.id, {
+        profilePicture: {
+          url: result.url,
+          key: result.key,
+          originalName: result.originalName,
+          size: result.size,
+          mimeType: result.mimeType,
+        },
+      });
+      await checkAuth();
+      setSaveSuccess("Profile picture updated.");
+      setTimeout(() => setSaveSuccess(""), 2000);
+    } catch (err) {
+      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : "Failed to upload photo.";
+      setSaveError(msg);
+    } finally {
+      setAvatarUploadLoading(false);
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    if (!user) return;
+    setSaveError("");
+    setAvatarRemoveLoading(true);
+    try {
+      await usersApi.updateUser(user.id, { profilePicture: null });
+      await checkAuth();
+      setSaveSuccess("Profile picture removed.");
+      setTimeout(() => setSaveSuccess(""), 2000);
+    } catch (err) {
+      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : "Failed to remove photo.";
+      setSaveError(msg);
+    } finally {
+      setAvatarRemoveLoading(false);
     }
   };
 
@@ -265,6 +323,52 @@ export default function PersonalInformationPage() {
                 <dd className="text-[0.9375rem]">{roleDisplayName} (System)</dd>
               </div>
             </dl>
+          </div>
+        </div>
+
+        {/* Avatar / Profile picture */}
+        <h6 className="font-semibold mb-4 text-[1rem]">Profile picture</h6>
+        <div className="flex items-center gap-4 mb-6">
+          <div className="flex-shrink-0">
+            {user?.profilePicture?.url ? (
+              <img
+                src={user.profilePicture.url}
+                alt=""
+                className="w-20 h-20 rounded-full object-cover border border-defaultborder"
+              />
+            ) : (
+              <span className="avatar avatar-xl avatar-rounded bg-primary/10 text-primary flex items-center justify-center font-semibold text-[1.25rem]">
+                {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png"
+              className="hidden"
+              onChange={handleAvatarUpload}
+              aria-label="Upload profile picture"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={avatarUploadLoading || avatarRemoveLoading || !user}
+              className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
+            >
+              {avatarUploadLoading ? "Uploading…" : "Upload"}
+            </button>
+            {(user?.profilePicture?.url) && (
+              <button
+                type="button"
+                onClick={handleAvatarRemove}
+                disabled={avatarUploadLoading || avatarRemoveLoading}
+                className="ti-btn ti-btn-soft-danger ti-btn-sm whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
+              >
+                {avatarRemoveLoading ? "Removing…" : "Remove"}
+              </button>
+            )}
           </div>
         </div>
 

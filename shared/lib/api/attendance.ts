@@ -87,6 +87,22 @@ export async function punchOutAttendance(
   return data;
 }
 
+/**
+ * Get current user's student profile for attendance (punch in/out).
+ * Auto-creates Student for Candidate, Agent, and other non-admin roles.
+ * Returns null if user is admin (admins don't fill attendance for themselves).
+ */
+export async function getMyStudentForAttendance(): Promise<{ id: string; user: { id: string; name: string; email: string }; [key: string]: unknown } | null> {
+  try {
+    const { data } = await apiClient.get<{ id: string; user: { id: string; name: string; email: string }; [key: string]: unknown }>(
+      "/training/attendance/me"
+    );
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export async function getPunchInOutStatus(studentId: string): Promise<PunchStatusResponse> {
   const { data } = await apiClient.get<PunchStatusResponse>(
     `/training/attendance/status/${studentId}`
@@ -138,7 +154,8 @@ export async function getAttendanceTrackList(): Promise<AttendanceTrackResponse>
 
 export interface AttendanceTrackHistoryItem {
   id: string;
-  studentId: string;
+  studentId: string | null;
+  studentExists?: boolean;
   studentName: string;
   email: string;
   date: string;

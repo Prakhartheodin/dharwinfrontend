@@ -9,7 +9,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/ats/jobs": "ats.jobs:",
   "/ats/candidates": "ats.candidates:",
   // Browse Jobs and My Applications are public - no permission required
-  "/ats/my-profile": "ats.candidates:",
+  "/ats/my-profile": "ats.my-profile:",
   "/courses": "candidate.courses:",
   "/ats/recruiters": "ats.recruiters:",
   "/ats/interviews": "ats.interviews:",

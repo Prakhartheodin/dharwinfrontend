@@ -3,28 +3,21 @@
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
-import { getJobById, applyToJob, type Job } from "@/shared/lib/api/jobs";
-import { getMyCandidate } from "@/shared/lib/api/candidates";
+import { browseJobById, browseApplyToJob, type Job } from "@/shared/lib/api/jobs";
 import { getMyApplications, withdrawMyApplication, type JobApplication } from "@/shared/lib/api/jobApplications";
-import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
-import { ROUTES } from "@/shared/lib/constants";
 
-const MIN_PROFILE_COMPLETION = 50;
 const WITHDRAWABLE_STATUSES = ["Applied", "Screening"];
 
 export default function BrowseJobDetailsPage() {
   const params = useParams();
-  const router = useRouter();
   const jobId = typeof params?.id === "string" ? params.id : "";
-  const { isCandidate, candidateId, isLoading: candidateLoading } = useIsCandidate();
 
   const [job, setJob] = useState<Job | null>(null);
   const [jobLoading, setJobLoading] = useState(true);
   const [jobError, setJobError] = useState<string | null>(null);
-  const [profileCompleted, setProfileCompleted] = useState<number>(0);
   const [existingApplication, setExistingApplication] = useState<JobApplication | null>(null);
   const [applicationsLoading, setApplicationsLoading] = useState(true);
   const [applySubmitting, setApplySubmitting] = useState(false);
@@ -39,14 +32,14 @@ export default function BrowseJobDetailsPage() {
     }
     setJobLoading(true);
     setJobError(null);
-    getJobById(jobId)
+    browseJobById(jobId)
       .then(setJob)
       .catch(() => setJobError("Job not found"))
       .finally(() => setJobLoading(false));
   }, [jobId]);
 
   useEffect(() => {
-    if (!isCandidate || !jobId) {
+    if (!jobId) {
       setApplicationsLoading(false);
       return;
     }
@@ -61,24 +54,14 @@ export default function BrowseJobDetailsPage() {
       })
       .catch(() => setExistingApplication(null))
       .finally(() => setApplicationsLoading(false));
-  }, [isCandidate, jobId]);
-
-  useEffect(() => {
-    if (!isCandidate) return;
-    getMyCandidate()
-      .then((c) => {
-        const completed = (c as { isProfileCompleted?: number }).isProfileCompleted ?? 0;
-        setProfileCompleted(completed);
-      })
-      .catch(() => setProfileCompleted(0));
-  }, [isCandidate]);
+  }, [jobId]);
 
   const handleApply = async () => {
-    if (!jobId || !candidateId) return;
+    if (!jobId) return;
     setApplySubmitting(true);
     setMessage(null);
     try {
-      await applyToJob(jobId, candidateId);
+      await browseApplyToJob(jobId);
       setMessage({ type: "success", text: "Application submitted successfully." });
       const res = await getMyApplications({ limit: 500 });
       const forThisJob = (res.results ?? []).find(
@@ -118,36 +101,9 @@ export default function BrowseJobDetailsPage() {
     }
   };
 
-  const canApply =
-    isCandidate &&
-    candidateId &&
-    job?.status === "Active" &&
-    !existingApplication &&
-    profileCompleted >= MIN_PROFILE_COMPLETION;
+  const canApply = job?.status === "Active" && !existingApplication;
   const canWithdraw =
     existingApplication && WITHDRAWABLE_STATUSES.includes(existingApplication.status);
-  const showProfileWarning = isCandidate && profileCompleted < MIN_PROFILE_COMPLETION && !existingApplication;
-
-  if (!candidateLoading && !isCandidate) {
-    return (
-      <>
-        <Seo title="Job Details" />
-        <Pageheader currentpage="Job Details" activepage="Browse Jobs" mainpage="Job Details" />
-        <div className="container">
-          <div className="box custom-box">
-            <div className="box-body text-center py-8">
-              <p className="text-defaulttextcolor dark:text-white/70">
-                You need a candidate profile to view and apply for jobs.
-              </p>
-              <Link href={ROUTES.defaultAfterLogin} className="ti-btn ti-btn-primary mt-3">
-                Go to Dashboard
-              </Link>
-            </div>
-          </div>
-        </div>
-      </>
-    );
-  }
 
   if (jobLoading || !jobId) {
     return (
@@ -196,19 +152,6 @@ export default function BrowseJobDetailsPage() {
             className={`mb-4 p-4 rounded ${message.type === "success" ? "bg-success/10 text-success" : "bg-danger/10 text-danger"}`}
           >
             {message.text}
-          </div>
-        )}
-
-        {showProfileWarning && (
-          <div className="box custom-box mb-4 border-warning/30 bg-warning/5">
-            <div className="box-body">
-              <p className="mb-0">
-                Please complete your profile before applying (currently {profileCompleted}%).
-                <Link href="/ats/my-profile" className="ms-2 text-primary font-semibold hover:underline">
-                  Complete profile
-                </Link>
-              </p>
-            </div>
           </div>
         )}
 
