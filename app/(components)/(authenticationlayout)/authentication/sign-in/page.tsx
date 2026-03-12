@@ -7,6 +7,8 @@ import React, { Fragment, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import { AxiosError } from "axios";
+import { AuthPageLayout } from "@/shared/components/auth-page-layout";
+import { AuthFormCard } from "@/shared/components/auth-form-card";
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -44,62 +46,27 @@ export default function SignInPage() {
   return (
     <Fragment>
       <Seo title="Sign In" />
-      <div className="min-h-screen relative overflow-x-hidden w-full" style={{ fontFamily: "'Poppins', sans-serif", background: "#FBFBFB" }}>
-
-        {/* LEFT PANEL — photo with gradient overlay + logo */}
-        <div
-          className="hidden lg:block absolute top-0 left-0 bottom-0 overflow-hidden w-1/2 max-w-[50vw]"
-        >
-          <img
-            src="/assets/images/authentication/login-bg.png"
-            alt=""
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background: "linear-gradient(299.33deg, #053367 12.79%, #34B34C 101.09%)",
-              opacity: 0.75,
-            }}
-          />
-          <div className="relative z-10" style={{ padding: "63px 85px" }}>
-            <img
-              src="/assets/images/brand-logos/dharwin-white-logo.png"
-              alt="Dharwin Business Solutions"
-              className="select-none"
-              style={{
-                height: 73,
-                width: "auto",
-                maxWidth: 248,
-                filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.45)) drop-shadow(0 1px 3px rgba(0,0,0,0.35))",
-              }}
-            />
-          </div>
-        </div>
-
-        {/* RIGHT DECORATION — geometric shapes (original size; overflow clipped by parent) */}
-        <div className="absolute hidden xl:block pointer-events-none" style={{ right: "-80px", top: "50%", transform: "translateY(-50%)", opacity: 0.09, zIndex: 0 }}>
-          <div style={{ width: 611, height: 614, background: "#053367" }} />
-          <div style={{ position: "absolute", width: 340, height: 343, right: -60, bottom: -60, border: "80px solid #34B34C", borderRadius: 65, boxSizing: "border-box" }} />
-        </div>
-
-        {/* CENTERED FORM CARD — responsive, fits all screen sizes */}
-        <div className="relative z-20 min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
-          <div className="w-full max-w-[540px] min-w-0">
-            <div
-              className="bg-white rounded-[20px] p-6 sm:p-8 md:p-10 lg:p-12"
-              style={{
-                boxShadow: "0px 12px 12.6px rgba(0, 0, 0, 0.1)",
-              }}
-            >
-              {/* Title */}
-              <div className="text-center" style={{ marginBottom: 54 }}>
+      <AuthPageLayout>
+        <AuthFormCard>
+              {/* Frame 10: Title */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 16,
+                  width: "100%",
+                  maxWidth: 396,
+                  alignSelf: "center",
+                }}
+              >
                 <h1
                   style={{
-                    fontSize: 28,
+                    fontFamily: "'Poppins', sans-serif",
                     fontWeight: 600,
-                    color: "#101828",
+                    fontSize: 28,
                     lineHeight: "100%",
+                    color: "#101828",
                     margin: 0,
                   }}
                 >
@@ -110,7 +77,8 @@ export default function SignInPage() {
               {registeredMessage && (
                 <div
                   style={{
-                    marginBottom: 24,
+                    width: "100%",
+                    maxWidth: 396,
                     padding: "12px 16px",
                     background: "#e8f5e9",
                     border: "1px solid #c8e6c9",
@@ -127,7 +95,8 @@ export default function SignInPage() {
               {error && (
                 <div
                   style={{
-                    marginBottom: 24,
+                    width: "100%",
+                    maxWidth: 396,
                     padding: "12px 16px",
                     background: "#fdecea",
                     border: "1px solid #f5c6cb",
@@ -140,18 +109,34 @@ export default function SignInPage() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit}>
-                {/* Email Field */}
-                <div style={{ marginBottom: 24 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                    <label
-                      htmlFor="signin-email"
-                      style={{ fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}
-                    >
+              <form
+                onSubmit={handleSubmit}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 24,
+                  width: "100%",
+                  maxWidth: 396,
+                  alignSelf: "center",
+                }}
+              >
+                {/* Frame 18: Input fields - gap 24px */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 24,
+                    width: "100%",
+                  }}
+                >
+                  {/* Frame 26: Email - gap 12px */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <label htmlFor="signin-email" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
                       Email
                     </label>
-                  </div>
-                  <input
+                    <input
                     type="email"
                     id="signin-email"
                     placeholder="baiamia@gmail.com"
@@ -175,25 +160,19 @@ export default function SignInPage() {
                     onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
                     onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
                   />
-                </div>
-
-                {/* Password Field */}
-                <div style={{ marginBottom: 24 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <label
-                      htmlFor="signin-password"
-                      style={{ fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}
-                    >
-                      Password
-                    </label>
-                    <Link
-                      href={ROUTES.resetPassword}
-                      style={{ fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}
-                    >
-                      Forgot ?
-                    </Link>
                   </div>
-                  <div style={{ position: "relative" }}>
+
+                  {/* Frame 28: Password - gap 12px */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+                      <label htmlFor="signin-password" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                        Password
+                      </label>
+                      <Link href={ROUTES.resetPassword} style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
+                        Forgot ?
+                      </Link>
+                    </div>
+                    <div style={{ position: "relative", width: "100%" }}>
                     <input
                       type={showPassword ? "text" : "password"}
                       id="signin-password"
@@ -251,10 +230,20 @@ export default function SignInPage() {
                         )}
                       </svg>
                     </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Login Button */}
+                {/* Frame 30: Button + Sign up - gap 24px */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 24,
+                    width: "100%",
+                  }}
+                >
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -274,7 +263,6 @@ export default function SignInPage() {
                     color: "#FCFCFD",
                     fontFamily: "'Poppins', sans-serif",
                     transition: "background 0.2s",
-                    marginBottom: 24,
                   }}
                   onMouseEnter={(e) => { if (!isLoading) (e.target as HTMLElement).style.background = "#2da043"; }}
                   onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "#34B34C"; }}
@@ -292,23 +280,19 @@ export default function SignInPage() {
                   )}
                 </button>
 
-                {/* Sign Up Link */}
-                <div style={{ textAlign: "center" }}>
-                  <span style={{ fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
-                    Don&apos;t Have An Account ?{" "}
+                {/* Frame 29: Sign up link */}
+                <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
+                    Don&apos;t Have An Account ?
                   </span>
-                  <Link
-                    href={ROUTES.register}
-                    style={{ fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}
-                  >
+                  <Link href={ROUTES.register} style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
                     Sign Up
                   </Link>
                 </div>
+                </div>
               </form>
-            </div>
-          </div>
-        </div>
-      </div>
+        </AuthFormCard>
+      </AuthPageLayout>
     </Fragment>
   );
 }

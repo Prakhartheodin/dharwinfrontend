@@ -47,6 +47,15 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/support-tickets": "support.tickets:",
 };
 
+/**
+ * Permission prefixes that also grant access to another prefix.
+ * E.g. training.modules: and training.categories: grant access to paths requiring training.courses:
+ * (roles UI has separate Modules/Categories checkboxes but nav shows one Training Curriculum section).
+ */
+const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
+  "training.courses:": ["training.modules:", "training.categories:"],
+};
+
 /** Path prefixes that require permission, sorted by length descending for longest-match. */
 const PATH_PREFIXES = Object.keys(PATH_PERMISSION_PREFIX).sort(
   (a, b) => b.length - a.length
@@ -67,13 +76,20 @@ export function getRequiredPermissionForPath(pathname: string): string | null {
 }
 
 /**
- * Returns true if the user has at least one permission that starts with the required prefix.
+ * Returns true if the user has at least one permission that starts with the required prefix
+ * or any of its aliases (e.g. training.modules: grants access for training.courses: paths).
  */
 export function hasPermissionForPath(
   userPermissions: string[],
   requiredPrefix: string
 ): boolean {
-  return userPermissions.some((p) => p.startsWith(requiredPrefix));
+  const prefixes = [
+    requiredPrefix,
+    ...(PERMISSION_PREFIX_ALIASES[requiredPrefix] ?? []),
+  ];
+  return userPermissions.some((p) =>
+    prefixes.some((prefix) => p.startsWith(prefix))
+  );
 }
 
 /** Path for candidate's own profile (role 'user' from share-candidate-form). */

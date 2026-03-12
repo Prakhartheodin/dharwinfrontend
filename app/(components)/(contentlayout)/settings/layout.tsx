@@ -26,35 +26,55 @@ export default function SettingsLayout({
   const { user } = useAuth();
   const activeTab = getActiveTab(pathname ?? "");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
 
-  // Determine if the current user has a role with name "Administrator"
+  // Determine admin (for Roles/Users) and attendance access (for Attendance tab)
   useEffect(() => {
-    const checkAdmin = async () => {
+    const check = async () => {
       try {
         if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
           setIsAdmin(false);
+          setHasAttendanceAccess(false);
           return;
         }
         const res = await rolesApi.listRoles({ limit: 100 });
         const roles = res.results as Role[];
         const roleMap = new Map<string, Role>();
         roles.forEach((r) => roleMap.set(r.id, r));
-        const hasAdmin = (user.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Administrator");
-        setIsAdmin(hasAdmin);
+        let admin = false;
+        const perms = new Set<string>();
+        (user.roleIds as string[]).forEach((id) => {
+          const role = roleMap.get(id);
+          if (!role) return;
+          role.permissions?.forEach((p) => perms.add(p));
+          if (role.name === "Administrator") admin = true;
+        });
+        setIsAdmin(admin);
+        const hasStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
+        const hasAttendanceManage = Array.from(perms).some(
+          (p) =>
+            p === "attendance.manage" ||
+            p === "training.attendance:view,create,edit" ||
+            (p.includes("training.attendance") && (p.includes("create") || p.includes("edit") || p.includes("view")))
+        );
+        setHasAttendanceAccess(admin || hasStudentsManage || hasAttendanceManage);
       } catch {
         setIsAdmin(false);
+        setHasAttendanceAccess(false);
       }
     };
-    checkAdmin();
+    check();
   }, [user]);
 
-  // If user is not admin, block direct access to roles/users/attendance paths and redirect
+  // Redirect: roles/users = admin only; attendance = admin or hasAttendanceAccess
   useEffect(() => {
-    if (isAdmin === null) return;
-    if (!isAdmin && (activeTab === "roles" || activeTab === "users" || activeTab === "attendance")) {
-      router.replace(ROUTES.settingsPersonalInfo);
+    if (isAdmin === null || hasAttendanceAccess === null) return;
+    if (activeTab === "roles" || activeTab === "users") {
+      if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "attendance") {
+      if (!hasAttendanceAccess) router.replace(ROUTES.settingsPersonalInfo);
     }
-  }, [isAdmin, activeTab, router]);
+  }, [isAdmin, hasAttendanceAccess, activeTab, router]);
 
   const tabClass = (tab: "roles" | "users" | "attendance" | "personal-information") =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
@@ -90,14 +110,16 @@ export default function SettingsLayout({
                     >
                       Users
                     </Link>
-                    <Link
-                      href={ROUTES.settingsAttendance}
-                      className={tabClass("attendance")}
-                      aria-current={activeTab === "attendance" ? "page" : undefined}
-                    >
-                      Attendance
-                    </Link>
                   </>
+                )}
+                {hasAttendanceAccess && (
+                  <Link
+                    href={ROUTES.settingsAttendance}
+                    className={tabClass("attendance")}
+                    aria-current={activeTab === "attendance" ? "page" : undefined}
+                  >
+                    Attendance
+                  </Link>
                 )}
                 <Link
                   href={ROUTES.settingsPersonalInfo}

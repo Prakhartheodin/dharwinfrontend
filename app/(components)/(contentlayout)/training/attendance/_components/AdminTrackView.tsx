@@ -1,7 +1,6 @@
 "use client"
 
 import React, { useState, useMemo } from "react"
-import Link from "next/link"
 import type { AttendanceTrackItem } from "@/shared/lib/api/attendance"
 
 export interface AdminTrackViewProps {
@@ -9,6 +8,8 @@ export interface AdminTrackViewProps {
   trackListLoading: boolean
   canPunchOutOthers: boolean
   punchOutLoadingId: string | null
+  search: string
+  onSearchChange: (value: string) => void
   onPunchOut: (studentId: string) => void
   onExportCsv: (list?: AttendanceTrackItem[]) => void
   formatTimeInTimezone: (dateStr: string | null, timezone: string) => string
@@ -16,35 +17,28 @@ export interface AdminTrackViewProps {
   formatDurationFromMs: (ms: number | null) => string
 }
 
-function matchesSearch(text: string, q: string): boolean {
-  const t = (text || "").toLowerCase()
-  const q2 = (q || "").trim().toLowerCase()
-  if (!q2) return true
-  return t.includes(q2)
-}
-
 export default function AdminTrackView({
   trackList,
   trackListLoading,
   canPunchOutOthers,
   punchOutLoadingId,
+  search,
+  onSearchChange,
   onPunchOut,
   onExportCsv,
   formatTimeInTimezone,
   formatDuration,
   formatDurationFromMs,
 }: AdminTrackViewProps) {
-  const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<"all" | "in" | "out">("all")
 
   const filteredList = useMemo(() => {
     return trackList.filter((r) => {
       if (statusFilter === "in" && !r.isPunchedIn) return false
       if (statusFilter === "out" && r.isPunchedIn) return false
-      if (!matchesSearch(r.studentName, search) && !matchesSearch(r.email, search)) return false
       return true
     })
-  }, [trackList, search, statusFilter])
+  }, [trackList, statusFilter])
 
   const punchedInCount = filteredList.filter((r) => r.isPunchedIn).length
   const punchedOutCount = filteredList.length - punchedInCount
@@ -105,9 +99,9 @@ export default function AdminTrackView({
               <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
               <input
                 type="text"
-                placeholder="Search by name or email..."
+                placeholder="Search by name, email, or employee ID..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => onSearchChange(e.target.value)}
                 className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
               />
             </div>
@@ -158,6 +152,7 @@ export default function AdminTrackView({
                 <thead>
                   <tr className="border-b border-defaultborder dark:border-defaultborder/10">
                     <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Student</th>
+                    <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Employee ID</th>
                     <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Status</th>
                     <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Punch In</th>
                     <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] dark:text-white/50 !py-3">Punch Out</th>
@@ -191,6 +186,7 @@ export default function AdminTrackView({
                             </div>
                           </div>
                         </td>
+                        <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{row.employeeId || "—"}</td>
                         <td className="!py-3">
                           {row.isPunchedIn ? (
                             <span className="inline-flex items-center gap-1.5 badge bg-success/10 text-success !rounded-full">

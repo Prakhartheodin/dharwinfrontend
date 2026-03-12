@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
 import { AxiosError } from "axios";
+import { AuthPageLayout } from "@/shared/components/auth-page-layout";
+import { AuthFormCard } from "@/shared/components/auth-form-card";
 
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -58,186 +60,310 @@ export default function RegisterPage() {
     </svg>
   );
 
-  const inputBase: React.CSSProperties = {
-    width: "100%",
-    height: 48,
-    padding: "12px 16px",
-    border: "1px solid #D0D5DD",
-    borderRadius: 8,
-    fontSize: 14,
-    fontWeight: 400,
-    color: "#344054",
-    outline: "none",
-    fontFamily: "'Poppins', sans-serif",
-    boxSizing: "border-box" as const,
-  };
-
   return (
     <Fragment>
       <Seo title="Register" />
-      <div className="min-h-screen relative" style={{ fontFamily: "'Poppins', sans-serif", background: "#FBFBFB" }}>
-
-        {/* LEFT PANEL — photo with gradient overlay + logo */}
-        <div className="hidden lg:block absolute top-0 left-0 bottom-0 overflow-hidden" style={{ width: "50%" }}>
-          <img
-            src="/assets/images/authentication/login-bg.png"
-            alt=""
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
-          />
-          <div
-            className="absolute inset-0"
-            style={{ background: "linear-gradient(299.33deg, #053367 12.79%, #34B34C 101.09%)", opacity: 0.75 }}
-          />
-          <div className="relative z-10" style={{ padding: "63px 85px" }}>
-            <img
-              src="/assets/images/brand-logos/dharwin-white-logo.png"
-              alt="Dharwin Business Solutions"
-              style={{ height: 73, width: "auto" }}
-            />
-          </div>
-        </div>
-
-        {/* RIGHT DECORATION — geometric shapes */}
-        <div className="absolute hidden xl:block" style={{ right: "-80px", top: "50%", transform: "translateY(-50%)", opacity: 0.09, zIndex: 0 }}>
-          <div style={{ width: 611, height: 614, background: "#053367" }} />
-          <div style={{ position: "absolute", width: 340, height: 343, right: -60, bottom: -60, border: "80px solid #34B34C", borderRadius: 65, boxSizing: "border-box" }} />
-        </div>
-
-        {/* CENTERED FORM CARD */}
-        <div className="relative z-20 min-h-screen flex items-center justify-center">
-          <div className="w-full mx-4" style={{ maxWidth: 540 }}>
-            <div style={{ background: "#FFFFFF", boxShadow: "0px 12px 12.6px rgba(0, 0, 0, 0.1)", borderRadius: 20, padding: "40px 72px" }}>
-
-              {/* Title */}
-              <div className="text-center" style={{ marginBottom: 36 }}>
-                <h1 style={{ fontSize: 28, fontWeight: 600, color: "#101828", lineHeight: "100%", margin: 0 }}>
+      <AuthPageLayout>
+        <AuthFormCard>
+              {/* Frame 10: Title */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 16,
+                  width: "100%",
+                  maxWidth: 396,
+                  alignSelf: "center",
+                }}
+              >
+                <h1
+                  style={{
+                    fontFamily: "'Poppins', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 28,
+                    lineHeight: "100%",
+                    color: "#101828",
+                    margin: 0,
+                  }}
+                >
                   Create your account
                 </h1>
-                <p style={{ fontSize: 14, color: "#5A5A5D", marginTop: 12 }}>
+                <p style={{ fontFamily: "'Poppins', sans-serif", fontSize: 14, color: "#5A5A5D", margin: 0 }}>
                   Your account will be pending until an administrator activates it.
                 </p>
               </div>
 
               {error && (
-                <div style={{ marginBottom: 20, padding: "12px 16px", background: "#fdecea", border: "1px solid #f5c6cb", color: "#c62828", borderRadius: 8, fontSize: 14 }}>
+                <div
+                  style={{
+                    width: "100%",
+                    maxWidth: 396,
+                    padding: "12px 16px",
+                    background: "#fdecea",
+                    border: "1px solid #f5c6cb",
+                    color: "#c62828",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    lineHeight: "150%",
+                  }}
+                >
                   {error}
                 </div>
               )}
 
-              <form onSubmit={handleSubmit}>
-                {/* Full Name */}
-                <div style={{ marginBottom: 20 }}>
-                  <label htmlFor="register-name" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
-                    Full Name
-                  </label>
-                  <input
-                    type="text" id="register-name" placeholder="Jane Doe"
-                    value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
-                    autoComplete="name" required
-                    style={inputBase}
-                    onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
-                  />
-                </div>
-
-                {/* Email */}
-                <div style={{ marginBottom: 20 }}>
-                  <label htmlFor="register-email" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
-                    Email
-                  </label>
-                  <input
-                    type="email" id="register-email" placeholder="you@example.com"
-                    value={email} onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                    autoComplete="email" required
-                    style={{ ...inputBase, border: "3px solid #D1E9FF" }}
-                    onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
-                  />
-                </div>
-
-                {/* Password */}
-                <div style={{ marginBottom: 20 }}>
-                  <label htmlFor="register-password" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
-                    Password
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showPassword ? "text" : "password"} id="register-password" placeholder="Min 8 characters"
-                      value={password} onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                      autoComplete="new-password" minLength={PASSWORD_MIN_LENGTH} required
-                      style={{ ...inputBase, paddingRight: 48 }}
-                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
-                    />
-                    <button type="button" aria-label="toggle password visibility" onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
-                      <EyeIcon visible={showPassword} />
-                    </button>
-                  </div>
-                  <p style={{ fontSize: 12, color: "#98A2B3", marginTop: 6 }}>At least 8 characters, 1 letter and 1 number.</p>
-                </div>
-
-                {/* Confirm Password */}
-                <div style={{ marginBottom: 28 }}>
-                  <label htmlFor="register-confirm" style={{ display: "block", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize", marginBottom: 12 }}>
-                    Confirm Password
-                  </label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type={showConfirmPassword ? "text" : "password"} id="register-confirm" placeholder="Re-enter password"
-                      value={confirmPassword} onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
-                      autoComplete="new-password" required
-                      style={{ ...inputBase, paddingRight: 48 }}
-                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
-                    />
-                    <button type="button" aria-label="toggle confirm password visibility" onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      style={{ position: "absolute", right: 16, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", padding: 0, display: "flex" }}>
-                      <EyeIcon visible={showConfirmPassword} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Register Button */}
-                <button
-                  type="submit" disabled={loading}
+              <form
+                onSubmit={handleSubmit}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  gap: 24,
+                  width: "100%",
+                  maxWidth: 396,
+                  alignSelf: "center",
+                }}
+              >
+                {/* Frame 18: Input fields - gap 24px */}
+                <div
                   style={{
-                    width: "100%", height: 52, background: "#34B34C", borderRadius: 8, border: "none",
-                    cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 16, fontWeight: 600, color: "#FCFCFD", fontFamily: "'Poppins', sans-serif",
-                    transition: "background 0.2s", marginBottom: 24,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "flex-start",
+                    gap: 24,
+                    width: "100%",
                   }}
-                  onMouseEnter={(e) => { if (!loading) (e.target as HTMLElement).style.background = "#2da043"; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "#34B34C"; }}
                 >
-                  {loading ? (
-                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                      <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                        <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Creating...
-                    </span>
-                  ) : (
-                    "Register now"
-                  )}
-                </button>
+                  {/* Frame 26: Full Name */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <label htmlFor="register-name" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                      Full Name
+                    </label>
+                    <input
+                      type="text"
+                      id="register-name"
+                      placeholder="Jane Doe"
+                      value={name}
+                      onChange={(e) => { setName(e.target.value); setError(""); }}
+                      autoComplete="name"
+                      required
+                      className="w-full max-w-full"
+                      style={{
+                        height: 48,
+                        padding: "12px 16px",
+                        border: "1px solid #D0D5DD",
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 400,
+                        color: "#344054",
+                        outline: "none",
+                        fontFamily: "'Poppins', sans-serif",
+                        boxSizing: "border-box",
+                      }}
+                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                    />
+                  </div>
 
-                {/* Sign In Link */}
-                <div style={{ textAlign: "center" }}>
-                  <span style={{ fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
-                    Already Have An Account ?{" "}
-                  </span>
-                  <Link href={ROUTES.signIn} style={{ fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
-                    Sign In
-                  </Link>
+                  {/* Frame 26: Email */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <label htmlFor="register-email" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                      Email
+                    </label>
+                    <input
+                      type="email"
+                      id="register-email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => { setEmail(e.target.value); setError(""); }}
+                      autoComplete="email"
+                      required
+                      className="w-full max-w-full"
+                      style={{
+                        height: 48,
+                        padding: "12px 16px",
+                        border: "3px solid #D1E9FF",
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontWeight: 400,
+                        color: "#344054",
+                        outline: "none",
+                        fontFamily: "'Poppins', sans-serif",
+                        boxSizing: "border-box",
+                      }}
+                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                      onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
+                    />
+                  </div>
+
+                  {/* Frame 26: Password */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <label htmlFor="register-password" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                      Password
+                    </label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        id="register-password"
+                        placeholder="Min 8 characters"
+                        value={password}
+                        onChange={(e) => { setPassword(e.target.value); setError(""); }}
+                        autoComplete="new-password"
+                        minLength={PASSWORD_MIN_LENGTH}
+                        required
+                        className="w-full max-w-full"
+                        style={{
+                          height: 48,
+                          padding: "12px 48px 12px 16px",
+                          border: "1px solid #D0D5DD",
+                          borderRadius: 8,
+                          fontSize: 14,
+                          fontWeight: 400,
+                          color: "#344054",
+                          outline: "none",
+                          fontFamily: "'Poppins', sans-serif",
+                          boxSizing: "border-box",
+                        }}
+                        onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                        onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="toggle password visibility"
+                        onClick={() => setShowPassword(!showPassword)}
+                        style={{
+                          position: "absolute",
+                          right: 16,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <EyeIcon visible={showPassword} />
+                      </button>
+                    </div>
+                    <p style={{ fontSize: 12, color: "#98A2B3", margin: 0 }}>At least 8 characters, 1 letter and 1 number.</p>
+                  </div>
+
+                  {/* Frame 26: Confirm Password */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
+                    <label htmlFor="register-confirm" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                      Confirm Password
+                    </label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        id="register-confirm"
+                        placeholder="Re-enter password"
+                        value={confirmPassword}
+                        onChange={(e) => { setConfirmPassword(e.target.value); setError(""); }}
+                        autoComplete="new-password"
+                        required
+                        className="w-full max-w-full"
+                        style={{
+                          height: 48,
+                          padding: "12px 48px 12px 16px",
+                          border: "1px solid #D0D5DD",
+                          borderRadius: 8,
+                          fontSize: 14,
+                          fontWeight: 400,
+                          color: "#344054",
+                          outline: "none",
+                          fontFamily: "'Poppins', sans-serif",
+                          boxSizing: "border-box",
+                        }}
+                        onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
+                        onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
+                      />
+                      <button
+                        type="button"
+                        aria-label="toggle confirm password visibility"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        style={{
+                          position: "absolute",
+                          right: 16,
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <EyeIcon visible={showConfirmPassword} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Frame 30: Button + Sign in link - gap 24px */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 24,
+                    width: "100%",
+                  }}
+                >
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full max-w-full"
+                    style={{
+                      height: 52,
+                      background: "#34B34C",
+                      borderRadius: 8,
+                      border: "none",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      opacity: loading ? 0.6 : 1,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: "#FCFCFD",
+                      fontFamily: "'Poppins', sans-serif",
+                      transition: "background 0.2s",
+                    }}
+                    onMouseEnter={(e) => { if (!loading) (e.target as HTMLElement).style.background = "#2da043"; }}
+                    onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "#34B34C"; }}
+                  >
+                    {loading ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Creating...
+                      </span>
+                    ) : (
+                      "Register now"
+                    )}
+                  </button>
+
+                  {/* Frame 29: Sign in link */}
+                  <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
+                      Already Have An Account ?
+                    </span>
+                    <Link href={ROUTES.signIn} style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
+                      Sign In
+                    </Link>
+                  </div>
                 </div>
               </form>
-            </div>
-          </div>
-        </div>
-      </div>
+        </AuthFormCard>
+      </AuthPageLayout>
     </Fragment>
   );
 }

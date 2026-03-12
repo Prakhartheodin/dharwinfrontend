@@ -16,8 +16,6 @@ import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -32,9 +30,20 @@ type WeekOffData = {
 
 type StudentOption = { value: string; label: string; student: Student };
 
+function hasWeekOffAccess(permissions: string[], isAdministrator: boolean): boolean {
+  if (isAdministrator) return true;
+  const hasStudentsManage = permissions.some(
+    (p) => (p.includes("settings.students") || p === "students.manage") && (p.includes("create") || p.includes("edit") || p.includes("delete") || p.includes("manage"))
+  );
+  const hasAttendanceManage = permissions.some(
+    (p) => (p.includes("training.attendance") || p === "attendance.manage") && (p.includes("create") || p.includes("edit") || p.includes("view,create,edit"))
+  );
+  return hasStudentsManage || hasAttendanceManage;
+}
+
 export default function SettingsAttendanceWeekOffPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const { permissions, permissionsLoaded, isAdministrator } = useAuth();
+  const canAccess = hasWeekOffAccess(permissions, isAdministrator);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
@@ -47,29 +56,8 @@ export default function SettingsAttendanceWeekOffPage() {
   const [importingExcel, setImportingExcel] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const roleMap = new Map(roles.map((r) => [r.id, r]));
-        const hasAdmin = (user.roleIds as string[]).some(
-          (id) => roleMap.get(id)?.name === "Administrator"
-        );
-        setIsAdmin(hasAdmin);
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    checkAdmin();
-  }, [user]);
-
   const fetchStudents = useCallback(async () => {
-    if (!isAdmin) {
+    if (!canAccess) {
       setLoading(false);
       return;
     }
@@ -93,11 +81,11 @@ export default function SettingsAttendanceWeekOffPage() {
     } finally {
       setLoading(false);
     }
-  }, [isAdmin]);
+  }, [canAccess]);
 
   useEffect(() => {
-    if (isAdmin) fetchStudents();
-  }, [isAdmin, fetchStudents]);
+    if (canAccess) fetchStudents();
+  }, [canAccess, fetchStudents]);
 
   const fetchStudentWeekOffs = useCallback(async () => {
     if (selectedStudents.length === 0) {
@@ -309,7 +297,7 @@ export default function SettingsAttendanceWeekOffPage() {
     }
   }, [studentWeekOffs, selectedStudents, getCommonWeekOffDays, hasUserSelectedDays]);
 
-  if (isAdmin === null) {
+  if (!permissionsLoaded) {
     return (
       <>
         <Seo title="Manage Week-Off Calendar" />
@@ -321,7 +309,7 @@ export default function SettingsAttendanceWeekOffPage() {
     );
   }
 
-  if (!isAdmin) {
+  if (!canAccess) {
     return (
       <>
         <Seo title="Manage Week-Off Calendar" />
@@ -330,7 +318,7 @@ export default function SettingsAttendanceWeekOffPage() {
           <div className="box-body py-12 text-center">
             <i className="ri-error-warning-line text-5xl text-danger mb-4" />
             <h3 className="text-xl font-semibold text-defaulttextcolor mb-2">Access Denied</h3>
-            <p className="text-defaulttextcolor/70">Only administrators can manage week-off.</p>
+            <p className="text-defaulttextcolor/70">You need students.manage or attendance.manage permission to manage week-off.</p>
           </div>
         </div>
       </>
