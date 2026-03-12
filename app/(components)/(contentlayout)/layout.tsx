@@ -56,27 +56,33 @@ const Layout = ({ children }: any) => {
     <>
     <Fragment>
       <ProtectedRoute>
-        <PermissionGuard>
-          {isLoading && loadingMessage && (
-            <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/90 dark:bg-bodybg/90 backdrop-blur-sm">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
-                <p className="text-defaulttextcolor dark:text-white/90 font-medium">{loadingMessage}</p>
+        <PermissionGuard
+          renderChrome={(content) => (
+            <>
+              {isLoading && loadingMessage && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-white/90 dark:bg-bodybg/90 backdrop-blur-sm">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mx-auto mb-4" />
+                    <p className="text-defaulttextcolor dark:text-white/90 font-medium">{loadingMessage}</p>
+                  </div>
+                </div>
+              )}
+              <div className='page'>
+                <Header/>
+                <Sidebar/>
+                <div className='content'>
+                  <div className='main-content' onClick={Bodyclickk}>
+                    {content}
+                  </div>
+                </div>
+                <Footer/>
               </div>
-            </div>
+              <Backtotop/>
+              <PrelineScript/>
+            </>
           )}
-          <div className='page'>
-            <Header/>
-            <Sidebar/>
-            <div className='content'>
-              <div className='main-content' onClick={Bodyclickk}>
-                {children}
-              </div>
-            </div>
-            <Footer/>
-          </div>
-          <Backtotop/>
-          <PrelineScript/>
+        >
+          {children}
         </PermissionGuard>
       </ProtectedRoute>
     </Fragment>

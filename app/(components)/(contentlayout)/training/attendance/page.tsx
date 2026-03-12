@@ -17,6 +17,7 @@ import Swal from "sweetalert2";
 const POLL_INTERVAL_MS = 30000;
 const TRACK_POLL_MS = 10000;
 const ELAPSED_UPDATE_MS = 1000;
+const SEARCH_DEBOUNCE_MS = 350;
 const AUTO_PUNCH_OUT_HOURS = 12;
 const AUTO_PUNCH_OUT_WARNING_BEFORE_MS = 15 * 60 * 1000;
 
@@ -123,7 +124,8 @@ export default function AttendanceTracking() {
   const [historyList, setHistoryList] = useState<attendanceApi.AttendanceTrackHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRange, setHistoryRange] = useState<"7d" | "30d" | "all">("30d");
-  const [historySearch, setHistorySearch] = useState("");
+  const [trackSearch, setTrackSearch] = useState("");
+  const [debouncedTrackSearch, setDebouncedTrackSearch] = useState("");
   const [attendanceView, setAttendanceView] = useState<"track" | "history" | "dashboard">("track");
   const [canTrackAll, setCanTrackAll] = useState(false);
   const [canPunchOutOthers, setCanPunchOutOthers] = useState(false);
@@ -219,6 +221,11 @@ export default function AttendanceTracking() {
   useEffect(() => { if (toastMessage) { const t = setTimeout(() => setToastMessage(null), 5000); return () => clearTimeout(t); } }, [toastMessage]);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedTrackSearch(trackSearch), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [trackSearch]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     const handleBeforeUnload = (e: BeforeUnloadEvent) => { if (status?.isPunchedIn) e.preventDefault(); };
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -273,47 +280,62 @@ export default function AttendanceTracking() {
     } finally { setSubmittingRequest(false); }
   };
 
-  /* Admin data */
+  /* Admin data: canTrackAll = only for Administrator or students.manage (not for agents with attendance.manage) */
   useEffect(() => {
-    if (myStudentId !== null) return;
-    let cancelled = false; setTrackListLoading(true); setCanTrackAll(false);
-    attendanceApi.getAttendanceTrackList()
-      .then((res) => { if (!cancelled) { setTrackList(res.results ?? []); setCanTrackAll(true); } })
-      .catch(() => { if (!cancelled) { setTrackList([]); setCanTrackAll(false); } })
-      .finally(() => { if (!cancelled) setTrackListLoading(false); });
-    return () => { cancelled = true; };
-  }, [myStudentId]);
-
-  useEffect(() => {
-    if (!user?.roleIds?.length || myStudentId !== null) return;
+    if (!user?.roleIds?.length || myStudentId !== null) {
+      setCanTrackAll(false);
+      return;
+    }
     let cancelled = false;
     rolesApi.listRoles({ limit: 100 }).then((res) => {
       const roles = (res.results ?? []) as Role[];
       const roleMap = new Map(roles.map((r) => [r.id, r]));
-      let admin = false; const perms = new Set<string>();
-      (user!.roleIds as string[]).forEach((id) => { const role = roleMap.get(id); if (!role) return; role.permissions?.forEach((p) => perms.add(p)); if (role.name === "Administrator") admin = true; });
-      if (!cancelled) setCanPunchOutOthers(admin || Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage")));
-    }).catch(() => { if (!cancelled) setCanPunchOutOthers(false); });
+      let admin = false;
+      const perms = new Set<string>();
+      (user!.roleIds as string[]).forEach((id) => {
+        const role = roleMap.get(id);
+        if (!role) return;
+        role.permissions?.forEach((p) => perms.add(p));
+        if (role.name === "Administrator") admin = true;
+      });
+      const hasStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
+      const canSeeAdminTrack = admin || hasStudentsManage;
+      if (!cancelled) {
+        setCanTrackAll(canSeeAdminTrack);
+        setCanPunchOutOthers(admin || hasStudentsManage || Array.from(perms).some((p) => p === "attendance.manage" || p === "training.attendance:view,create,edit" || (p.includes("training.attendance") && (p.includes("create") || p.includes("edit")))));
+      }
+    }).catch(() => { if (!cancelled) { setCanTrackAll(false); setCanPunchOutOthers(false); } });
     return () => { cancelled = true; };
   }, [user?.roleIds, myStudentId]);
+
+  useEffect(() => {
+    if (myStudentId !== null || !canTrackAll) return;
+    let cancelled = false;
+    setTrackListLoading(true);
+    attendanceApi.getAttendanceTrackList({ search: debouncedTrackSearch || undefined })
+      .then((res) => { if (!cancelled) setTrackList(res.results ?? []); })
+      .catch(() => { if (!cancelled) setTrackList([]); })
+      .finally(() => { if (!cancelled) setTrackListLoading(false); });
+    return () => { cancelled = true; };
+  }, [myStudentId, canTrackAll, debouncedTrackSearch]);
 
   const handleAdminPunchOut = useCallback(async (studentId: string) => {
     setPunchOutLoadingId(studentId);
     try {
       await attendanceApi.punchOutAttendance(studentId, {});
-      await attendanceApi.getAttendanceTrackList().then((res) => setTrackList(res.results ?? []));
-      const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10) } : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10) } : {};
+      await attendanceApi.getAttendanceTrackList({ search: debouncedTrackSearch || undefined }).then((res) => setTrackList(res.results ?? []));
+      const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), search: debouncedTrackSearch || undefined } : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), search: debouncedTrackSearch || undefined } : { search: debouncedTrackSearch || undefined };
       attendanceApi.getAttendanceTrackHistory(params).then((res) => setHistoryList(res.results ?? []));
     } catch { /* keep as is */ } finally { setPunchOutLoadingId(null); }
-  }, [historyRange]);
+  }, [historyRange, debouncedTrackSearch]);
 
   const fetchHistoryList = useCallback(() => {
     if (!canTrackAll || myStudentId !== null) return;
-    const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 }
-      : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500 } : { limit: 500 };
+    const params = historyRange === "7d" ? { startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500, search: debouncedTrackSearch || undefined }
+      : historyRange === "30d" ? { startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), endDate: new Date().toISOString().slice(0, 10), limit: 500, search: debouncedTrackSearch || undefined } : { limit: 500, search: debouncedTrackSearch || undefined };
     setHistoryLoading(true);
     attendanceApi.getAttendanceTrackHistory(params).then((res) => setHistoryList(res.results ?? [])).catch(() => setHistoryList([])).finally(() => setHistoryLoading(false));
-  }, [canTrackAll, myStudentId, historyRange]);
+  }, [canTrackAll, myStudentId, historyRange, debouncedTrackSearch]);
 
   useEffect(() => { fetchHistoryList(); }, [fetchHistoryList]);
 
@@ -323,8 +345,8 @@ export default function AttendanceTracking() {
   const fetchTrackList = useCallback((silent = false) => {
     if (myStudentId !== null) return;
     if (!silent) setTrackListLoading(true);
-    attendanceApi.getAttendanceTrackList().then((res) => setTrackList(res.results ?? [])).catch(() => setTrackList([])).finally(() => { if (!silent) setTrackListLoading(false); });
-  }, [myStudentId]);
+    attendanceApi.getAttendanceTrackList({ search: debouncedTrackSearch || undefined }).then((res) => setTrackList(res.results ?? [])).catch(() => setTrackList([])).finally(() => { if (!silent) setTrackListLoading(false); });
+  }, [myStudentId, debouncedTrackSearch]);
 
   const switchToTrack = useCallback(() => { setAttendanceView("track"); fetchTrackList(); }, [fetchTrackList]);
 
@@ -351,26 +373,15 @@ export default function AttendanceTracking() {
 
   const exportTrackCsv = useCallback((list?: attendanceApi.AttendanceTrackItem[]) => {
     const data = list ?? trackList;
-    const rows = data.map((row) => ({ Name: row.studentName, Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
-    downloadCsv(`track-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Status", label: "Status" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
+    const rows = data.map((row) => ({ Name: row.studentName, "Employee ID": row.employeeId ?? "", Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+    downloadCsv(`track-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Employee ID", label: "Employee ID" }, { key: "Email", label: "Email" }, { key: "Status", label: "Status" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
   }, [trackList]);
 
-  const matchesHistorySearch = useCallback((row: attendanceApi.AttendanceTrackHistoryItem) => {
-    const q = historySearch.trim().toLowerCase();
-    if (!q) return true;
-    const name = (row.studentName || "").toLowerCase();
-    const email = (row.email || "").toLowerCase();
-    return name.includes(q) || email.includes(q);
-  }, [historySearch]);
-
-  const filteredHistoryList = useMemo(
-    () => historyList.filter(matchesHistorySearch),
-    [historyList, matchesHistorySearch]
-  );
+  const filteredHistoryList = historyList;
 
   const exportHistoryCsv = useCallback(() => {
-    const rows = filteredHistoryList.map((row) => ({ Name: row.studentName, Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
-    downloadCsv(`attendance-history-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
+    const rows = filteredHistoryList.map((row) => ({ Name: row.studentName, "Employee ID": row.employeeId ?? "", Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+    downloadCsv(`attendance-history-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Employee ID", label: "Employee ID" }, { key: "Email", label: "Email" }, { key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
   }, [filteredHistoryList]);
 
   const canPunch = !!myStudentId;
@@ -868,6 +879,8 @@ export default function AttendanceTracking() {
                 trackListLoading={trackListLoading}
                 canPunchOutOthers={canPunchOutOthers}
                 punchOutLoadingId={punchOutLoadingId}
+                search={trackSearch}
+                onSearchChange={setTrackSearch}
                 onPunchOut={handleAdminPunchOut}
                 onExportCsv={exportTrackCsv}
                 formatTimeInTimezone={formatTimeInTimezone}
@@ -885,9 +898,9 @@ export default function AttendanceTracking() {
                       <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
                       <input
                         type="text"
-                        placeholder="Search by name or email..."
-                        value={historySearch}
-                        onChange={(e) => setHistorySearch(e.target.value)}
+                        placeholder="Search by name, email, or employee ID..."
+                        value={trackSearch}
+                        onChange={(e) => setTrackSearch(e.target.value)}
                         className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
                       />
                     </div>
@@ -932,6 +945,7 @@ export default function AttendanceTracking() {
                         <thead>
                           <tr className="border-b border-defaultborder dark:border-defaultborder/10">
                             <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Student</th>
+                            <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Employee ID</th>
                             <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Date</th>
                             <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Day</th>
                             <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch In</th>
@@ -956,6 +970,7 @@ export default function AttendanceTracking() {
                                     </div>
                                   </div>
                                 </td>
+                                <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{row.employeeId || "—"}</td>
                                 <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{formatDate(row.date)}</td>
                                 <td className="!py-3 text-[0.8125rem] text-[#8c9097]">{row.day ?? "—"}</td>
                                 <td className="!py-3 text-[0.8125rem] text-defaulttextcolor dark:text-white">{formatTimeInTimezone(row.punchIn, row.timezone)}</td>
@@ -989,7 +1004,7 @@ export default function AttendanceTracking() {
             )}
 
             {attendanceView === "dashboard" && (
-              <AttendanceDashboard historyList={filteredHistoryList} historyLoading={historyLoading} historySearch={historySearch} setHistorySearch={setHistorySearch} />
+              <AttendanceDashboard historyList={filteredHistoryList} historyLoading={historyLoading} historySearch={trackSearch} setHistorySearch={setTrackSearch} />
             )}
           </>
         )}

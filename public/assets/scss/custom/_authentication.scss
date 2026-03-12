@@ -102,6 +102,56 @@
   }
 }
 
+/* Dharwin auth pages: login, register, forgot/reset password - design tokens */
+.auth-form {
+  .auth-form-title {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    font-size: 28px;
+    line-height: 100%;
+    color: #101828;
+  }
+  .auth-form-label {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 100%;
+    color: #344054;
+    text-transform: capitalize;
+  }
+  .auth-form-input {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 100%;
+    color: #344054;
+  }
+  .auth-form-input::placeholder {
+    color: #98a2b3;
+  }
+  .auth-form-link {
+    color: #34b34c;
+  }
+  .auth-form-link:hover {
+    color: #2da043;
+  }
+  .auth-form-muted {
+    color: #98a2b3;
+  }
+  .auth-form-btn {
+    font-family: 'Poppins', sans-serif;
+    font-weight: 600;
+    font-size: 16px;
+    line-height: 100%;
+    color: #fcfcfd;
+    background: #34b34c;
+    border-radius: 8px;
+  }
+  .auth-form-btn:hover:not(:disabled) {
+    background: #2da043;
+  }
+}
+
 .dark {
   .authentication {
     &.authentication-basic {

@@ -29,11 +29,9 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	);
 
 	const isPathAllowed = (menuPath?: string) => {
-		// Until permissions are loaded, hide protected links to avoid flashes of unauthorized items.
-		if (!permissionsLoaded) {
-			if (!menuPath || !getRequiredPermissionForPath(menuPath)) return true;
-			return false;
-		}
+		// Until permissions are loaded, show all items so users with permission see the sidebar.
+		// PermissionGuard will block access to pages they can't visit.
+		if (!permissionsLoaded) return true;
 
 		// Hide admin-only paths for non-administrator users.
 		if (menuPath && ADMIN_ONLY_PATHS.some((p) => menuPath === p || menuPath.startsWith(p + "/"))) {

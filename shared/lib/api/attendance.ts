@@ -136,6 +136,7 @@ export interface AttendanceTrackItem {
   studentId: string;
   studentName: string;
   email: string;
+  employeeId?: string;
   isPunchedIn: boolean;
   punchIn: string | null;
   punchOut: string | null;
@@ -147,8 +148,12 @@ export interface AttendanceTrackResponse {
   results: AttendanceTrackItem[];
 }
 
-export async function getAttendanceTrackList(): Promise<AttendanceTrackResponse> {
-  const { data } = await apiClient.get<AttendanceTrackResponse>("/training/attendance/track");
+export interface AttendanceTrackListParams {
+  search?: string;
+}
+
+export async function getAttendanceTrackList(params?: AttendanceTrackListParams): Promise<AttendanceTrackResponse> {
+  const { data } = await apiClient.get<AttendanceTrackResponse>("/training/attendance/track", { params });
   return data;
 }
 
@@ -158,6 +163,7 @@ export interface AttendanceTrackHistoryItem {
   studentExists?: boolean;
   studentName: string;
   email: string;
+  employeeId?: string;
   date: string;
   day?: string;
   punchIn: string | null;
@@ -170,6 +176,7 @@ export interface AttendanceTrackHistoryParams {
   startDate?: string;
   endDate?: string;
   limit?: number;
+  search?: string;
 }
 
 export interface AttendanceTrackHistoryResponse {
