@@ -42,7 +42,7 @@ function validateNewPassword(password: string): string | null {
 }
 
 export default function PersonalInformationPage() {
-  const { user, logout, sessions, checkAuth, refreshUser } = useAuth();
+  const { user, logout, sessions, checkAuth, refreshUser, isAdministrator } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
 
   const [firstName, setFirstName] = useState("");
@@ -120,18 +120,29 @@ export default function PersonalInformationPage() {
     const fullName = `${trimmedFirst} ${trimmedLast}`.trim();
     const trimmedEmail = email.trim();
 
-    if (!trimmedFirst || !trimmedEmail) {
-      setSaveError("First name and email are required.");
+    if (!trimmedFirst) {
+      setSaveError("First name is required.");
+      return;
+    }
+    if (isAdministrator && !trimmedEmail) {
+      setSaveError("Email is required.");
       return;
     }
 
     setSaveLoading(true);
     try {
-      await usersApi.updateUser(user.id, {
-        name: fullName || undefined,
-        email: trimmedEmail || undefined,
-        notificationPreferences: notificationPrefs,
-      });
+      if (isAdministrator) {
+        await usersApi.updateUser(user.id, {
+          name: fullName || undefined,
+          email: trimmedEmail || undefined,
+          notificationPreferences: notificationPrefs,
+        });
+      } else {
+        await authApi.updateMyProfile({
+          name: fullName || undefined,
+          notificationPreferences: notificationPrefs,
+        });
+      }
       await checkAuth();
       setSaveSuccess("Profile updated successfully.");
       await Swal.fire("Profile updated", "Your profile has been saved successfully.", "success");
@@ -166,7 +177,7 @@ export default function PersonalInformationPage() {
     setAvatarUploadLoading(true);
     try {
       const result = await uploadDocument(file);
-      await usersApi.updateUser(user.id, {
+      await authApi.updateMyProfile({
         profilePicture: {
           url: result.url,
           key: result.key,
@@ -191,7 +202,7 @@ export default function PersonalInformationPage() {
     setSaveError("");
     setAvatarRemoveLoading(true);
     try {
-      await usersApi.updateUser(user.id, { profilePicture: null });
+      await authApi.updateMyProfile({ profilePicture: null });
       await refreshUser();
       setSaveSuccess("Profile picture removed.");
       setTimeout(() => setSaveSuccess(""), 2000);
@@ -431,6 +442,8 @@ export default function PersonalInformationPage() {
               placeholder="xyz@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              readOnly={!isAdministrator}
+              title={!isAdministrator ? "Only an administrator can change your email address" : undefined}
             />
           </div>
         </div>

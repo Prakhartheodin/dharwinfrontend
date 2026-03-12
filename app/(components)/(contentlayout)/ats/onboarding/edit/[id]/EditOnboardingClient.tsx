@@ -7,6 +7,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { getPlacementById } from '@/shared/lib/api/placements'
 import { getCandidate, updateCandidate } from '@/shared/lib/api/candidates'
 import { listUsers } from '@/shared/lib/api/users'
+import { getAllPositions } from '@/shared/lib/api/positions'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 
 const isValidMongoId = (id: unknown): id is string =>
@@ -26,8 +27,9 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ department: '', designation: '', reportingManagerId: '' })
+  const [form, setForm] = useState({ department: '', designation: '', positionId: '', reportingManagerId: '' })
   const [managers, setManagers] = useState<{ id: string; name: string }[]>([])
+  const [positions, setPositions] = useState<{ id: string; name: string }[]>([])
   const [candidateId, setCandidateId] = useState<string | null>(null)
   const [candidateName, setCandidateName] = useState('')
 
@@ -55,9 +57,14 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         const c = await getCandidate(String(cid))
         const rm = c.reportingManager
         const rmId = typeof rm === 'object' && rm && '_id' in rm ? (rm as { _id: string })._id : (typeof rm === 'string' ? rm : '')
+        const pos = c.position
+        const posId = typeof pos === 'object' && pos && (pos as { id?: string; _id?: string }).id != null
+          ? ((pos as { id?: string; _id?: string }).id ?? (pos as { _id?: string })._id ?? '')
+          : typeof pos === 'string' ? pos : ''
         setForm({
           department: c.department ?? '',
           designation: c.designation ?? '',
+          positionId: posId ?? '',
           reportingManagerId: rmId ?? '',
         })
       } catch (err: any) {
@@ -73,6 +80,9 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         setManagers(users.map((u) => ({ id: u._id || u.id || '', name: u.name || u.email || 'Unknown' })))
       })
       .catch(() => {})
+    getAllPositions()
+      .then((list) => setPositions(list.map((p) => ({ id: p.id || p._id || '', name: p.name }))))
+      .catch(() => {})
   }, [placementId, rawId])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -84,6 +94,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
       await updateCandidate(candidateId, {
         department: form.department || undefined,
         designation: form.designation || undefined,
+        position: form.positionId || undefined,
         reportingManager: form.reportingManagerId || undefined,
       })
       router.push('/ats/onboarding')
@@ -153,6 +164,22 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                       onChange={(e) => setForm({ ...form, designation: e.target.value })}
                       placeholder="e.g. Senior Engineer, Manager"
                     />
+                  </div>
+                  <div>
+                    <label className="form-label">Position</label>
+                    <select
+                      className="form-control"
+                      value={form.positionId}
+                      onChange={(e) => setForm({ ...form, positionId: e.target.value })}
+                    >
+                      <option value="">— Select Position —</option>
+                      {positions.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                    {!loading && positions.length === 0 && (
+                      <p className="text-xs text-gray-500 mt-1">No positions. Add positions in Training → Positions.</p>
+                    )}
                   </div>
                   <div>
                     <label className="form-label">Reporting Manager</label>

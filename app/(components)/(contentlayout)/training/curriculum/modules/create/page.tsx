@@ -13,6 +13,7 @@ import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import * as categoriesApi from '@/shared/lib/api/categories'
 import * as studentsApi from '@/shared/lib/api/students'
 import * as mentorsApi from '@/shared/lib/api/mentors'
+import * as positionsApi from '@/shared/lib/api/positions'
 import * as blogApi from '@/shared/lib/api/blog'
 import type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 
@@ -331,7 +332,9 @@ function CheckboxDropdown({
   placeholder: string
 }) {
   const [open, setOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -339,7 +342,10 @@ function CheckboxDropdown({
     }
     if (open) {
       document.addEventListener('mousedown', handleClickOutside)
+      if (searchInputRef.current) searchInputRef.current.focus()
       return () => document.removeEventListener('mousedown', handleClickOutside)
+    } else {
+      setSearchQuery('')
     }
   }, [open])
 
@@ -352,6 +358,10 @@ function CheckboxDropdown({
   }
 
   const selected = options.filter((o) => selectedIds.includes(o.value))
+  const searchLower = searchQuery.trim().toLowerCase()
+  const filteredOptions = searchLower
+    ? options.filter((o) => o.label.toLowerCase().includes(searchLower))
+    : options
 
   return (
     <div className="relative" ref={ref}>
@@ -372,10 +382,28 @@ function CheckboxDropdown({
       </button>
       {open && (
         <div
-          className="absolute z-10 mt-1 w-full rounded-md border border-defaultborder bg-bodybg shadow-lg max-h-60 overflow-auto"
+          className="absolute z-10 mt-1 w-full rounded-md border border-defaultborder bg-bodybg shadow-lg overflow-hidden"
           role="listbox"
         >
-          {options.map((opt) => (
+          <div className="p-2 border-b border-defaultborder/50 sticky top-0 bg-bodybg" onClick={(e) => e.stopPropagation()}>
+            <input
+              ref={searchInputRef}
+              type="text"
+              className="form-control !py-1.5 !text-sm"
+              placeholder={`Search ${label.toLowerCase()}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+          </div>
+          <div className="max-h-52 overflow-auto">
+          {filteredOptions.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[0.8125rem] text-[#8c9097] dark:text-white/50">
+              No {label.toLowerCase()} match &quot;{searchQuery}&quot;
+            </div>
+          ) : (
+          filteredOptions.map((opt) =>
             <label
               key={opt.value}
               className="flex items-center gap-3 px-3 py-2 hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer border-b border-defaultborder/50 last:border-b-0"
@@ -386,10 +414,11 @@ function CheckboxDropdown({
                 checked={selectedIds.includes(opt.value)}
                 onChange={() => toggle(opt.value)}
               />
-              <img src={opt.avatar} alt="" className="w-8 h-8 rounded-full object-cover" />
+              <img src={opt.avatar} alt="" className="w-8 h-8 rounded-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
               <span className="text-[0.875rem]">{opt.label}</span>
             </label>
           ))}
+          </div>
         </div>
       )}
       {/* Visible list for this module */}
@@ -439,6 +468,8 @@ const CreateModule = () => {
 
   // API data
   const [categoryOptions, setCategoryOptions] = useState<{ value: string; label: string }[]>([])
+  const [positionOptions, setPositionOptions] = useState<{ value: string; label: string }[]>([])
+  const [positionFilterId, setPositionFilterId] = useState<string>('')
   const [studentOptions, setStudentOptions] = useState<PersonOption[]>([])
   const [mentorOptions, setMentorOptions] = useState<PersonOption[]>([])
   const [loading, setLoading] = useState(false)
@@ -559,42 +590,29 @@ const CreateModule = () => {
     fetchModule()
   }, [convertApiPlaylistToForm, isEditMode, moduleId, router])
 
-  // Fetch categories, students, and mentors
+  // Fetch categories, positions, mentors
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchStatic = async () => {
       setFetchingData(true)
       try {
-        // Fetch categories
-        const categoriesRes = await categoriesApi.listCategories({ limit: 100 })
-        setCategoryOptions(
-          categoriesRes.results.map((cat) => ({ value: cat.id, label: cat.name }))
-        )
-
-        // Fetch students
-        const studentsRes = await studentsApi.listStudents({ limit: 100 })
-        setStudentOptions(
-          studentsRes.results.map((s) => ({
-            value: s.id,
-            label: s.user?.name || 'Unknown',
-            avatar: '/assets/images/faces/1.jpg', // Default avatar
-          }))
-        )
-
-        // Fetch mentors
-        const mentorsRes = await mentorsApi.listMentors({ limit: 100 })
-        setMentorOptions(
-          mentorsRes.results.map((m) => ({
-            value: m.id,
-            label: m.user?.name || 'Unknown',
-            avatar: '/assets/images/faces/1.jpg', // Default avatar
-          }))
-        )
+        const [categoriesRes, positionsRes, mentorsRes] = await Promise.all([
+          categoriesApi.listCategories({ limit: 100 }),
+          positionsApi.getAllPositions(),
+          mentorsApi.listMentors({ limit: 100 }),
+        ])
+        setCategoryOptions(categoriesRes.results.map((c) => ({ value: c.id, label: c.name })))
+        setPositionOptions(positionsRes.map((p) => ({ value: p.id || (p as any)._id, label: p.name })))
+        setMentorOptions(mentorsRes.results.map((m) => ({
+          value: m.id,
+          label: m.user?.name || 'Unknown',
+          avatar: '/assets/images/faces/1.jpg',
+        })))
       } catch (err) {
         console.error('Error fetching data:', err)
         await Swal.fire({
           icon: 'error',
           title: 'Failed to load data',
-          text: 'Could not load categories, students, or mentors. Please refresh the page.',
+          text: 'Could not load categories, positions, or mentors.',
           toast: true,
           position: 'top-end',
           timer: 4000,
@@ -605,9 +623,28 @@ const CreateModule = () => {
         setFetchingData(false)
       }
     }
-
-    fetchData()
+    fetchStatic()
   }, [])
+
+  // Fetch students (refetch when position filter changes)
+  useEffect(() => {
+    const fetchStudents = async () => {
+      try {
+        const params: studentsApi.ListStudentsParams = { limit: 500 }
+        if (positionFilterId) params.position = positionFilterId
+        const studentsRes = await studentsApi.listStudents(params)
+        setStudentOptions(studentsRes.results.map((s) => ({
+          value: s.id,
+          label: s.user?.name || 'Unknown',
+          avatar: '/assets/images/faces/1.jpg',
+        })))
+      } catch (err) {
+        console.error('Error fetching students:', err)
+        setStudentOptions([])
+      }
+    }
+    if (!fetchingData) fetchStudents()
+  }, [positionFilterId, fetchingData])
 
   const handleInputChange = (field: keyof ModuleFormData, value: any) => {
     setFormData((prev) => ({
@@ -1871,6 +1908,22 @@ const CreateModule = () => {
 
                       {/* Students */}
                       <div className="xl:col-span-6 col-span-12">
+                        <div className="mb-2">
+                          <label className="form-label block mb-1">Filter by Position</label>
+                          <select
+                            className="form-control !py-2"
+                            value={positionFilterId}
+                            onChange={(e) => setPositionFilterId(e.target.value)}
+                          >
+                            <option value="">All students</option>
+                            {positionOptions.map((p) => (
+                              <option key={p.value} value={p.value}>{p.label}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-[#8c9097] dark:text-white/50 mt-0.5">
+                            {positionFilterId ? `Showing students with selected position` : 'Showing all students'}
+                          </p>
+                        </div>
                         {fetchingData ? (
                           <div>
                             <label className="form-label block mb-1">Students</label>
@@ -1881,7 +1934,7 @@ const CreateModule = () => {
                         ) : (
                           <CheckboxDropdown
                             label="Students"
-                            placeholder="Select students"
+                            placeholder={positionFilterId ? 'Select students in this position' : 'Select students'}
                             options={studentOptions}
                             selectedIds={formData.studentIds}
                             onChange={(ids) => handleInputChange('studentIds', ids)}

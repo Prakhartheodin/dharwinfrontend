@@ -128,6 +128,22 @@ export async function getAtsAnalytics(
 }
 
 /**
+ * GET /v1/ats/analytics/applications-over-time-by-candidates
+ * Returns applications count per candidate for last 5 weeks (for sparkline charts)
+ */
+export async function getApplicationsOverTimeByCandidates(
+  candidateIds: string[]
+): Promise<Record<string, number[]>> {
+  const ids = candidateIds.filter(Boolean);
+  if (ids.length === 0) return {};
+  const { data } = await apiClient.get<Record<string, number[]>>(
+    "/ats/analytics/applications-over-time-by-candidates",
+    { params: { candidateIds: ids.join(",") } }
+  );
+  return data ?? {};
+}
+
+/**
  * GET /v1/ats/analytics/drill
  */
 export async function getAtsDrillDown(

@@ -2,7 +2,7 @@
 
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import { createBackdatedAttendanceRequest } from "@/shared/lib/api/backdated-attendance-requests";
@@ -110,6 +110,7 @@ export default function AttendanceTracking() {
   const { user } = useAuth();
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
   const [myWeekOff, setMyWeekOff] = useState<string[]>([]);
+  const [myShift, setMyShift] = useState<{ name?: string; startTime?: string; endTime?: string; timezone?: string } | null>(null);
   const [loadingStudent, setLoadingStudent] = useState(true);
   const [status, setStatus] = useState<attendanceApi.PunchStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
@@ -122,6 +123,7 @@ export default function AttendanceTracking() {
   const [historyList, setHistoryList] = useState<attendanceApi.AttendanceTrackHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyRange, setHistoryRange] = useState<"7d" | "30d" | "all">("30d");
+  const [historySearch, setHistorySearch] = useState("");
   const [attendanceView, setAttendanceView] = useState<"track" | "history" | "dashboard">("track");
   const [canTrackAll, setCanTrackAll] = useState(false);
   const [canPunchOutOthers, setCanPunchOutOthers] = useState(false);
@@ -161,6 +163,8 @@ export default function AttendanceTracking() {
           setMyStudentId(student.id);
           const wo = (student as { weekOff?: string[] }).weekOff;
           if (Array.isArray(wo)) setMyWeekOff(wo);
+          const shift = (student as { shift?: { name?: string; startTime?: string; endTime?: string; timezone?: string } }).shift;
+          setMyShift(shift && typeof shift === "object" ? shift : null);
         }
       } catch (e: unknown) {
         if (!cancelled) { const s = (e as { response?: { status?: number } })?.response?.status; if (s !== 404) setError("Failed to load your profile."); }
@@ -345,15 +349,29 @@ export default function AttendanceTracking() {
     downloadCsv(`my-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "PunchIn", label: "Punch In" }, { key: "PunchOut", label: "Punch Out" }, { key: "Duration", label: "Duration" }], rows);
   }, [attendanceList]);
 
-  const exportTrackCsv = useCallback(() => {
-    const rows = trackList.map((row) => ({ Name: row.studentName, Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+  const exportTrackCsv = useCallback((list?: attendanceApi.AttendanceTrackItem[]) => {
+    const data = list ?? trackList;
+    const rows = data.map((row) => ({ Name: row.studentName, Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
     downloadCsv(`track-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Status", label: "Status" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
   }, [trackList]);
 
+  const matchesHistorySearch = useCallback((row: attendanceApi.AttendanceTrackHistoryItem) => {
+    const q = historySearch.trim().toLowerCase();
+    if (!q) return true;
+    const name = (row.studentName || "").toLowerCase();
+    const email = (row.email || "").toLowerCase();
+    return name.includes(q) || email.includes(q);
+  }, [historySearch]);
+
+  const filteredHistoryList = useMemo(
+    () => historyList.filter(matchesHistorySearch),
+    [historyList, matchesHistorySearch]
+  );
+
   const exportHistoryCsv = useCallback(() => {
-    const rows = historyList.map((row) => ({ Name: row.studentName, Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
+    const rows = filteredHistoryList.map((row) => ({ Name: row.studentName, Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
     downloadCsv(`attendance-history-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Email", label: "Email" }, { key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
-  }, [historyList]);
+  }, [filteredHistoryList]);
 
   const canPunch = !!myStudentId;
   const isCandidateOnly = canPunch && !canTrackAll;
@@ -489,11 +507,10 @@ export default function AttendanceTracking() {
                     <button
                       type="button"
                       onClick={openRequestModal}
-                      className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 !py-1 !px-2.5 !text-[0.7rem] whitespace-nowrap"
-                      title="Request Backdated Attendance"
+                      className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0"
+                      title="Backdate Request"
                     >
-                      <i className="ri-calendar-check-line me-1" />
-                      Backdate Request
+                      <i className="ri-calendar-check-line" />
                     </button>
                   </div>
                   <div className="box-body">
@@ -561,22 +578,34 @@ export default function AttendanceTracking() {
                   </div>
                 </div>
               </div>
-              {/* Quick info card */}
+              {/* Assigned shift card */}
               <div className="col-span-12 lg:col-span-5">
                 <div className="box !mb-0 h-full">
                   <div className="box-header">
-                    <div className="box-title">Today</div>
+                    <div className="box-title">Assigned Shift</div>
                   </div>
                   <div className="box-body flex flex-col justify-center">
                     <div className="text-center">
-                      <p className="text-[2rem] font-bold text-defaulttextcolor dark:text-white mb-1">
-                        {new Date().toLocaleDateString("en-US", { weekday: "long" })}
-                      </p>
-                      <p className="text-[0.9375rem] text-[#8c9097] dark:text-white/50">
-                        {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
-                      </p>
+                      {myShift?.name ? (
+                        <>
+                          <p className="text-[2rem] font-bold text-defaulttextcolor dark:text-white mb-1">
+                            {myShift.name}
+                          </p>
+                          <p className="text-[0.9375rem] text-[#8c9097] dark:text-white/50">
+                            {(myShift.startTime ?? "—")} – {(myShift.endTime ?? "—")}
+                          </p>
+                          {myShift.timezone && (
+                            <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-1">
+                              <i className="ri-global-line me-1" />
+                              {myShift.timezone}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-[1rem] text-[#8c9097] dark:text-white/50 mb-0">No shift assigned</p>
+                      )}
                       {status?.isPunchedIn && elapsedDisplay && (
-                        <div className="mt-3">
+                        <div className="mt-3 pt-3 border-t border-defaultborder/50">
                           <span className="text-[1.5rem] font-bold text-success">{elapsedDisplay}</span>
                           <p className="text-[0.6875rem] text-[#8c9097] mt-0.5">elapsed today</p>
                         </div>
@@ -589,11 +618,11 @@ export default function AttendanceTracking() {
 
             {/* My Attendance */}
             <div className="box mb-6">
-              <div className="box-header flex flex-wrap items-center justify-between gap-2">
+              <div className="box-header flex flex-wrap items-center justify-between gap-3">
                 <div className="box-title">My Attendance</div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3">
                   {/* View toggle */}
-                  <div className="inline-flex rounded-md border border-defaultborder overflow-hidden">
+                  <div className="inline-flex rounded-md border border-defaultborder overflow-hidden flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => setMyAttendanceViewMode("list")}
@@ -611,13 +640,12 @@ export default function AttendanceTracking() {
                       <span>Calendar</span>
                     </button>
                   </div>
-                  <button type="button" className="ti-btn ti-btn-sm ti-btn-light !py-1 !px-2.5 !text-[0.75rem] inline-flex items-center gap-1.5" onClick={refreshMyAttendanceList} disabled={listLoading} title="Refresh list">
+                  <div className="h-5 w-px bg-defaultborder flex-shrink-0 hidden sm:block" aria-hidden="true" />
+                  <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light flex-shrink-0" onClick={refreshMyAttendanceList} disabled={listLoading} title="Refresh">
                     <i className={"ri-refresh-line" + (listLoading ? " animate-spin" : "")} />
-                    <span className="whitespace-nowrap">Refresh</span>
                   </button>
-                  <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary !py-1 !px-2.5 !text-[0.75rem] inline-flex items-center gap-1.5 whitespace-nowrap" onClick={exportMyAttendanceCsv} disabled={attendanceList.length === 0} title="Export as CSV">
+                  <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0" onClick={exportMyAttendanceCsv} disabled={attendanceList.length === 0} title="Export CSV">
                     <i className="ri-download-2-line" />
-                    <span>Export CSV</span>
                   </button>
                 </div>
               </div>
@@ -850,15 +878,21 @@ export default function AttendanceTracking() {
 
             {attendanceView === "history" && (
               <div className="box">
-                <div className="box-header flex flex-wrap items-center justify-between gap-2">
+                <div className="box-header flex flex-wrap items-center justify-between gap-3">
                   <div className="box-title">Attendance History</div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 !text-[0.75rem]" onClick={exportHistoryCsv} disabled={historyList.length === 0} title="Export as CSV">
-                      <i className="ri-download-2-line" />
-                      <span>Export CSV</span>
-                    </button>
+                    <div className="relative">
+                      <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder="Search by name or email..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
+                      />
+                    </div>
                     <select
-                      className="form-control !w-auto !py-1 !px-3 !text-[0.75rem] !rounded-md"
+                      className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem] !rounded-md"
                       value={historyRange}
                       onChange={(e) => setHistoryRange((e.target.value as "7d" | "30d" | "all") || "30d")}
                     >
@@ -866,6 +900,9 @@ export default function AttendanceTracking() {
                       <option value="30d">Last 30 days</option>
                       <option value="all">All time</option>
                     </select>
+                    <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0" onClick={exportHistoryCsv} disabled={filteredHistoryList.length === 0} title="Export CSV">
+                      <i className="ri-download-2-line" />
+                    </button>
                   </div>
                 </div>
                 <div className="box-body !p-0">
@@ -880,12 +917,14 @@ export default function AttendanceTracking() {
                         </div>
                       ))}
                     </div>
-                  ) : historyList.length === 0 ? (
+                  ) : filteredHistoryList.length === 0 ? (
                     <div className="py-12 text-center">
                       <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/5">
                         <i className="ri-history-line text-[1.5rem] text-primary/40" />
                       </div>
-                      <p className="text-[0.8125rem] text-[#8c9097]">No records in this period</p>
+                      <p className="text-[0.8125rem] text-[#8c9097]">
+                        {historyList.length === 0 ? "No records in this period" : "No matches for your search"}
+                      </p>
                     </div>
                   ) : (
                     <div className="table-responsive">
@@ -903,7 +942,7 @@ export default function AttendanceTracking() {
                           </tr>
                         </thead>
                         <tbody>
-                          {historyList.map((row) => {
+                          {filteredHistoryList.map((row) => {
                             const initials = (row.studentName || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
                             const isActive = !row.punchOut;
                             return (
@@ -950,7 +989,7 @@ export default function AttendanceTracking() {
             )}
 
             {attendanceView === "dashboard" && (
-              <AttendanceDashboard historyList={historyList} historyLoading={historyLoading} />
+              <AttendanceDashboard historyList={filteredHistoryList} historyLoading={historyLoading} historySearch={historySearch} setHistorySearch={setHistorySearch} />
             )}
           </>
         )}

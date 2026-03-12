@@ -1,6 +1,9 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useCallback, useMemo, useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
+
+const DatePicker = dynamic(() => import('react-datepicker').then((mod) => mod.default), { ssr: false })
 import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
@@ -39,11 +42,170 @@ import { getAllShifts } from '@/shared/lib/api/shifts'
 import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
 import Swal from 'sweetalert2'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/shared/contexts/auth-context'
 import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
+
+/** Initials from name (up to 2 chars), same logic as my profile. */
+function getInitials(name: string | undefined | null): string {
+  if (!name || !String(name).trim()) return '?'
+  return (name as string).trim().split(/\s+/).map((s) => s[0]).join('').toUpperCase().slice(0, 2) || '?'
+}
+
+/** Editable date field (admin only). Renders as clickable badge; click opens modal. */
+function PersonalInfoDateField({
+  label,
+  value,
+  onSave,
+  saving,
+  allowClear = false,
+  badgeClassName,
+  icon,
+}: {
+  label: string
+  value: string | Date | null | undefined
+  onSave: (value: string | null) => void
+  saving: boolean
+  allowClear?: boolean
+  badgeClassName: string
+  icon: string
+}) {
+  const iso = value ? new Date(value).toISOString().slice(0, 10) : ''
+  const [open, setOpen] = useState(false)
+  const [local, setLocal] = useState(iso)
+  useEffect(() => {
+    setLocal(value ? new Date(value).toISOString().slice(0, 10) : '')
+  }, [value])
+  const displayText = value
+    ? new Date(value).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+    : 'Not set'
+  const currentIso = value ? new Date(value).toISOString().slice(0, 10) : ''
+  const hasChange = local !== currentIso
+  const canSave = hasChange && (local.trim() || (allowClear && value))
+  const handleSave = () => {
+    if (allowClear && !local.trim()) {
+      onSave(null)
+    } else if (local.trim()) {
+      onSave(local)
+    }
+    setOpen(false)
+  }
+  return (
+    <>
+      <button
+        type="button"
+        title={label}
+        className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded cursor-pointer border-0 bg-transparent ${badgeClassName} hover:opacity-90 transition-opacity`}
+        onClick={() => setOpen(true)}
+      >
+        <i className={icon}></i>
+        {displayText}
+      </button>
+      {open && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/30 backdrop-blur-md transition-opacity duration-200"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={label}
+        >
+          <div
+            className="bg-white dark:bg-bodybg rounded-2xl shadow-[0_24px_80px_-12px_rgba(0,0,0,0.25)] dark:shadow-[0_24px_80px_-12px_rgba(0,0,0,0.6)] border border-defaultborder dark:border-white/10 max-w-[340px] w-full overflow-hidden transition-transform duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-5">
+              <div className="flex items-center justify-between gap-3 mb-5">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/[0.08] text-primary dark:bg-primary/20 dark:text-primary">
+                    <i className={icon}></i>
+                  </span>
+                  <div>
+                    <h3 className="text-[1.0625rem] font-semibold tracking-tight text-defaulttextcolor dark:text-white">{label}</h3>
+                    <p className="text-xs text-textmuted dark:text-white/50 mt-0.5">Pick a date</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-textmuted hover:bg-defaultbackground dark:hover:bg-white/10 hover:text-defaulttextcolor dark:hover:text-white transition-colors"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close"
+                >
+                  <i className="ri-close-line text-xl"></i>
+                </button>
+              </div>
+              <div className="date-picker-modal-cal [&_.react-datepicker]:!border-0 [&_.react-datepicker]:!rounded-xl [&_.react-datepicker]:!shadow-none [&_.react-datepicker]:!p-0 [&_.react-datepicker]:!bg-transparent [&_.react-datepicker__header]:!bg-transparent [&_.react-datepicker__header]:!border-b [&_.react-datepicker__header]:!border-defaultborder [&_.react-datepicker__header]:!pb-3 [&_.react-datepicker__header]:!mb-3 [&_.react-datepicker__current-month]:!text-defaulttextcolor [&_.react-datepicker__current-month]:!dark:text-white [&_.react-datepicker__current-month]:!text-sm [&_.react-datepicker__current-month]:!font-semibold [&_.react-datepicker__day-names]:!text-textmuted [&_.react-datepicker__day-names]:!dark:text-white/50 [&_.react-datepicker__day-names]:!text-[0.6875rem] [&_.react-datepicker__day-names]:!font-medium [&_.react-datepicker__day]:!w-9 [&_.react-datepicker__day]:!h-9 [&_.react-datepicker__day]:!leading-9 [&_.react-datepicker__day]:!text-defaulttextcolor [&_.react-datepicker__day]:!dark:text-white [&_.react-datepicker__day]:!text-[0.8125rem] [&_.react-datepicker__day]:!rounded-lg [&_.react-datepicker__day--selected]:!bg-primary [&_.react-datepicker__day--selected]:!text-white [&_.react-datepicker__day--selected]:!font-medium [&_.react-datepicker__day--keyboard-selected]:!bg-primary/15 [&_.react-datepicker__day--keyboard-selected]:!text-primary [&_.react-datepicker__day:hover]:!bg-primary/10 [&_.react-datepicker__day:hover]:!text-primary [&_.react-datepicker__day--outside-month]:!text-gray-300 [&_.react-datepicker__day--outside-month]:!dark:text-white/20 [&_.react-datepicker__navigation]:!top-1 [&_.react-datepicker__navigation-icon]:before:!border-defaulttextcolor [&_.react-datepicker__navigation-icon]:before:!dark:border-white/70 [&_.react-datepicker__month-dropdown]:!bg-white [&_.react-datepicker__month-dropdown]:!dark:bg-bodybg [&_.react-datepicker__year-dropdown]:!bg-white [&_.react-datepicker__year-dropdown]:!dark:bg-bodybg [&_.react-datepicker__today-button]:!bg-defaultbackground [&_.react-datepicker__today-button]:!dark:bg-white/5 [&_.react-datepicker__today-button]:!text-defaulttextcolor [&_.react-datepicker__today-button]:!dark:text-white [&_.react-datepicker__today-button]:!border-t [&_.react-datepicker__today-button]:!border-defaultborder [&_.react-datepicker__today-button]:!rounded-b-xl [&_.react-datepicker__today-button]:!py-2.5 [&_.react-datepicker__today-button]:!text-sm [&_.react-datepicker__today-button]:!font-medium [&_.react-datepicker__today-button]:!hover:bg-defaultbackground/80 [&_.react-datepicker__today-button]:!dark:hover:bg-white/10">
+                <DatePicker
+                  inline
+                  selected={local ? new Date(local) : null}
+                  onChange={(d: Date | null) => setLocal(d ? d.toISOString().slice(0, 10) : '')}
+                  dateFormat="yyyy-MM-dd"
+                  showMonthDropdown
+                  showYearDropdown
+                  dropdownMode="select"
+                  todayButton="Today"
+                  calendarStartDay={1}
+                  className="!border-0 !p-0 !w-full"
+                  calendarClassName="date-picker-modal-cal"
+                />
+              </div>
+            </div>
+            <div className="px-6 py-4 flex items-center justify-end gap-2 border-t border-defaultborder dark:border-white/10 bg-defaultbackground/50 dark:bg-white/[0.02]">
+              {allowClear && (local || value) && (
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-outline-secondary ti-btn-sm !rounded-lg"
+                  disabled={saving}
+                  onClick={() => {
+                    setLocal('')
+                    onSave(null)
+                    setOpen(false)
+                  }}
+                  title="Clear resign date (reactivate)"
+                >
+                  Clear date
+                </button>
+              )}
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary !rounded-lg !font-medium shadow-sm"
+                disabled={saving || !canSave}
+                onClick={handleSave}
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+/** Avatar: S3 image if available, else initials. Matches my profile / personal-information behavior. */
+function CandidateAvatar({ candidate, className = 'w-10 h-10 rounded-full' }: { candidate: CandidateDisplay; className?: string }) {
+  const imgUrl = candidate.displayPicture ?? (candidate as any)._raw?.profilePicture?.url
+  const [imgFailed, setImgFailed] = useState(false)
+  const showImg = imgUrl && !imgFailed
+  const initials = getInitials(candidate.name)
+  if (showImg) {
+    return (
+      <img
+        src={imgUrl}
+        alt={candidate.name}
+        className={`object-cover flex-shrink-0 ${className}`}
+        onError={() => setImgFailed(true)}
+      />
+    )
+  }
+  return (
+    <span className={`flex items-center justify-center bg-primary/10 text-primary font-semibold text-sm flex-shrink-0 ${className}`}>
+      {initials}
+    </span>
+  )
+}
 
 interface FilterState {
   name: string[]
@@ -67,6 +229,7 @@ const DEFAULT_EXPERIENCE_RANGE: [number, number] = [0, 20]
 
 const Candidates = () => {
   const router = useRouter()
+  const { isAdministrator } = useAuth()
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
@@ -96,10 +259,35 @@ const Candidates = () => {
     experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
   })
 
-  // Search states for filter dropdowns
+  // Search states for filter dropdowns (also sent to API to search all candidates)
   const [searchName, setSearchName] = useState('')
   const [searchSkills, setSearchSkills] = useState('')
   const [searchEducation, setSearchEducation] = useState('')
+
+  // Filter dropdown options: all names, skills, education from all candidates (not limited by pagination)
+  const [filterOptions, setFilterOptions] = useState<{ names: string[]; skills: string[]; education: string[] }>({
+    names: [],
+    skills: [],
+    education: [],
+  })
+  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
+
+  // Debounce search inputs so API is called after user stops typing
+  const [debouncedSearchName, setDebouncedSearchName] = useState('')
+  const [debouncedSearchSkills, setDebouncedSearchSkills] = useState('')
+  const [debouncedSearchEducation, setDebouncedSearchEducation] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchName(searchName), 400)
+    return () => clearTimeout(t)
+  }, [searchName])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchSkills(searchSkills), 400)
+    return () => clearTimeout(t)
+  }, [searchSkills])
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchEducation(searchEducation), 400)
+    return () => clearTimeout(t)
+  }, [searchEducation])
 
   // Create candidate modal state
   const [createForm, setCreateForm] = useState({
@@ -130,16 +318,24 @@ const Candidates = () => {
       limit: pageSize,
       sortBy: 'createdAt:desc',
     }
-    if (filters.name?.length) params.fullName = filters.name[0]
-    if (filters.skills?.length) params.skills = filters.skills
-    if (filters.education?.length) params.degree = filters.education[0]
+    // Typed search hits API and searches ALL candidates (not limited to current page)
+    if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
+    else if (filters.name?.length) params.fullName = filters.name[0]
+    const skillParams = [...(filters.skills ?? [])]
+    if (debouncedSearchSkills.trim()) {
+      const typed = debouncedSearchSkills.trim()
+      if (!skillParams.some((x) => x.toLowerCase() === typed.toLowerCase())) skillParams.push(typed)
+    }
+    if (skillParams.length > 0) params.skills = skillParams
+    if (debouncedSearchEducation.trim()) params.degree = debouncedSearchEducation.trim()
+    else if (filters.education?.length) params.degree = filters.education[0]
     if (filters.email?.trim()) params.email = filters.email.trim()
     if (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]) {
       params.minYearsOfExperience = filters.experience[0]
       params.maxYearsOfExperience = filters.experience[1]
     }
     return params
-  }, [filters, pageSize])
+  }, [filters, pageSize, debouncedSearchName, debouncedSearchSkills, debouncedSearchEducation])
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -165,6 +361,36 @@ const Candidates = () => {
     refreshCandidates(false)
   }, [apiPage, fetchParams])
 
+  // Fetch all unique names, skills, education for filter dropdowns (not limited by page)
+  useEffect(() => {
+    setFilterOptionsLoading(true)
+    listCandidates({ limit: 5000, sortBy: 'fullName:asc' })
+      .then((res) => {
+        const results = (res.results ?? []).map(mapCandidateToDisplay)
+        const names = [...new Set(results.map((c) => c.name).filter(Boolean))].sort()
+        const skillMap = new Map<string, string>()
+        const splitSkillString = (str: string) =>
+          str
+            .split(/[,;]|\.\s+|\r?\n+/)
+            .map((x) => x.trim())
+            .filter(Boolean)
+        results.forEach((c) => {
+          c.skills?.forEach((s) => {
+            const raw = typeof s === 'string' ? s : String(s)
+            splitSkillString(raw).forEach((p) => {
+              const key = p.toLowerCase()
+              if (!skillMap.has(key)) skillMap.set(key, p)
+            })
+          })
+        })
+        const skills = Array.from(skillMap.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+        const education = [...new Set(results.map((c) => c.education).filter(Boolean))].sort()
+        setFilterOptions({ names, skills, education })
+      })
+      .catch(() => setFilterOptions({ names: [], skills: [], education: [] }))
+      .finally(() => setFilterOptionsLoading(false))
+  }, [])
+
   const prevFiltersRef = React.useRef(filters)
   useEffect(() => {
     if (prevFiltersRef.current !== filters) {
@@ -172,6 +398,10 @@ const Candidates = () => {
       setApiPage(1)
     }
   }, [filters])
+
+  useEffect(() => {
+    setApiPage(1)
+  }, [debouncedSearchName, debouncedSearchSkills, debouncedSearchEducation])
 
   // Note: Experience filter sync disabled with server-side pagination (data is paged)
 
@@ -303,6 +533,7 @@ const Candidates = () => {
   const [resignDateCandidate, setResignDateCandidate] = useState<CandidateDisplay | null>(null)
   const [resignDateValue, setResignDateValue] = useState('')
   const [resignDateSubmitting, setResignDateSubmitting] = useState(false)
+  const [personalInfoDateSaving, setPersonalInfoDateSaving] = useState<'joining' | 'resign' | null>(null)
   const [weekOffCandidateIds, setWeekOffCandidateIds] = useState<string[]>([])
   const [weekOffDays, setWeekOffDays] = useState<string[]>([])
   const [weekOffSubmitting, setWeekOffSubmitting] = useState(false)
@@ -720,6 +951,44 @@ const Candidates = () => {
     }
   }
 
+  const handlePersonalInfoJoiningDateSave = async (value: string) => {
+    if (!previewCandidate?.id || !value) return
+    setPersonalInfoDateSaving('joining')
+    setActionError(null)
+    try {
+      await updateJoiningDate(previewCandidate.id, value)
+      setActionSuccess('Joining date updated')
+      setPreviewCandidate((prev: any) =>
+        prev ? { ...prev, _raw: { ...prev._raw, joiningDate: value } } : null
+      )
+      refreshCandidates(true)
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update joining date')
+    } finally {
+      setPersonalInfoDateSaving(null)
+    }
+  }
+
+  const handlePersonalInfoResignDateSave = async (value: string | null) => {
+    if (!previewCandidate?.id) return
+    setPersonalInfoDateSaving('resign')
+    setActionError(null)
+    try {
+      await updateResignDate(previewCandidate.id, value)
+      setActionSuccess(value ? 'Resign date updated' : 'Resign date cleared. Candidate is now active.')
+      setPreviewCandidate((prev: any) =>
+        prev ? { ...prev, _raw: { ...prev._raw, resignDate: value } } : null
+      )
+      refreshCandidates(true)
+      setTimeout(() => setActionSuccess(null), 3000)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
+    } finally {
+      setPersonalInfoDateSaving(null)
+    }
+  }
+
   const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
   const openWeekOffModal = (candidateIds: string[]) => {
     setWeekOffCandidateIds(candidateIds)
@@ -813,14 +1082,7 @@ const Candidates = () => {
           return (
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0">
-                <img
-                  src={candidate.displayPicture || '/assets/images/faces/1.jpg'}
-                  alt={candidate.name}
-                  className="w-10 h-10 rounded-full object-cover"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
-                  }}
-                />
+                <CandidateAvatar candidate={candidate} className="w-10 h-10 rounded-full" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -872,9 +1134,11 @@ const Candidates = () => {
         Cell: ({ row }: any) => {
           const candidate = row.original
           const raw = candidate.skills ?? []
-          const normalized = raw.flatMap((s: string) =>
-            typeof s === 'string' && s.includes(',') ? s.split(',').map((x: string) => x.trim()).filter(Boolean) : [s]
-          )
+          const normalized = raw.flatMap((s: string) => {
+            const str = typeof s === 'string' ? s : String(s)
+            const parts = str.split(/[,;]|\.\s+|\r?\n+/).map((x: string) => x.trim()).filter(Boolean)
+            return parts.length > 0 ? parts : [str]
+          })
           const display = normalized.slice(0, 4)
           const extra = normalized.length - 4
           return (
@@ -1084,22 +1348,10 @@ const Candidates = () => {
 
   const data = useMemo(() => filteredData, [filteredData])
 
-  // Get unique values for dropdown filters
-  const allSkills = useMemo(() => {
-    const skillSet = new Set<string>()
-    candidates.forEach(candidate => {
-      candidate.skills?.forEach(skill => skillSet.add(skill))
-    })
-    return Array.from(skillSet).sort()
-  }, [candidates])
-
-  const allEducation = useMemo(() => {
-    return [...new Set(candidates.map(candidate => candidate.education).filter(Boolean))].sort()
-  }, [candidates])
-
-  const allNames = useMemo(() => {
-    return [...new Set(candidates.map(candidate => candidate.name))].sort()
-  }, [candidates])
+  // Use filter options from all candidates (fetched separately), not limited by current page
+  const allNames = filterOptions.names
+  const allSkills = filterOptions.skills
+  const allEducation = filterOptions.education
 
   // Filter options based on search terms
   const filteredNames = useMemo(() => {
@@ -1162,6 +1414,9 @@ const Candidates = () => {
     filters.skills.length > 0 ||
     filters.education.length > 0 ||
     filters.email !== '' ||
+    debouncedSearchName.trim() !== '' ||
+    debouncedSearchSkills.trim() !== '' ||
+    debouncedSearchEducation.trim() !== '' ||
     filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] ||
     filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]
 
@@ -1170,6 +1425,9 @@ const Candidates = () => {
     filters.skills.length +
     filters.education.length +
     (filters.email !== '' ? 1 : 0) +
+    (debouncedSearchName.trim() ? 1 : 0) +
+    (debouncedSearchSkills.trim() ? 1 : 0) +
+    (debouncedSearchEducation.trim() ? 1 : 0) +
     (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1] ? 1 : 0)
 
   const tableInstance: any = useTable(
@@ -1667,6 +1925,7 @@ const Candidates = () => {
         allNames={allNames}
         allSkills={allSkills}
         allEducation={allEducation}
+        filterOptionsLoading={filterOptionsLoading}
         filteredNames={filteredNames}
         filteredSkills={filteredSkills}
         filteredEducation={filteredEducation}
@@ -1713,14 +1972,9 @@ const Candidates = () => {
             <>
               {/* Candidate header summary */}
               <div className="flex items-start gap-3 mb-4 pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-                <div className="avatar avatar-lg avatar-rounded flex-shrink-0">
-                      <img
-                        src={previewCandidate.displayPicture || (previewCandidate._raw?.profilePicture?.url) || '/assets/images/faces/1.jpg'}
-                        alt={previewCandidate.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => { (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg' }}
-                      />
-                    </div>
+                <div className="avatar avatar-lg avatar-rounded flex-shrink-0 overflow-hidden">
+                  <CandidateAvatar candidate={previewCandidate} className="w-full h-full rounded-full" />
+                </div>
                     <div className="min-w-0 flex-1">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white truncate">{previewCandidate.name}</h3>
                       <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 truncate">{previewCandidate.email}</p>
@@ -1737,14 +1991,38 @@ const Candidates = () => {
                         {previewCandidate.isProfileCompleted ?? previewCandidate._raw?.isProfileCompleted ?? 0}% complete
                       </span>
                     )}
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded" title="Joining Date">
-                      <i className="ri-calendar-check-line"></i>
-                      {previewCandidate._raw?.joiningDate ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
-                    </span>
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded" title="Resign Date">
-                      <i className="ri-calendar-close-line"></i>
-                      {previewCandidate._raw?.resignDate ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
-                    </span>
+                    {isAdministrator ? (
+                      <>
+                        <PersonalInfoDateField
+                          label="Joining Date"
+                          value={previewCandidate._raw?.joiningDate}
+                          onSave={handlePersonalInfoJoiningDateSave}
+                          saving={personalInfoDateSaving === 'joining'}
+                          badgeClassName="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                          icon="ri-calendar-check-line"
+                        />
+                        <PersonalInfoDateField
+                          label="Resign Date"
+                          value={previewCandidate._raw?.resignDate}
+                          onSave={handlePersonalInfoResignDateSave}
+                          saving={personalInfoDateSaving === 'resign'}
+                          allowClear
+                          badgeClassName="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
+                          icon="ri-calendar-close-line"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded" title="Joining Date">
+                          <i className="ri-calendar-check-line"></i>
+                          {previewCandidate._raw?.joiningDate ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
+                        </span>
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded" title="Resign Date">
+                          <i className="ri-calendar-close-line"></i>
+                          {previewCandidate._raw?.resignDate ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1802,22 +2080,6 @@ const Candidates = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Experience (years)</label>
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.experience ?? '-'}</p>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Joining Date</label>
-                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
-                            {previewCandidate._raw?.joiningDate
-                              ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-                              : '-'}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Resign Date</label>
-                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
-                            {previewCandidate._raw?.resignDate
-                              ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-                              : '-'}
-                          </p>
                         </div>
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Short Bio</label>
@@ -1896,11 +2158,15 @@ const Candidates = () => {
                       <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Skills</h4>
                       {(previewCandidate.skills?.length || previewCandidate._raw?.skills?.length) ? (
                         <div className="flex flex-wrap gap-2">
-                          {(previewCandidate.skills || previewCandidate._raw?.skills?.map((s: any) => typeof s === 'string' ? s : s.name))?.map((skill: string, index: number) => (
-                            <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
-                              {skill}
-                            </span>
-                          ))}
+                          {(previewCandidate.skills || previewCandidate._raw?.skills?.map((s: any) => typeof s === 'string' ? s : s.name))
+                            ?.flatMap((skill: string) =>
+                              skill.split(/[,;]|\.\s+|\r?\n+/).map((x) => x.trim()).filter(Boolean)
+                            )
+                            ?.map((skill: string, index: number) => (
+                              <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
+                                {skill}
+                              </span>
+                            ))}
                         </div>
                       ) : (
                         <div className="text-center py-8">

@@ -8,6 +8,7 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
   getAtsAnalytics,
+  getApplicationsOverTimeByCandidates,
   type AtsAnalyticsResponse,
   type StatusCount,
 } from "@/shared/lib/api/atsAnalytics";
@@ -22,7 +23,7 @@ import {
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
 import { listJobs, type Job } from "@/shared/lib/api/jobs";
-import { listJobApplications } from "@/shared/lib/api/jobApplications";
+import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobApplications";
 import { listProjects, type Project } from "@/shared/lib/api/projects";
 import {
   getMyStudentForAttendance,
@@ -106,6 +107,15 @@ function relativeTime(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   return `${days}d ago`;
+}
+
+function stripHtml(html: string): string {
+  if (typeof document === "undefined") {
+    return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  }
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  return (div.textContent ?? div.innerText ?? "").replace(/\s+/g, " ").trim();
 }
 
 function getStatusBadgeClass(status: string): string {
@@ -306,6 +316,22 @@ export default function DashboardPage() {
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
+  const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
+  const [applicantsModal, setApplicantsModal] = useState<{ jobId: string; jobTitle: string } | null>(null);
+  const [applicantsList, setApplicantsList] = useState<JobApplication[] | null>(null);
+  const [applicantsLoading, setApplicantsLoading] = useState(false);
+  const [statBoxModal, setStatBoxModal] = useState<
+    "totalJobs" | "activeJobs" | "candidates" | "applications" | null
+  >(null);
+  const [statBoxList, setStatBoxList] = useState<
+    Job[] | CandidateListItem[] | JobApplication[] | null
+  >(null);
+  const [statBoxLoading, setStatBoxLoading] = useState(false);
+  const [selectedTeamMember, setSelectedTeamMember] = useState<CandidateListItem | null>(null);
+  const [failedAvatarIds, setFailedAvatarIds] = useState<Set<string>>(new Set());
+  const [applicationsOverTimeByCandidate, setApplicationsOverTimeByCandidate] = useState<
+    Record<string, number[]>
+  >({});
   const [applicantCountByJob, setApplicantCountByJob] = useState<
     Record<string, number>
   >({});
@@ -348,7 +374,7 @@ export default function DashboardPage() {
       getTrainingAnalytics(),
       listCandidates({ limit: 5 }),
       listTasks({ assignedToMe: true, limit: 50 }),
-      listJobs({ limit: 6, sortBy: "createdAt:desc" }),
+      listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }),
       listJobApplications({ limit: 500 }),
       listProjects({ limit: 100 }),
       listMeetings({ limit: 5, sortBy: "scheduledAt:asc", status: "scheduled" }),
@@ -359,12 +385,25 @@ export default function DashboardPage() {
 
     if (atsRes.status === "fulfilled") setAtsData(atsRes.value);
     if (trainingRes.status === "fulfilled") setTrainingData(trainingRes.value);
-    if (candidatesRes.status === "fulfilled")
-      setCandidates(candidatesRes.value.results ?? []);
+    if (candidatesRes.status === "fulfilled") {
+      const cands = candidatesRes.value.results ?? [];
+      setCandidates(cands);
+      const ids = cands.map((c) => String(c._id ?? c.id ?? "")).filter(Boolean);
+      if (ids.length > 0) {
+        try {
+          const appOverTime = await getApplicationsOverTimeByCandidates(ids);
+          setApplicationsOverTimeByCandidate(appOverTime);
+        } catch {
+          setApplicationsOverTimeByCandidate({});
+        }
+      } else {
+        setApplicationsOverTimeByCandidate({});
+      }
+    }
     if (tasksRes.status === "fulfilled")
       setMyTasks(tasksRes.value.results ?? []);
     if (jobsRes.status === "fulfilled")
-      setRecentJobs(jobsRes.value.results ?? []);
+      setRecentJobs(Array.isArray(jobsRes.value?.results) ? jobsRes.value.results : []);
 
     if (applicationsRes.status === "fulfilled") {
       const apps = applicationsRes.value.results ?? [];
@@ -409,6 +448,94 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  /* Fetch applicants when applicants modal is opened */
+  useEffect(() => {
+    if (!applicantsModal) {
+      setApplicantsList(null);
+      return;
+    }
+    let cancelled = false;
+    setApplicantsLoading(true);
+    listJobApplications({ jobId: applicantsModal.jobId, limit: 100 })
+      .then((res) => {
+        if (!cancelled) setApplicantsList(res.results ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setApplicantsList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setApplicantsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [applicantsModal]);
+
+  /* Fetch stat box list when modal is opened */
+  useEffect(() => {
+    if (!statBoxModal) {
+      setStatBoxList(null);
+      return;
+    }
+    let cancelled = false;
+    setStatBoxLoading(true);
+    const fetchList = async () => {
+      try {
+        if (statBoxModal === "totalJobs") {
+          const res = await listJobs({ limit: 100 });
+          if (!cancelled) setStatBoxList(res.results ?? []);
+        } else if (statBoxModal === "activeJobs") {
+          const res = await listJobs({ status: "Active", limit: 100 });
+          if (!cancelled) setStatBoxList(res.results ?? []);
+        } else if (statBoxModal === "candidates") {
+          const res = await listCandidates({ limit: 100 });
+          if (!cancelled) setStatBoxList(res.results ?? []);
+        } else if (statBoxModal === "applications") {
+          const res = await listJobApplications({ limit: 200 });
+          if (!cancelled) setStatBoxList(res.results ?? []);
+        }
+      } catch {
+        if (!cancelled) setStatBoxList([]);
+      } finally {
+        if (!cancelled) setStatBoxLoading(false);
+      }
+    };
+    fetchList();
+    return () => {
+      cancelled = true;
+    };
+  }, [statBoxModal]);
+
+  /* Refetch Recent Jobs when user returns to the tab so the list stays up to date */
+  useEffect(() => {
+    const onFocus = async () => {
+      try {
+        const [jobsRes, applicationsRes] = await Promise.allSettled([
+          listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }),
+          listJobApplications({ limit: 500 }),
+        ]);
+        if (jobsRes.status === "fulfilled")
+          setRecentJobs(Array.isArray(jobsRes.value?.results) ? jobsRes.value.results : []);
+        if (applicationsRes.status === "fulfilled") {
+          const apps = applicationsRes.value.results ?? [];
+          const map: Record<string, number> = {};
+          for (const app of apps) {
+            const jRef = app.job;
+            const jobId = typeof jRef === "object" && jRef !== null ? jRef._id : jRef;
+            if (jobId) {
+              map[String(jobId)] = (map[String(jobId)] ?? 0) + 1;
+            }
+          }
+          setApplicantCountByJob(map);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
 
   /* ---- Punch in/out handler ---- */
   const handlePunch = async () => {
@@ -487,27 +614,6 @@ export default function DashboardPage() {
             </span>
           </div>
           <div className="flex items-center gap-3">
-            {/* Attendance quick-action */}
-            {attendanceStudent && (
-              <button
-                onClick={handlePunch}
-                disabled={punchLoading}
-                className={`ti-btn ti-btn-sm ti-btn-wave ${
-                  punchStatus?.isPunchedIn
-                    ? "bg-danger text-white"
-                    : "bg-success text-white"
-                } disabled:opacity-60`}
-              >
-                <i
-                  className={`ti ${punchStatus?.isPunchedIn ? "ti-clock-pause" : "ti-clock-play"} me-1`}
-                ></i>
-                {punchLoading
-                  ? "…"
-                  : punchStatus?.isPunchedIn
-                    ? "Punch Out"
-                    : "Punch In"}
-              </button>
-            )}
             {/* Notifications */}
             <Link
               href="/pages/notifications"
@@ -527,15 +633,20 @@ export default function DashboardPage() {
       {/* Layout from dharwinone_frontend reference: xxl:9 | xxl:3, then full-width Projects Summary */}
       <div className="grid grid-cols-12 gap-x-6">
         <div className="xxl:col-span-9 col-span-12">
-          <div className="grid grid-cols-12 gap-x-6">
+          <div className="grid grid-cols-12 gap-x-6 xxl:min-h-[55vh]">
             {/* LEFT: 4 stat cards + Project Analysis (directly under stats) */}
             <div className="xxl:col-span-5 col-span-12">
               <div className="grid grid-cols-12 gap-x-6">
                 <div className="sm:col-span-6 col-span-12">
-                  <div className="box">
-                    <div className="box-body flex justify-between items-center">
-                      <div>
-                        <p className="mb-1">Total Jobs</p>
+                  <button
+                    type="button"
+                    onClick={() => setStatBoxModal("totalJobs")}
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  >
+                    <div className="box">
+                      <div className="box-body flex justify-between items-center">
+                        <div>
+                          <p className="mb-1">Total Jobs</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
@@ -549,12 +660,18 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
+                  </button>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <div className="box">
-                    <div className="box-body flex justify-between items-center">
-                      <div>
-                        <p className="mb-1">Active Jobs</p>
+                  <button
+                    type="button"
+                    onClick={() => setStatBoxModal("activeJobs")}
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  >
+                    <div className="box">
+                      <div className="box-body flex justify-between items-center">
+                        <div>
+                          <p className="mb-1">Active Jobs</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
@@ -568,12 +685,18 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
+                  </button>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <div className="box">
-                    <div className="box-body flex justify-between items-center">
-                      <div>
-                        <p className="mb-1">Total Candidates</p>
+                  <button
+                    type="button"
+                    onClick={() => setStatBoxModal("candidates")}
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  >
+                    <div className="box">
+                      <div className="box-body flex justify-between items-center">
+                        <div>
+                          <p className="mb-1">Total Candidates</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
@@ -587,12 +710,18 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
+                  </button>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <div className="box">
-                    <div className="box-body flex justify-between items-center">
-                      <div>
-                        <p className="mb-1">Applications</p>
+                  <button
+                    type="button"
+                    onClick={() => setStatBoxModal("applications")}
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  >
+                    <div className="box">
+                      <div className="box-body flex justify-between items-center">
+                        <div>
+                          <p className="mb-1">Applications</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
@@ -606,6 +735,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
+                  </button>
                 </div>
                 <div className="xl:col-span-12 col-span-12">
                   <div className="box">
@@ -628,14 +758,16 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            {/* MIDDLE: Team Members + Main Tasks (Main Tasks directly under Team Members) */}
-            <div className="xxl:col-span-4 col-span-12">
-              <div className="grid grid-cols-12 gap-x-6">
-                <div className="xl:col-span-12 col-span-12">
+            {/* MIDDLE: Candidate List + Main Tasks (Main Tasks directly under Candidate List) */}
+            <div className="xxl:col-span-4 col-span-12 flex flex-col min-h-0">
+              <div className="flex flex-col gap-x-6 flex-1 min-h-0">
+                <div className="xl:col-span-12 col-span-12 flex-shrink-0">
                   <div className="box">
                     <div className="box-header justify-between">
-                      <div className="box-title">Team Members</div>
-                      <Link href="/ats/candidates" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
+                      <div className="box-title">Candidate List</div>
+                      <Link href="/ats/candidates" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View All" aria-label="View All">
+                        <i className="ri-external-link-line text-[1rem]" />
+                      </Link>
                     </div>
                     <div className="box-body">
                       {loading ? (
@@ -643,34 +775,50 @@ export default function DashboardPage() {
                       ) : candidates.length === 0 ? (
                         <p className="text-[#8c9097] dark:text-white/50 text-sm">No candidates yet.</p>
                       ) : (
-                        <ul className="list-none team-members-card mb-0">
+                        <ul className="list-none team-members-card mb-0 space-y-1">
                           {candidates.map((c, idx) => {
-                            const cId = c._id ?? c.id ?? "";
-                            const TeamChart = [Projectdata.Team1, Projectdata.Team2, Projectdata.Team3, Projectdata.Team4, Projectdata.Team5][idx % 5];
+                            const cId = String(c._id ?? c.id ?? "");
+                            const chartColors = ["#09ad95", "#fb6b27", "#1170e4", "#e82646", "#f7b731"];
+                            const appData = applicationsOverTimeByCandidate[cId] ?? [0, 0, 0, 0, 0];
+                            const chartOptions: ApexOptions = {
+                              ...Projectdata.Team1.options,
+                              colors: [chartColors[idx % 5]],
+                              series: [{ name: "Value", data: appData }],
+                            };
                             return (
                               <li key={cId}>
-                                <Link href="/ats/candidates">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-start">
-                                      {c.profilePicture?.url ? (
-                                        <span className="avatar avatar-sm leading-none">
-                                          <img src={c.profilePicture.url} alt="" className="rounded-md" />
-                                        </span>
-                                      ) : (
-                                        <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md leading-none flex items-center justify-center text-xs font-semibold">
-                                          {getInitial(c.fullName)}
-                                        </span>
-                                      )}
-                                      <div className="ms-4 leading-none">
-                                        <span className="font-semibold">{c.fullName ?? "—"}</span>
-                                        <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 mt-2">{c.email ?? ""}</span>
-                                      </div>
-                                    </div>
-                                    <div id={`user${idx + 1}`}>
-                                      <ReactApexChart options={TeamChart.options} series={TeamChart.series} type="line" height={20} width={80} />
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedTeamMember(c)}
+                                  className="w-full flex items-center justify-between p-3 rounded-lg border-0 bg-transparent text-left cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group"
+                                >
+                                  <div className="flex items-start">
+                                    {c.profilePicture?.url && !failedAvatarIds.has(cId) ? (
+                                      <span className="avatar avatar-sm leading-none">
+                                        <img
+                                          src={c.profilePicture.url}
+                                          alt=""
+                                          className="rounded-md"
+                                          onError={() => setFailedAvatarIds((prev) => new Set(prev).add(cId))}
+                                        />
+                                      </span>
+                                    ) : (
+                                      <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md leading-none flex items-center justify-center text-xs font-semibold">
+                                        {getInitial(c.fullName)}
+                                      </span>
+                                    )}
+                                    <div className="ms-4 leading-none">
+                                      <span className="font-semibold block group-hover:text-primary transition-colors">{c.fullName ?? "—"}</span>
+                                      <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 mt-1">{c.email ?? ""}</span>
                                     </div>
                                   </div>
-                                </Link>
+                                  <div className="flex items-center gap-2">
+                                    <div id={`user${idx + 1}`}>
+                                      <ReactApexChart options={chartOptions} series={[{ name: "Value", data: appData }]} type="line" height={20} width={80} />
+                                    </div>
+                                    <i className="ri-arrow-right-s-line text-[#8c9097] dark:text-white/50 group-hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                </button>
                               </li>
                             );
                           })}
@@ -679,13 +827,13 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
-                <div className="xl:col-span-12 col-span-12">
-                  <div className="box">
-                    <div className="box-header justify-between">
+                <div className="xl:col-span-12 col-span-12 flex-1 min-h-0 flex flex-col">
+                  <div className="box flex-1 flex flex-col min-h-0">
+                    <div className="box-header justify-between flex-shrink-0">
                       <div className="box-title">Main Tasks</div>
                       <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">Today <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                     </div>
-                    <div className="box-body">
+                    <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
                       {loading ? (
                         <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
                       ) : displayMyTasks.length === 0 ? (
@@ -728,20 +876,20 @@ export default function DashboardPage() {
               </div>
             </div>
             {/* RIGHT: Daily Tasks */}
-            <div className="xxl:col-span-3 col-span-12">
-              <div className="box">
-                <div className="box-header justify-between">
+            <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
+              <div className="box flex-1 flex flex-col min-h-0">
+                <div className="box-header justify-between flex-shrink-0">
                   <div className="box-title">Daily Tasks</div>
                   <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                 </div>
-                <div className="box-body">
+                <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
                   {loading ? (
                     <Skeleton className="h-40 w-full" />
                   ) : dailyTasks.length === 0 ? (
                     <p className="text-[#8c9097] dark:text-white/50 text-sm">No tasks due today.</p>
                   ) : (
                     <ul className="list-none daily-task-card my-2">
-                      {dailyTasks.slice(0, 4).map((t, i) => {
+                      {dailyTasks.map((t, i) => {
                         const borderColors = ["border-primary/25", "border-warning/25", "border-success/25", "border-secondary/25"];
                         return (
                           <li key={t._id ?? t.id}>
@@ -777,9 +925,9 @@ export default function DashboardPage() {
           </div>
         </div>
         {/* RIGHT COLUMN: Track CTA + Recent Jobs */}
-        <div className="xxl:col-span-3 col-span-12">
-          <div className="grid grid-cols-12 gap-x-6">
-            <div className="xxl:col-span-12 col-span-12">
+        <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
+          <div className="flex flex-col gap-x-6 flex-1 min-h-0">
+            <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
               <div className="box shadow-none projects-tracking-card overflow-hidden text-center">
                 <div className="box-body">
                   <img src="/assets/images/media/media-86.svg" alt="" className="mb-1 inline-flex" />
@@ -796,13 +944,13 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            <div className="xxl:col-span-12 col-span-12">
-              <div className="box">
-                <div className="box-header justify-between">
+            <div className="xxl:col-span-12 col-span-12 flex-1 min-h-0 flex flex-col max-h-[36vh]">
+              <div className="box flex-1 flex flex-col min-h-0">
+                <div className="box-header justify-between flex-shrink-0">
                   <div className="box-title">Recent Jobs</div>
                   <Link href="/ats/jobs" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                 </div>
-                <div className="box-body">
+                <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
                   {loading ? (
                     <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
                   ) : recentJobs.length === 0 ? (
@@ -812,21 +960,42 @@ export default function DashboardPage() {
                       {recentJobs.map((job) => {
                         const jobId = String(job._id ?? job.id ?? "");
                         const count = applicantCountByJob[jobId] ?? 0;
+                        const status = (job.status ?? "").toLowerCase();
+                        const statusCls =
+                          status === "active"
+                            ? "badge bg-success/10 text-success"
+                            : status === "closed" || status === "archived"
+                              ? "badge bg-danger/10 text-danger"
+                              : "badge bg-secondary/10 text-secondary";
                         return (
                           <li key={jobId}>
-                            <Link href={`/ats/jobs/${jobId}`}>
-                              <div className="flex items-start">
-                                <div className="me-3">
-                                  <span className="avatar avatar-rounded font-bold avatar-md !text-primary bg-primary/10">{count}</span>
-                                </div>
-                                <div className="flex-grow min-w-0">
-                                  <span className="block font-semibold truncate">{job.title}</span>
-                                  <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem]">
-                                    {job.organisation?.name ?? "—"} &bull; {count} applicant{count !== 1 ? "s" : ""}
-                                  </span>
-                                </div>
-                              </div>
-                            </Link>
+                            <div className="flex items-start gap-2">
+                              <button
+                                type="button"
+                                className="flex-shrink-0 cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/30 rounded-full"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setApplicantsModal({ jobId, jobTitle: job.title ?? "—" });
+                                }}
+                                title="View applicants"
+                                aria-label={`View ${count} applicant(s)`}
+                              >
+                                <span className="avatar avatar-rounded font-bold avatar-md !text-primary bg-primary/10">{count}</span>
+                              </button>
+                              <button
+                                type="button"
+                                className="flex-grow min-w-0 text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90"
+                                onClick={() => setSelectedJobDetail(job)}
+                              >
+                                <span className="block font-semibold truncate">{job.title ?? "—"}</span>
+                                <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem]">
+                                  {job.organisation?.name ?? "—"} &bull; {count} applicant{count !== 1 ? "s" : ""}
+                                </span>
+                                {job.status && (
+                                  <span className={`inline-block mt-1 text-[0.625rem] ${statusCls}`}>{job.status}</span>
+                                )}
+                              </button>
+                            </div>
                           </li>
                         );
                       })}
@@ -838,6 +1007,358 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* Recent Job detail modal */}
+      {selectedJobDetail && (() => {
+        const j = selectedJobDetail;
+        const jobId = String(j._id ?? j.id ?? "");
+        const applicantCount = applicantCountByJob[jobId] ?? 0;
+        const createdByName = typeof j.createdBy === "object" && j.createdBy !== null ? (j.createdBy as { name?: string }).name : null;
+        const jobDescription = j.jobDescription ?? "";
+        return (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setSelectedJobDetail(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Job details"
+          >
+            <div
+              className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate flex-1">{j.title ?? "—"}</h3>
+                <button
+                  type="button"
+                  className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-white/70"
+                  onClick={() => setSelectedJobDetail(null)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-4 space-y-3 text-sm">
+                {j.organisation?.name && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Organisation</span>
+                    <span className="text-gray-900 dark:text-white">{j.organisation.name}</span>
+                    {j.organisation.website && (
+                      <a href={j.organisation.website.startsWith("http") ? j.organisation.website : `https://${j.organisation.website}`} target="_blank" rel="noopener noreferrer" className="block text-primary hover:underline truncate">{j.organisation.website}</a>
+                    )}
+                    {j.organisation.email && <span className="block text-[#8c9097] dark:text-white/50">{j.organisation.email}</span>}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  {j.status && (
+                    <span className={`badge ${(j.status ?? "").toLowerCase() === "active" ? "bg-success/10 text-success" : "bg-secondary/10 text-secondary"}`}>{j.status}</span>
+                  )}
+                  {j.jobType && <span className="badge bg-primary/10 text-primary">{j.jobType}</span>}
+                  {applicantCount !== undefined && <span className="badge bg-info/10 text-info">{applicantCount} applicant{applicantCount !== 1 ? "s" : ""}</span>}
+                </div>
+                {j.location && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Location</span>
+                    <span className="text-gray-900 dark:text-white">{j.location}</span>
+                  </div>
+                )}
+                {j.experienceLevel && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Experience</span>
+                    <span className="text-gray-900 dark:text-white">{j.experienceLevel}</span>
+                  </div>
+                )}
+                {j.jobDescription && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Description</span>
+                    <p className="text-gray-900 dark:text-white line-clamp-4">{stripHtml(jobDescription)}</p>
+                  </div>
+                )}
+                {createdByName && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Created by</span>
+                    <span className="text-gray-900 dark:text-white">{createdByName}</span>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
+                <Link
+                  href={`/ats/jobs/${jobId}`}
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
+                  onClick={() => setSelectedJobDetail(null)}
+                  title="View full job"
+                  aria-label="View full job"
+                >
+                  <i className="ri-external-link-line text-[1.25rem]" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Applicants modal (when clicking job applicant count) */}
+      {applicantsModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setApplicantsModal(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Applicants"
+        >
+          <div
+            className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2 flex-shrink-0">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate flex-1">
+                Applicants – {applicantsModal.jobTitle}
+              </h3>
+              <button
+                type="button"
+                className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-white/70"
+                onClick={() => setApplicantsModal(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 min-h-0">
+              {applicantsLoading ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading…</p>
+              ) : applicantsList === null ? null : applicantsList.length === 0 ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">No applicants yet.</p>
+              ) : (
+                <ul className="list-none space-y-3">
+                  {applicantsList.map((app) => {
+                    const c = app.candidate;
+                    const name = (c?.fullName ?? c?.email ?? "—").trim() || "—";
+                    const email = c?.email ?? "";
+                    return (
+                      <li key={app._id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                        <span className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center text-xs font-semibold">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-medium text-gray-900 dark:text-white truncate">{name}</span>
+                          {email && <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{email}</span>}
+                          {app.status && (
+                            <span className="inline-block mt-1 badge bg-primary/10 text-primary text-[0.625rem]">{app.status}</span>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stat box modal (Total Jobs, Active Jobs, Candidates, Applications) */}
+      {statBoxModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          onClick={() => setStatBoxModal(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={statBoxModal === "totalJobs" ? "Total Jobs" : statBoxModal === "activeJobs" ? "Active Jobs" : statBoxModal === "candidates" ? "Total Candidates" : "Applications"}
+        >
+          <div
+            className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2 flex-shrink-0">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate flex-1">
+                {statBoxModal === "totalJobs"
+                  ? "Total Jobs"
+                  : statBoxModal === "activeJobs"
+                    ? "Active Jobs"
+                    : statBoxModal === "candidates"
+                      ? "Total Candidates"
+                      : "Applications"}
+              </h3>
+              <button
+                type="button"
+                className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-white/70"
+                onClick={() => setStatBoxModal(null)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 min-h-0">
+              {statBoxLoading ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading…</p>
+              ) : statBoxList === null ? null : statBoxList.length === 0 ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">
+                  {statBoxModal === "totalJobs" || statBoxModal === "activeJobs"
+                    ? "No jobs yet."
+                    : statBoxModal === "candidates"
+                      ? "No candidates yet."
+                      : "No applications yet."}
+                </p>
+              ) : statBoxModal === "totalJobs" || statBoxModal === "activeJobs" ? (
+                <ul className="list-none space-y-3">
+                  {(statBoxList as Job[]).map((job) => {
+                    const jobId = String(job._id ?? job.id ?? "");
+                    const status = (job.status ?? "").toLowerCase();
+                    const statusCls = status === "active" ? "badge bg-success/10 text-success" : "badge bg-secondary/10 text-secondary";
+                    return (
+                      <li key={jobId} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-medium text-gray-900 dark:text-white truncate">{job.title ?? "—"}</span>
+                          <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{job.organisation?.name ?? "—"}</span>
+                          {job.status && <span className={`inline-block mt-1 badge text-[0.625rem] ${statusCls}`}>{job.status}</span>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : statBoxModal === "candidates" ? (
+                <ul className="list-none space-y-3">
+                  {(statBoxList as CandidateListItem[]).map((c) => {
+                    const id = String(c._id ?? c.id ?? "");
+                    const name = (c.fullName ?? c.email ?? "—").trim() || "—";
+                    return (
+                      <li key={id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                        <span className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center text-xs font-semibold">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-medium text-gray-900 dark:text-white truncate">{name}</span>
+                          {c.email && <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{c.email}</span>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <ul className="list-none space-y-3">
+                  {(statBoxList as JobApplication[]).map((app) => {
+                    const c = app.candidate;
+                    const j = app.job;
+                    const jobTitle = typeof j === "object" && j !== null ? (j as { title?: string }).title : "—";
+                    const name = (c?.fullName ?? c?.email ?? "—").trim() || "—";
+                    return (
+                      <li key={app._id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                        <span className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center text-xs font-semibold">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block font-medium text-gray-900 dark:text-white truncate">{name}</span>
+                          <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{jobTitle}</span>
+                          {app.status && <span className="inline-block mt-1 badge bg-primary/10 text-primary text-[0.625rem]">{app.status}</span>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
+              <Link
+                href={statBoxModal === "candidates" ? "/ats/candidates" : "/ats/jobs"}
+                className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
+                onClick={() => setStatBoxModal(null)}
+                title="View All"
+                aria-label="View All"
+              >
+                <i className="ri-external-link-line text-[1.25rem]" />
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Candidate detail modal */}
+      {selectedTeamMember && (() => {
+        const c = selectedTeamMember;
+        const cId = String(c._id ?? c.id ?? "");
+        const skills = c.skills?.map((s) => s.name).filter(Boolean) ?? [];
+        return (
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+            onClick={() => setSelectedTeamMember(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Candidate details"
+          >
+            <div
+              className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  {c.profilePicture?.url && !failedAvatarIds.has(cId) ? (
+                    <span className="avatar avatar-lg flex-shrink-0">
+                      <img
+                        src={c.profilePicture.url}
+                        alt=""
+                        className="rounded-lg"
+                        onError={() => setFailedAvatarIds((prev) => new Set(prev).add(cId))}
+                      />
+                    </span>
+                  ) : (
+                    <span className="avatar avatar-lg bg-primary/10 text-primary rounded-lg flex-shrink-0 flex items-center justify-center text-lg font-semibold">
+                      {getInitial(c.fullName)}
+                    </span>
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{c.fullName ?? "—"}</h3>
+                    <span className="block text-[0.8125rem] text-[#8c9097] dark:text-white/50 truncate">{c.email ?? ""}</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-white/70"
+                  onClick={() => setSelectedTeamMember(null)}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 space-y-3">
+                {c.phoneNumber && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Phone</span>
+                    <span className="text-gray-900 dark:text-white">{c.phoneNumber}</span>
+                  </div>
+                )}
+                {skills.length > 0 && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium mb-1">Skills</span>
+                    <div className="flex flex-wrap gap-1">
+                      {skills.slice(0, 8).map((s) => (
+                        <span key={s} className="badge bg-primary/10 text-primary text-[0.6875rem]">{s}</span>
+                      ))}
+                      {skills.length > 8 && <span className="badge bg-secondary/10 text-secondary text-[0.6875rem]">+{skills.length - 8}</span>}
+                    </div>
+                  </div>
+                )}
+                {c.shortBio && (
+                  <div>
+                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Bio</span>
+                    <p className="text-gray-900 dark:text-white text-sm line-clamp-3">{c.shortBio}</p>
+                  </div>
+                )}
+              </div>
+              <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
+                <Link
+                  href={`/ats/candidates/edit/?id=${cId}`}
+                  className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
+                  onClick={() => setSelectedTeamMember(null)}
+                  title="View full profile"
+                  aria-label="View full profile"
+                >
+                  <i className="ri-external-link-line text-[1.25rem]" />
+                </Link>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Projects Summary - full width */}
       <div className="grid grid-cols-12 gap-x-6">

@@ -16,6 +16,8 @@ export interface CandidateListItem {
   employeeId?: string;
   department?: string | null;
   designation?: string | null;
+  /** Position ID (ref to Position – Java Developer, Data Analyst, etc.) */
+  position?: string | { id?: string; _id?: string; name?: string } | null;
   reportingManager?: string | { _id: string; name?: string; email?: string } | null;
   isActive?: boolean;
   isEmailVerified?: boolean;

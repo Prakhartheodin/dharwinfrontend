@@ -11,6 +11,14 @@ import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappe
 
 const WITHDRAWABLE_STATUSES = ["Applied", "Screening"];
 
+/** Decode HTML entities (e.g. &lt; → <). Backend xss-clean stores jobDescription entity-encoded. */
+function decodeHtmlEntities(html: string): string {
+  if (!html || typeof html !== "string") return "";
+  const txt = document.createElement("textarea");
+  txt.innerHTML = html;
+  return txt.value;
+}
+
 export default function BrowseJobDetailsPage() {
   const params = useParams();
   const jobId = typeof params?.id === "string" ? params.id : "";
@@ -234,9 +242,10 @@ export default function BrowseJobDetailsPage() {
             <div className="box-title">Job Description</div>
           </div>
           <div className="box-body">
-            <div className="prose dark:prose-invert max-w-none whitespace-pre-wrap text-defaulttextcolor">
-              {job.jobDescription}
-            </div>
+            <div
+              className="prose dark:prose-invert max-w-none text-defaulttextcolor job-description-content"
+              dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(job.jobDescription ?? "") }}
+            />
           </div>
         </div>
       </div>

@@ -16,6 +16,14 @@ import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCo
 
 const PASSWORD_MIN_LENGTH = 8;
 
+/** Decode HTML entities (e.g. &lt; → <). Backend xss-clean stores jobDescription entity-encoded. */
+function decodeHtmlEntities(html: string): string {
+  if (!html || typeof html !== "string") return "";
+  const txt = document.createElement("textarea");
+  txt.innerHTML = html;
+  return txt.value;
+}
+
 export default function PublicJobDetailsPage() {
   const params = useParams();
   const router = useRouter();
@@ -307,7 +315,7 @@ export default function PublicJobDetailsPage() {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Job Description</h3>
               <div
                 className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
-                dangerouslySetInnerHTML={{ __html: job.jobDescription }}
+                dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(job.jobDescription ?? "") }}
               />
             </div>
 

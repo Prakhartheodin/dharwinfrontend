@@ -751,11 +751,10 @@ export default function StudentAttendancePage() {
                   <button
                     type="button"
                     onClick={openRequestModal}
-                    className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 flex items-center gap-2 text-sm"
-                    title="Request Backdated Attendance"
+                    className="ti-btn ti-btn-icon ti-btn-outline-primary flex-shrink-0"
+                    title="Backdate Request"
                   >
-                    <i className="ri-calendar-check-line text-base" />
-                    Request Backdated Attendance
+                    <i className="ri-calendar-check-line" />
                   </button>
                 </div>
                 <div className="box-body space-y-4">
