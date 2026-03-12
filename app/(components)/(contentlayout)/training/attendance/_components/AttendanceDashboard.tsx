@@ -9,11 +9,15 @@ const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false })
 export interface AttendanceDashboardProps {
   historyList: AttendanceTrackHistoryItem[]
   historyLoading: boolean
+  historySearch?: string
+  setHistorySearch?: (v: string) => void
 }
 
 export default function AttendanceDashboard({
   historyList,
   historyLoading,
+  historySearch = "",
+  setHistorySearch,
 }: AttendanceDashboardProps) {
   if (historyLoading) {
     return (
@@ -141,6 +145,27 @@ export default function AttendanceDashboard({
 
   return (
     <div className="space-y-4">
+      {setHistorySearch && (
+        <div className="box !mb-0">
+          <div className="box-body !py-3 !px-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-shrink-0">
+                <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search by name or email..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[240px]"
+                />
+              </div>
+              <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50">
+                {historyList.length} record{historyList.length !== 1 ? "s" : ""} in view
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="box !mb-0">

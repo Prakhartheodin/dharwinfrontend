@@ -294,6 +294,15 @@ export const MenuItems: any = [
                 dirchange: false,
               },
               {
+                icon: CategoriesIcon,
+                title: "Positions",
+                type: "link",
+                path: "/training/positions",
+                active: false,
+                selected: false,
+                dirchange: false,
+              },
+              {
                 icon: TrainingModulesIcon,
                 title: "Training Modules",
                 type: "link",

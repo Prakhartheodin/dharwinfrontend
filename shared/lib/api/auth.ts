@@ -52,6 +52,38 @@ export async function getMyPermissions(): Promise<MyPermissionsResponse | null> 
   }
 }
 
+/** Payload for PATCH /auth/me – update own profile. Email cannot be changed. */
+export interface UpdateMyProfilePayload {
+  name?: string;
+  notificationPreferences?: {
+    leaveUpdates?: boolean;
+    taskAssignments?: boolean;
+    applicationUpdates?: boolean;
+    offerUpdates?: boolean;
+    meetingInvitations?: boolean;
+    meetingReminders?: boolean;
+    certificates?: boolean;
+    courseUpdates?: boolean;
+    recruiterUpdates?: boolean;
+  };
+  profilePicture?: {
+    url?: string;
+    key?: string;
+    originalName?: string;
+    size?: number;
+    mimeType?: string;
+  } | null;
+}
+
+/**
+ * Update own profile (PATCH /v1/auth/me). Auth only; no users.manage required.
+ * Allowed fields: name, notificationPreferences, profilePicture. Email cannot be changed.
+ */
+export async function updateMyProfile(payload: UpdateMyProfilePayload): Promise<User> {
+  const { data } = await apiClient.patch<User>(AUTH_ENDPOINTS.me, payload);
+  return data;
+}
+
 /**
  * Get current authenticated user (GET /v1/auth/me).
  * Use to restore user state on app load when cookies are still valid.

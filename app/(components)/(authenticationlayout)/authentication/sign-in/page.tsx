@@ -44,12 +44,11 @@ export default function SignInPage() {
   return (
     <Fragment>
       <Seo title="Sign In" />
-      <div className="min-h-screen relative" style={{ fontFamily: "'Poppins', sans-serif", background: "#FBFBFB" }}>
+      <div className="min-h-screen relative overflow-x-hidden w-full" style={{ fontFamily: "'Poppins', sans-serif", background: "#FBFBFB" }}>
 
         {/* LEFT PANEL — photo with gradient overlay + logo */}
         <div
-          className="hidden lg:block absolute top-0 left-0 bottom-0 overflow-hidden"
-          style={{ width: "50%" }}
+          className="hidden lg:block absolute top-0 left-0 bottom-0 overflow-hidden w-1/2 max-w-[50vw]"
         >
           <img
             src="/assets/images/authentication/login-bg.png"
@@ -67,26 +66,30 @@ export default function SignInPage() {
             <img
               src="/assets/images/brand-logos/dharwin-white-logo.png"
               alt="Dharwin Business Solutions"
-              style={{ height: 73, width: "auto" }}
+              className="select-none"
+              style={{
+                height: 73,
+                width: "auto",
+                maxWidth: 248,
+                filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.45)) drop-shadow(0 1px 3px rgba(0,0,0,0.35))",
+              }}
             />
           </div>
         </div>
 
-        {/* RIGHT DECORATION — geometric shapes */}
-        <div className="absolute hidden xl:block" style={{ right: "-80px", top: "50%", transform: "translateY(-50%)", opacity: 0.09, zIndex: 0 }}>
+        {/* RIGHT DECORATION — geometric shapes (original size; overflow clipped by parent) */}
+        <div className="absolute hidden xl:block pointer-events-none" style={{ right: "-80px", top: "50%", transform: "translateY(-50%)", opacity: 0.09, zIndex: 0 }}>
           <div style={{ width: 611, height: 614, background: "#053367" }} />
           <div style={{ position: "absolute", width: 340, height: 343, right: -60, bottom: -60, border: "80px solid #34B34C", borderRadius: 65, boxSizing: "border-box" }} />
         </div>
 
-        {/* CENTERED FORM CARD — absolutely centered on the full page */}
-        <div className="relative z-20 min-h-screen flex items-center justify-center">
-          <div className="w-full mx-4" style={{ maxWidth: 540 }}>
+        {/* CENTERED FORM CARD — responsive, fits all screen sizes */}
+        <div className="relative z-20 min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
+          <div className="w-full max-w-[540px] min-w-0">
             <div
+              className="bg-white rounded-[20px] p-6 sm:p-8 md:p-10 lg:p-12"
               style={{
-                background: "#FFFFFF",
                 boxShadow: "0px 12px 12.6px rgba(0, 0, 0, 0.1)",
-                borderRadius: 20,
-                padding: "48px 72px",
               }}
             >
               {/* Title */}
@@ -156,8 +159,8 @@ export default function SignInPage() {
                     onChange={(e) => { setEmail(e.target.value); setError(""); }}
                     autoComplete="email"
                     required
+                    className="w-full max-w-full"
                     style={{
-                      width: "100%",
                       height: 48,
                       padding: "12px 16px",
                       border: "3px solid #D1E9FF",
@@ -199,8 +202,8 @@ export default function SignInPage() {
                       onChange={(e) => { setPassword(e.target.value); setError(""); }}
                       autoComplete="current-password"
                       required
+                      className="w-full max-w-full"
                       style={{
-                        width: "100%",
                         height: 48,
                         padding: "12px 48px 12px 16px",
                         border: "1px solid #D0D5DD",
@@ -255,8 +258,8 @@ export default function SignInPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
+                  className="w-full max-w-full"
                   style={{
-                    width: "100%",
                     height: 52,
                     background: "#34B34C",
                     borderRadius: 8,

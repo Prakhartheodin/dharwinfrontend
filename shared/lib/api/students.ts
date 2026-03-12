@@ -64,6 +64,8 @@ export interface Student {
   weekOff?: string[];
   holidays?: string[];
   /** Populated when fetching a single student (e.g. for attendance detail). */
+  /** Position (Java Developer, Data Analyst, etc.) – for filtering in module assignment */
+  position?: { id?: string; _id?: string; name?: string } | null;
   shift?: {
     id?: string;
     _id?: string;
@@ -94,6 +96,7 @@ export interface StudentsListResponse {
 
 export interface ListStudentsParams {
   status?: string;
+  position?: string;
   search?: string;
   sortBy?: string;
   limit?: number;
@@ -143,6 +146,7 @@ export interface UpdateStudentPayload {
   bio?: string;
   profileImageUrl?: string;
   status?: string;
+  position?: string | null;
 }
 
 export async function updateStudent(studentId: string, payload: UpdateStudentPayload): Promise<Student> {

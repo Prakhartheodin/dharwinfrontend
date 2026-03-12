@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState, useMemo } from "react"
 import Link from "next/link"
 import type { AttendanceTrackItem } from "@/shared/lib/api/attendance"
 
@@ -10,10 +10,17 @@ export interface AdminTrackViewProps {
   canPunchOutOthers: boolean
   punchOutLoadingId: string | null
   onPunchOut: (studentId: string) => void
-  onExportCsv: () => void
+  onExportCsv: (list?: AttendanceTrackItem[]) => void
   formatTimeInTimezone: (dateStr: string | null, timezone: string) => string
   formatDuration: (ms: number) => string
   formatDurationFromMs: (ms: number | null) => string
+}
+
+function matchesSearch(text: string, q: string): boolean {
+  const t = (text || "").toLowerCase()
+  const q2 = (q || "").trim().toLowerCase()
+  if (!q2) return true
+  return t.includes(q2)
 }
 
 export default function AdminTrackView({
@@ -27,8 +34,20 @@ export default function AdminTrackView({
   formatDuration,
   formatDurationFromMs,
 }: AdminTrackViewProps) {
-  const punchedInCount = trackList.filter((r) => r.isPunchedIn).length
-  const punchedOutCount = trackList.length - punchedInCount
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState<"all" | "in" | "out">("all")
+
+  const filteredList = useMemo(() => {
+    return trackList.filter((r) => {
+      if (statusFilter === "in" && !r.isPunchedIn) return false
+      if (statusFilter === "out" && r.isPunchedIn) return false
+      if (!matchesSearch(r.studentName, search) && !matchesSearch(r.email, search)) return false
+      return true
+    })
+  }, [trackList, search, statusFilter])
+
+  const punchedInCount = filteredList.filter((r) => r.isPunchedIn).length
+  const punchedOutCount = filteredList.length - punchedInCount
 
   return (
     <div className="space-y-4">
@@ -41,7 +60,7 @@ export default function AdminTrackView({
             </span>
             <div>
               <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">Total Students</p>
-              <p className="text-[1.125rem] font-semibold text-defaulttextcolor dark:text-white mb-0">{trackList.length}</p>
+              <p className="text-[1.125rem] font-semibold text-defaulttextcolor dark:text-white mb-0">{filteredList.length}</p>
             </div>
           </div>
         </div>
@@ -71,8 +90,8 @@ export default function AdminTrackView({
 
       {/* Table */}
       <div className="box !mb-0">
-        <div className="box-header flex flex-wrap items-center justify-between gap-2">
-          <div className="box-title flex items-center gap-2">
+        <div className="box-header flex flex-wrap items-center justify-between gap-3">
+          <div className="box-title flex items-center gap-2 flex-shrink-0">
             Live Attendance
             {punchedInCount > 0 && (
               <span className="relative flex h-2.5 w-2.5">
@@ -81,16 +100,36 @@ export default function AdminTrackView({
               </span>
             )}
           </div>
-          <button
-            type="button"
-            className="ti-btn ti-btn-sm ti-btn-outline-primary inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 !text-[0.75rem]"
-            onClick={onExportCsv}
-            disabled={trackList.length === 0}
-            title="Export as CSV"
-          >
-            <i className="ri-download-2-line" />
-            <span>Export CSV</span>
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Search by name or email..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "all" | "in" | "out")}
+              className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem] !rounded-md"
+            >
+              <option value="all">All status</option>
+              <option value="in">Clocked In</option>
+              <option value="out">Clocked Out</option>
+            </select>
+            <button
+              type="button"
+              className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0"
+              onClick={() => onExportCsv(filteredList)}
+              disabled={trackList.length === 0}
+              title="Export CSV"
+            >
+              <i className="ri-download-2-line" />
+            </button>
+          </div>
         </div>
         <div className="box-body !p-0">
           {trackListLoading ? (
@@ -104,12 +143,14 @@ export default function AdminTrackView({
                 </div>
               ))}
             </div>
-          ) : trackList.length === 0 ? (
+          ) : filteredList.length === 0 ? (
             <div className="py-12 text-center">
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-primary/5">
                 <i className="ri-group-line text-[1.5rem] text-primary/40" />
               </div>
-              <p className="text-[0.8125rem] text-[#8c9097]">No students found</p>
+              <p className="text-[0.8125rem] text-[#8c9097]">
+                {trackList.length === 0 ? "No students found" : "No matches for your search or filters"}
+              </p>
             </div>
           ) : (
             <div className="table-responsive">
@@ -126,7 +167,7 @@ export default function AdminTrackView({
                   </tr>
                 </thead>
                 <tbody>
-                  {trackList.map((row) => {
+                  {filteredList.map((row) => {
                     const initials = (row.studentName || "?").split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
                     const liveDuration = row.isPunchedIn && row.punchIn
                       ? formatDuration(Date.now() - new Date(row.punchIn).getTime())

@@ -8,6 +8,7 @@ interface CandidatesFilterPanelProps {
   allNames: string[]
   allSkills: string[]
   allEducation: string[]
+  filterOptionsLoading?: boolean
   filteredNames: string[]
   filteredSkills: string[]
   filteredEducation: string[]
@@ -32,6 +33,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   allNames,
   allSkills,
   allEducation,
+  filterOptionsLoading = false,
   filteredNames,
   filteredSkills,
   filteredEducation,
@@ -81,9 +83,13 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                   value={searchName}
                   onChange={(e) => setSearchName(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className="max-h-48 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
-                    {filteredNames.length > 0 ? (
+                    {filterOptionsLoading ? (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
+                        Loading names...
+                      </div>
+                    ) : filteredNames.length > 0 ? (
                       filteredNames.map((name) => (
                         <label
                           key={name}
@@ -142,9 +148,13 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                   value={searchSkills}
                   onChange={(e) => setSearchSkills(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className="max-h-48 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
-                    {filteredSkills.length > 0 ? (
+                    {filterOptionsLoading ? (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
+                        Loading skills...
+                      </div>
+                    ) : filteredSkills.length > 0 ? (
                       filteredSkills.map((skill) => (
                         <label
                           key={skill}
@@ -203,9 +213,13 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                   value={searchEducation}
                   onChange={(e) => setSearchEducation(e.target.value)}
                 />
-                <div className="max-h-40 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
+                <div className="max-h-48 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
                   <div className="space-y-1">
-                    {filteredEducation.length > 0 ? (
+                    {filterOptionsLoading ? (
+                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
+                        Loading education...
+                      </div>
+                    ) : filteredEducation.length > 0 ? (
                       filteredEducation.map((edu) => (
                         <label
                           key={edu}

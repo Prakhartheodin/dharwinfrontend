@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import React, { Fragment, useState, useEffect } from "react";
@@ -49,8 +48,7 @@ export default function BrowseJobsPage() {
   return (
     <Fragment>
       <Seo title="Browse Jobs" />
-      <Pageheader currentpage="Browse Jobs" activepage="ATS" mainpage="Browse Jobs" />
-      <div className="container">
+      <div className="container-fluid pt-6">
         <div className="box custom-box mb-4">
           <div className="box-body">
             <div className="grid grid-cols-12 gap-4 items-end">
@@ -153,82 +151,82 @@ export default function BrowseJobsPage() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-12 gap-6">
-            {jobs.map((job) => {
+          <div className="space-y-0 overflow-hidden rounded-lg border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg shadow-sm">
+            {jobs.map((job, index) => {
               const id = job._id ?? job.id ?? "";
               const companyInitial = (job.organisation?.name || "J").charAt(0).toUpperCase();
               const metaParts = [
                 job.location && (
                   <span key="loc" className="inline-flex items-center gap-1">
-                    <i className="bi bi-geo-alt text-[0.75rem]" />
+                    <i className="bi bi-geo-alt text-[0.75rem] opacity-70" />
                     {job.location}
                   </span>
                 ),
                 job.jobType && (
                   <span key="type" className="inline-flex items-center gap-1">
-                    <i className="bi bi-briefcase text-[0.75rem]" />
+                    <i className="bi bi-briefcase text-[0.75rem] opacity-70" />
                     {job.jobType}
                   </span>
                 ),
                 job.experienceLevel && (
                   <span key="exp" className="inline-flex items-center gap-1">
-                    <i className="bi bi-mortarboard text-[0.75rem]" />
+                    <i className="bi bi-mortarboard text-[0.75rem] opacity-70" />
                     {mapExperienceLevel(job.experienceLevel)}
                   </span>
                 ),
                 job.salaryRange && (job.salaryRange.min != null || job.salaryRange.max != null) && (
                   <span key="sal" className="inline-flex items-center gap-1">
-                    <i className="bi bi-coin text-[0.75rem]" />
+                    <i className="bi bi-coin text-[0.75rem] opacity-70" />
                     {formatSalaryRange(job.salaryRange)}
                   </span>
                 ),
               ].filter(Boolean);
               return (
-                <div key={id} className="xxl:col-span-4 lg:col-span-6 col-span-12">
-                  <Link href={`/ats/browse-jobs/${id}`} className="block h-full group">
-                    <div className="box custom-box h-full flex flex-col transition-all duration-200 group-hover:shadow-md group-hover:border-primary/20 dark:group-hover:border-primary/30">
-                      <div className="box-body flex-1 flex gap-3">
-                        <div className="shrink-0 w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold text-sm">
-                          {companyInitial}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h5 className="font-semibold mb-0.5 text-primary group-hover:underline">
-                            {job.title}
-                          </h5>
-                          <p className="text-[0.8125rem] text-defaulttextcolor/80 mb-2">
-                            {job.organisation?.name}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-defaulttextcolor/80">
-                            {metaParts.map((part, i) => (
-                              <Fragment key={i}>
-                                {i > 0 && <span className="text-defaulttextcolor/40">|</span>}
-                                {part}
-                              </Fragment>
-                            ))}
-                          </div>
-                          {job.skillTags && job.skillTags.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {job.skillTags.slice(0, 4).map((tag) => (
-                                <span
-                                  key={tag}
-                                  className="badge bg-primary/10 text-primary !rounded-full text-[0.7rem]"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <div className="box-footer border-t dark:border-defaultborder/10 pt-3">
-                        <span className="ti-btn ti-btn-primary ti-btn-sm !w-full !min-w-0 !h-auto !py-2 flex items-center justify-center gap-1.5 whitespace-nowrap">
-                          View & Apply
-                          <i className="bi bi-arrow-right text-[0.875rem] shrink-0" />
-                        </span>
-                      </div>
+                <Link
+                  key={id}
+                  href={`/ats/browse-jobs/${id}`}
+                  className={"block group transition-colors duration-150 " + (index > 0 ? "border-t border-defaultborder dark:border-defaultborder/10" : "")}
+                >
+                  <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-4 px-4 sm:px-5 py-4 hover:bg-defaultborder/5 dark:hover:bg-white/5">
+                    <div className="shrink-0 w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-semibold text-base">
+                      {companyInitial}
                     </div>
-                  </Link>
-                </div>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors">
+                        {job.title}
+                      </h5>
+                      <p className="text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/60">
+                        {job.organisation?.name}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/55">
+                        {metaParts.map((part, i) => (
+                          <Fragment key={i}>
+                            {i > 0 && <span className="text-defaulttextcolor/30 dark:text-white/30">·</span>}
+                            {part}
+                          </Fragment>
+                        ))}
+                      </div>
+                      {job.skillTags && job.skillTags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-1">
+                          {job.skillTags.slice(0, 4).map((tag) => (
+                            <span
+                              key={tag}
+                              className="badge bg-primary/10 text-primary !rounded-md !px-2 !py-0.5 text-[0.7rem] font-medium"
+                            >
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="shrink-0 w-full sm:w-auto sm:self-center">
+                      <span className="ti-btn ti-btn-primary ti-btn-sm inline-flex flex-shrink-0 items-center justify-center gap-1.5 whitespace-nowrap !py-2 !px-5 !min-w-[8.5rem] group-hover:opacity-90 transition-opacity">
+                        View & Apply
+                        <i className="bi bi-arrow-right text-[0.875rem] shrink-0" aria-hidden />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
               );
             })}
           </div>
