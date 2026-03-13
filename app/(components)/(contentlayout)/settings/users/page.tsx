@@ -58,6 +58,22 @@ export default function SettingsUsersPage() {
     return ids.some((id) => rolesById.get(id)?.name === "Administrator");
   }, [currentUser, rolesById]);
 
+  /** Current user has Agent role (by role name in roleIds). */
+  const isAgent = useMemo(() => {
+    if (!currentUser) return false;
+    const ids = currentUser.roleIds ?? [];
+    return ids.some((id) => rolesById.get(id)?.name === "Agent");
+  }, [currentUser, rolesById]);
+
+  /** True if user has Administrator, Agent, or Manager role. Agents cannot edit these users. */
+  const userHasRestrictedRole = (user: User): boolean => {
+    const ids = user.roleIds ?? [];
+    return ids.some((id) => {
+      const name = rolesById.get(id)?.name;
+      return name === "Administrator" || name === "Agent" || name === "Manager";
+    });
+  };
+
   const getPermissionsForUser = (user: User): string[] => {
     const ids = user.roleIds ?? [];
     const perms = new Set<string>();
@@ -418,18 +434,20 @@ export default function SettingsUsersPage() {
                             )}
                           {!isPrimaryAdmin && (
                             <>
-                              <div className="hs-tooltip ti-main-tooltip">
-                                <Link
-                                  href={ROUTES.settingsUsersEdit(user.id)}
-                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info inline-flex items-center justify-center"
-                                  aria-label={`Edit ${user.name ?? user.email}`}
-                                >
-                                  <i className="ri-pencil-line"></i>
-                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                    Edit User
-                                  </span>
-                                </Link>
-                              </div>
+                              {(!isAgent || !userHasRestrictedRole(user)) && (
+                                <div className="hs-tooltip ti-main-tooltip">
+                                  <Link
+                                    href={ROUTES.settingsUsersEdit(user.id)}
+                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info inline-flex items-center justify-center"
+                                    aria-label={`Edit ${user.name ?? user.email}`}
+                                  >
+                                    <i className="ri-pencil-line"></i>
+                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                      Edit User
+                                    </span>
+                                  </Link>
+                                </div>
+                              )}
                               <div className="hs-tooltip ti-main-tooltip">
                                 <button
                                   type="button"
@@ -589,13 +607,15 @@ export default function SettingsUsersPage() {
                 >
                   Close
                 </button>
-                <Link
-                  href={ROUTES.settingsUsersEdit(viewUser.id)}
-                  className="ti-btn ti-btn-primary"
-                  onClick={() => setViewUser(null)}
-                >
-                  Edit User
-                </Link>
+                {(!isAgent || !userHasRestrictedRole(viewUser)) && (
+                  <Link
+                    href={ROUTES.settingsUsersEdit(viewUser.id)}
+                    className="ti-btn ti-btn-primary"
+                    onClick={() => setViewUser(null)}
+                  >
+                    Edit User
+                  </Link>
+                )}
               </div>
             </div>
           </div>

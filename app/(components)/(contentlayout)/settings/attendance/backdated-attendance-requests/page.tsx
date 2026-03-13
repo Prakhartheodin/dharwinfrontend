@@ -10,7 +10,7 @@ import {
   type BackdatedAttendanceRequest,
   type AttendanceEntry,
 } from "@/shared/lib/api/backdated-attendance-requests";
-import { listStudents, type Student } from "@/shared/lib/api/students";
+import { listStudents, getStudent, type Student } from "@/shared/lib/api/students";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
@@ -72,7 +72,12 @@ export default function SettingsAttendanceBackdatedPage() {
         const res = await rolesApi.listRoles({ limit: 100 });
         const roles = (res.results ?? []) as Role[];
         const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin((user.roleIds as string[]).some((id) => map.get(id)?.name === "Administrator"));
+        setIsAdmin(
+          (user.roleIds as string[]).some((id) => {
+            const name = map.get(id)?.name;
+            return name === "Administrator" || name === "Agent";
+          })
+        );
       } catch {
         setIsAdmin(false);
       }
@@ -129,6 +134,17 @@ export default function SettingsAttendanceBackdatedPage() {
   }, [fetchRequests]);
 
   const defaultTimezone = getDetectedTimezone();
+
+  useEffect(() => {
+    if (!addStudentId) return;
+    getStudent(addStudentId)
+      .then((s) => {
+        const tz = s?.shift?.timezone || defaultTimezone;
+        setAddEntries((prev) => prev.map((e) => ({ ...e, timezone: tz })));
+      })
+      .catch(() => {});
+  }, [addStudentId, defaultTimezone]);
+
   const openAddSection = () => {
     setAddStudentId("");
     setAddEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);

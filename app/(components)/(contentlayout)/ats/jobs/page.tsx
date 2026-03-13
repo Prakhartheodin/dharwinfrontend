@@ -438,15 +438,19 @@ const Jobs = () => {
         accessor: 'jobTitle',
         Cell: ({ row }: any) => {
           const job = row.original
+          const openJobPreview = () => {
+            setPreviewJob(job)
+            setTimeout(() => {
+              const HSOverlay = (window as any).HSOverlay
+              const HSStaticMethods = (window as any).HSStaticMethods
+              if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
+              if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
+            }, 50)
+          }
           return (
             <span 
               className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary"
-              onClick={() => {
-                setPreviewJob(job)
-                setTimeout(() => {
-                  ;(window as any).HSOverlay?.open(document.querySelector('#job-preview-panel'))
-                }, 100)
-              }}
+              onClick={openJobPreview}
             >
               {job.jobTitle}
             </span>
@@ -461,7 +465,10 @@ const Jobs = () => {
           const handleCompanyClick = () => {
             setCompanyModal(job)
             setTimeout(() => {
-              ;(window as any).HSOverlay?.open(document.querySelector('#company-info-panel'))
+              const HSOverlay = (window as any).HSOverlay
+              const HSStaticMethods = (window as any).HSStaticMethods
+              if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
+              if (HSOverlay?.open) HSOverlay.open('#company-info-panel')
             }, 50)
           }
           return (
@@ -1389,10 +1396,11 @@ const Jobs = () => {
                                 className="p-3 border border-gray-200 dark:border-defaultborder/10 rounded-lg hover:bg-gray-50 dark:hover:bg-black/20 transition-colors cursor-pointer"
                                 onClick={() => {
                                   setCompanyModal(null)
-                                  ;(window as any).HSOverlay?.close(document.querySelector('#company-info-panel'))
+                                  const HSOverlay = (window as any).HSOverlay
+                                  if (HSOverlay?.close) HSOverlay.close('#company-info-panel')
                                   setPreviewJob(job)
                                   setTimeout(() => {
-                                    ;(window as any).HSOverlay?.open(document.querySelector('#job-preview-panel'))
+                                    if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
                                   }, 50)
                                 }}
                               >
@@ -1427,10 +1435,11 @@ const Jobs = () => {
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       setCompanyModal(null)
-                                      ;(window as any).HSOverlay?.close(document.querySelector('#company-info-panel'))
+                                      const HSOverlay = (window as any).HSOverlay
+                                      if (HSOverlay?.close) HSOverlay.close('#company-info-panel')
                                       setPreviewJob(job)
                                       setTimeout(() => {
-                                        ;(window as any).HSOverlay?.open(document.querySelector('#job-preview-panel'))
+                                        if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
                                       }, 50)
                                     }}
                                   >

@@ -72,7 +72,12 @@ export default function SettingsAttendanceManageShiftsPage() {
         const res = await rolesApi.listRoles({ limit: 100 });
         const roles = (res.results ?? []) as Role[];
         const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin((user.roleIds as string[]).some((id) => map.get(id)?.name === "Administrator"));
+        setIsAdmin(
+          (user.roleIds as string[]).some((id) => {
+            const name = map.get(id)?.name;
+            return name === "Administrator" || name === "Agent";
+          })
+        );
       } catch {
         setIsAdmin(false);
       }

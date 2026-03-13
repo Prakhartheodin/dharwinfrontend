@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
@@ -9,10 +9,14 @@ import * as usersApi from "@/shared/lib/api/users";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
 const PASSWORD_MIN_LENGTH = 8;
+
+/** Roles that Agents are allowed to assign (no Administrator, Agent, or Manager). */
+const AGENT_ASSIGNABLE_ROLE_NAMES = ["Candidate", "Student", "Mentor"];
 
 function getErrorMessage(err: any): string {
   if (err instanceof AxiosError) {
@@ -26,6 +30,7 @@ function getErrorMessage(err: any): string {
 
 export default function SettingsUsersAddPage() {
   const router = useRouter();
+  const { user: currentUser } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,6 +42,24 @@ export default function SettingsUsersAddPage() {
   const [rolesLoading, setRolesLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const isAgent = useMemo(() => {
+    if (!currentUser?.roleIds?.length || !roles.length) return false;
+    const roleMap = new Map(roles.map((r) => [r.id, r]));
+    return (currentUser.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Agent");
+  }, [currentUser?.roleIds, roles]);
+
+  const isAdministrator = useMemo(() => {
+    if (!currentUser?.roleIds?.length || !roles.length) return false;
+    const roleMap = new Map(roles.map((r) => [r.id, r]));
+    return (currentUser.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Administrator");
+  }, [currentUser?.roleIds, roles]);
+
+  const assignableRoles = useMemo(() => {
+    if (isAdministrator) return roles;
+    if (isAgent) return roles.filter((r) => AGENT_ASSIGNABLE_ROLE_NAMES.includes(r.name ?? ""));
+    return roles;
+  }, [roles, isAdministrator, isAgent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,12 +111,14 @@ export default function SettingsUsersAddPage() {
     }
     setLoading(true);
     try {
+      const assignableIds = new Set(assignableRoles.map((r) => r.id));
+      const roleIdsToSend = isAgent ? roleIds.filter((id) => assignableIds.has(id)) : roleIds;
       await usersApi.registerUser({
         name: trimmedName,
         email: trimmedEmail,
         password,
         isEmailVerified: true,
-        ...(roleIds.length > 0 && { roleIds }),
+        ...(roleIdsToSend.length > 0 && { roleIds: roleIdsToSend }),
       });
       await Swal.fire({
         icon: "success",
@@ -178,14 +203,16 @@ export default function SettingsUsersAddPage() {
                       <p className="text-[0.875rem] text-defaulttextcolor/70">Loading roles...</p>
                     ) : (
                       <RolesDropdown
-                        roles={roles}
+                        roles={assignableRoles}
                         selectedIds={roleIds}
                         onToggle={handleRoleToggle}
                         placeholder="Select roles..."
                       />
                     )}
                     <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-                      Optional. Search and select one or more roles.
+                      {isAgent
+                        ? "Agents can only assign Candidate, Student, or Mentor roles."
+                        : "Optional. Search and select one or more roles."}
                     </p>
                   </div>
                   <div className="mb-6">

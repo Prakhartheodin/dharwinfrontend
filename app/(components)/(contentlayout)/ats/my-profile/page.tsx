@@ -4,10 +4,10 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Link from "next/link";
 import React, { Fragment, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import { getMyCandidate } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useIsCandidateForProfile } from "@/shared/hooks/use-is-candidate-for-profile";
+import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
+import { getMeWithCandidate } from "@/shared/lib/api/auth";
+import type { CandidateWithProfile } from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
 import { listActivityLogs } from "@/shared/lib/api/activity-logs";
 import * as rolesApi from "@/shared/lib/api/roles";
@@ -50,13 +50,22 @@ function humanizeAction(action: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function DynamicProfileView() {
+function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | null }) {
   const { user } = useAuth();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [roles, setRoles] = useState<Role[]>([]);
 
   const u = user as (User & { phoneNumber?: string; countryCode?: string; location?: string; profileSummary?: string; education?: string; domain?: string[] }) | null;
+  const displayName = (candidate?.fullName ?? u?.name ?? u?.email) ?? "—";
+  const displayPhone = candidate?.phoneNumber ?? u?.phoneNumber;
+  const displayCountryCode = candidate?.countryCode ?? (u as { countryCode?: string })?.countryCode;
+  const displayBio = candidate?.shortBio ?? (u as { profileSummary?: string })?.profileSummary;
+  const displayAddress = candidate?.address
+    ? [candidate.address.streetAddress, candidate.address.city, candidate.address.state, candidate.address.zipCode, candidate.address.country]
+        .filter(Boolean)
+        .join(", ")
+    : (u as { location?: string })?.location;
 
   const rolesById = useMemo(() => {
     const map = new Map<string, Role>();
@@ -96,11 +105,11 @@ function DynamicProfileView() {
   }
 
   const personalInfo = [
-    { label: "Name :", value: u.name ?? "—" },
-    { label: "Email :", value: u.email ?? "—" },
-    ...(u.phoneNumber ? [{ label: "Phone :", value: `${u.countryCode ? u.countryCode + " " : ""}${u.phoneNumber}` }] : []),
+    { label: "Name :", value: displayName },
+    { label: "Email :", value: u?.email ?? "—" },
+    ...(displayPhone ? [{ label: "Phone :", value: `${displayCountryCode ? displayCountryCode + " " : ""}${displayPhone}` }] : []),
     { label: "Role :", value: roleDisplayName },
-    ...(u.location ? [{ label: "Location :", value: u.location }] : []),
+    ...(displayAddress ? [{ label: "Address :", value: displayAddress }] : []),
     ...(u.education ? [{ label: "Education :", value: u.education }] : []),
     ...(u.domain && u.domain.length > 0 ? [{ label: "Domain :", value: u.domain.join(", ") }] : []),
   ];
@@ -127,7 +136,7 @@ function DynamicProfileView() {
               <div className="flex-grow main-profile-info">
                 <div className="flex items-center !justify-between">
                   <h6 className="font-semibold mb-1 text-white text-[1rem]">
-                    {u.name ?? u.email ?? "—"}
+                    {displayName}
                   </h6>
                   <Link
                     href="/settings/personal-information/"
@@ -139,10 +148,10 @@ function DynamicProfileView() {
                 </div>
                 <p className="mb-1 !text-white opacity-[0.7]">{roleDisplayName}</p>
                 <p className="text-[0.75rem] text-white mb-6 opacity-[0.5]">
-                  {u.location ? (
+                  {displayAddress ? (
                     <span className="inline-flex">
                       <i className="ri-map-pin-line me-1 align-middle" />
-                      {u.location}
+                      {displayAddress}
                     </span>
                   ) : (
                     <span className="opacity-0">—</span>
@@ -152,11 +161,11 @@ function DynamicProfileView() {
             </div>
 
             {/* Bio */}
-            {u.profileSummary && (
+            {displayBio && (
               <div className="p-6 border-b border-dashed dark:border-defaultborder/10">
                 <p className="text-[.9375rem] mb-2 font-semibold">Professional Bio :</p>
                 <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] mb-0">
-                  {u.profileSummary}
+                  {displayBio}
                 </p>
               </div>
             )}
@@ -171,20 +180,20 @@ function DynamicProfileView() {
                   </span>
                   {u.email ?? "—"}
                 </p>
-                {u.phoneNumber && (
+                {displayPhone && (
                   <p className="mb-2">
                     <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
                       <i className="ri-phone-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
                     </span>
-                    {u.countryCode ? `${u.countryCode} ` : ""}{u.phoneNumber}
+                    {displayCountryCode ? `${displayCountryCode} ` : ""}{displayPhone}
                   </p>
                 )}
-                {u.location && (
+                {displayAddress && (
                   <p className="mb-0">
                     <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
                       <i className="ri-map-pin-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
                     </span>
-                    {u.location}
+                    {displayAddress}
                   </p>
                 )}
               </div>
@@ -318,6 +327,76 @@ function DynamicProfileView() {
               </div>
             </div>
           </div>
+
+          {/* Qualifications (candidate) */}
+          {candidate?.qualifications && candidate.qualifications.length > 0 && (
+            <div className="xl:col-span-12 col-span-12">
+              <div className="box">
+                <div className="box-header">
+                  <div className="box-title">Qualifications</div>
+                </div>
+                <div className="box-body">
+                  <ul className="list-group">
+                    {candidate.qualifications.map((q, i) => (
+                      <li className="list-group-item" key={i}>
+                        <div className="font-semibold">{q.degree} – {q.institute}</div>
+                        {q.location && <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">{q.location}</div>}
+                        {(q.startYear || q.endYear) && (
+                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                            {q.startYear ?? "?"} – {q.endYear ?? "Present"}
+                          </div>
+                        )}
+                        {q.description && <p className="text-[0.75rem] mt-1 mb-0">{q.description}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Work Experience (candidate) */}
+          {candidate?.experiences && candidate.experiences.length > 0 && (
+            <div className="xl:col-span-12 col-span-12">
+              <div className="box">
+                <div className="box-header">
+                  <div className="box-title">Work Experience</div>
+                </div>
+                <div className="box-body">
+                  <ul className="list-group">
+                    {candidate.experiences.map((exp, i) => (
+                      <li className="list-group-item" key={i}>
+                        <div className="font-semibold">{exp.role} at {exp.company}</div>
+                        {(exp.startDate || exp.endDate) && (
+                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                            {exp.startDate ? new Date(exp.startDate).toLocaleDateString() : "?"} –{" "}
+                            {exp.currentlyWorking ? "Present" : exp.endDate ? new Date(exp.endDate).toLocaleDateString() : "?"}
+                          </div>
+                        )}
+                        {exp.description && <p className="text-[0.75rem] mt-1 mb-0">{exp.description}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Documents summary (candidate) */}
+          {candidate?.documents && candidate.documents.length > 0 && (
+            <div className="xl:col-span-12 col-span-12">
+              <div className="box">
+                <div className="box-header">
+                  <div className="box-title">Documents</div>
+                </div>
+                <div className="box-body">
+                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
+                    {candidate.documents.length} document(s) on file.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -325,26 +404,41 @@ function DynamicProfileView() {
 }
 
 export default function MyProfilePage() {
-  const router = useRouter();
   const { user } = useAuth();
-  const { isCandidate, isLoading: rolesLoading } = useIsCandidateForProfile();
+  const { hasCandidateRole, isLoading: rolesLoading } = useHasCandidateRole();
+  const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
+  const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
-    if (!user || !isCandidate || rolesLoading) return;
-    getMyCandidate()
-      .then((c) => {
-        const id = (c as { id?: string; _id?: string }).id ?? (c as { id?: string; _id?: string })._id;
-        if (id) router.replace(`/ats/candidates/edit/?id=${id}`);
-      })
-      .catch(() => {});
-  }, [user, isCandidate, rolesLoading, router]);
+    if (!user) {
+      setDataLoading(false);
+      return;
+    }
+    let cancelled = false;
+    if (hasCandidateRole) {
+      getMeWithCandidate()
+        .then((res) => {
+          if (!cancelled) setCandidate(res?.candidate ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setCandidate(null);
+        })
+        .finally(() => {
+          if (!cancelled) setDataLoading(false);
+        });
+    } else {
+      setCandidate(null);
+      setDataLoading(false);
+    }
+    return () => { cancelled = true; };
+  }, [user, hasCandidateRole]);
 
-  if (user && !isCandidate && !rolesLoading) {
+  if (user && !rolesLoading && !dataLoading) {
     return (
       <Fragment>
         <Seo title="My Profile" />
         <Pageheader currentpage="My Profile" activepage="ATS" mainpage="My Profile" />
-        <DynamicProfileView />
+        <DynamicProfileView candidate={candidate} />
       </Fragment>
     );
   }
