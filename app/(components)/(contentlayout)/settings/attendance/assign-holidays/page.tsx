@@ -79,9 +79,10 @@ export default function SettingsAttendanceAssignHolidaysPage() {
         const res = await rolesApi.listRoles({ limit: 100 });
         const roles = (res.results ?? []) as Role[];
         const roleMap = new Map(roles.map((r) => [r.id, r]));
-        const hasAdmin = (user.roleIds as string[]).some(
-          (id) => roleMap.get(id)?.name === "Administrator"
-        );
+        const hasAdmin = (user.roleIds as string[]).some((id) => {
+          const name = roleMap.get(id)?.name;
+          return name === "Administrator" || name === "Agent";
+        });
         setIsAdmin(hasAdmin);
       } catch {
         setIsAdmin(false);

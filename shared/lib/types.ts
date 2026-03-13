@@ -7,11 +7,12 @@ export interface ProfilePicture {
   mimeType?: string;
 }
 
-/** User from backend (login/me). Matches guide: id, email, name, role, roleIds, status, createdAt, lastLoginAt. */
+/** User from backend (login/me). Matches guide: id, email, name, username, role, roleIds, status, createdAt, lastLoginAt. */
 export interface User {
   id: string;
   email: string;
   name?: string;
+  username?: string;
   role?: string;
   roleIds?: string[];
   status?: string;

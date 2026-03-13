@@ -3,6 +3,14 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { type JobApplication } from '@/shared/lib/api/jobApplications'
 
+/** Decode HTML entities (e.g. &lt; → <). Backend xss-clean stores jobDescription entity-encoded. */
+function decodeHtmlEntities(html: string): string {
+  if (!html || typeof html !== 'string') return ''
+  const txt = document.createElement('textarea')
+  txt.innerHTML = html
+  return txt.value
+}
+
 interface JobPreviewPanelProps {
   previewJob: any
   setPreviewJob: (job: any) => void
@@ -285,8 +293,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     <div>
                       <h6 className="font-semibold text-gray-800 dark:text-white mb-3">Job Description</h6>
                       <div 
-                        className="prose prose-sm max-w-none text-gray-700 dark:text-gray-300"
-                        dangerouslySetInnerHTML={{ __html: previewJob.description }}
+                        className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 job-description-content"
+                        dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(previewJob.description) }}
                       />
                     </div>
                   )}

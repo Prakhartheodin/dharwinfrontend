@@ -115,7 +115,14 @@ export default function StudentAttendancePage() {
   const [backDateEntries, setBackDateEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [addingBackDate, setAddingBackDate] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestEntries, setRequestEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
+  const [requestForm, setRequestForm] = useState<{ fromDate: string; toDate: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>({
+    fromDate: "",
+    toDate: "",
+    punchInTime: "",
+    punchOutTime: "",
+    notes: "",
+    timezone: "UTC",
+  });
   const [submittingRequest, setSubmittingRequest] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -270,64 +277,97 @@ export default function StudentAttendancePage() {
   };
 
   const defaultTimezone = getDetectedTimezone();
+  const candidateTimezone = student?.shift?.timezone || defaultTimezone;
+
   const openRegularizationModal = () => {
     setBackDateEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
     setShowBackDateModal(true);
   };
   const openRequestModal = () => {
-    setRequestEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+    setRequestForm({
+      fromDate: "",
+      toDate: "",
+      punchInTime: "",
+      punchOutTime: "",
+      notes: "",
+      timezone: candidateTimezone,
+    });
     setShowRequestModal(true);
   };
-  const addRequestEntry = () => {
-    setRequestEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+  const updateRequestForm = (field: keyof typeof requestForm, value: string) => {
+    setRequestForm((prev) => ({ ...prev, [field]: value }));
   };
-  const removeRequestEntry = (index: number) => {
-    if (requestEntries.length > 1) setRequestEntries((prev) => prev.filter((_, i) => i !== index));
-  };
-  const updateRequestEntry = (index: number, field: keyof typeof requestEntries[0], value: string) => {
-    setRequestEntries((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], [field]: value };
-      return next;
-    });
-  };
+
   const handleSubmitRequest = async () => {
     if (!studentId) return;
-    const valid = requestEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
-    if (valid.length === 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
+    const { fromDate, toDate, punchInTime, punchOutTime, notes, timezone } = requestForm;
+    if (!fromDate || !toDate || !punchInTime || !punchOutTime) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Validation",
+        text: "Please fill in From date, To date, Punch In, and Punch Out.",
+        confirmButtonText: "OK",
+      });
       return;
     }
-    const invalid = requestEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
-    if (invalid.length > 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range.", confirmButtonText: "OK" });
+      return;
+    }
+    if (to < from) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "To date must be on or after From date.", confirmButtonText: "OK" });
+      return;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (from >= today) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "From date must be in the past.", confirmButtonText: "OK" });
+      return;
+    }
+    const punchInStr = punchInTime.includes(":") ? punchInTime : `${punchInTime}:00`;
+    const punchOutStr = punchOutTime.includes(":") ? punchOutTime : `${punchOutTime}:00`;
+    const attendanceEntries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string }> = [];
+    const current = new Date(from);
+    current.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    while (current <= end) {
+      if (!isWeekOffDay(current)) {
+        const dateKey = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+        const punchInDateTime = new Date(`${dateKey}T${punchInStr}`);
+        let punchOutDateTime = new Date(`${dateKey}T${punchOutStr}`);
+        if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
+        attendanceEntries.push({
+          date: dateKey,
+          punchIn: punchInDateTime.toISOString(),
+          punchOut: punchOutDateTime.toISOString(),
+          timezone: timezone || candidateTimezone,
+        });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    if (attendanceEntries.length === 0) {
+      await Swal.fire({
+        icon: "warning",
+        title: "No working days",
+        text: "The selected date range has no working days (weekends are excluded).",
+        confirmButtonText: "OK",
+      });
       return;
     }
     setSubmittingRequest(true);
     try {
-      const attendanceEntries = valid.map((entry) => {
-        const punchInStr = entry.punchInTime.includes(":") ? entry.punchInTime : `${entry.punchInTime}:00`;
-        const punchOutStr = entry.punchOutTime.includes(":") ? entry.punchOutTime : `${entry.punchOutTime}:00`;
-        const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
-        let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
-        if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
-        return {
-          date: new Date(entry.date).toISOString().slice(0, 10),
-          punchIn: punchInDateTime.toISOString(),
-          punchOut: punchOutDateTime.toISOString(),
-          timezone: entry.timezone || defaultTimezone,
-          notes: entry.notes || undefined,
-        };
-      });
-      const notes = requestEntries.map((e) => e.notes).filter(Boolean).join("; ") || undefined;
       await createBackdatedAttendanceRequest(studentId, {
         attendanceEntries: attendanceEntries.map((e) => ({
           date: e.date,
           punchIn: e.punchIn,
-          punchOut: e.punchOut ?? null,
+          punchOut: e.punchOut,
           timezone: e.timezone,
         })),
-        notes,
+        notes: notes.trim() || undefined,
       });
       await Swal.fire({
         icon: "success",
@@ -1288,71 +1328,64 @@ export default function StudentAttendancePage() {
               <div className="px-4 sm:px-6 py-4 overflow-y-auto flex-1">
                 <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-defaulttextcolor">
                   <i className="ri-information-line me-2 text-primary" />
-                  Add entries for past dates you forgot to punch in/out. Each entry requires date, punch-in, and punch-out time.
+                  Enter a date range (From and To). Punch In and Punch Out will be applied to all working days in the range. Weekends are excluded.
                 </div>
-                {requestEntries.map((entry, index) => (
-                  <div key={index} className="p-4 border border-defaultborder rounded-lg bg-black/5 dark:bg-white/5 mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium text-defaulttextcolor">Entry {index + 1}</span>
-                      {requestEntries.length > 1 && (
-                        <button type="button" onClick={() => removeRequestEntry(index)} className="text-danger hover:opacity-80" title="Remove">
-                          <i className="ri-delete-bin-line text-lg" />
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Date *</label>
-                        <input
-                          type="date"
-                          value={entry.date}
-                          max={new Date().toISOString().slice(0, 10)}
-                          onChange={(e) => updateRequestEntry(index, "date", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
-                        <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{entry.timezone}</div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
-                        <input
-                          type="time"
-                          value={entry.punchInTime}
-                          onChange={(e) => updateRequestEntry(index, "punchInTime", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
-                        <input
-                          type="time"
-                          value={entry.punchOutTime}
-                          onChange={(e) => updateRequestEntry(index, "punchOutTime", e.target.value)}
-                          className="ti-form-input w-full !py-1.5"
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
-                        <input
-                          type="text"
-                          value={entry.notes}
-                          onChange={(e) => updateRequestEntry(index, "notes", e.target.value)}
-                          placeholder="Notes for this entry"
-                          className="ti-form-input w-full !py-1.5"
-                        />
-                      </div>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-defaulttextcolor mb-1">From date *</label>
+                    <input
+                      type="date"
+                      value={requestForm.fromDate}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => updateRequestForm("fromDate", e.target.value)}
+                      className="ti-form-input w-full !py-1.5"
+                    />
                   </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={addRequestEntry}
-                  className="w-full py-2 border-2 border-dashed border-defaultborder rounded-lg text-defaulttextcolor/70 hover:border-primary hover:text-primary flex items-center justify-center gap-2"
-                >
-                  <i className="ri-add-line" /> Add Another Entry
-                </button>
+                  <div>
+                    <label className="block text-xs font-medium text-defaulttextcolor mb-1">To date *</label>
+                    <input
+                      type="date"
+                      value={requestForm.toDate}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={(e) => updateRequestForm("toDate", e.target.value)}
+                      className="ti-form-input w-full !py-1.5"
+                    />
+                  </div>
+                </div>
+                <div className="mb-4">
+                  <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone (candidate&apos;s)</label>
+                  <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{requestForm.timezone || candidateTimezone}</div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                  <div>
+                    <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
+                    <input
+                      type="time"
+                      value={requestForm.punchInTime}
+                      onChange={(e) => updateRequestForm("punchInTime", e.target.value)}
+                      className="ti-form-input w-full !py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
+                    <input
+                      type="time"
+                      value={requestForm.punchOutTime}
+                      onChange={(e) => updateRequestForm("punchOutTime", e.target.value)}
+                      className="ti-form-input w-full !py-1.5"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
+                  <input
+                    type="text"
+                    value={requestForm.notes}
+                    onChange={(e) => updateRequestForm("notes", e.target.value)}
+                    placeholder="Reason for backdated entry"
+                    className="ti-form-input w-full !py-1.5"
+                  />
+                </div>
               </div>
               <div className="px-4 sm:px-6 py-3 border-t border-defaultborder flex justify-end gap-2">
                 <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-light" disabled={submittingRequest}>

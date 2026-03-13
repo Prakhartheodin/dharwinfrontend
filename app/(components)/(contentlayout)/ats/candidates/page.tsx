@@ -507,6 +507,23 @@ const Candidates = () => {
     return candidates.find(candidate => candidate.id === notesCandidateId)
   }
 
+  /** Open preview panel and fetch full candidate (including documents & salarySlips) for display. */
+  const openCandidatePreview = useCallback((c: CandidateDisplay) => {
+    setPreviewCandidate(c)
+    setViewDetailTab('personal')
+    setActionError(null)
+    setTimeout(() => {
+      ;(window as any).HSOverlay?.open(document.querySelector('#candidate-preview-panel'))
+    }, 100)
+    getCandidate(c.id)
+      .then((full) => {
+        setPreviewCandidate((prev: any) =>
+          prev && prev.id === c.id ? { ...prev, _raw: full } : prev
+        )
+      })
+      .catch(() => {})
+  }, [])
+
   // Generate public URL for candidate
   const getCandidatePublicUrl = (candidateId: string) => {
     if (typeof window !== 'undefined') {
@@ -1088,13 +1105,7 @@ const Candidates = () => {
                 <div className="flex items-center gap-2 flex-wrap">
                   <div 
                     className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
-                    onClick={() => {
-                      setPreviewCandidate(candidate)
-                      setViewDetailTab('personal')
-                      setTimeout(() => {
-                        ;(window as any).HSOverlay?.open(document.querySelector('#candidate-preview-panel'))
-                      }, 100)
-                    }}
+                    onClick={() => openCandidatePreview(candidate)}
                   >
                     {candidate.name}
                   </div>
@@ -1127,97 +1138,22 @@ const Candidates = () => {
         },
       },
       {
-        Header: 'Skills',
-        accessor: 'skills',
-        minWidth: 140,
-        maxWidth: 200,
+        Header: 'Joining Date',
+        accessor: 'joiningDate',
+        minWidth: 120,
         Cell: ({ row }: any) => {
-          const candidate = row.original
-          const raw = candidate.skills ?? []
-          const normalized = raw.flatMap((s: string) => {
-            const str = typeof s === 'string' ? s : String(s)
-            const parts = str.split(/[,;]|\.\s+|\r?\n+/).map((x: string) => x.trim()).filter(Boolean)
-            return parts.length > 0 ? parts : [str]
-          })
-          const display = normalized.slice(0, 4)
-          const extra = normalized.length - 4
+          const candidate = row.original as CandidateDisplay
+          const raw = (candidate as any)._raw
+          const joiningDate = raw?.joiningDate
+          const displayText = joiningDate
+            ? new Date(joiningDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+            : '—'
           return (
-            <div className="flex flex-wrap gap-1.5 min-w-0" title={normalized.join(', ')}>
-              {display.map((skill: string, index: number) => (
-                <span
-                  key={index}
-                  className="inline-flex items-center badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-md text-xs font-medium break-words"
-                  title={skill}
-                >
-                  {skill}
-                </span>
-              ))}
-              {extra > 0 && (
-                <span className="badge bg-gray-100 dark:bg-black/20 text-gray-600 dark:text-gray-400 px-2 py-1 rounded-md text-xs font-medium">
-                  +{extra}
-                </span>
-              )}
-            </div>
-          )
-        },
-      },
-      {
-        Header: 'Education',
-        accessor: 'education',
-        minWidth: 180,
-        maxWidth: 220,
-        Cell: ({ row }: any) => {
-          const candidate = row.original
-          // Parse education: split by " - " to separate degree and university
-          const educationParts = candidate.education ? candidate.education.split(' - ') : ['', '']
-          const degree = educationParts[0] || ''
-          const university = educationParts.slice(1).join(' - ') || ''
-          
-          return (
-            <div 
-              className="text-sm text-gray-800 dark:text-white min-w-0"
-              style={{ 
-                maxWidth: '100%',
-                minHeight: '60px',
-                lineHeight: '1.5',
-                wordBreak: 'break-word',
-                overflow: 'hidden',
-                overflowWrap: 'break-word',
-              }}
-              title={candidate.education}
-            >
-              <div className="font-medium flex items-center gap-2 min-w-0">
-                <i className="ri-graduation-cap-line text-primary flex-shrink-0"></i>
-                <span className="break-words">{degree}</span>
-              </div>
-              {university && (
-                <div className="text-gray-600 dark:text-gray-400 mt-0.5 flex items-center gap-2 min-w-0">
-                  <i className="ri-building-line text-info flex-shrink-0"></i>
-                  <span className="break-words">{university}</span>
-                </div>
-              )}
-            </div>
-          )
-        },
-      },
-      {
-        Header: 'Bio',
-        accessor: 'bio',
-        minWidth: 180,
-        maxWidth: 220,
-        Cell: ({ row }: any) => {
-          const candidate = row.original
-          return (
-            <div 
-              className="text-sm text-gray-700 dark:text-gray-300 min-w-0 break-words"
-              style={{ 
-                maxWidth: '100%',
-                lineHeight: '1.5',
-                wordBreak: 'break-word',
-                overflowWrap: 'break-word',
-              }}
-            >
-              {candidate.bio}
+            <div className="text-sm text-gray-800 dark:text-white whitespace-nowrap">
+              <span className="inline-flex items-center gap-1.5">
+                <i className="ri-calendar-check-line text-gray-500 dark:text-gray-400" />
+                {displayText}
+              </span>
             </div>
           )
         },
@@ -1233,13 +1169,7 @@ const Candidates = () => {
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
-                  onClick={() => {
-                    setPreviewCandidate(c)
-                    setViewDetailTab('personal')
-                    setTimeout(() => {
-                      ;(window as any).HSOverlay?.open(document.querySelector('#candidate-preview-panel'))
-                    }, 100)
-                  }}
+                  onClick={() => openCandidatePreview(c)}
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-success/10 text-success hover:bg-success hover:text-white"
                   title="View Details"
                 >
@@ -1779,17 +1709,14 @@ const Candidates = () => {
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
-                            const isEducationOrBio = cell.column.id === 'education' || cell.column.id === 'bio';
                             const isCheckboxCol = cell.column.id === 'checkbox';
                             const cellProps = cell.getCellProps();
                             return (
                               <td
                                 {...cellProps}
                                 key={cell.column.id || `cell-${i}`}
-                                className={isEducationOrBio ? `${cellProps.className || ''} align-top !whitespace-normal`.trim() : cellProps.className}
                                 style={{
                                   ...cellProps.style,
-                                  ...(isEducationOrBio ? { minWidth: 0, overflow: 'hidden' } : {}),
                                   ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
                                 }}
                               >
@@ -1807,7 +1734,7 @@ const Candidates = () => {
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <div>
-                  Showing {totalResults === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, totalResults)} of {totalResults} entries{' '}
+                  Showing {totalResults === 0 ? 0 : (apiPage - 1) * pageSize + 1} to {Math.min(apiPage * pageSize, totalResults)} of {totalResults} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
@@ -1827,11 +1754,11 @@ const Candidates = () => {
                         pageOptions.map((page: number) => (
                           <li
                             key={page}
-                            className={`page-item ${pageIndex === page ? 'active' : ''}`}
+                            className={`page-item ${apiPage === page + 1 ? 'active' : ''}`}
                           >
                             <button
                               className="page-link px-3 py-[0.375rem]"
-                              onClick={() => gotoPage(page)}
+                              onClick={() => setApiPage(page + 1)}
                             >
                               {page + 1}
                             </button>
@@ -1840,7 +1767,7 @@ const Candidates = () => {
                       ) : (
                         // Show smart pagination for more pages
                         <>
-                          {pageIndex > 2 && (
+                          {apiPage > 3 && (
                             <>
                               <li className="page-item">
                                 <button
@@ -1850,7 +1777,7 @@ const Candidates = () => {
                                   1
                                 </button>
                               </li>
-                              {pageIndex > 3 && (
+                              {apiPage > 4 && (
                                 <li className="page-item disabled">
                                   <span className="page-link px-3 py-[0.375rem]">...</span>
                                 </li>
@@ -1859,30 +1786,30 @@ const Candidates = () => {
                           )}
                           {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
                             let pageNum
-                            if (pageIndex < 3) {
-                              pageNum = i
-                            } else if (pageIndex > pageCount - 4) {
-                              pageNum = pageCount - 5 + i
+                            if (apiPage < 4) {
+                              pageNum = i + 1
+                            } else if (apiPage > pageCount - 2) {
+                              pageNum = pageCount - Math.min(5, pageCount) + 1 + i
                             } else {
-                              pageNum = pageIndex - 2 + i
+                              pageNum = apiPage - 2 + i
                             }
                             return (
                               <li
                                 key={pageNum}
-                                className={`page-item ${pageIndex === pageNum ? 'active' : ''}`}
+                                className={`page-item ${apiPage === pageNum ? 'active' : ''}`}
                               >
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                  onClick={() => setApiPage(pageNum + 1)}
-                                >
-                                  {pageNum + 1}
+                                onClick={() => setApiPage(pageNum)}
+                              >
+                                {pageNum}
                                 </button>
                               </li>
                             )
                           })}
-                          {pageIndex < pageCount - 3 && (
+                          {apiPage < pageCount - 2 && (
                             <>
-                              {pageIndex < pageCount - 4 && (
+                              {apiPage < pageCount - 3 && (
                                 <li className="page-item disabled">
                                   <span className="page-link px-3 py-[0.375rem]">...</span>
                                 </li>

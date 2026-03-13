@@ -157,6 +157,7 @@ export interface ProfilePicturePayload {
 
 export interface UpdateUserPayload {
   name?: string;
+  username?: string;
   email?: string;
   roleIds?: string[];
   status?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useEffect, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
@@ -9,15 +9,21 @@ import * as usersApi from "@/shared/lib/api/users";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
+/** Roles that Agents are allowed to assign (no Administrator, Agent, or Manager). */
+const AGENT_ASSIGNABLE_ROLE_NAMES = ["Candidate", "Student", "Mentor"];
+
 export default function SettingsUsersEditPage() {
+  const { user: currentUser, isAdministrator } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get("id") ?? "";
 
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("active");
@@ -25,6 +31,18 @@ export default function SettingsUsersEditPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
+
+  const isAgent = useMemo(() => {
+    if (!currentUser?.roleIds?.length || !roles.length) return false;
+    const roleMap = new Map(roles.map((r) => [r.id, r]));
+    return (currentUser.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Agent");
+  }, [currentUser?.roleIds, roles]);
+
+  const assignableRoles = useMemo(() => {
+    if (isAdministrator) return roles;
+    if (isAgent) return roles.filter((r) => AGENT_ASSIGNABLE_ROLE_NAMES.includes(r.name ?? ""));
+    return roles;
+  }, [roles, isAdministrator, isAgent]);
 
   useEffect(() => {
     if (!userId) {
@@ -47,6 +65,7 @@ export default function SettingsUsersEditPage() {
           return;
         }
         setName(userRes.name ?? "");
+        setUsername((userRes as { username?: string }).username ?? userRes.email ?? "");
         setEmail(userRes.email ?? "");
         setRoleIds(userRes.roleIds ?? []);
         const rawStatus = (userRes.status ?? "active").toString().toLowerCase();
@@ -92,12 +111,18 @@ export default function SettingsUsersEditPage() {
 
     setLoading(true);
     try {
-      await usersApi.updateUser(userId, {
+      const assignableIds = new Set(assignableRoles.map((r) => r.id));
+      const roleIdsToSend = isAgent ? roleIds.filter((id) => assignableIds.has(id)) : roleIds;
+      const payload: { name: string; username?: string; email: string; roleIds: string[]; status: string } = {
         name: trimmedName,
         email: trimmedEmail,
-        roleIds,
+        roleIds: roleIdsToSend,
         status: statusToSend,
-      });
+      };
+      if (isAdministrator) {
+        payload.username = username.trim().toLowerCase() || undefined;
+      }
+      await usersApi.updateUser(userId, payload);
       await Swal.fire({
         icon: "success",
         title: "User updated",
@@ -182,6 +207,25 @@ export default function SettingsUsersEditPage() {
                     />
                   </div>
                   <div className="mb-6">
+                    <label htmlFor="edit-user-username" className="form-label">
+                      Username
+                    </label>
+                    <input
+                      id="edit-user-username"
+                      type="text"
+                      className={`form-control ${!isAdministrator ? "!bg-gray-100 dark:!bg-black/20" : ""}`}
+                      placeholder="e.g. johndoe"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      readOnly={!isAdministrator}
+                      title={!isAdministrator ? "Only administrators can change usernames" : undefined}
+                      autoComplete="username"
+                    />
+                    {!isAdministrator && (
+                      <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">Only administrators can change usernames.</p>
+                    )}
+                  </div>
+                  <div className="mb-6">
                     <label htmlFor="edit-user-email" className="form-label">
                       Email
                     </label>
@@ -198,13 +242,15 @@ export default function SettingsUsersEditPage() {
                   <div className="mb-6">
                     <label className="form-label">Roles</label>
                     <RolesDropdown
-                      roles={roles}
+                      roles={assignableRoles}
                       selectedIds={roleIds}
                       onToggle={handleRoleToggle}
                       placeholder="Select roles..."
                     />
                     <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-                      Search and select one or more roles.
+                      {isAgent
+                        ? "Agents can only assign Candidate, Student, or Mentor roles."
+                        : "Search and select one or more roles."}
                     </p>
                   </div>
                   <div className="mb-6">

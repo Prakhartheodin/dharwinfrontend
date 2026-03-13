@@ -2,6 +2,7 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
 import { browseJobs as browseJobsApi, type Job } from "@/shared/lib/api/jobs";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
@@ -10,6 +11,7 @@ const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Temporary", "Internshi
 const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior Level", "Executive"];
 
 export default function BrowseJobsPage() {
+  const router = useRouter();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -185,6 +187,8 @@ export default function BrowseJobsPage() {
                 <Link
                   key={id}
                   href={`/ats/browse-jobs/${id}`}
+                  prefetch={true}
+                  onMouseEnter={() => router.prefetch(`/ats/browse-jobs/${id}`)}
                   className={"block group transition-colors duration-150 " + (index > 0 ? "border-t border-defaultborder dark:border-defaultborder/10" : "")}
                 >
                   <div className="flex flex-wrap sm:flex-nowrap items-stretch sm:items-center gap-4 px-4 sm:px-5 py-4 hover:bg-defaultborder/5 dark:hover:bg-white/5">

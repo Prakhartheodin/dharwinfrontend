@@ -84,6 +84,87 @@ export async function updateMyProfile(payload: UpdateMyProfilePayload): Promise<
   return data;
 }
 
+/** Candidate shape from GET /auth/me/with-candidate (matches candidates API). */
+export interface CandidateWithProfile {
+  id?: string;
+  _id?: string;
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  countryCode?: string;
+  shortBio?: string;
+  address?: { streetAddress?: string; streetAddress2?: string; city?: string; state?: string; zipCode?: string; country?: string };
+  sevisId?: string;
+  ead?: string;
+  visaType?: string;
+  customVisaType?: string;
+  degree?: string;
+  supervisorName?: string;
+  supervisorContact?: string;
+  supervisorCountryCode?: string;
+  salaryRange?: string;
+  profilePicture?: { url?: string; key?: string; originalName?: string; size?: number; mimeType?: string };
+  qualifications?: Array<{ degree: string; institute: string; location?: string; startYear?: number; endYear?: number; description?: string }>;
+  experiences?: Array<{ company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean; description?: string }>;
+  documents?: Array<{ type?: string; label?: string; url?: string; key?: string; originalName?: string }>;
+  salarySlips?: Array<{ month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string }>;
+  [key: string]: unknown;
+}
+
+export interface MeWithCandidateResponse {
+  user: User;
+  candidate: CandidateWithProfile | null;
+  sessions?: Session[];
+  impersonation?: ImpersonationInfo;
+}
+
+/**
+ * Get current user + candidate (GET /v1/auth/me/with-candidate).
+ * Returns merged User + Candidate when user has Candidate role. Single source for Personal Information and My Profile.
+ */
+export async function getMeWithCandidate(): Promise<MeWithCandidateResponse | null> {
+  try {
+    const { data } = await apiClient.get<MeWithCandidateResponse>(AUTH_ENDPOINTS.meWithCandidate);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+/** Combined User + Candidate update payload for PATCH /auth/me/with-candidate. */
+export type UpdateMeWithCandidatePayload = UpdateMyProfilePayload & Partial<{
+  fullName: string;
+  email: string;
+  phoneNumber: string;
+  shortBio: string | null;
+  sevisId: string | null;
+  ead: string | null;
+  visaType: string;
+  customVisaType: string | null;
+  countryCode: string | null;
+  degree: string | null;
+  supervisorName: string | null;
+  supervisorContact: string | null;
+  supervisorCountryCode: string | null;
+  salaryRange: string;
+  address: { streetAddress?: string; streetAddress2?: string; city?: string; state?: string; zipCode?: string; country?: string };
+  qualifications: Array<{ degree: string; institute: string; location?: string; startYear?: number; endYear?: number; description?: string }>;
+  experiences: Array<{ company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean; description?: string }>;
+  documents: Array<{ type?: string; label?: string; url?: string; key?: string; originalName?: string; size?: number; mimeType?: string }>;
+  skills: Array<{ name: string; level?: string; category?: string }>;
+  socialLinks: Array<{ platform: string; url: string }>;
+  salarySlips: Array<{ month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string; size?: number; mimeType?: string }>;
+}>;
+
+/**
+ * Update User and Candidate atomically (PATCH /v1/auth/me/with-candidate).
+ * For users with Candidate role. Updates both in one transaction.
+ */
+export async function updateMeWithCandidate(payload: UpdateMeWithCandidatePayload): Promise<{ user: User; candidate: CandidateWithProfile }> {
+  const { data } = await apiClient.patch<{ user: User; candidate: CandidateWithProfile }>(AUTH_ENDPOINTS.meWithCandidate, payload);
+  return data;
+}
+
 /**
  * Get current authenticated user (GET /v1/auth/me).
  * Use to restore user state on app load when cookies are still valid.

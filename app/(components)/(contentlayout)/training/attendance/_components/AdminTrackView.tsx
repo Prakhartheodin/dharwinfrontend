@@ -218,17 +218,17 @@ export default function AdminTrackView({
                           {canPunchOutOthers && row.isPunchedIn ? (
                             <button
                               type="button"
-                              className="ti-btn ti-btn-sm ti-btn-soft-danger ti-btn-wave inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-2.5 !text-[0.75rem]"
+                              className="ti-btn ti-btn-sm ti-btn-soft-danger ti-btn-wave inline-flex items-center justify-center gap-2 min-w-[6.5rem] !py-2 !px-3.5 !text-[0.8125rem] overflow-hidden"
                               onClick={() => onPunchOut(row.studentId)}
                               disabled={punchOutLoadingId === row.studentId}
                               title="Force Punch Out"
                             >
                               {punchOutLoadingId === row.studentId ? (
-                                <i className="ri-loader-4-line animate-spin" />
+                                <i className="ri-loader-4-line animate-spin flex-shrink-0" />
                               ) : (
                                 <>
-                                  <i className="ri-logout-box-r-line" />
-                                  <span>Clock Out</span>
+                                  <i className="ri-logout-box-r-line flex-shrink-0 text-[1rem]" />
+                                  <span className="truncate">Clock Out</span>
                                 </>
                               )}
                             </button>

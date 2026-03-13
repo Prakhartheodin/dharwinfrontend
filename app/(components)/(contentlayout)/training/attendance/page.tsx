@@ -141,7 +141,14 @@ export default function AttendanceTracking() {
   const [myCalendarMonth, setMyCalendarMonth] = useState(() => new Date().getMonth());
   const [trackLiveTick, setTrackLiveTick] = useState(0);
   const [showRequestModal, setShowRequestModal] = useState(false);
-  const [requestEntries, setRequestEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
+  const [requestForm, setRequestForm] = useState<{ fromDate: string; toDate: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>({
+    fromDate: "",
+    toDate: "",
+    punchInTime: "",
+    punchOutTime: "",
+    notes: "",
+    timezone: "UTC",
+  });
   const [submittingRequest, setSubmittingRequest] = useState(false);
 
   /* ─── data fetching (unchanged logic) ─── */
@@ -246,32 +253,81 @@ export default function AttendanceTracking() {
     finally { setPunchLoading(false); }
   };
 
-  /* Backdated request handlers */
+  /* Backdated request handlers - From/To date range, candidate timezone, skip weekends */
   const defaultTimezone = getDetectedTimezone();
-  const openRequestModal = () => { setRequestEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]); setShowRequestModal(true); };
-  const addRequestEntry = () => { setRequestEntries((prev) => [...prev, { date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]); };
-  const removeRequestEntry = (index: number) => { if (requestEntries.length > 1) setRequestEntries((prev) => prev.filter((_, i) => i !== index)); };
-  const updateRequestEntry = (index: number, field: keyof typeof requestEntries[0], value: string) => {
-    setRequestEntries((prev) => { const next = [...prev]; next[index] = { ...next[index], [field]: value }; return next; });
+  const candidateTimezone = myShift?.timezone || defaultTimezone;
+  const weekOffDays = myWeekOff ?? [];
+  const isWeekOffDay = useCallback(
+    (date: Date) => {
+      const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
+      if (weekOffDays.length === 0) return dayName === "Saturday" || dayName === "Sunday";
+      return weekOffDays.includes(dayName);
+    },
+    [weekOffDays]
+  );
+  const openRequestModal = () => {
+    setRequestForm({ fromDate: "", toDate: "", punchInTime: "", punchOutTime: "", notes: "", timezone: candidateTimezone });
+    setShowRequestModal(true);
+  };
+  const updateRequestForm = (field: keyof typeof requestForm, value: string) => {
+    setRequestForm((prev) => ({ ...prev, [field]: value }));
   };
   const handleSubmitRequest = async () => {
     if (!myStudentId) return;
-    const valid = requestEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
-    if (valid.length === 0) { await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time." }); return; }
-    const invalid = requestEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
-    if (invalid.length > 0) { await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both times." }); return; }
+    const { fromDate, toDate, punchInTime, punchOutTime, notes, timezone } = requestForm;
+    if (!fromDate || !toDate || !punchInTime || !punchOutTime) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Please fill in From date, To date, Punch In, and Punch Out." });
+      return;
+    }
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
+      return;
+    }
+    if (to < from) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "To date must be on or after From date." });
+      return;
+    }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (from >= today) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "From date must be in the past." });
+      return;
+    }
+    const pIn = punchInTime.includes(":") ? punchInTime : punchInTime + ":00";
+    const pOut = punchOutTime.includes(":") ? punchOutTime : punchOutTime + ":00";
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const attendanceEntries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string }> = [];
+    const current = new Date(from);
+    current.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    while (current <= end) {
+      if (!isWeekOffDay(current)) {
+        const dateKey = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+        const punchInDt = new Date(dateKey + "T" + pIn);
+        let punchOutDt = new Date(dateKey + "T" + pOut);
+        if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+        attendanceEntries.push({
+          date: dateKey,
+          punchIn: punchInDt.toISOString(),
+          punchOut: punchOutDt.toISOString(),
+          timezone: timezone || candidateTimezone,
+        });
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    if (attendanceEntries.length === 0) {
+      await Swal.fire({ icon: "warning", title: "No working days", text: "The selected date range has no working days (weekends excluded)." });
+      return;
+    }
     setSubmittingRequest(true);
     try {
-      const attendanceEntries = valid.map((entry) => {
-        const pIn = entry.punchInTime.includes(":") ? entry.punchInTime : entry.punchInTime + ":00";
-        const pOut = entry.punchOutTime.includes(":") ? entry.punchOutTime : entry.punchOutTime + ":00";
-        const punchInDt = new Date(entry.date + "T" + pIn);
-        let punchOutDt = new Date(entry.date + "T" + pOut);
-        if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
-        return { date: new Date(entry.date).toISOString().slice(0, 10), punchIn: punchInDt.toISOString(), punchOut: punchOutDt.toISOString(), timezone: entry.timezone || defaultTimezone, notes: entry.notes || undefined };
+      await createBackdatedAttendanceRequest(myStudentId, {
+        attendanceEntries: attendanceEntries.map((e) => ({ date: e.date, punchIn: e.punchIn, punchOut: e.punchOut, timezone: e.timezone })),
+        notes: notes.trim() || undefined,
       });
-      const notes = requestEntries.map((e) => e.notes).filter(Boolean).join("; ") || undefined;
-      await createBackdatedAttendanceRequest(myStudentId, { attendanceEntries: attendanceEntries.map((e) => ({ date: e.date, punchIn: e.punchIn, punchOut: e.punchOut ?? null, timezone: e.timezone })), notes });
       await Swal.fire({ icon: "success", title: "Request Submitted", text: "An admin will review it shortly.", confirmButtonText: "OK" });
       setShowRequestModal(false);
     } catch (e: unknown) {
@@ -1046,55 +1102,41 @@ export default function AttendanceTracking() {
                 <div className="flex items-start gap-2 rounded-md bg-info/5 border border-info/20 p-3">
                   <i className="ri-information-line text-info mt-0.5" />
                   <p className="text-[0.75rem] text-defaulttextcolor dark:text-white/80 mb-0">
-                    Each entry requires a date, punch-in time, and punch-out time.
+                    Enter a date range (From and To). Punch In and Punch Out will be applied to all working days. Weekends are excluded.
                   </p>
                 </div>
 
-                {requestEntries.map((entry, index) => (
-                  <div key={index} className="rounded-md border border-defaultborder p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white flex items-center gap-2">
-                        <span className="avatar avatar-xs rounded-md bg-primary/10 text-primary text-[0.6rem] font-bold">{index + 1}</span>
-                        Entry {index + 1}
-                      </span>
-                      {requestEntries.length > 1 && (
-                        <button type="button" onClick={() => removeRequestEntry(index)} className="ti-btn ti-btn-icon ti-btn-xs ti-btn-soft-danger !rounded-full" title="Remove">
-                          <i className="ri-delete-bin-5-line" />
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Date <span className="text-danger">*</span></label>
-                        <input type="date" value={entry.date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestEntry(index, "date", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
-                      </div>
-                      <div>
-                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Timezone</label>
-                        <div className="form-control !rounded-md !text-[0.8125rem] !bg-gray-50 dark:!bg-black/10">{entry.timezone}</div>
-                      </div>
-                      <div>
-                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch In <span className="text-danger">*</span></label>
-                        <input type="time" value={entry.punchInTime} onChange={(e) => updateRequestEntry(index, "punchInTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
-                      </div>
-                      <div>
-                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch Out <span className="text-danger">*</span></label>
-                        <input type="time" value={entry.punchOutTime} onChange={(e) => updateRequestEntry(index, "punchOutTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Notes <span className="text-[0.6875rem] font-normal">(optional)</span></label>
-                        <input type="text" value={entry.notes} onChange={(e) => updateRequestEntry(index, "notes", e.target.value)} placeholder="Reason for backdated entry..." className="form-control !rounded-md !text-[0.8125rem]" />
-                      </div>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">From date <span className="text-danger">*</span></label>
+                    <input type="date" value={requestForm.fromDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestForm("fromDate", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
                   </div>
-                ))}
+                  <div>
+                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">To date <span className="text-danger">*</span></label>
+                    <input type="date" value={requestForm.toDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestForm("toDate", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
+                  </div>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={addRequestEntry}
-                  className="w-full py-2.5 border-2 border-dashed border-defaultborder rounded-md text-[#8c9097] hover:border-primary hover:text-primary flex items-center justify-center gap-2 transition-colors text-[0.8125rem]"
-                >
-                  <i className="ri-add-line" /> Add Another Entry
-                </button>
+                <div>
+                  <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Timezone (candidate&apos;s)</label>
+                  <div className="form-control !rounded-md !text-[0.8125rem] !bg-gray-50 dark:!bg-black/10">{requestForm.timezone || candidateTimezone}</div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch In <span className="text-danger">*</span></label>
+                    <input type="time" value={requestForm.punchInTime} onChange={(e) => updateRequestForm("punchInTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
+                  </div>
+                  <div>
+                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch Out <span className="text-danger">*</span></label>
+                    <input type="time" value={requestForm.punchOutTime} onChange={(e) => updateRequestForm("punchOutTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Notes <span className="text-[0.6875rem] font-normal">(optional)</span></label>
+                  <input type="text" value={requestForm.notes} onChange={(e) => updateRequestForm("notes", e.target.value)} placeholder="Reason for backdated entry..." className="form-control !rounded-md !text-[0.8125rem]" />
+                </div>
               </div>
 
               {/* Footer */}

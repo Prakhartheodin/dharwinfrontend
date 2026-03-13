@@ -411,7 +411,9 @@ export default function DashboardPage() {
       for (const app of apps) {
         const jRef = app.job;
         const jobId =
-          typeof jRef === "object" && jRef !== null ? jRef._id : jRef;
+          typeof jRef === "object" && jRef !== null
+            ? (jRef._id ?? (jRef as { id?: string }).id ?? jRef)
+            : jRef;
         if (jobId) {
           const key = String(jobId);
           map[key] = (map[key] ?? 0) + 1;
@@ -522,7 +524,10 @@ export default function DashboardPage() {
           const map: Record<string, number> = {};
           for (const app of apps) {
             const jRef = app.job;
-            const jobId = typeof jRef === "object" && jRef !== null ? jRef._id : jRef;
+            const jobId =
+              typeof jRef === "object" && jRef !== null
+                ? (jRef._id ?? (jRef as { id?: string }).id ?? jRef)
+                : jRef;
             if (jobId) {
               map[String(jobId)] = (map[String(jobId)] ?? 0) + 1;
             }
