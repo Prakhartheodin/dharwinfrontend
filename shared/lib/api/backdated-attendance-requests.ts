@@ -141,3 +141,28 @@ export async function getBackdatedAttendanceRequestsByStudentId(
   );
   return data.data;
 }
+
+/** Create backdated attendance request for current user (Agent; no Student). */
+export async function createBackdatedAttendanceRequestMe(body: {
+  attendanceEntries: Array<{
+    date: string;
+    punchIn: string;
+    punchOut?: string | null;
+    timezone?: string;
+  }>;
+  notes?: string;
+}): Promise<{ success: boolean; data: BackdatedAttendanceRequest }> {
+  const { data } = await apiClient.post<{ success: boolean; data: BackdatedAttendanceRequest }>(
+    `${BACKDATED_API}/me`,
+    body
+  );
+  return data;
+}
+
+/** Get backdated attendance requests for current user (Agent; no Student). */
+export async function getBackdatedAttendanceRequestsMe(
+  params?: { status?: string; sortBy?: string; limit?: number; page?: number }
+): Promise<BackdatedListResponse["data"]> {
+  const { data } = await apiClient.get<BackdatedListResponse>(`${BACKDATED_API}/me`, { params });
+  return data.data;
+}

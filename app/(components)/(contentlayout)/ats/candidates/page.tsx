@@ -1886,7 +1886,12 @@ const Candidates = () => {
                 type="button"
             className="hs-dropdown-toggle ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 rounded-md p-1"
             data-hs-overlay="#candidate-preview-panel"
-            onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }}
+            onClick={() => {
+              const el = document.querySelector('#candidate-preview-panel');
+              if (el) (window as any).HSOverlay?.close(el);
+              setPreviewCandidate(null);
+              setViewDetailTab('personal');
+            }}
           >
             <span className="sr-only">Close</span>
             <svg className="w-3.5 h-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2190,7 +2195,12 @@ const Candidates = () => {
                   type="button"
                   className="ti-btn ti-btn-light w-full"
                   data-hs-overlay="#candidate-preview-panel"
-                  onClick={() => { setPreviewCandidate(null); setViewDetailTab('personal') }}
+                  onClick={() => {
+                    const el = document.querySelector('#candidate-preview-panel');
+                    if (el) (window as any).HSOverlay?.close(el);
+                    setPreviewCandidate(null);
+                    setViewDetailTab('personal');
+                  }}
                 >
                   Close
                 </button>

@@ -30,6 +30,22 @@ const CONTENT_TYPES = [
   { value: "video", label: "Video" },
 ]
 
+/** ISO 639-1 codes for YouTube video search language */
+const VIDEO_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "hi", label: "Hindi" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "pt", label: "Portuguese" },
+  { value: "ar", label: "Arabic" },
+  { value: "zh", label: "Chinese" },
+  { value: "ja", label: "Japanese" },
+  { value: "te", label: "Telugu" },
+  { value: "ta", label: "Tamil" },
+  { value: "mr", label: "Marathi" },
+]
+
 const TEMPLATE_OPTIONS = [
   { id: "word", label: "Word (DOCX)", file: "course-template.docx", icon: "ri-file-word-2-line" },
   { id: "pdf", label: "PDF", file: "course-template.pdf", icon: "ri-file-pdf-line" },
@@ -89,6 +105,7 @@ export default function CreateModuleWithAIPage() {
   const [numEssays, setNumEssays] = useState(1)
   const [questionsPerEssay, setQuestionsPerEssay] = useState(3)
   const [generatingFromTitle, setGeneratingFromTitle] = useState(false)
+  const [videoLanguage, setVideoLanguage] = useState("en")
 
   const toggleTitleOnlyContentType = (value: string) => {
     setTitleOnlyContentTypes((prev) =>
@@ -289,6 +306,7 @@ export default function CreateModuleWithAIPage() {
         questionsPerQuiz,
         numEssays,
         questionsPerEssay,
+        videoLanguage: videoLanguage || "en",
       })) {
         if (ev.step === "error") {
           setError(ev.message ?? "Generation failed")
@@ -372,6 +390,7 @@ export default function CreateModuleWithAIPage() {
       topic: topic.trim(),
       skillLevel,
       contentTypes: contentTypes.length ? contentTypes : ["blog", "quiz", "essay", "video"],
+      videoLanguage: videoLanguage || "en",
     }
     if (pdfText.trim()) params.pdfText = pdfText.trim()
     if (links.length) params.videoLinks = links
@@ -654,6 +673,27 @@ export default function CreateModuleWithAIPage() {
                       })}
                     </div>
                   </div>
+
+                  {titleOnlyContentTypes.includes("video") && (
+                    <div>
+                      <label className="form-label">Video search language</label>
+                      <select
+                        className="form-control max-w-xs"
+                        value={videoLanguage}
+                        onChange={(e) => setVideoLanguage(e.target.value)}
+                        disabled={outlineLoading || generatingFromTitle}
+                      >
+                        {VIDEO_LANGUAGE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-1">
+                        YouTube results will be biased toward this language.
+                      </p>
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <button
@@ -1184,6 +1224,27 @@ export default function CreateModuleWithAIPage() {
                     Video: fetches from YouTube if no links provided. Blog, Quiz, and Essay are AI-generated.
                   </p>
                 </div>
+
+                {contentTypes.includes("video") && (
+                  <div>
+                    <label className="form-label">Video search language</label>
+                    <select
+                      className="form-control max-w-xs"
+                      value={videoLanguage}
+                      onChange={(e) => setVideoLanguage(e.target.value)}
+                      disabled={generating}
+                    >
+                      {VIDEO_LANGUAGE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-1">
+                      YouTube results will be biased toward this language.
+                    </p>
+                  </div>
+                )}
 
                 {error && (
                   <div className="rounded-lg p-4 bg-danger/10 border border-danger/30 text-danger">

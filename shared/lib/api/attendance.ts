@@ -25,6 +25,8 @@ export interface AttendanceRecord {
   timezone?: string;
   notes?: string;
   status: string;
+  /** When status is Leave: casual, sick, or unpaid */
+  leaveType?: string | null;
   isActive?: boolean;
 }
 
@@ -87,19 +89,25 @@ export async function punchOutAttendance(
   return data;
 }
 
+/** Attendance identity: student (with optional type) or user (Agent, no Student). */
+export type AttendanceIdentity =
+  | ({ id: string; type?: "student"; user: { id: string; name: string; email: string }; [key: string]: unknown })
+  | { id: string; type: "user"; user: { id: string; name: string; email: string } };
+
 /**
- * Get current user's student profile for attendance (punch in/out).
- * Auto-creates Student for Candidate, Agent, and other non-admin roles.
+ * Get current user's attendance identity (student or user for Agent).
+ * Students/Candidates: returns Student (type 'student' or omitted). Agents without Student: returns user identity (type 'user').
  * Returns null if user is admin (admins don't fill attendance for themselves).
+ * Throws on 401/5xx so the page can show an error; only 404 is treated as "no identity".
  */
-export async function getMyStudentForAttendance(): Promise<{ id: string; user: { id: string; name: string; email: string }; [key: string]: unknown } | null> {
+export async function getMyStudentForAttendance(): Promise<AttendanceIdentity | null> {
   try {
-    const { data } = await apiClient.get<{ id: string; user: { id: string; name: string; email: string }; [key: string]: unknown }>(
-      "/training/attendance/me"
-    );
+    const { data } = await apiClient.get<AttendanceIdentity & { _id?: string }>("/training/attendance/me");
     return data;
-  } catch {
-    return null;
+  } catch (e: unknown) {
+    const status = (e as { response?: { status?: number } })?.response?.status;
+    if (status === 404) return null;
+    throw e;
   }
 }
 
@@ -107,6 +115,48 @@ export async function getPunchInOutStatus(studentId: string): Promise<PunchStatu
   const { data } = await apiClient.get<PunchStatusResponse>(
     `/training/attendance/status/${studentId}`
   );
+  return data;
+}
+
+/** Punch in for current user (Agent; user-based attendance). */
+export async function punchInAttendanceMe(body?: PunchInBody): Promise<{ success: boolean; data: AttendanceRecord }> {
+  const { data } = await apiClient.post<{ success: boolean; data: AttendanceRecord }>(
+    "/training/attendance/punch-in/me",
+    body ?? {}
+  );
+  return data;
+}
+
+/** Punch out for current user (Agent; user-based attendance). */
+export async function punchOutAttendanceMe(body?: PunchOutBody): Promise<{ success: boolean; data: AttendanceRecord }> {
+  const { data } = await apiClient.post<{ success: boolean; data: AttendanceRecord }>(
+    "/training/attendance/punch-out/me",
+    body ?? {}
+  );
+  return data;
+}
+
+/** Get punch status for current user (Agent; user-based attendance). */
+export async function getPunchInOutStatusMe(): Promise<PunchStatusResponse> {
+  const { data } = await apiClient.get<PunchStatusResponse>("/training/attendance/status/me");
+  return data;
+}
+
+/** List attendance for current user (Agent; user-based attendance). */
+export async function listAttendanceMe(params?: ListAttendanceParams): Promise<ListAttendanceResponse> {
+  const { data } = await apiClient.get<ListAttendanceResponse>("/training/attendance/student/me", {
+    params,
+  });
+  return data;
+}
+
+/** Get attendance statistics for current user (Agent; user-based attendance). */
+export async function getAttendanceStatisticsMe(
+  params?: { startDate?: string; endDate?: string }
+): Promise<AttendanceStatistics> {
+  const { data } = await apiClient.get<AttendanceStatistics>("/training/attendance/statistics/me", {
+    params,
+  });
   return data;
 }
 

@@ -10,6 +10,7 @@ import * as categoriesApi from '@/shared/lib/api/categories'
 import type { Category } from '@/shared/lib/api/categories'
 
 interface CategoryRow extends Category {
+  /** Display as "Modules" column; from API moduleCount or 0 */
   courses: number
   categoryName: string
   dateCreated: string
@@ -44,7 +45,7 @@ const TrainingCategories = () => {
         ...cat,
         categoryName: cat.name,
         dateCreated: new Date(cat.createdAt).toISOString().split('T')[0],
-        courses: 0, // API doesn't provide courses count, set to 0 for now
+        courses: typeof cat.moduleCount === 'number' ? cat.moduleCount : 0,
       }))
       
       setCategories(formattedCategories)

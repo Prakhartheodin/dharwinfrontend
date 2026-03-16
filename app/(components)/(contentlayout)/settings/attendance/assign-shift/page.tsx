@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { listStudents, assignShiftToStudents, type Student } from "@/shared/lib/api/students";
 import { getAllShifts, type Shift } from "@/shared/lib/api/shifts";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
@@ -99,7 +98,14 @@ export default function SettingsAttendanceAssignShiftPage() {
     setAssigning(true);
     setError(null);
     try {
-      const ids = selectedStudents.map((s) => s.value);
+      const ids = selectedStudents.some((s) => s.value === SELECT_ALL)
+        ? students.map((s) => s.value).filter(Boolean)
+        : selectedStudents.map((s) => s.value).filter((id) => id !== SELECT_ALL);
+      if (ids.length === 0) {
+        await Swal.fire({ icon: "warning", title: "No students", text: "Select at least one student", confirmButtonText: "OK" });
+        setAssigning(false);
+        return;
+      }
       await assignShiftToStudents(ids, selectedShiftId);
       await Swal.fire({ icon: "success", title: "Success", text: "Shift assigned to selected students", confirmButtonText: "OK" });
       fetchStudents();
@@ -116,8 +122,16 @@ export default function SettingsAttendanceAssignShiftPage() {
     return (
       <>
         <Seo title="Assign Shift" />
-        <Pageheader currentpage="Assign Shift" activepage="Settings" mainpage="Attendance" />
-        <div className="box"><div className="box-body py-8 text-center text-defaulttextcolor/70">Loading…</div></div>
+        <div className="relative mt-4 w-full">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5 ring-1 ring-primary/10">
+                <i className="ri-loader-4-line animate-spin text-4xl" />
+              </div>
+              <p className="text-sm font-semibold text-defaulttextcolor">Loading…</p>
+            </div>
+          </div>
+        </div>
       </>
     );
   }
@@ -126,12 +140,15 @@ export default function SettingsAttendanceAssignShiftPage() {
     return (
       <>
         <Seo title="Assign Shift" />
-        <Pageheader currentpage="Assign Shift" activepage="Settings" mainpage="Attendance" />
-        <div className="box">
-          <div className="box-body py-12 text-center">
-            <i className="ri-error-warning-line text-5xl text-danger mb-4" />
-            <h3 className="text-xl font-semibold text-defaulttextcolor mb-2">Access Denied</h3>
-            <p className="text-defaulttextcolor/70">Only administrators can assign shifts.</p>
+        <div className="relative mt-4 w-full">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-danger/10 text-danger mb-5 ring-1 ring-danger/20">
+                <i className="ri-error-warning-line text-5xl" />
+              </div>
+              <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can assign shifts to students.</p>
+            </div>
           </div>
         </div>
       </>
@@ -141,76 +158,125 @@ export default function SettingsAttendanceAssignShiftPage() {
   return (
     <>
       <Seo title="Assign Shift" />
-      <Pageheader currentpage="Assign Shift" activepage="Settings" mainpage="Attendance" />
-      <div className="box">
-        <div className="box-header">
-          <div className="box-title">Assign Shift to Students</div>
-        </div>
-        <div className="box-body">
-          {error && <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-4 text-danger text-sm">{error}</div>}
+      <div className="relative mt-4 space-y-6 min-h-[40vh] w-full">
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]" aria-hidden />
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(248,250,252,0.6),transparent_30%)] dark:bg-[linear-gradient(to_bottom,rgba(15,23,42,0.4),transparent_30%)]" aria-hidden />
 
-          {loading ? (
-            <div className="py-8 text-center text-defaulttextcolor/70">Loading…</div>
-          ) : (
-            <>
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Select Students <span className="text-danger">*</span></label>
-                <Select
-                  isMulti
-                  options={studentOptions}
-                  value={selectedStudents}
-                  onChange={(sel: StudentOption[] | null) => {
-                    if (!sel?.length) {
-                      setSelectedStudents([]);
-                      return;
-                    }
-                    const hasAll = sel.some((o) => o.value === SELECT_ALL);
-                    if (hasAll) {
-                      if (selectedStudents.length === students.length) setSelectedStudents([]);
-                      else setSelectedStudents(students);
-                    } else {
-                      setSelectedStudents(sel as StudentOption[]);
-                    }
-                  }}
-                  placeholder="Select students..."
-                  closeMenuOnSelect={false}
-                  className="react-select-container"
-                  classNamePrefix="react-select"
-                  isClearable
-                  isSearchable
-                />
-                {selectedStudents.length > 0 && <p className="mt-2 text-sm text-defaulttextcolor/70">{selectedStudents.length} student(s) selected</p>}
+        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden transition-shadow duration-300 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none">
+          <div className="flex items-center gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20" aria-hidden>
+              <i className="ri-time-line text-2xl" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Shift</h2>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign a shift to one or more students</p>
+            </div>
+          </div>
+          <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+            {error && (
+              <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
+                {error}
               </div>
+            )}
 
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Select Shift <span className="text-danger">*</span></label>
-                <select
-                  value={selectedShiftId}
-                  onChange={(e) => setSelectedShiftId(e.target.value)}
-                  className="form-control !w-auto min-w-[200px]"
-                >
-                  <option value="">-- Choose shift --</option>
-                  {shifts.map((s) => (
-                    <option key={s._id ?? s.id} value={s._id ?? s.id}>
-                      {s.name} ({s.startTime}–{s.endTime} {s.timezone})
-                    </option>
-                  ))}
-                </select>
-                {shifts.length === 0 && <p className="mt-2 text-sm text-warning">No active shifts. Create shifts in Manage Shifts first.</p>}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/10">
+                  <i className="ri-loader-4-line animate-spin text-3xl" />
+                </div>
+                <p className="text-sm font-medium text-defaulttextcolor/80">Loading students and shifts…</p>
               </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select Students <span className="text-danger">*</span></label>
+                  <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
+                    <Select
+                      isMulti
+                      options={studentOptions}
+                      value={selectedStudents}
+                      onChange={(sel: unknown) => {
+                        const value = (sel as StudentOption[] | null) ?? [];
+                        if (!value.length) {
+                          setSelectedStudents([]);
+                          return;
+                        }
+                        const hasAll = value.some((o) => o.value === SELECT_ALL);
+                        if (hasAll) {
+                          if (selectedStudents.length === students.length) setSelectedStudents([]);
+                          else setSelectedStudents(students);
+                        } else {
+                          setSelectedStudents(value);
+                        }
+                      }}
+                      placeholder="Select students..."
+                      closeMenuOnSelect={false}
+                      className="react-select-container assign-shift-select"
+                      classNamePrefix="react-select"
+                      isClearable
+                      isSearchable
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuPosition="fixed"
+                    />
+                  </div>
+                  {selectedStudents.length > 0 && (
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} student(s) selected</p>
+                  )}
+                </div>
 
-              <button
-                type="button"
-                onClick={handleAssign}
-                disabled={assigning || selectedStudents.length === 0 || !selectedShiftId}
-                className="ti-btn ti-btn-primary"
-              >
-                {assigning ? <><i className="ri-loader-4-line animate-spin me-2" /> Assigning…</> : <><i className="ri-calendar-check-line me-2" /> Assign Shift</>}
-              </button>
-            </>
-          )}
-        </div>
+                <div>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select Shift <span className="text-danger">*</span></label>
+                  <select
+                    value={selectedShiftId}
+                    onChange={(e) => setSelectedShiftId(e.target.value)}
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[2.75rem]"
+                  >
+                    <option value="">-- Choose shift --</option>
+                    {shifts.map((s) => (
+                      <option key={s._id ?? s.id} value={s._id ?? s.id}>
+                        {s.name} ({s.startTime}–{s.endTime} {s.timezone})
+                      </option>
+                    ))}
+                  </select>
+                  {shifts.length === 0 && (
+                    <p className="mt-1.5 text-xs text-warning">No active shifts. Create shifts in Manage Shifts first.</p>
+                  )}
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAssign}
+                    disabled={assigning || selectedStudents.length === 0 || !selectedShiftId}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
+                  >
+                    {assigning ? (
+                      <><i className="ri-loader-4-line animate-spin text-lg" /> Assigning…</>
+                    ) : (
+                      <><i className="ri-calendar-check-line text-lg" /> Assign Shift</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
       </div>
+      <style jsx>{`
+        .assign-shift-select :global(.react-select__control) {
+          border: none;
+          min-height: 2.75rem;
+          background: transparent;
+          box-shadow: none;
+        }
+        .assign-shift-select :global(.react-select__control--is-focused) {
+          box-shadow: none;
+        }
+        .assign-shift-select :global(.react-select__placeholder),
+        .assign-shift-select :global(.react-select__input-container) {
+          color: inherit;
+        }
+      `}</style>
     </>
   );
 }
