@@ -28,8 +28,11 @@ import { listProjects, type Project } from "@/shared/lib/api/projects";
 import {
   getMyStudentForAttendance,
   getPunchInOutStatus,
+  getPunchInOutStatusMe,
   punchInAttendance,
   punchOutAttendance,
+  punchInAttendanceMe,
+  punchOutAttendanceMe,
   type PunchStatusResponse,
 } from "@/shared/lib/api/attendance";
 import {
@@ -45,6 +48,10 @@ import {
   getTrainingAnalytics,
   type TrainingAnalyticsResponse,
 } from "@/shared/lib/api/analytics";
+import {
+  ATTENDANCE_PERMISSION_PREFIX,
+  hasPermissionForPath,
+} from "@/shared/lib/route-permissions";
 import type { ApexOptions } from "apexcharts";
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
 
@@ -307,7 +314,7 @@ const NOTIF_ICONS: Record<string, { icon: string; color: string }> = {
 export default function DashboardPage() {
   const searchParams = useSearchParams();
   const unauthorized = searchParams.get("unauthorized") === "1";
-  const { user } = useAuth();
+  const { user, permissions, permissionsLoaded, isAdministrator } = useAuth();
 
   /* ---- State ---- */
   const [atsData, setAtsData] = useState<AtsAnalyticsResponse | null>(null);
@@ -342,6 +349,7 @@ export default function DashboardPage() {
 
   const [attendanceStudent, setAttendanceStudent] = useState<{
     id: string;
+    type?: "user" | "student";
     user: { id: string; name: string; email: string };
   } | null>(null);
   const [punchStatus, setPunchStatus] = useState<PunchStatusResponse | null>(
@@ -351,6 +359,20 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  /* Show punch in/out in welcome header for non-admin users who have attendance permission (candidate, student, agent, etc.) */
+  const showAttendancePunch =
+    !isAdministrator &&
+    permissionsLoaded &&
+    hasPermissionForPath(permissions ?? [], ATTENDANCE_PERMISSION_PREFIX) &&
+    attendanceStudent != null;
+
+  /* Only fetch ATS data (jobs, applications, analytics, candidates) when user has permission to avoid 403 for non-ATS roles */
+  const hasAtsJobsAccess =
+    permissionsLoaded &&
+    (hasPermissionForPath(permissions ?? [], "ats.jobs:") || hasPermissionForPath(permissions ?? [], "ats.analytics:"));
+  const hasAtsCandidatesAccess =
+    permissionsLoaded && hasPermissionForPath(permissions ?? [], "ats.candidates:");
 
   /* ---- Data fetching ---- */
   const fetchDashboard = useCallback(async () => {
@@ -370,12 +392,12 @@ export default function DashboardPage() {
       unreadRes,
       studentRes,
     ] = await Promise.allSettled([
-      getAtsAnalytics(),
+      hasAtsJobsAccess ? getAtsAnalytics() : Promise.resolve(null as AtsAnalyticsResponse | null),
       getTrainingAnalytics(),
-      listCandidates({ limit: 5 }),
+      hasAtsCandidatesAccess ? listCandidates({ limit: 5 }) : Promise.resolve({ results: [] as CandidateListItem[] }),
       listTasks({ assignedToMe: true, limit: 50 }),
-      listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }),
-      listJobApplications({ limit: 500 }),
+      hasAtsJobsAccess ? listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }) : Promise.resolve({ results: [] as Job[] }),
+      hasAtsJobsAccess ? listJobApplications({ limit: 500 }) : Promise.resolve({ results: [] as JobApplication[] }),
       listProjects({ limit: 100 }),
       listMeetings({ limit: 5, sortBy: "scheduledAt:asc", status: "scheduled" }),
       getNotifications({ limit: 5 }),
@@ -435,9 +457,13 @@ export default function DashboardPage() {
     if (unreadRes.status === "fulfilled") setUnreadCount(unreadRes.value);
 
     if (studentRes.status === "fulfilled" && studentRes.value) {
-      setAttendanceStudent(studentRes.value as { id: string; user: { id: string; name: string; email: string } });
+      const identity = studentRes.value as { id: string; type?: "user" | "student"; user: { id: string; name: string; email: string } };
+      setAttendanceStudent(identity);
       try {
-        const status = await getPunchInOutStatus(studentRes.value.id);
+        const status =
+          identity.type === "user"
+            ? await getPunchInOutStatusMe()
+            : await getPunchInOutStatus(identity.id);
         setPunchStatus(status);
       } catch {
         /* silent */
@@ -445,7 +471,7 @@ export default function DashboardPage() {
     }
 
     setLoading(false);
-  }, []);
+  }, [hasAtsJobsAccess, hasAtsCandidatesAccess]);
 
   useEffect(() => {
     fetchDashboard();
@@ -509,8 +535,9 @@ export default function DashboardPage() {
     };
   }, [statBoxModal]);
 
-  /* Refetch Recent Jobs when user returns to the tab so the list stays up to date */
+  /* Refetch Recent Jobs when user returns to the tab (only if user has ATS access) */
   useEffect(() => {
+    if (!hasAtsJobsAccess) return;
     const onFocus = async () => {
       try {
         const [jobsRes, applicationsRes] = await Promise.allSettled([
@@ -540,20 +567,31 @@ export default function DashboardPage() {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, []);
+  }, [hasAtsJobsAccess]);
 
   /* ---- Punch in/out handler ---- */
   const handlePunch = async () => {
     if (!attendanceStudent) return;
     setPunchLoading(true);
     try {
-      if (punchStatus?.isPunchedIn) {
-        await punchOutAttendance(attendanceStudent.id);
+      const tz = typeof Intl !== "undefined" && Intl.DateTimeFormat?.().resolvedOptions?.().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
+      if (attendanceStudent.type === "user") {
+        if (punchStatus?.isPunchedIn) {
+          await punchOutAttendanceMe({ punchOutTime: new Date().toISOString() });
+        } else {
+          await punchInAttendanceMe({ timezone: tz });
+        }
+        const status = await getPunchInOutStatusMe();
+        setPunchStatus(status);
       } else {
-        await punchInAttendance(attendanceStudent.id);
+        if (punchStatus?.isPunchedIn) {
+          await punchOutAttendance(attendanceStudent.id, { punchOutTime: new Date().toISOString() });
+        } else {
+          await punchInAttendance(attendanceStudent.id, { timezone: tz });
+        }
+        const status = await getPunchInOutStatus(attendanceStudent.id);
+        setPunchStatus(status);
       }
-      const status = await getPunchInOutStatus(attendanceStudent.id);
-      setPunchStatus(status);
     } catch {
       /* silent */
     } finally {
@@ -618,11 +656,35 @@ export default function DashboardPage() {
               {getTodayDisplay()}
             </span>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4 flex-shrink-0">
+            {/* Punch In / Punch Out - for non-admin users with attendance permission (candidate, student, agent, etc.) */}
+            {showAttendancePunch && (
+              <button
+                type="button"
+                onClick={handlePunch}
+                disabled={punchLoading}
+                className={`ti-btn ti-btn-sm shrink-0 whitespace-nowrap min-w-[7rem] px-3 ${punchStatus?.isPunchedIn ? "ti-btn-danger" : "ti-btn-success"}`}
+                title={punchStatus?.isPunchedIn ? "Punch out" : "Punch in"}
+              >
+                {punchLoading ? (
+                  <i className="ti ti-loader-alt animate-spin text-[1rem]" />
+                ) : punchStatus?.isPunchedIn ? (
+                  <>
+                    <i className="ti ti-logout text-[1rem] me-1.5" />
+                    Punch Out
+                  </>
+                ) : (
+                  <>
+                    <i className="ti ti-login text-[1rem] me-1.5" />
+                    Punch In
+                  </>
+                )}
+              </button>
+            )}
             {/* Notifications */}
             <Link
               href="/pages/notifications"
-              className="relative ti-btn ti-btn-sm ti-btn-light"
+              className="relative ti-btn ti-btn-sm ti-btn-light shrink-0 inline-flex items-center justify-center"
             >
               <i className="ti ti-bell text-[1.1rem]"></i>
               {unreadCount > 0 && (

@@ -1,11 +1,11 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Link from "next/link";
 import * as attendanceApi from "@/shared/lib/api/attendance";
-import { createBackdatedAttendanceRequest } from "@/shared/lib/api/backdated-attendance-requests";
+import { createBackdatedAttendanceRequest, createBackdatedAttendanceRequestMe } from "@/shared/lib/api/backdated-attendance-requests";
+import { createLeaveRequest } from "@/shared/lib/api/leave-requests";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -43,6 +43,14 @@ function getHolidayNameFromNotes(notes?: string): string {
   if (!notes?.trim()) return "";
   const prefix = "Holiday: ";
   return notes.trim().startsWith(prefix) ? notes.trim().slice(prefix.length).trim() : notes.trim();
+}
+
+/** Get leave type (casual/sick/unpaid) from record: leaveType field or parse "Leave: Casual" from notes. */
+function getLeaveTypeFromRecord(r: { leaveType?: string | null; notes?: string | null }): string {
+  if (r.leaveType && ["casual", "sick", "unpaid"].includes(r.leaveType)) return r.leaveType;
+  const notes = r.notes?.trim() || "";
+  const match = notes.match(/^Leave:\s*(Casual|Sick|Unpaid)/i);
+  return match ? match[1].toLowerCase() : "";
 }
 
 function formatTime(dateStr: string): string {
@@ -107,9 +115,14 @@ const MONTH_NAMES = [
 
 const DAY_HEADERS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
+/** Calendar year dropdown range (inclusive) */
+const CALENDAR_YEAR_START = 2020;
+const CALENDAR_YEAR_END = 2150;
+
 export default function AttendanceTracking() {
   const { user } = useAuth();
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
+  const [isUserBased, setIsUserBased] = useState(false);
   const [myWeekOff, setMyWeekOff] = useState<string[]>([]);
   const [myShift, setMyShift] = useState<{ name?: string; startTime?: string; endTime?: string; timezone?: string } | null>(null);
   const [loadingStudent, setLoadingStudent] = useState(true);
@@ -150,38 +163,79 @@ export default function AttendanceTracking() {
     timezone: "UTC",
   });
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [showLeaveRequestModal, setShowLeaveRequestModal] = useState(false);
+  const [leaveRequestForm, setLeaveRequestForm] = useState<{ fromDate: string; toDate: string; leaveType: "casual" | "sick" | "unpaid"; notes: string }>({
+    fromDate: "",
+    toDate: "",
+    leaveType: "casual",
+    notes: "",
+  });
+  const [submittingLeaveRequest, setSubmittingLeaveRequest] = useState(false);
 
-  /* ─── data fetching (unchanged logic) ─── */
-  const fetchStatus = useCallback(async (studentId: string) => {
+  /* ─── data fetching ─── */
+  const fetchStatus = useCallback(async (id: string) => {
     setStatusLoading(true);
-    try { const res = await attendanceApi.getPunchInOutStatus(studentId); setStatus(res); } catch { setStatus(null); } finally { setStatusLoading(false); }
-  }, []);
+    try {
+      const res = isUserBased ? await attendanceApi.getPunchInOutStatusMe() : await attendanceApi.getPunchInOutStatus(id);
+      setStatus(res);
+    } catch {
+      setStatus(null);
+    } finally {
+      setStatusLoading(false);
+    }
+  }, [isUserBased]);
 
-  const fetchList = useCallback(async (studentId: string, params?: attendanceApi.ListAttendanceParams) => {
-    setListLoading(true);
-    try { const res = await attendanceApi.listAttendance(studentId, params ?? { limit: 500, page: 1 }); setAttendanceList(res.results ?? []); } catch { setAttendanceList([]); } finally { setListLoading(false); }
-  }, []);
+  const fetchList = useCallback(
+    async (id: string, params?: attendanceApi.ListAttendanceParams) => {
+      setListLoading(true);
+      try {
+        const res = isUserBased
+          ? await attendanceApi.listAttendanceMe(params ?? { limit: 500, page: 1 })
+          : await attendanceApi.listAttendance(id, params ?? { limit: 500, page: 1 });
+        setAttendanceList(res.results ?? []);
+      } catch {
+        setAttendanceList([]);
+      } finally {
+        setListLoading(false);
+      }
+    },
+    [isUserBased]
+  );
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     const load = async () => {
-      setLoadingStudent(true); setError(null);
+      setLoadingStudent(true);
+      setError(null);
       try {
-        const student = await attendanceApi.getMyStudentForAttendance();
-        if (!cancelled && student?.id) {
-          setMyStudentId(student.id);
-          const wo = (student as { weekOff?: string[] }).weekOff;
-          if (Array.isArray(wo)) setMyWeekOff(wo);
-          const shift = (student as { shift?: { name?: string; startTime?: string; endTime?: string; timezone?: string } }).shift;
-          setMyShift(shift && typeof shift === "object" ? shift : null);
+        const identity = await attendanceApi.getMyStudentForAttendance();
+        const id = identity && ((identity as { id?: string }).id ?? (identity as { _id?: string })._id);
+        if (!cancelled && id) {
+          setMyStudentId(id);
+          setIsUserBased(identity.type === "user");
+          if (identity.type !== "user") {
+            const wo = (identity as { weekOff?: string[] }).weekOff;
+            if (Array.isArray(wo)) setMyWeekOff(wo);
+            const shift = (identity as { shift?: { name?: string; startTime?: string; endTime?: string; timezone?: string } }).shift;
+            setMyShift(shift && typeof shift === "object" ? shift : null);
+          }
         }
       } catch (e: unknown) {
-        if (!cancelled) { const s = (e as { response?: { status?: number } })?.response?.status; if (s !== 404) setError("Failed to load your profile."); }
-      } finally { if (!cancelled) setLoadingStudent(false); }
+        if (!cancelled) {
+          const s = (e as { response?: { status?: number } })?.response?.status;
+          if (s === 401) setError("Session expired or not authenticated. Please log in again.");
+          else if (s !== 404) setError("Failed to load your profile.");
+        }
+      } finally {
+        if (!cancelled) setLoadingStudent(false);
+      }
     };
     load();
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
 
   const refetchMyMonth = useCallback(() => {
     if (!myStudentId) return;
@@ -222,8 +276,12 @@ export default function AttendanceTracking() {
 
   useEffect(() => {
     if (!myStudentId) return;
-    attendanceApi.getAttendanceStatistics(myStudentId).then(setSummaryStats).catch(() => setSummaryStats(null));
-  }, [myStudentId]);
+    if (isUserBased) {
+      attendanceApi.getAttendanceStatisticsMe().then(setSummaryStats).catch(() => setSummaryStats(null));
+    } else {
+      attendanceApi.getAttendanceStatistics(myStudentId).then(setSummaryStats).catch(() => setSummaryStats(null));
+    }
+  }, [myStudentId, isUserBased]);
 
   useEffect(() => { if (toastMessage) { const t = setTimeout(() => setToastMessage(null), 5000); return () => clearTimeout(t); } }, [toastMessage]);
 
@@ -240,17 +298,41 @@ export default function AttendanceTracking() {
   }, [status?.isPunchedIn]);
 
   const handlePunchIn = async () => {
-    if (!myStudentId) return; setPunchLoading(true); setError(null);
-    try { await attendanceApi.punchInAttendance(myStudentId, { timezone: getDetectedTimezone() }); await fetchStatus(myStudentId); refetchMyMonth(); }
-    catch (e: unknown) { setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch in failed."); }
-    finally { setPunchLoading(false); }
+    if (!myStudentId) return;
+    setPunchLoading(true);
+    setError(null);
+    try {
+      if (isUserBased) {
+        await attendanceApi.punchInAttendanceMe({ timezone: getDetectedTimezone() });
+      } else {
+        await attendanceApi.punchInAttendance(myStudentId, { timezone: getDetectedTimezone() });
+      }
+      await fetchStatus(myStudentId);
+      refetchMyMonth();
+    } catch (e: unknown) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch in failed.");
+    } finally {
+      setPunchLoading(false);
+    }
   };
 
   const handlePunchOut = async () => {
-    if (!myStudentId) return; setPunchLoading(true); setError(null);
-    try { await attendanceApi.punchOutAttendance(myStudentId, { punchOutTime: new Date().toISOString() }); await fetchStatus(myStudentId); refetchMyMonth(); }
-    catch (e: unknown) { setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch out failed."); }
-    finally { setPunchLoading(false); }
+    if (!myStudentId) return;
+    setPunchLoading(true);
+    setError(null);
+    try {
+      if (isUserBased) {
+        await attendanceApi.punchOutAttendanceMe({ punchOutTime: new Date().toISOString() });
+      } else {
+        await attendanceApi.punchOutAttendance(myStudentId, { punchOutTime: new Date().toISOString() });
+      }
+      await fetchStatus(myStudentId);
+      refetchMyMonth();
+    } catch (e: unknown) {
+      setError((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Punch out failed.");
+    } finally {
+      setPunchLoading(false);
+    }
   };
 
   /* Backdated request handlers - From/To date range, candidate timezone, skip weekends */
@@ -324,16 +406,79 @@ export default function AttendanceTracking() {
     }
     setSubmittingRequest(true);
     try {
-      await createBackdatedAttendanceRequest(myStudentId, {
+      const payload = {
         attendanceEntries: attendanceEntries.map((e) => ({ date: e.date, punchIn: e.punchIn, punchOut: e.punchOut, timezone: e.timezone })),
         notes: notes.trim() || undefined,
-      });
+      };
+      if (isUserBased) {
+        await createBackdatedAttendanceRequestMe(payload);
+      } else {
+        await createBackdatedAttendanceRequest(myStudentId!, payload);
+      }
       await Swal.fire({ icon: "success", title: "Request Submitted", text: "An admin will review it shortly.", confirmButtonText: "OK" });
       setShowRequestModal(false);
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to submit request.";
       await Swal.fire({ icon: "error", title: "Error", text: msg });
     } finally { setSubmittingRequest(false); }
+  };
+
+  /* Leave request handlers - date range, leave type, notes; skip weekends/week-off like backdated */
+  const openLeaveRequestModal = () => {
+    setLeaveRequestForm({ fromDate: "", toDate: "", leaveType: "casual", notes: "" });
+    setShowLeaveRequestModal(true);
+  };
+  const updateLeaveRequestForm = (field: keyof typeof leaveRequestForm, value: string) => {
+    setLeaveRequestForm((prev) => ({ ...prev, [field]: value }));
+  };
+  const handleSubmitLeaveRequest = async () => {
+    if (!myStudentId) return;
+    const { fromDate, toDate, leaveType, notes } = leaveRequestForm;
+    if (!fromDate || !toDate) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Please select From date and To date." });
+      return;
+    }
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
+      return;
+    }
+    if (to < from) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "To date must be on or after From date." });
+      return;
+    }
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dates: string[] = [];
+    const current = new Date(from);
+    current.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    while (current <= end) {
+      if (!isWeekOffDay(current)) {
+        dates.push(`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    if (dates.length === 0) {
+      await Swal.fire({ icon: "warning", title: "No working days", text: "The selected range has no working days (weekends/week-off excluded)." });
+      return;
+    }
+    setSubmittingLeaveRequest(true);
+    try {
+      await createLeaveRequest(myStudentId, {
+        dates,
+        leaveType,
+        notes: notes.trim() || undefined,
+      });
+      await Swal.fire({ icon: "success", title: "Request Submitted", text: "Your leave request has been submitted. An admin will review it shortly.", confirmButtonText: "OK" });
+      setShowLeaveRequestModal(false);
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to submit leave request.";
+      await Swal.fire({ icon: "error", title: "Error", text: msg });
+    } finally {
+      setSubmittingLeaveRequest(false);
+    }
   };
 
   /* Admin data: canTrackAll = only for Administrator or students.manage (not for agents with attendance.manage) */
@@ -427,6 +572,29 @@ export default function AttendanceTracking() {
     downloadCsv(`my-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "PunchIn", label: "Punch In" }, { key: "PunchOut", label: "Punch Out" }, { key: "Duration", label: "Duration" }], rows);
   }, [attendanceList]);
 
+  /* List: sort by attendance date desc so leave appears on its actual date (not before) */
+  const sortedAttendanceList = useMemo(() => {
+    return [...attendanceList].sort((a, b) => {
+      const ta = new Date(a.date ?? 0).getTime();
+      const tb = new Date(b.date ?? 0).getTime();
+      if (tb !== ta) return tb - ta;
+      const pa = a.punchIn ? new Date(a.punchIn).getTime() : 0;
+      const pb = b.punchIn ? new Date(b.punchIn).getTime() : 0;
+      return pb - pa;
+    });
+  }, [attendanceList]);
+
+  /* List table: hide future leave and holidays (show only up to today) */
+  const listAttendanceForTable = useMemo(() => {
+    const todayKey = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
+    return sortedAttendanceList.filter((r) => {
+      const status = (r as { status?: string }).status;
+      if (status !== "Leave" && status !== "Holiday") return true;
+      const dateKey = getLocalDateKey(r.date ?? "");
+      return dateKey <= todayKey;
+    });
+  }, [sortedAttendanceList]);
+
   const exportTrackCsv = useCallback((list?: attendanceApi.AttendanceTrackItem[]) => {
     const data = list ?? trackList;
     const rows = data.map((row) => ({ Name: row.studentName, "Employee ID": row.employeeId ?? "", Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
@@ -446,32 +614,32 @@ export default function AttendanceTracking() {
   /* Calendar */
   const DAY_NAME_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> => {
+  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> => {
     const year = myCalendarYear; const month = myCalendarMonth;
     const firstDay = new Date(year, month, 1); const startDayOfWeek = firstDay.getDay();
     const lastDay = new Date(year, month + 1, 0); const daysInMonth = lastDay.getDate();
     const weekOffSet = new Set(myWeekOff.map((d) => d.trim()));
-    const byDate: Record<string, { present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; totalMs: number; holidayName: string }> = {};
+    const byDate: Record<string, { present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; totalMs: number; holidayName: string }> = {};
     attendanceList.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? ""); if (!dateKey) return;
       const hasOut = !!r.punchOut; const ms = (r.duration ?? 0) || 0;
       const recStatus = r.status;
-      if (!byDate[dateKey]) byDate[dateKey] = { present: false, incomplete: false, holiday: false, leave: false, absent: false, totalMs: 0, holidayName: "" };
+      if (!byDate[dateKey]) byDate[dateKey] = { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       if (recStatus === "Holiday") { byDate[dateKey].holiday = true; byDate[dateKey].holidayName = getHolidayNameFromNotes(r.notes) || "Holiday"; }
-      else if (recStatus === "Leave") { byDate[dateKey].leave = true; }
+      else if (recStatus === "Leave") { byDate[dateKey].leave = true; byDate[dateKey].leaveType = getLeaveTypeFromRecord(r); }
       else if (recStatus === "Absent") { byDate[dateKey].absent = true; }
       else if (hasOut) { byDate[dateKey].present = true; byDate[dateKey].totalMs += ms; }
       else { byDate[dateKey].incomplete = true; }
     });
-    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
-    for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, absent: false, weekOff: false, totalHours: 0, holidayName: "" });
+    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
+    for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, weekOff: false, totalHours: 0, holidayName: "" });
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, absent: false, totalMs: 0, holidayName: "" };
+      const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       const dayName = DAY_NAME_MAP[date.getDay()];
       const isWeekOff = weekOffSet.has(dayName) && !info.present && !info.holiday && !info.leave && !info.incomplete;
-      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((info.totalMs / 3600000) * 100) / 100, holidayName: info.holidayName });
+      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((info.totalMs / 3600000) * 100) / 100, holidayName: info.holidayName });
     }
     return cells;
   }, [attendanceList, myCalendarYear, myCalendarMonth, myWeekOff]);
@@ -482,11 +650,6 @@ export default function AttendanceTracking() {
   return (
     <Fragment>
       <Seo title={isCandidateOnly ? "Attendance" : "Attendance Tracking"} />
-      <Pageheader
-        currentpage={isCandidateOnly ? "Attendance" : "Attendance Tracking"}
-        activepage={isCandidateOnly ? "Attendance" : "Training Management"}
-        mainpage={isCandidateOnly ? "Attendance" : "Attendance Tracking"}
-      />
 
       {/* Sticky Active Banner */}
       {canPunch && status?.isPunchedIn && (
@@ -571,14 +734,26 @@ export default function AttendanceTracking() {
                       <i className="ri-fingerprint-line text-primary text-[1.1rem]" />
                       Time Clock
                     </div>
-                    <button
-                      type="button"
-                      onClick={openRequestModal}
-                      className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0"
-                      title="Backdate Request"
-                    >
-                      <i className="ri-calendar-check-line" />
-                    </button>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={openRequestModal}
+                        className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary"
+                        title="Request Backdated Attendance"
+                      >
+                        <i className="ri-calendar-check-line" />
+                      </button>
+                      {myStudentId && (
+                        <button
+                          type="button"
+                          onClick={openLeaveRequestModal}
+                          className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-secondary"
+                          title="Request Leave"
+                        >
+                          <i className="ri-hotel-bed-line" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="box-body">
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -614,26 +789,17 @@ export default function AttendanceTracking() {
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
-                            className="ti-btn ti-btn-success ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"
-                            onClick={handlePunchIn}
-                            disabled={punchLoading || !!status?.isPunchedIn}
+                            onClick={status?.isPunchedIn ? handlePunchOut : handlePunchIn}
+                            disabled={punchLoading}
+                            className={(status?.isPunchedIn ? "ti-btn-danger" : "ti-btn-success") + " ti-btn ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"}
+                            title={status?.isPunchedIn ? "Punch Out" : "Punch In"}
                           >
-                            {punchLoading && !status?.isPunchedIn ? (
-                              <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Punching In...</span>
+                            {punchLoading ? (
+                              <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> {status?.isPunchedIn ? "Punching Out..." : "Punching In..."}</span>
+                            ) : status?.isPunchedIn ? (
+                              <span className="inline-flex items-center gap-1.5"><i className="ri-logout-box-r-line" /> Punch Out</span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5"><i className="ri-login-box-line" /> Punch In</span>
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            className="ti-btn ti-btn-danger ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"
-                            onClick={handlePunchOut}
-                            disabled={punchLoading || !status?.isPunchedIn}
-                          >
-                            {punchLoading && status?.isPunchedIn ? (
-                              <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> Punching Out...</span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5"><i className="ri-logout-box-r-line" /> Punch Out</span>
                             )}
                           </button>
                         </div>
@@ -688,32 +854,49 @@ export default function AttendanceTracking() {
               <div className="box-header flex flex-wrap items-center justify-between gap-3">
                 <div className="box-title">My Attendance</div>
                 <div className="flex flex-wrap items-center gap-3">
-                  {/* View toggle */}
-                  <div className="inline-flex rounded-md border border-defaultborder overflow-hidden flex-shrink-0">
+                  {/* View toggle – pill with clear active state */}
+                  <div className="inline-flex rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5 flex-shrink-0">
                     <button
                       type="button"
                       onClick={() => setMyAttendanceViewMode("list")}
-                      className={"inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 text-[0.75rem] font-medium transition-colors " + (myAttendanceViewMode === "list" ? "bg-primary text-white" : "bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white hover:bg-gray-50")}
+                      className={"inline-flex items-center gap-2 whitespace-nowrap rounded-lg py-2 px-3.5 text-[0.75rem] font-semibold transition-all duration-200 " + (myAttendanceViewMode === "list" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10")}
                     >
-                      <i className="ri-list-unordered" />
+                      <i className="ri-list-unordered text-[0.9rem]" />
                       <span>List</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setMyAttendanceViewMode("calendar")}
-                      className={"inline-flex items-center gap-1.5 whitespace-nowrap !py-1 !px-3 text-[0.75rem] font-medium transition-colors border-l border-defaultborder " + (myAttendanceViewMode === "calendar" ? "bg-primary text-white" : "bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white hover:bg-gray-50")}
+                      className={"inline-flex items-center gap-2 whitespace-nowrap rounded-lg py-2 px-3.5 text-[0.75rem] font-semibold transition-all duration-200 " + (myAttendanceViewMode === "calendar" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10")}
                     >
-                      <i className="ri-calendar-line" />
+                      <i className="ri-calendar-line text-[0.9rem]" />
                       <span>Calendar</span>
                     </button>
                   </div>
-                  <div className="h-5 w-px bg-defaultborder flex-shrink-0 hidden sm:block" aria-hidden="true" />
-                  <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light flex-shrink-0" onClick={refreshMyAttendanceList} disabled={listLoading} title="Refresh">
-                    <i className={"ri-refresh-line" + (listLoading ? " animate-spin" : "")} />
-                  </button>
-                  <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0" onClick={exportMyAttendanceCsv} disabled={attendanceList.length === 0} title="Export CSV">
-                    <i className="ri-download-2-line" />
-                  </button>
+                  <div className="h-5 w-px bg-defaultborder/80 flex-shrink-0 hidden sm:block" aria-hidden="true" />
+                  {/* Action pair: refresh + export – same container and affordance */}
+                  <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
+                    <button
+                      type="button"
+                      onClick={refreshMyAttendanceList}
+                      disabled={listLoading}
+                      title="Refresh list"
+                      aria-label="Refresh attendance list"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
+                    >
+                      <i className={"ri-refresh-line text-[1.1rem]" + (listLoading ? " animate-spin" : "")} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={exportMyAttendanceCsv}
+                      disabled={attendanceList.length === 0}
+                      title="Export CSV"
+                      aria-label="Export attendance as CSV"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-primary border-l border-defaultborder/60 hover:bg-primary/10 dark:hover:bg-primary/20 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent active:scale-95"
+                    >
+                      <i className="ri-download-2-line text-[1.1rem]" />
+                    </button>
+                  </div>
                 </div>
               </div>
               <div className="box-body !p-0">
@@ -742,51 +925,53 @@ export default function AttendanceTracking() {
                         <p className="text-[0.75rem] text-[#8c9097]/70">Punch in to start tracking</p>
                       </div>
                     ) : (
-                      <div className="table-responsive">
-                        <table className="table table-hover whitespace-nowrap min-w-full">
+                      <div className="overflow-hidden rounded-b-md">
+                        <table className="w-full min-w-full border-collapse">
                           <thead>
-                            <tr className="border-b border-defaultborder dark:border-defaultborder/10">
-                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Date</th>
-                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Day</th>
-                              <th className="!text-start !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Status</th>
-                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch In</th>
-                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Punch Out</th>
-                              <th className="!text-end !text-[0.75rem] !font-semibold text-[#8c9097] !py-3">Duration</th>
+                            <tr className="border-b border-defaultborder bg-gray-50/90 dark:bg-white/5">
+                              <th className="text-start py-3.5 pl-5 pr-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">Date</th>
+                              <th className="text-start py-3.5 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">Day</th>
+                              <th className="text-start py-3.5 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">Status</th>
+                              <th className="text-end py-3.5 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50 tabular-nums">Punch In</th>
+                              <th className="text-end py-3.5 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50 tabular-nums">Punch Out</th>
+                              <th className="text-end py-3.5 pr-5 pl-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50 tabular-nums">Duration</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {attendanceList.map((r) => {
+                            {listAttendanceForTable.map((r, idx) => {
                               const recordTz = r.timezone ?? "UTC";
                               const recStatus = (r as { status?: string }).status;
                               const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
+                              const rowBg = isHolidayOrLeave ? "bg-info/[0.04]" : idx % 2 === 0 ? "bg-white dark:bg-transparent" : "bg-gray-50/40 dark:bg-white/[0.02]";
                               return (
-                                <tr key={r.id} className={"border-b border-defaultborder dark:border-defaultborder/10 transition-colors " + (isHolidayOrLeave ? "bg-info/[0.02]" : "hover:bg-gray-50/50 dark:hover:bg-light/5")}>
-                                  <td className="!py-3 text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white">{formatDate(r.date)}</td>
-                                  <td className="!py-3 text-[0.8125rem] text-[#8c9097]">{r.day ?? "—"}</td>
-                                  <td className="!py-3">
+                                <tr key={r.id} className={"border-b border-defaultborder/60 dark:border-defaultborder/10 transition-colors duration-150 " + rowBg + " hover:bg-primary/[0.03] dark:hover:bg-primary/5"}>
+                                  <td className="py-3.5 pl-5 pr-3 text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white whitespace-nowrap">{formatDate(r.date)}</td>
+                                  <td className="py-3.5 px-3 text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/70 whitespace-nowrap">{r.day ?? "—"}</td>
+                                  <td className="py-3.5 px-3">
                                     {recStatus === "Holiday" ? (
-                                      <span className="badge bg-info/10 text-info !rounded-full !text-[0.6875rem]">
-                                        <i className="ri-sun-line me-1 text-[0.55rem]" />
+                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-info/30 bg-info/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-info">
+                                        <i className="ri-sun-line text-[0.65rem]" />
                                         {(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}
                                       </span>
                                     ) : recStatus === "Leave" ? (
-                                      <span className="badge bg-secondary/10 text-secondary !rounded-full !text-[0.6875rem]">
-                                        <i className="ri-hotel-bed-line me-1 text-[0.55rem]" />Leave
+                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-secondary/30 bg-secondary/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-secondary">
+                                        <i className="ri-hotel-bed-line text-[0.65rem]" />
+                                        {(() => { const lt = getLeaveTypeFromRecord(r); return lt ? `Leave (${lt.charAt(0).toUpperCase() + lt.slice(1)})` : "Leave"; })()}
                                       </span>
                                     ) : recStatus === "Absent" ? (
-                                      <span className="badge bg-danger/10 text-danger !rounded-full !text-[0.6875rem]">
-                                        <i className="ri-close-circle-line me-1 text-[0.55rem]" />Absent
+                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-danger/30 bg-danger/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-danger">
+                                        <i className="ri-close-circle-line text-[0.65rem]" />Absent
                                       </span>
                                     ) : (
-                                      <span className="badge bg-success/10 text-success !rounded-full !text-[0.6875rem]">
-                                        <i className="ri-checkbox-circle-line me-1 text-[0.55rem]" />Present
+                                      <span className="inline-flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[0.6875rem] font-semibold text-success">
+                                        <i className="ri-checkbox-circle-line text-[0.65rem]" />Present
                                       </span>
                                     )}
                                   </td>
-                                  <td className="!py-3 !text-end text-[0.8125rem] text-defaulttextcolor dark:text-white">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
-                                  <td className="!py-3 !text-end text-[0.8125rem] text-defaulttextcolor dark:text-white">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : <span className="text-[#8c9097] italic">Active</span>)}</td>
-                                  <td className="!py-3 !text-end">
-                                    <span className={"text-[0.8125rem] font-medium " + (!isHolidayOrLeave && !r.punchOut && status?.isPunchedIn && status?.record?.id === r.id ? "text-success" : "text-defaulttextcolor dark:text-white")}>
+                                  <td className="py-3.5 px-3 text-end text-[0.8125rem] text-defaulttextcolor dark:text-white tabular-nums whitespace-nowrap">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
+                                  <td className="py-3.5 px-3 text-end text-[0.8125rem] text-defaulttextcolor dark:text-white tabular-nums whitespace-nowrap">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : <span className="text-defaulttextcolor/60 italic">Active</span>)}</td>
+                                  <td className="py-3.5 pr-5 pl-3 text-end">
+                                    <span className={"text-[0.8125rem] font-semibold tabular-nums " + (!isHolidayOrLeave && !r.punchOut && status?.isPunchedIn && status?.record?.id === r.id ? "text-success" : "text-defaulttextcolor dark:text-white")}>
                                       {isHolidayOrLeave ? "—" : r.punchOut ? (r.duration != null ? formatDuration(r.duration) : "—") : status?.isPunchedIn && status?.record?.id === r.id ? elapsedDisplay || "..." : "—"}
                                     </span>
                                   </td>
@@ -804,28 +989,53 @@ export default function AttendanceTracking() {
                 {myAttendanceViewMode === "calendar" && (
                   <div className="p-5 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h4 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
+                      <h4 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white tracking-tight">
                         {MONTH_NAMES[myCalendarMonth]} {myCalendarYear}
                       </h4>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button type="button" onClick={() => { const prev = myCalendarMonth === 0 ? 11 : myCalendarMonth - 1; setMyCalendarMonth(prev); if (myCalendarMonth === 0) setMyCalendarYear((y) => y - 1); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
-                          <i className="ri-arrow-left-s-line" />
-                        </button>
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-sm ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem]"
-                          onClick={() => { setMyCalendarYear(new Date().getFullYear()); setMyCalendarMonth(new Date().getMonth()); }}
-                        >
-                          Today
-                        </button>
-                        <button type="button" onClick={() => { const next = myCalendarMonth === 11 ? 0 : myCalendarMonth + 1; setMyCalendarMonth(next); if (myCalendarMonth === 11) setMyCalendarYear((y) => y + 1); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
-                          <i className="ri-arrow-right-s-line" />
-                        </button>
-                        <select className="form-control !w-auto !py-1 !px-2 !text-[0.75rem] !rounded-md" value={myCalendarYear} onChange={(e) => setMyCalendarYear(parseInt(e.target.value, 10))}>
-                          {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
-                            <option key={y} value={y}>{y}</option>
-                          ))}
-                        </select>
+                      <div className="flex flex-wrap items-center gap-3">
+                        {/* Nav: Prev / Today / Next as one control */}
+                        <div className="inline-flex items-center rounded-xl border border-defaultborder/70 bg-gray-50/80 dark:bg-white/5 p-0.5 shadow-sm">
+                          <button
+                            type="button"
+                            onClick={() => { const prev = myCalendarMonth === 0 ? 11 : myCalendarMonth - 1; setMyCalendarMonth(prev); if (myCalendarMonth === 0) setMyCalendarYear((y) => y - 1); }}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 transition-all duration-200 active:scale-95"
+                            aria-label="Previous month"
+                          >
+                            <i className="ri-arrow-left-s-line text-[1.1rem]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setMyCalendarYear(new Date().getFullYear()); setMyCalendarMonth(new Date().getMonth()); }}
+                            disabled={myCalendarYear === new Date().getFullYear() && myCalendarMonth === new Date().getMonth()}
+                            className={"mx-0.5 inline-flex h-8 items-center rounded-lg px-3 text-[0.75rem] font-medium transition-all duration-200 active:scale-[0.98] disabled:cursor-default disabled:active:scale-100 " + (myCalendarYear === new Date().getFullYear() && myCalendarMonth === new Date().getMonth() ? "bg-primary/15 text-primary dark:bg-primary/25 cursor-default" : "bg-primary text-white hover:bg-primary/90 shadow-sm")}
+                          >
+                            Today
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { const next = myCalendarMonth === 11 ? 0 : myCalendarMonth + 1; setMyCalendarMonth(next); if (myCalendarMonth === 11) setMyCalendarYear((y) => y + 1); }}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 transition-all duration-200 active:scale-95"
+                            aria-label="Next month"
+                          >
+                            <i className="ri-arrow-right-s-line text-[1.1rem]" />
+                          </button>
+                        </div>
+                        {/* Year: styled to match nav */}
+                        <div className="relative inline-flex items-center">
+                          <i className="ri-calendar-line absolute left-2.5 text-[0.8rem] text-defaulttextcolor/50 pointer-events-none" aria-hidden />
+                          <select
+                            value={myCalendarYear}
+                            onChange={(e) => setMyCalendarYear(parseInt(e.target.value, 10))}
+                            className="h-8 min-w-[4.5rem] rounded-xl border border-defaultborder/70 bg-gray-50/80 dark:bg-white/5 pl-7 pr-8 py-0 text-[0.75rem] font-medium text-defaulttextcolor dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 cursor-pointer [&::-ms-expand]:hidden !bg-no-repeat [background-image:none]"
+                            style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none" }}
+                            aria-label="Select year"
+                          >
+                            {Array.from({ length: CALENDAR_YEAR_END - CALENDAR_YEAR_START + 1 }, (_, i) => CALENDAR_YEAR_START + i).map((y) => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                          <i className="ri-arrow-down-s-line absolute right-2 text-[0.75rem] text-defaulttextcolor/50 pointer-events-none" aria-hidden />
+                        </div>
                       </div>
                     </div>
 
@@ -837,7 +1047,7 @@ export default function AttendanceTracking() {
                       <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-secondary" /> Leave</span>
                       <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-danger" /> Absent</span>
                       {myWeekOff.length > 0 && (
-                        <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-gray-400" /> Week Off</span>
+                        <span className="flex items-center gap-1.5 text-[#8c9097] dark:text-white/50"><span className="h-2.5 w-2.5 rounded-full bg-[#8c9097] dark:bg-white/40" /> Week Off</span>
                       )}
                     </div>
 
@@ -845,7 +1055,7 @@ export default function AttendanceTracking() {
                       <div className="py-8 text-center text-[#8c9097]">Loading calendar...</div>
                     ) : (
                       <div className="rounded-md border border-defaultborder overflow-hidden">
-                        <div className="grid grid-cols-7 bg-gray-50/80 dark:bg-black/10">
+                        <div className="grid grid-cols-7 bg-gray-50 dark:bg-white/5">
                           {DAY_HEADERS.map((d) => (
                             <div key={d} className="py-2 text-center text-[0.6875rem] font-semibold text-[#8c9097] dark:text-white/50 uppercase tracking-wider">{d}</div>
                           ))}
@@ -858,19 +1068,20 @@ export default function AttendanceTracking() {
                             const isEmpty = cell.day === 0;
                             const isFuture = cellDate > today;
 
+                            /* Match admin/student calendar: same neutral gray for week off as header row; status tints aligned with rest of UI */
                             let cellBg = "";
                             let dotColor = "";
-                            if (cell.holiday) { cellBg = "bg-info/[0.06]"; dotColor = "bg-info"; }
-                            else if (cell.leave) { cellBg = "bg-secondary/[0.06]"; dotColor = "bg-secondary"; }
-                            else if (cell.absent) { cellBg = "bg-danger/[0.06]"; dotColor = "bg-danger"; }
-                            else if (cell.present) { cellBg = "bg-success/[0.04]"; dotColor = "bg-success"; }
-                            else if (cell.incomplete) { cellBg = "bg-warning/[0.04]"; dotColor = "bg-warning"; }
-                            else if (cell.weekOff) { cellBg = "bg-gray-100/60 dark:bg-white/5"; dotColor = "bg-gray-400"; }
+                            if (cell.holiday) { cellBg = "bg-info/10 dark:bg-info/15"; dotColor = "bg-info"; }
+                            else if (cell.leave) { cellBg = "bg-secondary/10 dark:bg-secondary/15"; dotColor = "bg-secondary"; }
+                            else if (cell.absent) { cellBg = "bg-danger/10 dark:bg-danger/15"; dotColor = "bg-danger"; }
+                            else if (cell.present) { cellBg = "bg-success/10 dark:bg-success/15"; dotColor = "bg-success"; }
+                            else if (cell.incomplete) { cellBg = "bg-warning/10 dark:bg-warning/15"; dotColor = "bg-warning"; }
+                            else if (cell.weekOff) { cellBg = "bg-gray-50 dark:bg-white/5"; dotColor = "bg-[#8c9097] dark:bg-white/40"; }
 
                             return (
                               <div
                                 key={idx}
-                                className={"min-h-[76px] p-2 border border-defaultborder/40 transition-colors " + (isToday ? "ring-2 ring-primary ring-inset bg-primary/[0.02] " : "") + (isEmpty || isFuture ? "bg-gray-50/30 dark:bg-black/5 " : "") + cellBg}
+                                className={"min-h-[76px] p-2 border border-defaultborder/40 transition-colors " + (isToday ? "ring-2 ring-primary ring-inset bg-primary/10 " : "") + (isEmpty || isFuture ? "bg-gray-50/50 dark:bg-white/5 " : "") + cellBg}
                               >
                                 {cell.day > 0 && (
                                   <div className="flex flex-col h-full">
@@ -878,18 +1089,22 @@ export default function AttendanceTracking() {
                                       <span className={"text-[0.75rem] font-medium " + (isToday ? "text-primary font-bold" : "text-defaulttextcolor/80 dark:text-white/70")}>
                                         {cell.day}
                                       </span>
-                                      {dotColor && <span className={"h-1.5 w-1.5 rounded-full " + dotColor} />}
+                                      {dotColor && <span className={"h-1.5 w-1.5 rounded-full flex-shrink-0 " + dotColor} />}
                                     </div>
                                     {cell.holiday && (
-                                      <span className="text-[0.55rem] text-info font-medium truncate">{cell.holidayName || "Holiday"}</span>
+                                      <span className="text-[0.65rem] text-info font-medium truncate">{cell.holidayName || "Holiday"}</span>
                                     )}
-                                    {cell.leave && <span className="text-[0.55rem] text-secondary font-medium">Leave</span>}
-                                    {cell.absent && <span className="text-[0.55rem] text-danger font-medium">Absent</span>}
-                                    {cell.weekOff && <span className="text-[0.55rem] text-gray-400 font-medium">Week Off</span>}
+                                    {cell.leave && (
+                                      <span className="text-[0.65rem] text-secondary font-medium">
+                                        {cell.leaveType === "casual" ? "Casual" : cell.leaveType === "sick" ? "Sick" : cell.leaveType === "unpaid" ? "Unpaid" : "Leave"}
+                                      </span>
+                                    )}
+                                    {cell.absent && <span className="text-[0.65rem] text-danger font-medium">Absent</span>}
+                                    {cell.weekOff && <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 font-medium">Week Off</span>}
                                     {cell.present && cell.totalHours > 0 && (
-                                      <span className="text-[0.6rem] text-success font-semibold mt-auto">{cell.totalHours}h</span>
+                                      <span className="text-[0.65rem] text-success font-semibold mt-auto">{cell.totalHours}h</span>
                                     )}
-                                    {cell.incomplete && <span className="text-[0.55rem] text-warning font-medium">Active</span>}
+                                    {cell.incomplete && <span className="text-[0.65rem] text-warning font-medium">Active</span>}
                                   </div>
                                 )}
                               </div>
@@ -947,31 +1162,58 @@ export default function AttendanceTracking() {
 
             {attendanceView === "history" && (
               <div className="box">
-                <div className="box-header flex flex-wrap items-center justify-between gap-3">
-                  <div className="box-title">Attendance History</div>
-                  <div className="flex flex-wrap items-center gap-2">
+                <div className="box-header flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
+                    <h3 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight mb-0">Attendance History</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3">
                     <div className="relative">
-                      <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
+                      <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.95rem] pointer-events-none" aria-hidden />
                       <input
                         type="text"
-                        placeholder="Search by name, email, or employee ID..."
+                        placeholder="Search by name, email, or employee ID…"
                         value={trackSearch}
                         onChange={(e) => setTrackSearch(e.target.value)}
-                        className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
+                        aria-label="Search attendance history"
+                        className="w-full min-w-[200px] sm:min-w-[240px] max-w-[280px] rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 pl-9 pr-3.5 py-2.5 text-[0.8125rem] text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200"
                       />
                     </div>
-                    <select
-                      className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem] !rounded-md"
-                      value={historyRange}
-                      onChange={(e) => setHistoryRange((e.target.value as "7d" | "30d" | "all") || "30d")}
-                    >
-                      <option value="7d">Last 7 days</option>
-                      <option value="30d">Last 30 days</option>
-                      <option value="all">All time</option>
-                    </select>
-                    <button type="button" className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0" onClick={exportHistoryCsv} disabled={filteredHistoryList.length === 0} title="Export CSV">
-                      <i className="ri-download-2-line" />
-                    </button>
+                    <div className="h-5 w-px bg-defaultborder/80 flex-shrink-0 hidden sm:block" aria-hidden />
+                    <div className="inline-flex rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryRange("7d")}
+                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${historyRange === "7d" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+                      >
+                        <span>7 days</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryRange("30d")}
+                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${historyRange === "30d" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+                      >
+                        <span>30 days</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryRange("all")}
+                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${historyRange === "all" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+                      >
+                        <span>All time</span>
+                      </button>
+                    </div>
+                    <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
+                      <button
+                        type="button"
+                        onClick={exportHistoryCsv}
+                        disabled={filteredHistoryList.length === 0}
+                        title="Export CSV"
+                        aria-label="Export attendance history as CSV"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
+                      >
+                        <i className="ri-download-2-line text-[1.1rem]" aria-hidden />
+                      </button>
+                    </div>
                   </div>
                 </div>
                 <div className="box-body !p-0">
@@ -1079,75 +1321,324 @@ export default function AttendanceTracking() {
 
       {/* ═══ BACKDATED REQUEST MODAL ═══ */}
       {showRequestModal && myStudentId && (
-        <div className="fixed inset-0 z-[105] overflow-y-auto">
-          <div className="flex min-h-full items-start justify-center p-4 pt-[5vh]">
-            <div className="fixed inset-0 bg-black/50" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} />
-            <div className="relative w-full max-w-2xl rounded-md bg-white dark:bg-bodybg shadow-lg flex flex-col max-h-[90vh]">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-defaultborder px-5 py-4">
-                <div>
-                  <h6 className="flex items-center gap-2 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
-                    <i className="ri-calendar-check-line text-primary" />
-                    Request Backdated Attendance
-                  </h6>
-                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-0.5 mb-0">Submit for past dates you missed. An admin will review.</p>
+        <div className="fixed inset-0 z-[105] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="backdated-modal-title">
+          <style>{`
+            @keyframes backdated-modal-backdrop { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes backdated-modal-enter {
+              from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+              to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            @keyframes backdated-modal-stagger { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+            .backdated-modal-backdrop { animation: backdated-modal-backdrop 0.2s ease-out forwards; }
+            .backdated-modal-panel { animation: backdated-modal-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+            .backdated-modal-stagger-1 { animation: backdated-modal-stagger 0.35s ease-out 0.05s both; }
+            .backdated-modal-stagger-2 { animation: backdated-modal-stagger 0.35s ease-out 0.1s both; }
+            .backdated-modal-stagger-3 { animation: backdated-modal-stagger 0.35s ease-out 0.15s both; }
+            .backdated-modal-stagger-4 { animation: backdated-modal-stagger 0.35s ease-out 0.2s both; }
+            .backdated-modal-stagger-5 { animation: backdated-modal-stagger 0.35s ease-out 0.25s both; }
+          `}</style>
+          <div className="flex min-h-full items-start justify-center p-4 pt-[8vh] pb-8">
+            <div
+              className="fixed inset-0 bg-black/55 backdrop-blur-[2px] backdated-modal-backdrop"
+              onClick={() => { if (!submittingRequest) setShowRequestModal(false); }}
+              aria-hidden
+            />
+            <div className="relative w-full max-w-[28rem] flex flex-col max-h-[85vh] backdated-modal-panel rounded-2xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-xl dark:shadow-black/30 overflow-hidden">
+              {/* Header with accent – primary to match trigger icon */}
+              <div className="relative border-b border-defaultborder/60 bg-gradient-to-br from-primary/10 to-transparent dark:from-primary/20 dark:to-transparent">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary" aria-hidden />
+                <div className="flex items-start justify-between gap-4 pl-5 pr-4 py-5">
+                  <div className="flex items-start gap-4 min-w-0">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 dark:bg-primary/25 text-primary shadow-inner">
+                      <i className="ri-calendar-check-line text-[1.5rem]" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 id="backdated-modal-title" className="text-lg font-semibold tracking-tight text-defaulttextcolor dark:text-white">
+                        Request Backdated Attendance
+                      </h2>
+                      <p className="mt-1 text-sm text-defaulttextcolor/65 dark:text-white/55">
+                        Submit for past dates you missed. An admin will review.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { if (!submittingRequest) setShowRequestModal(false); }}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    aria-label="Close"
+                  >
+                    <i className="ri-close-line text-xl" />
+                  </button>
                 </div>
-                <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full">
-                  <i className="ri-close-line" />
-                </button>
               </div>
 
               {/* Body */}
-              <div className="p-5 overflow-y-auto flex-1 space-y-4">
-                <div className="flex items-start gap-2 rounded-md bg-info/5 border border-info/20 p-3">
-                  <i className="ri-information-line text-info mt-0.5" />
-                  <p className="text-[0.75rem] text-defaulttextcolor dark:text-white/80 mb-0">
-                    Enter a date range (From and To). Punch In and Punch Out will be applied to all working days. Weekends are excluded.
+              <div className="p-5 overflow-y-auto flex-1 space-y-5">
+                <div className="backdated-modal-stagger-1 flex items-start gap-3 rounded-xl bg-primary/10 dark:bg-primary/15 border border-primary/20 dark:border-primary/30 p-3.5">
+                  <i className="ri-information-line text-primary text-lg shrink-0 mt-0.5" aria-hidden />
+                  <p className="text-sm text-defaulttextcolor/85 dark:text-white/75 leading-relaxed">
+                    Enter a date range (From and To). Punch In and Punch Out will be applied to all <strong>working days</strong>. Weekends are excluded.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">From date <span className="text-danger">*</span></label>
-                    <input type="date" value={requestForm.fromDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestForm("fromDate", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
-                  </div>
-                  <div>
-                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">To date <span className="text-danger">*</span></label>
-                    <input type="date" value={requestForm.toDate} max={new Date().toISOString().slice(0, 10)} onChange={(e) => updateRequestForm("toDate", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
+                <div className="backdated-modal-stagger-2 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Dates</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="backdated-from-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">From <span className="text-rose-500">*</span></label>
+                      <input
+                        id="backdated-from-date"
+                        type="date"
+                        value={requestForm.fromDate}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => updateRequestForm("fromDate", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="backdated-to-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">To <span className="text-rose-500">*</span></label>
+                      <input
+                        id="backdated-to-date"
+                        type="date"
+                        value={requestForm.toDate}
+                        max={new Date().toISOString().slice(0, 10)}
+                        onChange={(e) => updateRequestForm("toDate", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      />
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Timezone (candidate&apos;s)</label>
-                  <div className="form-control !rounded-md !text-[0.8125rem] !bg-gray-50 dark:!bg-black/10">{requestForm.timezone || candidateTimezone}</div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch In <span className="text-danger">*</span></label>
-                    <input type="time" value={requestForm.punchInTime} onChange={(e) => updateRequestForm("punchInTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
-                  </div>
-                  <div>
-                    <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Punch Out <span className="text-danger">*</span></label>
-                    <input type="time" value={requestForm.punchOutTime} onChange={(e) => updateRequestForm("punchOutTime", e.target.value)} className="form-control !rounded-md !text-[0.8125rem]" />
+                <div className="backdated-modal-stagger-2 space-y-2">
+                  <label htmlFor="backdated-timezone" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Timezone (candidate&apos;s)</label>
+                  <div id="backdated-timezone" className="rounded-xl border border-defaultborder/80 bg-gray-50/80 dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor/90 dark:text-white/80">
+                    {requestForm.timezone || candidateTimezone}
                   </div>
                 </div>
 
-                <div>
-                  <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Notes <span className="text-[0.6875rem] font-normal">(optional)</span></label>
-                  <input type="text" value={requestForm.notes} onChange={(e) => updateRequestForm("notes", e.target.value)} placeholder="Reason for backdated entry..." className="form-control !rounded-md !text-[0.8125rem]" />
+                <div className="backdated-modal-stagger-3 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Punch times</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="backdated-punch-in" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">Punch In <span className="text-rose-500">*</span></label>
+                      <input
+                        id="backdated-punch-in"
+                        type="time"
+                        value={requestForm.punchInTime}
+                        onChange={(e) => updateRequestForm("punchInTime", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="backdated-punch-out" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">Punch Out <span className="text-rose-500">*</span></label>
+                      <input
+                        id="backdated-punch-out"
+                        type="time"
+                        value={requestForm.punchOutTime}
+                        onChange={(e) => updateRequestForm("punchOutTime", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="backdated-modal-stagger-4 space-y-2">
+                  <label htmlFor="backdated-notes" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Notes <span className="font-normal normal-case text-defaulttextcolor/50">(optional)</span></label>
+                  <input
+                    id="backdated-notes"
+                    type="text"
+                    value={requestForm.notes}
+                    onChange={(e) => updateRequestForm("notes", e.target.value)}
+                    placeholder="e.g. Reason for backdated entry…"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="flex items-center justify-end gap-2 border-t border-defaultborder px-5 py-4">
-                <button type="button" onClick={() => { if (!submittingRequest) setShowRequestModal(false); }} className="ti-btn ti-btn-light" disabled={submittingRequest}>
+              <div className="backdated-modal-stagger-5 flex items-center justify-end gap-3 border-t border-defaultborder/60 bg-defaultborder/5 dark:bg-white/5 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => { if (!submittingRequest) setShowRequestModal(false); }}
+                  className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                  disabled={submittingRequest}
+                >
                   Cancel
                 </button>
-                <button type="button" onClick={handleSubmitRequest} className="ti-btn ti-btn-primary ti-btn-wave" disabled={submittingRequest}>
+                <button
+                  type="button"
+                  onClick={handleSubmitRequest}
+                  className="rounded-xl bg-primary hover:bg-primary/90 active:bg-primary/80 text-white px-5 py-2.5 text-sm font-semibold shadow-sm hover:shadow transition-all disabled:opacity-60 disabled:pointer-events-none flex items-center gap-2"
+                  disabled={submittingRequest}
+                >
                   {submittingRequest ? (
-                    <span className="flex items-center gap-2"><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> Submitting...</span>
-                  ) : "Submit Request"}
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
+                      Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-send-plane-line text-base" aria-hidden />
+                      Submit Request
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ REQUEST LEAVE MODAL ═══ */}
+      {showLeaveRequestModal && myStudentId && (
+        <div className="fixed inset-0 z-[105] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="leave-modal-title">
+          <style>{`
+            @keyframes leave-modal-backdrop { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes leave-modal-enter {
+              from { opacity: 0; transform: scale(0.96) translateY(-8px); }
+              to { opacity: 1; transform: scale(1) translateY(0); }
+            }
+            @keyframes leave-modal-stagger { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+            .leave-modal-backdrop { animation: leave-modal-backdrop 0.2s ease-out forwards; }
+            .leave-modal-panel { animation: leave-modal-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+            .leave-modal-stagger-1 { animation: leave-modal-stagger 0.35s ease-out 0.05s both; }
+            .leave-modal-stagger-2 { animation: leave-modal-stagger 0.35s ease-out 0.1s both; }
+            .leave-modal-stagger-3 { animation: leave-modal-stagger 0.35s ease-out 0.15s both; }
+            .leave-modal-stagger-4 { animation: leave-modal-stagger 0.35s ease-out 0.2s both; }
+            .leave-modal-stagger-5 { animation: leave-modal-stagger 0.35s ease-out 0.25s both; }
+            .leave-type-card:focus-visible { outline: 2px solid rgba(14, 165, 233, 0.6); outline-offset: 2px; }
+          `}</style>
+          <div className="flex min-h-full items-start justify-center p-4 pt-[8vh] pb-8">
+            <div
+              className="fixed inset-0 bg-black/55 backdrop-blur-[2px] leave-modal-backdrop"
+              onClick={() => { if (!submittingLeaveRequest) setShowLeaveRequestModal(false); }}
+              aria-hidden
+            />
+            <div className="relative w-full max-w-[28rem] flex flex-col max-h-[85vh] leave-modal-panel rounded-2xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-xl dark:shadow-black/30 overflow-hidden">
+              {/* Header with accent */}
+              <div className="relative border-b border-defaultborder/60 bg-gradient-to-br from-sky-50/80 to-transparent dark:from-sky-950/20 dark:to-transparent">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-sky-400 to-sky-600 dark:from-sky-500 dark:to-sky-700" aria-hidden />
+                <div className="flex items-start justify-between gap-4 pl-5 pr-4 py-5">
+                  <div className="flex items-start gap-4 min-w-0">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 shadow-inner">
+                      <i className="ri-hotel-bed-line text-[1.5rem]" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 id="leave-modal-title" className="text-lg font-semibold tracking-tight text-defaulttextcolor dark:text-white">
+                        Request Leave
+                      </h2>
+                      <p className="mt-1 text-sm text-defaulttextcolor/65 dark:text-white/55">
+                        Working days only · Admin will review in Settings » Attendance » Leave Requests
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { if (!submittingLeaveRequest) setShowLeaveRequestModal(false); }}
+                    className="shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                    aria-label="Close"
+                  >
+                    <i className="ri-close-line text-xl" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Body */}
+              <div className="p-5 overflow-y-auto flex-1 space-y-5">
+                <div className="leave-modal-stagger-1 flex items-start gap-3 rounded-xl bg-sky-50/60 dark:bg-sky-950/15 border border-sky-200/40 dark:border-sky-700/30 p-3.5">
+                  <i className="ri-calendar-event-line text-sky-600 dark:text-sky-400 text-lg shrink-0 mt-0.5" aria-hidden />
+                  <p className="text-sm text-defaulttextcolor/85 dark:text-white/75 leading-relaxed">
+                    Pick a date range. Only <strong>working days</strong> are included; weekends and your week-off are skipped.
+                  </p>
+                </div>
+
+                <div className="leave-modal-stagger-2 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Dates</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="leave-from-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">From <span className="text-rose-500">*</span></label>
+                      <input
+                        id="leave-from-date"
+                        type="date"
+                        value={leaveRequestForm.fromDate}
+                        onChange={(e) => updateLeaveRequestForm("fromDate", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="leave-to-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">To <span className="text-rose-500">*</span></label>
+                      <input
+                        id="leave-to-date"
+                        type="date"
+                        value={leaveRequestForm.toDate}
+                        onChange={(e) => updateLeaveRequestForm("toDate", e.target.value)}
+                        className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="leave-modal-stagger-3 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Leave type</span>
+                  <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Leave type">
+                    {[
+                      { value: "casual" as const, label: "Casual", icon: "ri-sun-line", bg: "bg-sky-50 dark:bg-sky-500/10 border-sky-200/60 dark:border-sky-500/30", active: "bg-sky-100 dark:bg-sky-500/20 border-sky-400/60 text-sky-800 dark:text-sky-200" },
+                      { value: "sick" as const, label: "Sick", icon: "ri-heart-pulse-line", bg: "bg-orange-50 dark:bg-orange-500/10 border-orange-200/60 dark:border-orange-500/30", active: "bg-orange-100 dark:bg-orange-500/20 border-orange-400/60 text-orange-800 dark:text-orange-200" },
+                      { value: "unpaid" as const, label: "Unpaid", icon: "ri-bank-card-line", bg: "bg-slate-100 dark:bg-slate-500/10 border-slate-200/60 dark:border-slate-500/30", active: "bg-slate-200/80 dark:bg-slate-500/25 border-slate-400/60 text-slate-800 dark:text-slate-200" },
+                    ].map(({ value, label, icon, bg, active }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => updateLeaveRequestForm("leaveType", value)}
+                        className={`leave-type-card flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 text-center transition-all duration-200 hover:border-defaulttextcolor/20 dark:hover:border-white/20 ${leaveRequestForm.leaveType === value ? `${active} border-current` : `${bg} border-transparent text-defaulttextcolor/80 dark:text-white/70`}`}
+                      >
+                        <i className={`${icon} text-lg`} aria-hidden />
+                        <span className="text-xs font-semibold">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="leave-modal-stagger-4 space-y-2">
+                  <label htmlFor="leave-notes" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Notes <span className="font-normal normal-case text-defaulttextcolor/50">(optional)</span></label>
+                  <input
+                    id="leave-notes"
+                    type="text"
+                    value={leaveRequestForm.notes}
+                    onChange={(e) => updateLeaveRequestForm("notes", e.target.value)}
+                    placeholder="e.g. Family trip, medical appointment…"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="leave-modal-stagger-5 flex items-center justify-end gap-3 border-t border-defaultborder/60 bg-defaultborder/5 dark:bg-white/5 px-5 py-4">
+                <button
+                  type="button"
+                  onClick={() => { if (!submittingLeaveRequest) setShowLeaveRequestModal(false); }}
+                  className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+                  disabled={submittingLeaveRequest}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitLeaveRequest}
+                  className="rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white px-5 py-2.5 text-sm font-semibold shadow-sm hover:shadow transition-all disabled:opacity-60 disabled:pointer-events-none flex items-center gap-2"
+                  disabled={submittingLeaveRequest}
+                >
+                  {submittingLeaveRequest ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
+                      Submitting…
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-send-plane-line text-base" aria-hidden />
+                      Submit request
+                    </>
+                  )}
                 </button>
               </div>
             </div>

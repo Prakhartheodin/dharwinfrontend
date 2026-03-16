@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { listStudents, type Student } from "@/shared/lib/api/students";
 import { assignLeavesToStudents } from "@/shared/lib/api/attendance";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
@@ -146,8 +145,16 @@ export default function SettingsAttendanceAssignLeavePage() {
     return (
       <>
         <Seo title="Assign Leave" />
-        <Pageheader currentpage="Assign Leave" activepage="Settings" mainpage="Attendance" />
-        <div className="box"><div className="box-body py-8 text-center text-defaulttextcolor/70">Loading…</div></div>
+        <div className="relative mt-4 w-full">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5 ring-1 ring-primary/10">
+                <i className="ri-loader-4-line animate-spin text-4xl" />
+              </div>
+              <p className="text-sm font-semibold text-defaulttextcolor">Loading…</p>
+            </div>
+          </div>
+        </div>
       </>
     );
   }
@@ -156,12 +163,15 @@ export default function SettingsAttendanceAssignLeavePage() {
     return (
       <>
         <Seo title="Assign Leave" />
-        <Pageheader currentpage="Assign Leave" activepage="Settings" mainpage="Attendance" />
-        <div className="box">
-          <div className="box-body py-12 text-center">
-            <i className="ri-error-warning-line text-5xl text-danger mb-4" />
-            <h3 className="text-xl font-semibold text-defaulttextcolor mb-2">Access Denied</h3>
-            <p className="text-defaulttextcolor/70">Only administrators can assign leave.</p>
+        <div className="relative mt-4 w-full">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-danger/10 text-danger mb-5 ring-1 ring-danger/20">
+                <i className="ri-error-warning-line text-5xl" />
+              </div>
+              <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can assign leave to students.</p>
+            </div>
           </div>
         </div>
       </>
@@ -171,91 +181,176 @@ export default function SettingsAttendanceAssignLeavePage() {
   return (
     <>
       <Seo title="Assign Leave" />
-      <Pageheader currentpage="Assign Leave" activepage="Settings" mainpage="Attendance" />
-      <div className="box">
-        <div className="box-header">
-          <div className="box-title">Assign Leave to Students</div>
-        </div>
-        <div className="box-body">
-          {error && <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-4 text-danger text-sm">{error}</div>}
+      <div className="relative mt-4 space-y-6 min-h-[40vh] w-full">
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]" aria-hidden />
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(248,250,252,0.6),transparent_30%)] dark:bg-[linear-gradient(to_bottom,rgba(15,23,42,0.4),transparent_30%)]" aria-hidden />
 
-          {loading ? (
-            <div className="py-8 text-center text-defaulttextcolor/70">Loading…</div>
-          ) : (
-            <>
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Select Students <span className="text-danger">*</span></label>
-                <Select
-                  isMulti
-                  options={studentOptions}
-                  value={selectedStudents}
-                  onChange={(sel: StudentOption[] | null) => {
-                    if (!sel?.length) {
-                      setSelectedStudents([]);
-                      return;
-                    }
-                    const hasAll = sel.some((o) => o.value === SELECT_ALL);
-                    if (hasAll) {
-                      if (selectedStudents.length === students.length) setSelectedStudents([]);
-                      else setSelectedStudents(students);
-                    } else {
-                      setSelectedStudents(sel as StudentOption[]);
-                    }
-                  }}
-                  placeholder="Select students..."
-                  closeMenuOnSelect={false}
-                  className="react-select-container"
-                  classNamePrefix="react-select"
-                  isClearable
-                  isSearchable
-                />
-                {selectedStudents.length > 0 && <p className="mt-2 text-sm text-defaulttextcolor/70">{selectedStudents.length} student(s) selected</p>}
+        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden transition-shadow duration-300 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none">
+          <div className="flex items-center gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20" aria-hidden>
+              <i className="ri-calendar-todo-line text-2xl" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Leave</h2>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign leave to one or more students</p>
+            </div>
+          </div>
+          <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+            {error && (
+              <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
+                {error}
               </div>
+            )}
 
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Leave Type <span className="text-danger">*</span></label>
-                <select value={leaveType} onChange={(e) => setLeaveType(e.target.value as "casual" | "sick" | "unpaid")} className="form-control !w-auto min-w-[10rem] pr-8">
-                  <option value="casual">Casual</option>
-                  <option value="sick">Sick</option>
-                  <option value="unpaid">Unpaid</option>
-                </select>
-              </div>
-
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Dates <span className="text-danger">*</span></label>
-                <div className="flex flex-wrap items-end gap-2">
-                  <input type="date" value={dateInput} onChange={(e) => setDateInput(e.target.value)} className="form-control !w-auto" />
-                  <button type="button" onClick={addDate} className="ti-btn ti-btn-light">Add Date</button>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/10">
+                  <i className="ri-loader-4-line animate-spin text-3xl" />
                 </div>
-                {selectedDates.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedDates.map((d) => (
-                      <span key={d} className="badge bg-primary/10 text-primary flex items-center gap-1">
-                        {formatDate(d)}
-                        <button type="button" onClick={() => removeDate(d)} className="hover:text-danger" aria-label="Remove">×</button>
-                      </span>
+                <p className="text-sm font-medium text-defaulttextcolor/80">Loading students…</p>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select Students <span className="text-danger">*</span></label>
+                  <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
+                    <Select
+                      isMulti
+                      options={studentOptions}
+                      value={selectedStudents}
+                      onChange={(sel: unknown) => {
+                        const value = (sel as StudentOption[] | null) ?? [];
+                        if (!value.length) {
+                          setSelectedStudents([]);
+                          return;
+                        }
+                        const hasAll = value.some((o) => o.value === SELECT_ALL);
+                        if (hasAll) {
+                          if (selectedStudents.length === students.length) setSelectedStudents([]);
+                          else setSelectedStudents(students);
+                        } else {
+                          setSelectedStudents(value);
+                        }
+                      }}
+                      placeholder="Select students..."
+                      closeMenuOnSelect={false}
+                      className="react-select-container assign-leave-select"
+                      classNamePrefix="react-select"
+                      isClearable
+                      isSearchable
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuPosition="fixed"
+                    />
+                  </div>
+                  {selectedStudents.length > 0 && (
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} student(s) selected</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Leave Type <span className="text-danger">*</span></label>
+                  <div className="inline-flex rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 p-1">
+                    {(["casual", "sick", "unpaid"] as const).map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => setLeaveType(type)}
+                        className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 shrink-0 ${
+                          leaveType === type ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor hover:text-primary"
+                        }`}
+                      >
+                        {type === "casual" ? "Casual" : type === "sick" ? "Sick" : "Unpaid"}
+                      </button>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
 
-              <div className="mb-6">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Notes (optional)</label>
-                <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional notes" className="form-control" />
-              </div>
+                <div className="p-5 border border-defaultborder/70 rounded-xl bg-slate-50/60 dark:bg-white/[0.04] dark:border-defaultborder/50">
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Dates <span className="text-danger">*</span></label>
+                  <p className="text-xs text-defaulttextcolor/60 mb-3">Add one or more leave dates. Pick a date and click Add Date for each day.</p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="date"
+                      value={dateInput}
+                      onChange={(e) => setDateInput(e.target.value)}
+                      className="rounded-lg border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={addDate}
+                      className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 transition-colors"
+                    >
+                      <i className="ri-add-line text-lg" />
+                      Add Date
+                    </button>
+                  </div>
+                  {selectedDates.length > 0 && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {selectedDates.map((d) => (
+                        <span
+                          key={d}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 text-xs font-medium dark:bg-primary/20 dark:border-primary/30"
+                        >
+                          {formatDate(d)}
+                          <button
+                            type="button"
+                            onClick={() => removeDate(d)}
+                            className="p-0.5 rounded-full hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
+                            aria-label="Remove date"
+                          >
+                            <i className="ri-close-line text-sm" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
-              <button
-                type="button"
-                onClick={handleAssign}
-                disabled={assigning || selectedStudents.length === 0 || selectedDates.length === 0}
-                className="ti-btn ti-btn-primary"
-              >
-                {assigning ? <><i className="ri-loader-4-line animate-spin me-2" /> Assigning…</> : <><i className="ri-calendar-line me-2" /> Assign Leave</>}
-              </button>
-            </>
-          )}
-        </div>
+                <div>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Notes (optional)</label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional notes…"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleAssign}
+                    disabled={assigning || selectedStudents.length === 0 || selectedDates.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
+                  >
+                    {assigning ? (
+                      <><i className="ri-loader-4-line animate-spin text-lg" /> Assigning…</>
+                    ) : (
+                      <><i className="ri-calendar-check-line text-lg" /> Assign Leave</>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </section>
       </div>
+      <style jsx>{`
+        .assign-leave-select :global(.react-select__control) {
+          border: none;
+          min-height: 2.75rem;
+          background: transparent;
+          box-shadow: none;
+        }
+        .assign-leave-select :global(.react-select__control--is-focused) {
+          box-shadow: none;
+        }
+        .assign-leave-select :global(.react-select__placeholder),
+        .assign-leave-select :global(.react-select__input-container) {
+          color: inherit;
+        }
+      `}</style>
     </>
   );
 }

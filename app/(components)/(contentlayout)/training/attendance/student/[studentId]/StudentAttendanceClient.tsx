@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
@@ -696,11 +695,6 @@ export function StudentAttendanceClient() {
   return (
     <Fragment>
       <Seo title={student ? `Attendance – ${student.user?.name ?? student.user?.email}` : "Attendance"} />
-      <Pageheader
-        currentpage={student ? `Attendance – ${student.user?.name ?? "Student"}` : "Attendance"}
-        activepage="Training Management"
-        mainpage="Attendance Tracking"
-      />
 
       <div className="container w-full max-w-full mx-auto">
         {/* Header: same as Dharwrin candidate attendance modal */}
@@ -719,19 +713,19 @@ export function StudentAttendanceClient() {
                 <button
                   type="button"
                   onClick={openRegularizationModal}
-                  className="ti-btn ti-btn-primary !py-1.5 !px-3 flex items-center gap-2"
                   title="Add Back-Dated Attendance"
+                  className="inline-flex items-center gap-2 rounded-xl border-0 bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 dark:focus:ring-offset-bodydark"
                 >
-                  <i className="ri-calendar-line text-lg" />
-                  Regularization
+                  <i className="ri-calendar-line text-[1.1rem]" aria-hidden />
+                  <span>Regularization</span>
                 </button>
               )}
               <Link
                 href="/training/attendance"
-                className="ti-btn ti-btn-light !py-1.5 !px-3"
+                className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/20 hover:border-defaultborder dark:border-white/20 dark:hover:bg-white/10 dark:hover:border-white/30 focus:outline-none focus:ring-2 focus:ring-defaultborder/30 focus:ring-offset-2 dark:focus:ring-offset-bodydark"
               >
-                <i className="ri-close-line text-lg me-1" />
-                Close
+                <i className="ri-close-line text-[1.1rem]" aria-hidden />
+                <span>Close</span>
               </Link>
             </div>
           </div>

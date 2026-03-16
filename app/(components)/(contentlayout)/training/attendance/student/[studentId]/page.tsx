@@ -3,21 +3,20 @@ import StudentAttendancePage from "./student-attendance-client";
 // Generate static params for static export
 export async function generateStaticParams() {
   try {
-    // Fetch all students to generate static pages
-    // Note: This requires the API to be available at build time
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    // Fetch all students to generate static pages (optional; no auth at build/SSR so 401 is expected)
+    const raw = process.env.NEXT_PUBLIC_API_URL || "";
+    const apiUrl = raw.replace(/\/$/, "");
     if (!apiUrl) {
-      console.warn("NEXT_PUBLIC_API_URL not set, skipping generateStaticParams");
       return [];
     }
-    
+
     const response = await fetch(`${apiUrl}/training/students?limit=1000`, {
       method: "GET",
       headers: { "Content-Type": "application/json" },
     });
-    
+
     if (!response.ok) {
-      // Auth not available at build time (401) or API unreachable – return placeholder
+      // 401 = no auth at build/SSR; 5xx = API down. Use placeholder so build/navigation still works.
       return [{ studentId: "_" }];
     }
     

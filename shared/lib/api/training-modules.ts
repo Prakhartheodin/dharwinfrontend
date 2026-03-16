@@ -518,6 +518,8 @@ export interface GenerateFromTitleParams {
   questionsPerQuiz?: number;
   numEssays?: number;
   questionsPerEssay?: number;
+  /** ISO 639-1 language code for YouTube video search (e.g. en, hi, es). Default: en */
+  videoLanguage?: string;
 }
 
 export interface GenerateFromTitleEvent {
@@ -551,6 +553,7 @@ export async function* generateModuleFromTitle(
       questionsPerQuiz: params.questionsPerQuiz ?? 4,
       numEssays: params.numEssays ?? 1,
       questionsPerEssay: params.questionsPerEssay ?? 3,
+      videoLanguage: params.videoLanguage ?? "en",
     }),
   });
   if (!res.ok) {
@@ -598,6 +601,8 @@ export interface GenerateWithAIParams {
   videoLinks?: string[];
   skillLevel?: string;
   contentTypes?: string[];
+  /** ISO 639-1 language code for YouTube video search (e.g. en, hi, es). Default: en */
+  videoLanguage?: string;
   /** Extracted content by module from process-document. When provided, used as source of truth for what's present vs missing. */
   extractedByModule?: ExtractedModuleDisplay[];
 }

@@ -7,6 +7,8 @@ export interface Category {
   name: string;
   createdAt: string;
   updatedAt: string;
+  /** Number of training modules that use this category (included in list response) */
+  moduleCount?: number;
 }
 
 export interface CategoriesListResponse {

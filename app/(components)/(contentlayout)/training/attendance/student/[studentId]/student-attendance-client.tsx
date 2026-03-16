@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
 import * as XLSX from "xlsx";
@@ -21,6 +20,8 @@ const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+const CALENDAR_YEAR_START = 2020;
+const CALENDAR_YEAR_END = 2150;
 
 function formatDurationHours(ms: number): number {
   if (ms <= 0) return 0;
@@ -112,6 +113,15 @@ export default function StudentAttendancePage() {
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
   const [canRegularize, setCanRegularize] = useState(false);
   const [showBackDateModal, setShowBackDateModal] = useState(false);
+  const [backDateMode, setBackDateMode] = useState<"range" | "entries">("entries");
+  const [backDateRangeForm, setBackDateRangeForm] = useState<{ fromDate: string; toDate: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>({
+    fromDate: "",
+    toDate: "",
+    punchInTime: "",
+    punchOutTime: "",
+    notes: "",
+    timezone: "UTC",
+  });
   const [backDateEntries, setBackDateEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [addingBackDate, setAddingBackDate] = useState(false);
   const [showRequestModal, setShowRequestModal] = useState(false);
@@ -124,6 +134,14 @@ export default function StudentAttendancePage() {
     timezone: "UTC",
   });
   const [submittingRequest, setSubmittingRequest] = useState(false);
+  const [showAddLeaveModal, setShowAddLeaveModal] = useState(false);
+  const [addLeaveForm, setAddLeaveForm] = useState<{ fromDate: string; toDate: string; leaveType: "casual" | "sick" | "unpaid"; notes: string }>({
+    fromDate: "",
+    toDate: "",
+    leaveType: "casual",
+    notes: "",
+  });
+  const [addingLeave, setAddingLeave] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
   const { user } = useAuth();
@@ -280,8 +298,70 @@ export default function StudentAttendancePage() {
   const candidateTimezone = student?.shift?.timezone || defaultTimezone;
 
   const openRegularizationModal = () => {
-    setBackDateEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: defaultTimezone }]);
+    const tz = student?.shift?.timezone || defaultTimezone;
+    setBackDateMode("entries");
+    setBackDateRangeForm({ fromDate: "", toDate: "", punchInTime: "", punchOutTime: "", notes: "", timezone: tz });
+    setBackDateEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: tz }]);
     setShowBackDateModal(true);
+  };
+  const openAddLeaveModal = () => {
+    setAddLeaveForm({ fromDate: "", toDate: "", leaveType: "casual", notes: "" });
+    setShowAddLeaveModal(true);
+  };
+  const updateAddLeaveForm = (field: keyof typeof addLeaveForm, value: string) => {
+    setAddLeaveForm((prev) => ({ ...prev, [field]: value }));
+  };
+  const handleSubmitAddLeave = async () => {
+    if (!studentId) return;
+    const { fromDate, toDate, leaveType, notes } = addLeaveForm;
+    if (!fromDate || !toDate) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Please select From date and To date." });
+      return;
+    }
+    const from = new Date(fromDate);
+    const to = new Date(toDate);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
+      return;
+    }
+    if (to < from) {
+      await Swal.fire({ icon: "warning", title: "Validation", text: "To date must be on or after From date." });
+      return;
+    }
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const dateKeys: string[] = [];
+    const current = new Date(from);
+    current.setHours(0, 0, 0, 0);
+    const end = new Date(to);
+    end.setHours(0, 0, 0, 0);
+    while (current <= end) {
+      if (!isWeekOffDay(current)) {
+        dateKeys.push(`${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`);
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    if (dateKeys.length === 0) {
+      await Swal.fire({ icon: "warning", title: "No working days", text: "The selected range has no working days (weekends/week-off excluded)." });
+      return;
+    }
+    setAddingLeave(true);
+    try {
+      const datesIso = dateKeys.map((d) => new Date(d + "T00:00:00.000Z").toISOString());
+      const result = await attendanceApi.assignLeavesToStudents([studentId], datesIso, leaveType, notes.trim() || undefined);
+      await Swal.fire({
+        icon: "success",
+        title: "Done",
+        text: result?.data?.attendanceRecordsCreated != null ? `Added ${result.data.attendanceRecordsCreated} leave record(s).` : "Leave added.",
+        confirmButtonText: "OK",
+      });
+      setShowAddLeaveModal(false);
+      refetchForMonth();
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? (e as Error).message ?? "Failed to add leave.";
+      await Swal.fire({ icon: "error", title: "Error", text: msg });
+    } finally {
+      setAddingLeave(false);
+    }
   };
   const openRequestModal = () => {
     setRequestForm({
@@ -398,19 +478,72 @@ export default function StudentAttendancePage() {
   };
   const handleSubmitBackDate = async () => {
     if (!studentId) return;
-    const valid = backDateEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
-    if (valid.length === 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
-      return;
-    }
-    const invalid = backDateEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
-    if (invalid.length > 0) {
-      await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
-      return;
-    }
-    setAddingBackDate(true);
-    try {
-      const attendanceEntries = valid.map((entry) => {
+
+    let attendanceEntries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string; notes?: string }>;
+
+    if (backDateMode === "range") {
+      const { fromDate, toDate, punchInTime, punchOutTime, notes, timezone } = backDateRangeForm;
+      if (!fromDate || !toDate || !punchInTime || !punchOutTime) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "Please fill in From date, To date, Punch In, and Punch Out.", confirmButtonText: "OK" });
+        return;
+      }
+      const from = new Date(fromDate);
+      const to = new Date(toDate);
+      if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range.", confirmButtonText: "OK" });
+        return;
+      }
+      if (to < from) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "To date must be on or after From date.", confirmButtonText: "OK" });
+        return;
+      }
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (from >= today) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "From date must be in the past.", confirmButtonText: "OK" });
+        return;
+      }
+      const tz = timezone || defaultTimezone;
+      const pIn = punchInTime.includes(":") ? punchInTime : `${punchInTime}:00`;
+      const pOut = punchOutTime.includes(":") ? punchOutTime : `${punchOutTime}:00`;
+      const pad = (n: number) => String(n).padStart(2, "0");
+      attendanceEntries = [];
+      const current = new Date(from);
+      current.setHours(0, 0, 0, 0);
+      const end = new Date(to);
+      end.setHours(0, 0, 0, 0);
+      while (current <= end) {
+        if (!isWeekOffDay(current)) {
+          const dateKey = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+          const punchInDt = new Date(dateKey + "T" + pIn);
+          let punchOutDt = new Date(dateKey + "T" + pOut);
+          if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+          attendanceEntries.push({
+            date: dateKey,
+            punchIn: punchInDt.toISOString(),
+            punchOut: punchOutDt.toISOString(),
+            timezone: tz,
+            notes: notes?.trim() || undefined,
+          });
+        }
+        current.setDate(current.getDate() + 1);
+      }
+      if (attendanceEntries.length === 0) {
+        await Swal.fire({ icon: "warning", title: "No working days", text: "The selected date range has no working days (weekends/week-off excluded).", confirmButtonText: "OK" });
+        return;
+      }
+    } else {
+      const valid = backDateEntries.filter((e) => e.date && e.punchInTime && e.punchOutTime);
+      if (valid.length === 0) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "Add at least one entry with date, punch-in and punch-out time.", confirmButtonText: "OK" });
+        return;
+      }
+      const invalid = backDateEntries.filter((e) => e.date && (!e.punchInTime || !e.punchOutTime));
+      if (invalid.length > 0) {
+        await Swal.fire({ icon: "warning", title: "Validation", text: "Entries with a date must have both punch-in and punch-out times.", confirmButtonText: "OK" });
+        return;
+      }
+      attendanceEntries = valid.map((entry) => {
         const punchInStr = entry.punchInTime.includes(":") ? entry.punchInTime : `${entry.punchInTime}:00`;
         const punchOutStr = entry.punchOutTime.includes(":") ? entry.punchOutTime : `${entry.punchOutTime}:00`;
         const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
@@ -424,6 +557,10 @@ export default function StudentAttendancePage() {
           notes: entry.notes || undefined,
         };
       });
+    }
+
+    setAddingBackDate(true);
+    try {
       const result = await attendanceApi.regularizeAttendance(studentId, attendanceEntries);
       await Swal.fire({
         icon: "success",
@@ -645,6 +782,17 @@ export default function StudentAttendancePage() {
     return notes.trim().startsWith(prefix) ? notes.trim().slice(prefix.length).trim() : notes.trim();
   };
 
+  /** Leave type from record (leaveType or parse "Leave: Casual" etc. from notes). */
+  const getLeaveTypeFromRecord = (r: { leaveType?: string | null; notes?: string | null }): string => {
+    const lt = r.leaveType;
+    if (lt === "casual" || lt === "sick" || lt === "unpaid") return lt;
+    const n = r.notes?.trim() ?? "";
+    if (n.startsWith("Leave: Casual") || n.includes("Leave: Casual")) return "casual";
+    if (n.startsWith("Leave: Sick") || n.includes("Leave: Sick")) return "sick";
+    if (n.startsWith("Leave: Unpaid") || n.includes("Leave: Unpaid")) return "unpaid";
+    return "";
+  };
+
   type DayCell = {
     day: number;
     date: Date;
@@ -735,42 +883,53 @@ export default function StudentAttendancePage() {
   return (
     <Fragment>
       <Seo title={student ? `Attendance – ${student.user?.name ?? student.user?.email}` : "Attendance"} />
-      <Pageheader
-        currentpage={student ? `Attendance – ${student.user?.name ?? "Student"}` : "Attendance"}
-        activepage="Training Management"
-        mainpage="Attendance Tracking"
-      />
 
       <div className="container w-full max-w-full mx-auto">
-        {/* Header: same as Dharwrin candidate attendance modal */}
-        <div className="box mb-6">
-          <div className="box-header flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold text-defaulttextcolor">
-                Attendance Details - {student?.user?.name ?? "Student"}
-              </h2>
-              <p className="text-sm text-defaulttextcolor/70 mt-1">
-                {student?.user?.email ?? ""}
-              </p>
+        {/* Header – same style as non-admin section headers */}
+        <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-sm overflow-hidden mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 border-b border-defaultborder/60 bg-gray-50/80 dark:bg-white/5">
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden>
+                <i className="ri-user-line text-xl" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+                  Attendance – {student?.user?.name ?? "Student"}
+                </h2>
+                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                  {student?.user?.email ?? ""}
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {canRegularize && (
                 <button
                   type="button"
                   onClick={openRegularizationModal}
-                  className="ti-btn ti-btn-primary !py-1.5 !px-3 flex items-center gap-2"
                   title="Add Back-Dated Attendance"
+                  className="inline-flex items-center gap-2 rounded-xl border-0 bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 dark:focus:ring-offset-bodydark"
                 >
-                  <i className="ri-calendar-line text-lg" />
-                  Regularization
+                  <i className="ri-calendar-line text-[1.1rem]" aria-hidden />
+                  <span>Regularization</span>
+                </button>
+              )}
+              {canRegularize && (
+                <button
+                  type="button"
+                  onClick={openAddLeaveModal}
+                  title="Add leave for this student"
+                  className="inline-flex items-center gap-2 rounded-xl border-0 bg-sky-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-sky-700 hover:shadow active:bg-sky-800 active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:ring-offset-2 dark:focus:ring-offset-bodydark"
+                >
+                  <i className="ri-calendar-event-line text-[1.1rem]" aria-hidden />
+                  <span>Leave</span>
                 </button>
               )}
               <Link
                 href="/training/attendance"
-                className="ti-btn ti-btn-light !py-1.5 !px-3"
+                className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/20 hover:border-defaultborder dark:border-white/20 dark:hover:bg-white/10 dark:hover:border-white/30 focus:outline-none focus:ring-2 focus:ring-defaultborder/30 focus:ring-offset-2 dark:focus:ring-offset-bodydark"
               >
-                <i className="ri-close-line text-lg me-1" />
-                Close
+                <i className="ri-close-line text-[1.1rem]" aria-hidden />
+                <span>Close</span>
               </Link>
             </div>
           </div>
@@ -838,63 +997,42 @@ export default function StudentAttendancePage() {
           </div>
         )}
 
-        {/* Summary cards – same as Dharwrin candidate attendance */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="box !p-4 border border-primary/20 bg-primary/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
-                <i className="ri-time-line text-primary text-lg" />
-              </div>
-              <div>
-                <p className="text-xs text-defaulttextcolor/70 mb-0">Total Working Hours</p>
-                <p className="text-lg font-semibold text-defaulttextcolor mb-0">{monthStats.totalHours}h</p>
-              </div>
-            </div>
-          </div>
-          <div className="box !p-4 border border-success/20 bg-success/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-success/20 flex items-center justify-center">
-                <i className="ri-check-line text-success text-lg" />
-              </div>
-              <div>
-                <p className="text-xs text-defaulttextcolor/70 mb-0">Present Days</p>
-                <p className="text-lg font-semibold text-defaulttextcolor mb-0">{monthStats.presentDays}</p>
-              </div>
-            </div>
-          </div>
-          <div className="box !p-4 border border-danger/20 bg-danger/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-danger/20 flex items-center justify-center">
-                <i className="ri-close-line text-danger text-lg" />
-              </div>
-              <div>
-                <p className="text-xs text-defaulttextcolor/70 mb-0">Absent Days</p>
-                <p className="text-lg font-semibold text-defaulttextcolor mb-0">{monthStats.absentDays}</p>
+        {/* Summary cards – match section card style (rounded-xl, shadow-sm, icon + label/value) */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          {[
+            { label: "Total Working Hours", value: monthStats.totalHours + "h", icon: "ri-time-line", iconClass: "bg-secondary/10 text-secondary dark:bg-secondary/15" },
+            { label: "Present Days", value: String(monthStats.presentDays), icon: "ri-check-line", iconClass: "bg-success/10 text-success dark:bg-success/15" },
+            { label: "Absent Days", value: String(monthStats.absentDays), icon: "ri-close-line", iconClass: "bg-danger/10 text-danger dark:bg-danger/15" },
+            { label: "Leave Days", value: String(monthStats.leaveDays), icon: "ri-calendar-line", iconClass: "bg-warning/10 text-warning dark:bg-warning/15" },
+          ].map((s, i) => (
+            <div
+              key={i}
+              className="rounded-xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-sm overflow-hidden flex items-center gap-3 px-4 py-3.5 transition-colors duration-200 hover:border-defaultborder dark:hover:border-white/10"
+            >
+              <span className={"flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg " + s.iconClass} aria-hidden>
+                <i className={s.icon} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[0.6875rem] font-medium uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50 mb-0.5 truncate">
+                  {s.label}
+                </p>
+                <p className="text-base font-semibold tabular-nums text-defaulttextcolor dark:text-white mb-0 truncate">
+                  {s.value}
+                </p>
               </div>
             </div>
-          </div>
-          <div className="box !p-4 border border-warning/20 bg-warning/5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-warning/20 flex items-center justify-center">
-                <i className="ri-calendar-line text-warning text-lg" />
-              </div>
-              <div>
-                <p className="text-xs text-defaulttextcolor/70 mb-0">Leave Days</p>
-                <p className="text-lg font-semibold text-defaulttextcolor mb-0">{monthStats.leaveDays}</p>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
 
         {/* Shift Details – from student.shift (populated by API) */}
-        <div className="box mb-6">
-          <div className="box-header">
-            <h5 className="font-semibold text-defaulttextcolor mb-0 flex items-center gap-2">
+        <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-sm overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-defaultborder/60 bg-gray-50/80 dark:bg-white/5">
+            <h5 className="font-semibold text-defaulttextcolor dark:text-white mb-0 flex items-center gap-2 text-sm">
               <i className="ri-global-line text-defaulttextcolor/70" />
               Shift Details
             </h5>
           </div>
-          <div className="box-body">
+          <div className="px-5 py-4">
             {student?.shift && typeof student.shift === "object" && (student.shift.name ?? student.shift.id ?? student.shift._id) ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div><span className="text-defaulttextcolor/70">Name</span><div className="font-medium text-defaulttextcolor">{student.shift.name ?? "—"}</div></div>
@@ -908,41 +1046,50 @@ export default function StudentAttendancePage() {
           </div>
         </div>
 
-        <div className="box">
-          <div className="box-header flex flex-wrap items-center justify-between gap-2">
-            <div className="box-title">
-              Calendar View - {MONTH_NAMES[calendarMonth]} {calendarYear}
+        <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-sm overflow-hidden mb-6">
+          <div className="px-5 py-4 border-b border-defaultborder/60 bg-gray-50/80 dark:bg-white/5 flex flex-wrap items-center justify-between gap-4">
+            <h5 className="font-semibold text-defaulttextcolor dark:text-white mb-0 flex items-center gap-2 text-sm">
+              <i className="ri-calendar-line text-defaulttextcolor/70" />
+              Attendance – {MONTH_NAMES[calendarMonth]} {calendarYear}
+            </h5>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="inline-flex rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("list")}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg py-2 px-3.5 text-[0.75rem] font-semibold transition-all duration-200 ${viewMode === "list" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+                >
+                  <i className="ri-list-unordered text-[0.9rem]" />
+                  <span>List</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("calendar")}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg py-2 px-3.5 text-[0.75rem] font-semibold transition-all duration-200 ${viewMode === "calendar" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+                >
+                  <i className="ri-calendar-line text-[0.9rem]" />
+                  <span>Calendar</span>
+                </button>
+              </div>
+              <div className="h-5 w-px bg-defaultborder/80 flex-shrink-0 hidden sm:block" aria-hidden="true" />
+              <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchStatus();
+                    refetchForMonth();
+                  }}
+                  disabled={listLoading}
+                  title="Refresh attendance"
+                  aria-label="Refresh attendance list"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
+                >
+                  <i className={"ri-refresh-line text-[1.1rem]" + (listLoading ? " animate-spin" : "")} />
+                </button>
+              </div>
             </div>
-            <span className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-defaulttextcolor/80">View:</span>
-              <button
-                type="button"
-                className={`ti-btn !py-1.5 !px-3 !text-[0.8125rem] ${viewMode === "list" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                onClick={() => setViewMode("list")}
-              >
-                List
-              </button>
-              <button
-                type="button"
-                className={`ti-btn !py-1.5 !px-3 !text-[0.8125rem] ${viewMode === "calendar" ? "ti-btn-primary" : "ti-btn-outline-primary"}`}
-                onClick={() => setViewMode("calendar")}
-              >
-                Calendar
-              </button>
-              <button
-                type="button"
-                className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-                onClick={() => {
-                  fetchStatus();
-                  refetchForMonth();
-                }}
-                disabled={listLoading}
-              >
-                {listLoading ? "…" : "Refresh"}
-              </button>
-            </span>
           </div>
-          <div className="box-body">
+          <div className={viewMode === "list" ? "!p-0" : "p-5"}>
             {viewMode === "list" && (
               <>
                 {listLoading && attendanceList.length === 0 ? (
@@ -950,41 +1097,43 @@ export default function StudentAttendancePage() {
                 ) : attendanceList.length === 0 ? (
                   <div className="py-8 text-center text-defaulttextcolor/70">No attendance records yet. Use Refresh if you just opened this page from View.</div>
                 ) : (
-                  <div className="table-responsive">
-                    <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
+                  <div className="overflow-hidden rounded-b-md">
+                    <table className="min-w-full text-[0.8125rem]">
                       <thead>
-                        <tr className="bg-gray-50 dark:bg-white/5">
-                          <th className="!text-start">Date</th>
-                          <th className="!text-start">Day</th>
-                          <th className="!text-start">Status</th>
-                          <th className="!text-end">Punch In</th>
-                          <th className="!text-end">Punch Out</th>
-                          <th className="!text-end">Duration</th>
+                        <tr className="bg-gray-50/90 dark:bg-white/5 border-b border-defaultborder/80">
+                          <th className="text-start py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70">Date</th>
+                          <th className="text-start py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70">Day</th>
+                          <th className="text-start py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70">Status</th>
+                          <th className="text-end py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70 tabular-nums">Punch In</th>
+                          <th className="text-end py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70 tabular-nums">Punch Out</th>
+                          <th className="text-end py-3.5 pl-5 pr-5 text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/70 tabular-nums">Duration</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {attendanceList.map((r) => {
+                        {attendanceList.map((r, idx) => {
                           const recordTz = r.timezone ?? "UTC";
                           const recStatus = (r as { status?: string }).status;
                           const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
+                          const leaveType = getLeaveTypeFromRecord(r);
+                          const leaveLabel = leaveType ? "Leave (" + leaveType.charAt(0).toUpperCase() + leaveType.slice(1) + ")" : "Leave";
                           return (
-                            <tr key={r.id} className={isHolidayOrLeave ? "bg-info/5" : ""}>
-                              <td>{formatDate(r.date)}</td>
-                              <td>{r.day ?? "—"}</td>
-                              <td>
+                            <tr key={r.id} className={`border-b border-defaultborder/60 ${idx % 2 === 1 ? "bg-gray-50/50 dark:bg-white/[0.02]" : ""}`}>
+                              <td className="py-3.5 pl-5 pr-5">{formatDate(r.date)}</td>
+                              <td className="py-3.5 pl-5 pr-5">{r.day ?? "—"}</td>
+                              <td className="py-3.5 pl-5 pr-5">
                                 {recStatus === "Holiday" ? (
-                                  <span className="badge bg-info/10 text-info">{(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}</span>
+                                  <span className="inline-flex items-center rounded-full border border-info/30 bg-info/10 px-2.5 py-1 text-xs font-semibold text-info">{(r as { notes?: string }).notes ? getHolidayNameFromNotes((r as { notes?: string }).notes) || "Holiday" : "Holiday"}</span>
                                 ) : recStatus === "Leave" ? (
-                                  <span className="badge bg-secondary/10 text-secondary">Leave</span>
+                                  <span className="inline-flex items-center rounded-full border border-secondary/30 bg-secondary/10 px-2.5 py-1 text-xs font-semibold text-secondary">{leaveLabel}</span>
                                 ) : recStatus === "Absent" ? (
-                                  <span className="badge bg-danger/10 text-danger">Absent</span>
+                                  <span className="inline-flex items-center rounded-full border border-danger/30 bg-danger/10 px-2.5 py-1 text-xs font-semibold text-danger">Absent</span>
                                 ) : (
-                                  <span className="badge bg-success/10 text-success">Present</span>
+                                  <span className="inline-flex items-center rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-xs font-semibold text-success">Present</span>
                                 )}
                               </td>
-                              <td className="text-end">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
-                              <td className="text-end">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : "—")}</td>
-                              <td className="text-end">
+                              <td className="text-end py-3.5 pl-5 pr-5 tabular-nums">{isHolidayOrLeave ? "—" : formatTimeOnlyInTimezone(r.punchIn, recordTz)}</td>
+                              <td className="text-end py-3.5 pl-5 pr-5 tabular-nums">{isHolidayOrLeave ? "—" : (r.punchOut ? formatTimeOnlyInTimezone(r.punchOut, recordTz) : (status?.isPunchedIn && status?.record?.id === r.id ? "Active" : "—"))}</td>
+                              <td className="text-end py-3.5 pl-5 pr-5 tabular-nums">
                                 {isHolidayOrLeave
                                   ? "—"
                                   : r.punchOut
@@ -1006,51 +1155,51 @@ export default function StudentAttendancePage() {
             {viewMode === "calendar" && (
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-4">
-                  <h4 className="text-sm font-semibold text-defaulttextcolor">
-                    {new Date(calendarYear, calendarMonth).toLocaleDateString("en-US", {
-                      month: "long",
-                      year: "numeric",
-                    })}
+                  <h4 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+                    {MONTH_NAMES[calendarMonth]} {calendarYear}
                   </h4>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <label className="text-sm text-defaulttextcolor/80">Year:</label>
-                    <select
-                      className="form-control !w-auto !min-w-[5rem] !py-1.5 !px-2 !text-[0.8125rem]"
-                      value={calendarYear}
-                      onChange={(e) => setCalendarYear(parseInt(e.target.value, 10))}
-                    >
-                      {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map((y) => (
-                        <option key={y} value={y}>
-                          {y}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="text-sm text-defaulttextcolor/80 ml-2">Month:</label>
-                    <select
-                      className="form-control !w-auto !min-w-[8rem] !py-1.5 !px-2 !text-[0.8125rem]"
-                      value={calendarMonth}
-                      onChange={(e) => setCalendarMonth(parseInt(e.target.value, 10))}
-                    >
-                      {[
-                        "January", "February", "March", "April", "May", "June",
-                        "July", "August", "September", "October", "November", "December",
-                      ].map((name, i) => (
-                        <option key={name} value={i}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-soft-primary !py-1.5 !px-2 !text-[0.8125rem]"
-                      onClick={() => {
-                        const now = new Date();
-                        setCalendarYear(now.getFullYear());
-                        setCalendarMonth(now.getMonth());
-                      }}
-                    >
-                      This month
-                    </button>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="inline-flex items-center rounded-xl border border-defaultborder/70 bg-gray-50/80 dark:bg-white/5 p-0.5 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => { const prev = calendarMonth === 0 ? 11 : calendarMonth - 1; setCalendarMonth(prev); if (calendarMonth === 0) setCalendarYear((y) => y - 1); }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 transition-all duration-200 active:scale-95"
+                        aria-label="Previous month"
+                      >
+                        <i className="ri-arrow-left-s-line text-[1.1rem]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setCalendarYear(new Date().getFullYear()); setCalendarMonth(new Date().getMonth()); }}
+                        disabled={calendarYear === new Date().getFullYear() && calendarMonth === new Date().getMonth()}
+                        className={"mx-0.5 inline-flex h-8 items-center rounded-lg px-3 text-[0.75rem] font-medium transition-all duration-200 active:scale-[0.98] disabled:cursor-default disabled:active:scale-100 " + (calendarYear === new Date().getFullYear() && calendarMonth === new Date().getMonth() ? "bg-primary/15 text-primary dark:bg-primary/25 cursor-default" : "bg-primary text-white hover:bg-primary/90 shadow-sm")}
+                      >
+                        Today
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { const next = calendarMonth === 11 ? 0 : calendarMonth + 1; setCalendarMonth(next); if (calendarMonth === 11) setCalendarYear((y) => y + 1); }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 transition-all duration-200 active:scale-95"
+                        aria-label="Next month"
+                      >
+                        <i className="ri-arrow-right-s-line text-[1.1rem]" />
+                      </button>
+                    </div>
+                    <div className="relative inline-flex items-center">
+                      <i className="ri-calendar-line absolute left-2.5 text-[0.8rem] text-defaulttextcolor/50 pointer-events-none" aria-hidden />
+                      <select
+                        value={calendarYear}
+                        onChange={(e) => setCalendarYear(parseInt(e.target.value, 10))}
+                        className="h-8 min-w-[4.5rem] rounded-xl border border-defaultborder/70 bg-gray-50/80 dark:bg-white/5 pl-7 pr-8 py-0 text-[0.75rem] font-medium text-defaulttextcolor dark:text-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all duration-200 cursor-pointer [&::-ms-expand]:hidden !bg-no-repeat [background-image:none]"
+                        style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none" }}
+                        aria-label="Select year"
+                      >
+                        {Array.from({ length: CALENDAR_YEAR_END - CALENDAR_YEAR_START + 1 }, (_, i) => CALENDAR_YEAR_START + i).map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                      <i className="ri-arrow-down-s-line absolute right-2 text-[0.75rem] text-defaulttextcolor/50 pointer-events-none" aria-hidden />
+                    </div>
                   </div>
                 </div>
                 <div className="border border-defaultborder rounded-lg overflow-hidden">
@@ -1083,7 +1232,7 @@ export default function StudentAttendancePage() {
                             isEmpty
                               ? "bg-gray-50 dark:bg-white/5"
                               : isWeekOff
-                                ? "bg-primary/10"
+                                ? "bg-gray-50 dark:bg-white/5"
                                 : isHoliday
                                   ? "bg-info/10"
                                   : isLeave
@@ -1106,7 +1255,7 @@ export default function StudentAttendancePage() {
                                   isToday
                                     ? "text-primary font-semibold"
                                     : isWeekOff
-                                      ? "text-primary"
+                                      ? "text-defaulttextcolor/70 dark:text-white/50"
                                       : isHoliday
                                         ? "text-info"
                                         : isLeave
@@ -1126,7 +1275,7 @@ export default function StudentAttendancePage() {
                                 <span className="text-[0.7rem] text-primary font-medium mt-0.5">Today</span>
                               )}
                               {isWeekOff && !isToday && (
-                                <span className="text-[0.7rem] text-primary mt-0.5">Week-Off</span>
+                                <span className="text-[0.7rem] text-defaulttextcolor/60 dark:text-white/40 mt-0.5">Week-Off</span>
                               )}
                               {isHoliday && (
                                 <span
@@ -1157,6 +1306,14 @@ export default function StudentAttendancePage() {
                       );
                     })}
                   </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-4 text-[0.6875rem]">
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-success" /> Present</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-warning" /> Incomplete</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-info" /> Holiday</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-secondary" /> Leave</span>
+                  <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-danger" /> Absent</span>
+                  <span className="flex items-center gap-1.5 text-[#8c9097] dark:text-white/50"><span className="h-2.5 w-2.5 rounded-full bg-[#8c9097] dark:bg-white/40" /> Week Off</span>
                 </div>
                 {listLoading && attendanceList.length === 0 && (
                   <div className="py-4 text-center text-defaulttextcolor/70 text-sm">Loading calendar…</div>
@@ -1190,6 +1347,94 @@ export default function StudentAttendancePage() {
                 </div>
               </div>
               <div className="px-4 sm:px-6 py-4 overflow-y-auto flex-1">
+                <div className="flex items-center gap-2 mb-4 flex-wrap">
+                  <span className="text-sm text-defaulttextcolor me-1">Add by:</span>
+                  <button
+                    type="button"
+                    onClick={() => setBackDateMode("range")}
+                    title="By date range (From – To)"
+                    className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors shrink-0 ${backDateMode === "range" ? "bg-primary text-white border-primary" : "bg-white dark:bg-white/5 border-defaultborder text-defaulttextcolor hover:border-primary/50 hover:text-primary"}`}
+                  >
+                    <i className="ri-calendar-2-line text-lg" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackDateMode("entries")}
+                    title="One entry per date"
+                    className={`inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors shrink-0 ${backDateMode === "entries" ? "bg-primary text-white border-primary" : "bg-white dark:bg-white/5 border-defaultborder text-defaulttextcolor hover:border-primary/50 hover:text-primary"}`}
+                  >
+                    <i className="ri-list-unordered text-lg" aria-hidden />
+                  </button>
+                  <span className="text-xs text-[#8c9097] dark:text-white/50 ml-1">
+                    {backDateMode === "range" ? "Date range (From – To)" : "One entry per date"}
+                  </span>
+                </div>
+
+                {backDateMode === "range" && (
+                  <div className="mb-4 p-4 border border-defaultborder rounded-lg bg-black/5 dark:bg-white/5">
+                    <p className="text-sm text-defaulttextcolor mb-3">
+                      Enter a date range (From and To). Punch In and Punch Out will be applied to all working days. Weekends are excluded (or the student&apos;s week-off if set).
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">From date *</label>
+                        <input
+                          type="date"
+                          value={backDateRangeForm.fromDate}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setBackDateRangeForm((prev) => ({ ...prev, fromDate: e.target.value }))}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">To date *</label>
+                        <input
+                          type="date"
+                          value={backDateRangeForm.toDate}
+                          max={new Date().toISOString().slice(0, 10)}
+                          onChange={(e) => setBackDateRangeForm((prev) => ({ ...prev, toDate: e.target.value }))}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Timezone</label>
+                        <div className="w-full px-3 py-2 border border-defaultborder rounded bg-black/5 dark:bg-white/5 text-defaulttextcolor text-sm">{backDateRangeForm.timezone || defaultTimezone}</div>
+                      </div>
+                      <div />
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch In *</label>
+                        <input
+                          type="time"
+                          value={backDateRangeForm.punchInTime}
+                          onChange={(e) => setBackDateRangeForm((prev) => ({ ...prev, punchInTime: e.target.value }))}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Punch Out *</label>
+                        <input
+                          type="time"
+                          value={backDateRangeForm.punchOutTime}
+                          onChange={(e) => setBackDateRangeForm((prev) => ({ ...prev, punchOutTime: e.target.value }))}
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-defaulttextcolor mb-1">Notes (optional)</label>
+                        <input
+                          type="text"
+                          value={backDateRangeForm.notes}
+                          onChange={(e) => setBackDateRangeForm((prev) => ({ ...prev, notes: e.target.value }))}
+                          placeholder="Notes for this range"
+                          className="ti-form-input w-full !py-1.5"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {backDateMode === "entries" && (
+                  <>
                 <div className="mb-4 p-3 bg-primary/10 border border-primary/20 rounded-lg text-sm text-defaulttextcolor">
                   <i className="ri-information-line me-2 text-primary" />
                   You can add multiple back-dated attendance entries. Each entry requires a date, punch-in time, and punch-out time.
@@ -1292,6 +1537,8 @@ export default function StudentAttendancePage() {
                 >
                   <i className="ri-add-line" /> Add Another Entry
                 </button>
+                  </>
+                )}
               </div>
               <div className="px-4 sm:px-6 py-3 border-t border-defaultborder flex justify-end gap-2">
                 <button type="button" onClick={() => { if (!addingBackDate) { setShowBackDateModal(false); if (excelFileInputRef.current) excelFileInputRef.current.value = ""; } }} className="ti-btn ti-btn-light" disabled={addingBackDate}>
@@ -1299,6 +1546,92 @@ export default function StudentAttendancePage() {
                 </button>
                 <button type="button" onClick={handleSubmitBackDate} className="ti-btn ti-btn-primary" disabled={addingBackDate}>
                   {addingBackDate ? "Adding…" : "Submit"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Leave Modal – same UI/UX as non-admin Request Leave modal */}
+      {showAddLeaveModal && (
+        <div className="fixed inset-0 z-[105] overflow-y-auto" role="dialog" aria-modal="true" aria-labelledby="add-leave-modal-title">
+          <style>{`
+            @keyframes leave-modal-backdrop { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes leave-modal-enter { from { opacity: 0; transform: scale(0.96) translateY(-8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+            @keyframes leave-modal-stagger { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+            .leave-modal-backdrop { animation: leave-modal-backdrop 0.2s ease-out forwards; }
+            .leave-modal-panel { animation: leave-modal-enter 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+            .leave-modal-stagger-1 { animation: leave-modal-stagger 0.35s ease-out 0.05s both; }
+            .leave-modal-stagger-2 { animation: leave-modal-stagger 0.35s ease-out 0.1s both; }
+            .leave-modal-stagger-3 { animation: leave-modal-stagger 0.35s ease-out 0.15s both; }
+            .leave-modal-stagger-4 { animation: leave-modal-stagger 0.35s ease-out 0.2s both; }
+            .leave-modal-stagger-5 { animation: leave-modal-stagger 0.35s ease-out 0.25s both; }
+            .leave-type-card:focus-visible { outline: 2px solid rgba(14, 165, 233, 0.6); outline-offset: 2px; }
+          `}</style>
+          <div className="flex min-h-full items-start justify-center p-4 pt-[8vh] pb-8">
+            <div className="fixed inset-0 bg-black/55 backdrop-blur-[2px] leave-modal-backdrop" onClick={() => { if (!addingLeave) setShowAddLeaveModal(false); }} aria-hidden />
+            <div className="relative w-full max-w-[28rem] flex flex-col max-h-[85vh] leave-modal-panel rounded-2xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-xl dark:shadow-black/30 overflow-hidden">
+              <div className="relative border-b border-defaultborder/60 bg-gradient-to-br from-sky-50/80 to-transparent dark:from-sky-950/20 dark:to-transparent">
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-sky-400 to-sky-600 dark:from-sky-500 dark:to-sky-700" aria-hidden />
+                <div className="flex items-start justify-between gap-4 pl-5 pr-4 py-5">
+                  <div className="flex items-start gap-4 min-w-0">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 shadow-inner">
+                      <i className="ri-hotel-bed-line text-[1.5rem]" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <h2 id="add-leave-modal-title" className="text-lg font-semibold tracking-tight text-defaulttextcolor dark:text-white">Add Leave</h2>
+                      <p className="mt-1 text-sm text-defaulttextcolor/65 dark:text-white/55">{student?.user?.name ?? "—"} ({student?.user?.email ?? "—"})</p>
+                      <p className="mt-0.5 text-xs text-defaulttextcolor/55 dark:text-white/45">Working days only · Weekends and week-off excluded</p>
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => { if (!addingLeave) setShowAddLeaveModal(false); }} className="shrink-0 flex h-9 w-9 items-center justify-center rounded-xl text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500/50" aria-label="Close">
+                    <i className="ri-close-line text-xl" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-5 overflow-y-auto flex-1 space-y-5">
+                <div className="leave-modal-stagger-1 flex items-start gap-3 rounded-xl bg-sky-50/60 dark:bg-sky-950/15 border border-sky-200/40 dark:border-sky-700/30 p-3.5">
+                  <i className="ri-calendar-event-line text-sky-600 dark:text-sky-400 text-lg shrink-0 mt-0.5" aria-hidden />
+                  <p className="text-sm text-defaulttextcolor/85 dark:text-white/75 leading-relaxed">Pick a date range. Only <strong>working days</strong> are included; weekends and the student&apos;s week-off are skipped.</p>
+                </div>
+                <div className="leave-modal-stagger-2 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Dates</span>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="add-leave-from-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">From <span className="text-rose-500">*</span></label>
+                      <input id="add-leave-from-date" type="date" value={addLeaveForm.fromDate} onChange={(e) => updateAddLeaveForm("fromDate", e.target.value)} className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all" />
+                    </div>
+                    <div>
+                      <label htmlFor="add-leave-to-date" className="block text-xs font-medium text-defaulttextcolor/80 mb-1.5">To <span className="text-rose-500">*</span></label>
+                      <input id="add-leave-to-date" type="date" value={addLeaveForm.toDate} onChange={(e) => updateAddLeaveForm("toDate", e.target.value)} className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all" />
+                    </div>
+                  </div>
+                </div>
+                <div className="leave-modal-stagger-3 space-y-2">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Leave type</span>
+                  <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Leave type">
+                    {[
+                      { value: "casual" as const, label: "Casual", icon: "ri-sun-line", bg: "bg-sky-50 dark:bg-sky-500/10 border-sky-200/60 dark:border-sky-500/30", active: "bg-sky-100 dark:bg-sky-500/20 border-sky-400/60 text-sky-800 dark:text-sky-200" },
+                      { value: "sick" as const, label: "Sick", icon: "ri-heart-pulse-line", bg: "bg-orange-50 dark:bg-orange-500/10 border-orange-200/60 dark:border-orange-500/30", active: "bg-orange-100 dark:bg-orange-500/20 border-orange-400/60 text-orange-800 dark:text-orange-200" },
+                      { value: "unpaid" as const, label: "Unpaid", icon: "ri-bank-card-line", bg: "bg-slate-100 dark:bg-slate-500/10 border-slate-200/60 dark:border-slate-500/30", active: "bg-slate-200/80 dark:bg-slate-500/25 border-slate-400/60 text-slate-800 dark:text-slate-200" },
+                    ].map(({ value, label, icon, bg, active }) => (
+                      <button key={value} type="button" onClick={() => updateAddLeaveForm("leaveType", value)} className={`leave-type-card flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 text-center transition-all duration-200 hover:border-defaulttextcolor/20 dark:hover:border-white/20 ${addLeaveForm.leaveType === value ? `${active} border-current` : `${bg} border-transparent text-defaulttextcolor/80 dark:text-white/70`}`}>
+                        <i className={`${icon} text-lg`} aria-hidden />
+                        <span className="text-xs font-semibold">{label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="leave-modal-stagger-4 space-y-2">
+                  <label htmlFor="add-leave-notes" className="block text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/55 dark:text-white/50">Notes <span className="font-normal normal-case text-defaulttextcolor/50">(optional)</span></label>
+                  <input id="add-leave-notes" type="text" value={addLeaveForm.notes} onChange={(e) => updateAddLeaveForm("notes", e.target.value)} placeholder="e.g. Family trip, medical appointment…" className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3.5 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/40 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20 transition-all" />
+                </div>
+              </div>
+              <div className="leave-modal-stagger-5 flex items-center justify-end gap-3 border-t border-defaultborder/60 bg-defaultborder/5 dark:bg-white/5 px-5 py-4">
+                <button type="button" onClick={() => { if (!addingLeave) setShowAddLeaveModal(false); }} className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/10 transition-colors disabled:opacity-50" disabled={addingLeave}>Cancel</button>
+                <button type="button" onClick={handleSubmitAddLeave} className="rounded-xl bg-sky-600 hover:bg-sky-700 active:bg-sky-800 text-white px-5 py-2.5 text-sm font-semibold shadow-sm hover:shadow transition-all disabled:opacity-60 disabled:pointer-events-none flex items-center gap-2" disabled={addingLeave}>
+                  {addingLeave ? (<><span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />Adding…</>) : (<><i className="ri-add-circle-line text-base" aria-hidden />Add Leave</>)}
                 </button>
               </div>
             </div>

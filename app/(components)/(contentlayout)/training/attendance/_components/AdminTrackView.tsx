@@ -33,11 +33,13 @@ export default function AdminTrackView({
   const [statusFilter, setStatusFilter] = useState<"all" | "in" | "out">("all")
 
   const filteredList = useMemo(() => {
-    return trackList.filter((r) => {
+    const list = trackList.filter((r) => {
       if (statusFilter === "in" && !r.isPunchedIn) return false
       if (statusFilter === "out" && r.isPunchedIn) return false
       return true
     })
+    // Show clocked-in users at the top
+    return [...list].sort((a, b) => (b.isPunchedIn ? 1 : 0) - (a.isPunchedIn ? 1 : 0))
   }, [trackList, statusFilter])
 
   const punchedInCount = filteredList.filter((r) => r.isPunchedIn).length
@@ -84,45 +86,68 @@ export default function AdminTrackView({
 
       {/* Table */}
       <div className="box !mb-0">
-        <div className="box-header flex flex-wrap items-center justify-between gap-3">
-          <div className="box-title flex items-center gap-2 flex-shrink-0">
-            Live Attendance
+        <div className="box-header flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2 flex-shrink-0 min-w-0">
+            <h3 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight mb-0">
+              Live Attendance
+            </h3>
             {punchedInCount > 0 && (
-              <span className="relative flex h-2.5 w-2.5">
+              <span className="relative flex h-2.5 w-2.5 shrink-0" aria-hidden>
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                 <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-success" />
               </span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
-              <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.9rem] pointer-events-none" />
+              <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-[#8c9097] dark:text-white/50 text-[0.95rem] pointer-events-none" aria-hidden />
               <input
                 type="text"
-                placeholder="Search by name, email, or employee ID..."
+                placeholder="Search by name, email, or employee ID…"
                 value={search}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="form-control !pl-9 !py-1.5 !text-[0.8125rem] !rounded-md !border-defaultborder dark:!border-defaultborder/10 !w-[200px] sm:!w-[220px]"
+                aria-label="Search attendance"
+                className="w-full min-w-[200px] sm:min-w-[240px] max-w-[280px] rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 pl-9 pr-3.5 py-2.5 text-[0.8125rem] text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-200"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as "all" | "in" | "out")}
-              className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem] !rounded-md"
-            >
-              <option value="all">All status</option>
-              <option value="in">Clocked In</option>
-              <option value="out">Clocked Out</option>
-            </select>
-            <button
-              type="button"
-              className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary flex-shrink-0"
-              onClick={() => onExportCsv(filteredList)}
-              disabled={trackList.length === 0}
-              title="Export CSV"
-            >
-              <i className="ri-download-2-line" />
-            </button>
+            <div className="h-5 w-px bg-defaultborder/80 flex-shrink-0 hidden sm:block" aria-hidden />
+            <div className="inline-flex rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setStatusFilter("all")}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${statusFilter === "all" ? "bg-primary text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+              >
+                <span>All</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter("in")}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${statusFilter === "in" ? "bg-success text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+              >
+                <i className="ri-user-follow-line text-[0.85rem]" aria-hidden />
+                <span>In</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter("out")}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg py-2 px-3 text-[0.75rem] font-semibold transition-all duration-200 ${statusFilter === "out" ? "bg-defaulttextcolor/15 dark:bg-white/15 text-defaulttextcolor dark:text-white shadow-sm" : "text-defaulttextcolor dark:text-white/80 hover:text-defaulttextcolor hover:bg-white/80 dark:hover:bg-white/10"}`}
+              >
+                <i className="ri-user-unfollow-line text-[0.85rem]" aria-hidden />
+                <span>Out</span>
+              </button>
+            </div>
+            <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
+              <button
+                type="button"
+                onClick={() => onExportCsv(filteredList)}
+                disabled={trackList.length === 0}
+                title="Export CSV"
+                aria-label="Export attendance as CSV"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
+              >
+                <i className="ri-download-2-line text-[1.1rem]" aria-hidden />
+              </button>
+            </div>
           </div>
         </div>
         <div className="box-body !p-0">
