@@ -2,8 +2,20 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
+export interface AttendanceShiftMeta {
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  name?: string;
+}
+
+export interface ElapsedPreview {
+  sessionMs: number;
+  eligibleMs: number;
+}
+
 export interface PunchStatusResponse {
-  success: boolean;
+  success?: boolean;
   isPunchedIn: boolean;
   record: {
     id: string;
@@ -11,6 +23,20 @@ export interface PunchStatusResponse {
     timezone: string;
     date: string;
   } | null;
+  /** Present while punched in: wall session vs shift-overlap (same rules as stored duration). */
+  elapsedPreview?: ElapsedPreview | null;
+  shift?: AttendanceShiftMeta | null;
+}
+
+/** Live session timer with seconds (open punch only). */
+export function formatElapsedSession(ms: number): string {
+  if (ms <= 0) return "0:00";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 export interface AttendanceRecord {

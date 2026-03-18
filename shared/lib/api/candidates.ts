@@ -133,6 +133,21 @@ export async function getDocumentDownloadUrl(
   return data.data;
 }
 
+/** Get fresh download URL for a salary slip (presigned URLs expire after 7 days). */
+export async function getSalarySlipDownloadUrl(
+  candidateId: string,
+  salarySlipIndex: number
+): Promise<{ url: string; fileName: string; mimeType: string; size: number }> {
+  const { data } = await apiClient.get<{
+    success: boolean;
+    data: { url: string; fileName: string; mimeType: string; size: number };
+  }>(`/candidates/salary-slips/${candidateId}/${salarySlipIndex}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!data?.success || !data?.data) throw new Error("Failed to get salary slip URL");
+  return data.data;
+}
+
 export async function addSalarySlipToCandidate(
   candidateId: string,
   payload: { month: string; year: number; documentUrl: string; key: string; originalName: string; size: number; mimeType: string }

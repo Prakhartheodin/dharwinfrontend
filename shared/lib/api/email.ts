@@ -62,65 +62,97 @@ export interface EmailLabel {
   labelListVisibility?: string;
 }
 
-const BASE = "/email";
+const EMAIL_BASE = "/email";
+const OUTLOOK_BASE = "/outlook";
 
+export type MailProvider = "gmail" | "outlook";
+
+function mailBase(provider?: string): string {
+  return provider === "outlook" ? OUTLOOK_BASE : EMAIL_BASE;
+}
+
+/** Gmail + Outlook accounts (merged). */
 export async function getEmailAccounts(): Promise<EmailAccount[]> {
-  const { data } = await apiClient.get(`${BASE}/accounts`);
-  return data;
+  const [gmailRes, outlookRes] = await Promise.allSettled([
+    apiClient.get<EmailAccount[]>(`${EMAIL_BASE}/accounts`),
+    apiClient.get<EmailAccount[]>(`${OUTLOOK_BASE}/accounts`),
+  ]);
+  const gmail = gmailRes.status === "fulfilled" ? gmailRes.value.data : [];
+  const outlook = outlookRes.status === "fulfilled" ? outlookRes.value.data : [];
+  return [...(gmail || []), ...(outlook || [])];
 }
 
 export async function getGoogleAuthUrl(): Promise<{ url: string }> {
-  const { data } = await apiClient.get(`${BASE}/auth/google`);
+  const { data } = await apiClient.get(`${EMAIL_BASE}/auth/google`);
   return data;
 }
 
-export async function disconnectAccount(accountId: string): Promise<{ success: boolean }> {
-  const { data } = await apiClient.delete(`${BASE}/accounts/${accountId}`);
+export async function getMicrosoftAuthUrl(): Promise<{ url: string }> {
+  const { data } = await apiClient.get(`${OUTLOOK_BASE}/auth/microsoft`);
   return data;
 }
 
-export async function getMessages(params: {
-  accountId: string;
-  labelId?: string;
-  pageToken?: string;
-  pageSize?: number;
-  q?: string;
-}): Promise<{
+export async function disconnectAccount(
+  accountId: string,
+  provider: MailProvider
+): Promise<{ success: boolean }> {
+  const { data } = await apiClient.delete(`${mailBase(provider)}/accounts/${accountId}`);
+  return data;
+}
+
+export async function getMessages(
+  params: {
+    accountId: string;
+    labelId?: string;
+    pageToken?: string;
+    pageSize?: number;
+    q?: string;
+  },
+  provider: MailProvider = "gmail"
+): Promise<{
   messages: EmailMessageListItem[];
   nextPageToken: string | null;
   resultSizeEstimate: number;
 }> {
-  const { data } = await apiClient.get(`${BASE}/messages`, { params });
+  const { data } = await apiClient.get(`${mailBase(provider)}/messages`, { params });
   return data;
 }
 
-export async function getThreads(params: {
-  accountId: string;
-  labelId?: string;
-  pageToken?: string;
-  pageSize?: number;
-  q?: string;
-}): Promise<{
+export async function getThreads(
+  params: {
+    accountId: string;
+    labelId?: string;
+    pageToken?: string;
+    pageSize?: number;
+    q?: string;
+  },
+  provider: MailProvider = "gmail"
+): Promise<{
   threads: EmailThreadListItem[];
   nextPageToken: string | null;
   resultSizeEstimate: number;
 }> {
-  const { data } = await apiClient.get(`${BASE}/threads`, { params });
+  const { data } = await apiClient.get(`${mailBase(provider)}/threads`, { params });
   return data;
 }
 
 export async function getThread(
   accountId: string,
-  threadId: string
+  threadId: string,
+  provider: MailProvider = "gmail"
 ): Promise<{ id: string; messages: EmailMessage[] }> {
-  const { data } = await apiClient.get(`${BASE}/threads/${threadId}`, {
+  const { data } = await apiClient.get(`${mailBase(provider)}/threads/${threadId}`, {
     params: { accountId },
   });
   return data;
 }
 
-export async function getMessage(accountId: string, messageId: string): Promise<EmailMessage> {
-  const { data } = await apiClient.get(`${BASE}/messages/${messageId}`, {
+export async function getMessage(
+  accountId: string,
+  messageId: string,
+  provider: MailProvider = "gmail"
+): Promise<EmailMessage> {
+  const { data } = await apiClient.get(`${mailBase(provider)}/messages/${messageId}`, {
     params: { accountId },
   });
   return data;
@@ -129,22 +161,27 @@ export async function getMessage(accountId: string, messageId: string): Promise<
 export function getAttachmentUrl(
   accountId: string,
   messageId: string,
-  attachmentId: string
+  attachmentId: string,
+  provider: MailProvider = "gmail"
 ): string {
   const base = process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "/api/v1" : "");
-  return `${base}${BASE}/messages/${messageId}/attachments/${attachmentId}?accountId=${accountId}`;
+  const b = mailBase(provider);
+  return `${base}${b}/messages/${messageId}/attachments/${attachmentId}?accountId=${accountId}`;
 }
 
-export async function sendMessage(body: {
-  accountId: string;
-  to: string | string[];
-  cc?: string | string[];
-  bcc?: string | string[];
-  subject: string;
-  html: string;
-  attachments?: { filename: string; content: string | ArrayBuffer; mimeType?: string }[];
-}): Promise<{ id: string; threadId?: string }> {
-  const { data } = await apiClient.post(`${BASE}/messages/send`, body);
+export async function sendMessage(
+  body: {
+    accountId: string;
+    to: string | string[];
+    cc?: string | string[];
+    bcc?: string | string[];
+    subject: string;
+    html: string;
+    attachments?: { filename: string; content: string | ArrayBuffer; mimeType?: string }[];
+  },
+  provider: MailProvider = "gmail"
+): Promise<{ id: string; threadId?: string }> {
+  const { data } = await apiClient.post(`${mailBase(provider)}/messages/send`, body);
   return data;
 }
 
@@ -154,9 +191,10 @@ export async function replyMessage(
     accountId: string;
     html: string;
     attachments?: { filename: string; content: string | ArrayBuffer; mimeType?: string }[];
-  }
+  },
+  provider: MailProvider = "gmail"
 ): Promise<{ id: string; threadId?: string }> {
-  const { data } = await apiClient.post(`${BASE}/messages/${messageId}/reply`, body);
+  const { data } = await apiClient.post(`${mailBase(provider)}/messages/${messageId}/reply`, body);
   return data;
 }
 
@@ -167,18 +205,20 @@ export async function forwardMessage(
     to: string | string[];
     html?: string;
     attachments?: unknown[];
-  }
+  },
+  provider: MailProvider = "gmail"
 ): Promise<{ id: string; threadId?: string }> {
-  const { data } = await apiClient.post(`${BASE}/messages/${messageId}/forward`, body);
+  const { data } = await apiClient.post(`${mailBase(provider)}/messages/${messageId}/forward`, body);
   return data;
 }
 
 export async function modifyMessage(
   accountId: string,
   messageId: string,
-  body: { addLabelIds?: string[]; removeLabelIds?: string[] }
+  body: { addLabelIds?: string[]; removeLabelIds?: string[] },
+  provider: MailProvider = "gmail"
 ): Promise<{ success: boolean }> {
-  const { data } = await apiClient.patch(`${BASE}/messages/${messageId}`, body, {
+  const { data } = await apiClient.patch(`${mailBase(provider)}/messages/${messageId}`, body, {
     params: { accountId },
   });
   return data;
@@ -190,36 +230,51 @@ export async function batchModifyMessages(
     messageIds: string[];
     addLabelIds?: string[];
     removeLabelIds?: string[];
-  }
+  },
+  provider: MailProvider = "gmail"
 ): Promise<{ success: boolean; modified: number }> {
-  const { data } = await apiClient.post(`${BASE}/messages/batch-modify`, body);
+  const { data } = await apiClient.post(`${mailBase(provider)}/messages/batch-modify`, body);
   return data;
 }
 
-export async function batchModifyThreads(body: {
-  accountId: string;
-  threadIds: string[];
-  addLabelIds?: string[];
-  removeLabelIds?: string[];
-}): Promise<{ success: boolean; modified: number }> {
-  const { data } = await apiClient.post(`${BASE}/threads/batch-modify`, body);
+export async function batchModifyThreads(
+  body: {
+    accountId: string;
+    threadIds: string[];
+    addLabelIds?: string[];
+    removeLabelIds?: string[];
+  },
+  provider: MailProvider = "gmail"
+): Promise<{ success: boolean; modified: number }> {
+  const { data } = await apiClient.post(`${mailBase(provider)}/threads/batch-modify`, body);
   return data;
 }
 
-export async function trashThreads(accountId: string, threadIds: string[]): Promise<{ success: boolean }> {
-  const { data } = await apiClient.post(`${BASE}/threads/trash`, { accountId, threadIds });
+export async function trashThreads(
+  accountId: string,
+  threadIds: string[],
+  provider: MailProvider = "gmail"
+): Promise<{ success: boolean }> {
+  const { data } = await apiClient.post(`${mailBase(provider)}/threads/trash`, { accountId, threadIds });
   return data;
 }
 
-export async function trashMessage(accountId: string, messageId: string): Promise<{ success: boolean }> {
-  const { data } = await apiClient.delete(`${BASE}/messages/${messageId}`, {
+export async function trashMessage(
+  accountId: string,
+  messageId: string,
+  provider: MailProvider = "gmail"
+): Promise<{ success: boolean }> {
+  const { data } = await apiClient.delete(`${mailBase(provider)}/messages/${messageId}`, {
     params: { accountId },
   });
   return data;
 }
 
-export async function getLabels(accountId: string): Promise<EmailLabel[]> {
-  const { data } = await apiClient.get(`${BASE}/labels`, {
+export async function getLabels(
+  accountId: string,
+  provider: MailProvider = "gmail"
+): Promise<EmailLabel[]> {
+  const { data } = await apiClient.get(`${mailBase(provider)}/labels`, {
     params: { accountId },
   });
   return data;
@@ -227,10 +282,21 @@ export async function getLabels(accountId: string): Promise<EmailLabel[]> {
 
 export async function createLabel(
   accountId: string,
-  body: { name: string }
+  body: { name: string },
+  provider: MailProvider = "gmail"
 ): Promise<EmailLabel> {
-  const { data } = await apiClient.post(`${BASE}/labels`, body, {
+  const { data } = await apiClient.post(`${mailBase(provider)}/labels`, body, {
     params: { accountId },
   });
   return data;
+}
+
+/** Resolve provider for API calls from account list + selected id. */
+export function providerForAccount(
+  accounts: Pick<EmailAccount, "id" | "provider">[],
+  accountId: string | null
+): MailProvider {
+  if (!accountId) return "gmail";
+  const a = accounts.find((x) => x.id === accountId);
+  return a?.provider === "outlook" ? "outlook" : "gmail";
 }

@@ -14,6 +14,7 @@ import type { Role } from "@/shared/lib/types";
 import Swal from "sweetalert2";
 
 const POLL_INTERVAL_MS = 30000;
+const POLL_INTERVAL_PUNCHED_IN_MS = 15000;
 const ELAPSED_UPDATE_MS = 1000;
 
 const MONTH_NAMES = [
@@ -234,9 +235,10 @@ export default function StudentAttendancePage() {
     if (!studentId) return;
     fetchStatus();
     refetchForMonth();
-    const id = setInterval(fetchStatus, POLL_INTERVAL_MS);
+    const pollMs = status?.isPunchedIn ? POLL_INTERVAL_PUNCHED_IN_MS : POLL_INTERVAL_MS;
+    const id = setInterval(fetchStatus, pollMs);
     return () => clearInterval(id);
-  }, [studentId, viewMode, calendarYear, calendarMonth, fetchStatus, refetchForMonth]);
+  }, [studentId, viewMode, calendarYear, calendarMonth, fetchStatus, refetchForMonth, status?.isPunchedIn]);
 
   useEffect(() => {
     if (!studentId) return;
@@ -253,13 +255,20 @@ export default function StudentAttendancePage() {
       setElapsedDisplay("");
       return;
     }
-    const update = () => {
-      const start = new Date(status!.record!.punchIn).getTime();
-      setElapsedDisplay(formatDuration(Date.now() - start));
+    const punchInMs = new Date(status.record.punchIn).getTime();
+    const tick = () => {
+      setElapsedDisplay(attendanceApi.formatElapsedSession(Date.now() - punchInMs));
     };
-    update();
-    const id = setInterval(update, ELAPSED_UPDATE_MS);
-    return () => clearInterval(id);
+    tick();
+    const id = setInterval(tick, ELAPSED_UPDATE_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [status?.isPunchedIn, status?.record?.punchIn]);
 
   const handlePunchIn = async () => {
@@ -267,9 +276,33 @@ export default function StudentAttendancePage() {
     setPunchLoading(true);
     setError(null);
     try {
-      await attendanceApi.punchInAttendance(studentId, { timezone: getDetectedTimezone() });
+      const res = await attendanceApi.punchInAttendance(studentId, { timezone: getDetectedTimezone() });
+      const rec = res.data;
+      const punchInIso =
+        typeof rec.punchIn === "string" ? rec.punchIn : new Date(rec.punchIn as unknown as string).toISOString();
+      const dateIso =
+        typeof rec.date === "string" ? rec.date : new Date(rec.date as unknown as string).toISOString();
+      setStatus((prev) => ({
+        isPunchedIn: true,
+        record: {
+          id: rec.id,
+          punchIn: punchInIso,
+          timezone: rec.timezone ?? getDetectedTimezone(),
+          date: dateIso,
+        },
+        elapsedPreview: prev?.elapsedPreview ?? null,
+        shift: prev?.shift,
+      }));
       await fetchStatus();
       refetchForMonth();
+      void Swal.fire({
+        icon: "success",
+        title: "Punched in",
+        timer: 2200,
+        showConfirmButton: false,
+        toast: true,
+        position: "top-end",
+      });
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg ?? "Punch in failed.");
@@ -283,9 +316,19 @@ export default function StudentAttendancePage() {
     setPunchLoading(true);
     setError(null);
     try {
-      await attendanceApi.punchOutAttendance(studentId, { punchOutTime: new Date().toISOString() });
+      const res = await attendanceApi.punchOutAttendance(studentId, { punchOutTime: new Date().toISOString() });
+      const rec = res.data;
+      const dur = rec.duration ?? 0;
+      const tz = rec.timezone ?? "UTC";
+      const po = rec.punchOut;
       await fetchStatus();
       refetchForMonth();
+      await Swal.fire({
+        icon: "success",
+        title: "Punched out",
+        html: `<p class="mb-2">Recorded: <strong>${formatDuration(dur)}</strong> (${formatDurationHours(dur)} h)</p><p class="text-sm opacity-80">Out at ${formatTimeOnlyInTimezone(po, tz)}</p>`,
+        confirmButtonText: "OK",
+      });
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message;
       setError(msg ?? "Punch out failed.");
@@ -967,12 +1010,63 @@ export default function StudentAttendancePage() {
                       {statusLoading ? "…" : status?.isPunchedIn ? "Active (Punched In)" : "Inactive (Punched Out)"}
                     </span>
                     {status?.isPunchedIn && status?.record?.punchIn && (
-                        <span className="text-sm text-defaulttextcolor/70">
-                          Since {formatTimeOnlyInTimezone(status.record.punchIn, status.record.timezone ?? "UTC")}
-                        {elapsedDisplay ? ` · ${elapsedDisplay}` : ""}
-                      </span>
+                      <div className="text-sm text-defaulttextcolor/80">
+                        <span className="text-[#8c9097] dark:text-white/45">Since </span>
+                        {formatTimeOnlyInTimezone(status.record.punchIn, status.record.timezone ?? "UTC")}
+                      </div>
                     )}
                   </div>
+                  {status?.isPunchedIn && elapsedDisplay ? (
+                    <div className="rounded-xl border border-defaultborder/75 bg-gray-50/70 dark:border-white/10 dark:bg-white/[0.04]">
+                      <div className="flex items-start gap-3 border-b border-defaultborder/55 px-4 py-3.5 dark:border-white/10">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+                          <i className="ri-timer-flash-line text-[1.15rem]" aria-hidden />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="mb-0 text-[0.625rem] font-semibold uppercase tracking-[0.06em] text-success">
+                              Session in progress
+                            </p>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[0.65rem] font-semibold text-success">
+                              <span className="relative flex h-1.5 w-1.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-50" />
+                                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+                              </span>
+                              Live
+                            </span>
+                          </div>
+                          <p className="mb-0 mt-2 text-[1.5rem] font-bold tabular-nums tracking-tight text-defaulttextcolor dark:text-white sm:text-[1.625rem]">
+                            {elapsedDisplay}
+                          </p>
+                          <p className="mb-0 mt-2 text-[0.6875rem] leading-relaxed text-defaulttextcolor/55 dark:text-white/45">
+                            Elapsed since punch-in. Listed duration column shows the same until punch-out.
+                          </p>
+                        </div>
+                      </div>
+                      {status.shift &&
+                        status.elapsedPreview &&
+                        status.elapsedPreview.eligibleMs !== status.elapsedPreview.sessionMs && (
+                          <div className="px-4 py-3">
+                            <div className="rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2 dark:bg-primary/10">
+                              <p className="mb-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-primary">
+                                Credited toward shift
+                              </p>
+                              <p className="mb-0 text-[0.9375rem] font-semibold tabular-nums text-defaulttextcolor dark:text-white">
+                                {formatDuration(status.elapsedPreview.eligibleMs)}
+                                <span className="ml-1.5 text-[0.65rem] font-normal text-defaulttextcolor/50">· syncs ~15s</span>
+                              </p>
+                            </div>
+                          </div>
+                        )}
+                      {status.shift &&
+                        status.elapsedPreview &&
+                        status.elapsedPreview.eligibleMs === status.elapsedPreview.sessionMs && (
+                          <p className="mb-0 border-t border-defaultborder/40 px-4 py-2.5 text-[0.75rem] text-defaulttextcolor/55 dark:border-white/10 dark:text-white/40">
+                            Full session counts toward attendance for this shift.
+                          </p>
+                        )}
+                    </div>
+                  ) : null}
                   <div className="flex gap-2">
                     <button
                       type="button"

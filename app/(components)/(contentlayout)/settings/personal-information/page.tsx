@@ -8,7 +8,7 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
 import * as rolesApi from "@/shared/lib/api/roles";
 import * as usersApi from "@/shared/lib/api/users";
-import { uploadDocument, uploadDocuments, getDocumentDownloadUrl } from "@/shared/lib/api/candidates";
+import { uploadDocument, uploadDocuments, getDocumentDownloadUrl, getSalarySlipDownloadUrl } from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
 import type { Role } from "@/shared/lib/types";
 import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
@@ -1146,11 +1146,20 @@ export default function PersonalInformationPage() {
                       <div key={i} className="relative p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 mb-3 flex flex-col gap-3">
                         <span className="text-sm">{slip.month} {slip.year}</span>
                         <div className="flex flex-wrap items-center gap-2">
-                          {(slip.documentUrl || (slip as any).url) && (
+                          {(slip.key || slip.documentUrl || (slip as any).url) && (candidate?.id ?? (candidate as any)?._id) && (
                             <button
                               type="button"
                               className="ti-btn ti-btn-primary ti-btn-sm !py-1.5 !px-3 !min-w-[5.5rem]"
-                              onClick={() => window.open((slip.documentUrl || (slip as any).url) as string, "_blank")}
+                              onClick={async () => {
+                                const cid = candidate?.id ?? (candidate as any)?._id;
+                                if (!cid) return;
+                                try {
+                                  const { url } = await getSalarySlipDownloadUrl(cid, i);
+                                  window.open(url, "_blank");
+                                } catch {
+                                  Swal.fire("Error", "Could not open salary slip.", "error");
+                                }
+                              }}
                             >
                               <i className="ri-external-link-line me-1 align-middle" />
                               View
