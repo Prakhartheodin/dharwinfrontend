@@ -1,0 +1,850 @@
+/* Editorial mail shell — warm paper / ink, not generic dashboard chrome */
+
+.mailRoot {
+  --mail-paper: #faf8f5;
+  --mail-paper-elevated: #ffffff;
+  --mail-ink: #1c1917;
+  --mail-ink-soft: #57534e;
+  --mail-ink-faint: #a8a29e;
+  --mail-accent: #c2410c;
+  --mail-accent-hover: #9a3412;
+  --mail-accent-mist: rgba(194, 65, 12, 0.08);
+  --mail-success: #0d9488;
+  --mail-radius: 14px;
+  --mail-radius-sm: 10px;
+  --mail-shadow: 0 2px 8px rgba(28, 25, 23, 0.04), 0 12px 40px rgba(28, 25, 23, 0.06);
+  --mail-shadow-hover: 0 4px 16px rgba(28, 25, 23, 0.07), 0 20px 50px rgba(28, 25, 23, 0.08);
+  min-height: calc(100vh - 8rem);
+}
+
+:global(.dark) .mailRoot {
+  --mail-paper: #0c0a09;
+  --mail-paper-elevated: #1c1917;
+  --mail-ink: #fafaf9;
+  --mail-ink-soft: #a8a29e;
+  --mail-ink-faint: #78716c;
+  --mail-accent-mist: rgba(251, 146, 60, 0.12);
+  --mail-shadow: 0 2px 12px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --mail-shadow-hover: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.shell {
+  background: var(--mail-paper);
+  border-radius: calc(var(--mail-radius) + 4px);
+  box-shadow: var(--mail-shadow);
+  overflow: hidden;
+  border: 1px solid rgba(28, 25, 23, 0.06);
+}
+
+:global(.dark) .shell {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+@keyframes mailFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fadeIn {
+  animation: mailFadeUp 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes mailShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(120, 113, 108, 0.08) 25%,
+    rgba(120, 113, 108, 0.14) 50%,
+    rgba(120, 113, 108, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  animation: mailShimmer 1.2s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.composeCta {
+  background: linear-gradient(135deg, var(--mail-accent) 0%, #ea580c 100%);
+  color: #fff !important;
+  border: none;
+  border-radius: var(--mail-radius-sm);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 14px rgba(194, 65, 12, 0.35);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.composeCta:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(194, 65, 12, 0.42);
+}
+
+.composeCta:active {
+  transform: translateY(0);
+}
+
+.navProfile {
+  background: linear-gradient(145deg, #292524 0%, #1c1917 100%);
+  border-radius: var(--mail-radius-sm);
+  margin: 0 12px 12px;
+  padding: 14px 16px;
+  color: #fafaf9;
+}
+
+:global(.dark) .navProfile {
+  background: linear-gradient(145deg, #44403c 0%, #292524 100%);
+}
+
+.navItem {
+  border-radius: var(--mail-radius-sm);
+  margin: 2px 10px;
+  padding: 10px 12px !important;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.navItem:hover {
+  background: var(--mail-accent-mist) !important;
+}
+
+.navItemActive {
+  background: var(--mail-accent-mist) !important;
+  color: var(--mail-accent) !important;
+  font-weight: 600;
+}
+
+.threadRow {
+  margin: 0 10px 8px;
+  border-radius: var(--mail-radius-sm) !important;
+  border: 1px solid transparent !important;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.threadRow:hover {
+  background: var(--mail-paper-elevated) !important;
+  box-shadow: 0 2px 12px rgba(28, 25, 23, 0.05);
+  border-color: rgba(28, 25, 23, 0.06) !important;
+}
+
+:global(.dark) .threadRow:hover {
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+.threadRowActive {
+  background: var(--mail-accent-mist) !important;
+  border-color: rgba(194, 65, 12, 0.2) !important;
+  box-shadow: 0 2px 16px rgba(194, 65, 12, 0.08);
+}
+
+.threadUnread {
+  border-left: 3px solid var(--mail-accent);
+  padding-left: 2px;
+}
+
+.searchWrap {
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  background: var(--mail-paper-elevated);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.searchWrap:focus-within {
+  border-color: var(--mail-accent);
+  box-shadow: 0 0 0 3px var(--mail-accent-mist);
+}
+
+:global(.dark) .searchWrap {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.readingHeader {
+  background: linear-gradient(180deg, var(--mail-paper-elevated) 0%, var(--mail-paper) 100%);
+  border-bottom: 1px solid rgba(28, 25, 23, 0.06);
+}
+
+:global(.dark) .readingHeader {
+  background: linear-gradient(180deg, var(--mail-paper-elevated) 0%, var(--mail-paper) 100%);
+}
+
+.subjectDisplay {
+  font-size: 1.35rem;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--mail-ink);
+}
+
+.replyZone {
+  border-radius: var(--mail-radius-sm);
+  border: 1px dashed rgba(120, 113, 108, 0.25);
+  background: var(--mail-paper);
+  transition: border-color 0.2s ease;
+}
+
+.replyZone:focus-within {
+  border-color: var(--mail-accent);
+  border-style: solid;
+}
+
+.modalBackdrop {
+  background: rgba(28, 25, 23, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modalPanel {
+  border-radius: calc(var(--mail-radius) + 4px);
+  box-shadow: var(--mail-shadow-hover);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  animation: mailFadeUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+:global(.dark) .modalPanel {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+/* —— Empty state: full-stage onboarding (fills main body) —— */
+
+.mailEmptyStage {
+  position: relative;
+  min-height: calc(100vh - 6.5rem);
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem 3rem;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .mailEmptyStage {
+    min-height: calc(100vh - 5rem);
+    padding: 2.5rem 1.5rem 4rem;
+  }
+}
+
+.mailEmptyBg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 120% 80% at 15% 20%, rgba(194, 65, 12, 0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 70% at 88% 75%, rgba(13, 148, 136, 0.07) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 70% 12%, rgba(0, 120, 212, 0.06) 0%, transparent 45%),
+    linear-gradient(165deg, var(--mail-paper) 0%, #f5f0e8 48%, #faf8f5 100%);
+}
+
+:global(.dark) .mailEmptyBg {
+  background:
+    radial-gradient(ellipse 120% 80% at 15% 20%, rgba(251, 146, 60, 0.08) 0%, transparent 55%),
+    radial-gradient(ellipse 90% 70% at 88% 75%, rgba(45, 212, 191, 0.06) 0%, transparent 50%),
+    radial-gradient(ellipse 70% 50% at 70% 12%, rgba(59, 130, 246, 0.07) 0%, transparent 45%),
+    linear-gradient(165deg, var(--mail-paper) 0%, #1c1917 50%, #0c0a09 100%);
+}
+
+.mailEmptyMesh {
+  position: absolute;
+  inset: -20%;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' fill='none' stroke='%2378716c' stroke-opacity='0.07' stroke-width='0.5'/%3E%3C/svg%3E");
+  background-size: 72px 72px;
+  animation: mailEmptyMeshDrift 80s linear infinite;
+}
+
+:global(.dark) .mailEmptyMesh {
+  opacity: 0.25;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5 L55 30 L30 55 L5 30 Z' fill='none' stroke='%23a8a29e' stroke-opacity='0.12' stroke-width='0.5'/%3E%3C/svg%3E");
+}
+
+@keyframes mailEmptyMeshDrift {
+  from {
+    transform: rotate(0deg) translate(0, 0);
+  }
+  to {
+    transform: rotate(360deg) translate(8px, 4px);
+  }
+}
+
+.mailEmptyGrain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+:global(.dark) .mailEmptyGrain {
+  opacity: 0.12;
+  mix-blend-mode: overlay;
+}
+
+.mailEmptyOrbit {
+  position: absolute;
+  width: min(55vw, 520px);
+  height: min(55vw, 520px);
+  border-radius: 50%;
+  border: 1px solid rgba(194, 65, 12, 0.08);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  animation: mailEmptyOrbitSpin 120s linear infinite;
+}
+
+.mailEmptyOrbit::before {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border-radius: 50%;
+  border: 1px dashed rgba(120, 113, 108, 0.12);
+}
+
+:global(.dark) .mailEmptyOrbit {
+  border-color: rgba(251, 146, 60, 0.1);
+}
+
+@keyframes mailEmptyOrbitSpin {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+.mailEmptyGrid {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  display: grid;
+  gap: 2.5rem;
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .mailEmptyGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 3rem 4rem;
+  }
+}
+
+.mailEmptyHeroWrap {
+  animation: mailEmptyRise 0.85s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.mailEmptyAside {
+  animation: mailEmptyRise 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.12s backwards;
+}
+
+@keyframes mailEmptyRise {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mailEmptyPreview {
+  border-radius: calc(var(--mail-radius) + 6px);
+  background: var(--mail-paper-elevated);
+  border: 1px solid rgba(28, 25, 23, 0.07);
+  box-shadow: var(--mail-shadow-hover);
+  overflow: hidden;
+  transform: rotate(-0.35deg);
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (min-width: 1024px) {
+  .mailEmptyPreview:hover {
+    transform: rotate(0deg) translateY(-4px);
+  }
+}
+
+:global(.dark) .mailEmptyPreview {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.mailEmptyPreviewChrome {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  background: linear-gradient(180deg, rgba(28, 25, 23, 0.04) 0%, transparent 100%);
+  border-bottom: 1px solid rgba(28, 25, 23, 0.06);
+}
+
+:global(.dark) .mailEmptyPreviewChrome {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%);
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.mailEmptyPreviewDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d6d3d1;
+}
+
+.mailEmptyPreviewDot:nth-child(1) {
+  background: #fca5a5;
+}
+.mailEmptyPreviewDot:nth-child(2) {
+  background: #fcd34d;
+}
+.mailEmptyPreviewDot:nth-child(3) {
+  background: #86efac;
+}
+
+.mailEmptyPreviewTitle {
+  margin-left: 0.75rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mail-ink-faint);
+}
+
+.mailEmptyPreviewBody {
+  padding: 1rem 1.1rem 1.25rem;
+  background: linear-gradient(180deg, var(--mail-paper) 0%, var(--mail-paper-elevated) 100%);
+}
+
+.mailEmptyFakeRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  margin-bottom: 0.45rem;
+  border-radius: var(--mail-radius-sm);
+  border: 1px solid transparent;
+  animation: mailEmptyRowIn 0.7s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.mailEmptyFakeRow:nth-child(1) {
+  animation-delay: 0.35s;
+}
+.mailEmptyFakeRow:nth-child(2) {
+  animation-delay: 0.48s;
+}
+.mailEmptyFakeRow:nth-child(3) {
+  animation-delay: 0.61s;
+}
+.mailEmptyFakeRow:nth-child(4) {
+  animation-delay: 0.74s;
+}
+
+@keyframes mailEmptyRowIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mailEmptyFakeRow:hover {
+  background: var(--mail-accent-mist);
+  border-color: rgba(194, 65, 12, 0.12);
+}
+
+.mailEmptyFakeAvatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(28, 25, 23, 0.65);
+}
+
+.mailEmptyBenefits {
+  margin-top: 1.75rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.mailEmptyBenefit {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid rgba(28, 25, 23, 0.06);
+  animation: mailEmptyRise 0.65s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.mailEmptyBenefit:nth-child(1) {
+  animation-delay: 0.4s;
+}
+.mailEmptyBenefit:nth-child(2) {
+  animation-delay: 0.52s;
+}
+.mailEmptyBenefit:nth-child(3) {
+  animation-delay: 0.64s;
+}
+
+:global(.dark) .mailEmptyBenefit {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.mailEmptyBenefitIcon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--mail-radius-sm);
+  background: var(--mail-accent-mist);
+  color: var(--mail-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+}
+
+.emptyHero {
+  max-width: none;
+  width: 100%;
+  padding: 2.5rem 2rem;
+  border-radius: var(--mail-radius);
+  background: var(--mail-paper-elevated);
+  box-shadow: var(--mail-shadow-hover);
+  border: 1px solid rgba(28, 25, 23, 0.07);
+  position: relative;
+}
+
+.emptyHero::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 1.5rem;
+  right: 1.5rem;
+  height: 3px;
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(90deg, var(--mail-success), var(--mail-accent), #0078d4);
+  opacity: 0.85;
+}
+
+:global(.dark) .emptyHero {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.connectBtnGmail {
+  background: var(--mail-success);
+  color: #fff !important;
+  border-radius: var(--mail-radius-sm);
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(13, 148, 136, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.connectBtnGmail:hover {
+  transform: translateY(-1px);
+}
+
+.connectBtnOutlook {
+  background: #0078d4;
+  color: #fff !important;
+  border-radius: var(--mail-radius-sm);
+  font-weight: 600;
+  box-shadow: 0 4px 14px rgba(0, 120, 212, 0.3);
+  transition: transform 0.2s ease;
+}
+
+.connectBtnOutlook:hover {
+  transform: translateY(-1px);
+}
+
+/* —— Mailbox rail (corner bar): account avatars + switch motion —— */
+
+.mailboxRail {
+  background: linear-gradient(
+    180deg,
+    rgba(250, 248, 245, 0.95) 0%,
+    rgba(245, 242, 237, 0.88) 50%,
+    rgba(250, 248, 245, 0.92) 100%
+  );
+}
+
+:global(.dark) .mailboxRail {
+  background: linear-gradient(
+    180deg,
+    rgba(28, 25, 23, 0.65) 0%,
+    rgba(12, 10, 9, 0.85) 50%,
+    rgba(28, 25, 23, 0.7) 100%
+  );
+}
+
+.mailboxRailTop {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.5) 0%, transparent 100%);
+  box-shadow: inset 0 -1px 0 rgba(28, 25, 23, 0.05);
+}
+
+:global(.dark) .mailboxRailTop {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.mailboxRailAdd {
+  border: 1px solid rgba(28, 25, 23, 0.1) !important;
+  background: var(--mail-paper-elevated) !important;
+  color: var(--mail-ink-soft) !important;
+  transition:
+    transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1),
+    box-shadow 0.3s ease,
+    border-color 0.2s ease !important;
+  box-shadow: 0 2px 8px rgba(28, 25, 23, 0.06);
+}
+
+.mailboxRailAdd:hover {
+  transform: scale(1.06);
+  border-color: rgba(194, 65, 12, 0.35) !important;
+  box-shadow: 0 4px 16px rgba(194, 65, 12, 0.12);
+  color: var(--mail-accent) !important;
+}
+
+.mailboxRailAdd:active {
+  transform: scale(0.96);
+}
+
+@keyframes mailboxSlotIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.mailboxSlot {
+  animation: mailboxSlotIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.mailboxAvatarBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 50%;
+  transform: scale(1);
+  transition:
+    transform 0.45s cubic-bezier(0.34, 1.35, 0.64, 1),
+    filter 0.35s ease,
+    opacity 0.3s ease;
+  outline: none;
+}
+
+.mailboxAvatarBtn:focus-visible {
+  box-shadow: 0 0 0 2px var(--mail-paper-elevated), 0 0 0 4px var(--mail-accent);
+}
+
+.mailboxAvatarBtn:not(.mailboxAvatarBtnActive) {
+  filter: saturate(0.92);
+  opacity: 0.88;
+}
+
+.mailboxAvatarBtn:not(.mailboxAvatarBtnActive):hover {
+  opacity: 1;
+  filter: saturate(1);
+  transform: scale(1.08) translateY(-2px);
+}
+
+.mailboxAvatarBtn:not(.mailboxAvatarBtnActive):active {
+  transform: scale(0.96) translateY(0);
+}
+
+@keyframes mailboxActivate {
+  0% {
+    transform: scale(0.9);
+  }
+  45% {
+    transform: scale(1.12);
+  }
+  70% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes mailboxFaceEnter {
+  0% {
+    transform: scale(0.82) rotate(-6deg);
+    box-shadow: 0 2px 8px rgba(28, 25, 23, 0.08);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    box-shadow:
+      0 4px 14px rgba(28, 25, 23, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  }
+}
+
+@keyframes mailboxHalo {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
+}
+
+.mailboxAvatarBtnActive {
+  filter: saturate(1.05);
+  opacity: 1;
+  animation: mailboxActivate 0.55s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
+}
+
+.mailboxAvatarBtnActive::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 210deg,
+    rgba(194, 65, 12, 0.15),
+    rgba(251, 191, 36, 0.35),
+    rgba(194, 65, 12, 0.45),
+    rgba(234, 88, 12, 0.25),
+    rgba(194, 65, 12, 0.15)
+  );
+  z-index: 0;
+  animation: mailboxHalo 2.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.mailboxAvatarBtnActive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 2px var(--mail-paper-elevated),
+    0 0 0 3px rgba(194, 65, 12, 0.88),
+    0 8px 26px rgba(194, 65, 12, 0.22);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.mailboxAvatarFace {
+  position: relative;
+  z-index: 2;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  transition:
+    transform 0.35s cubic-bezier(0.34, 1.35, 0.64, 1),
+    box-shadow 0.35s ease;
+  box-shadow:
+    0 3px 10px rgba(28, 25, 23, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.mailboxAvatarBtnActive .mailboxAvatarFace {
+  animation: mailboxFaceEnter 0.5s cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+.mailboxAvatarFaceGmail {
+  background: radial-gradient(circle at 28% 22%, #fffbeb 0%, #fecaca 38%, #f87171 92%);
+  color: #7f1d1d;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+:global(.dark) .mailboxAvatarFaceGmail {
+  background: radial-gradient(circle at 28% 22%, #451a1a 0%, #7f1d1d 45%, #991b1b 100%);
+  color: #fecaca;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.mailboxAvatarFaceOutlook {
+  background: radial-gradient(circle at 28% 22%, #f0f9ff 0%, #93c5fd 42%, #3b82f6 95%);
+  color: #0c1929;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+:global(.dark) .mailboxAvatarFaceOutlook {
+  background: radial-gradient(circle at 28% 22%, #172554 0%, #1e3a8a 50%, #2563eb 100%);
+  color: #e0f2fe;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.mailboxProviderBadge {
+  position: absolute;
+  bottom: -1px;
+  right: -1px;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  box-shadow: 0 2px 6px rgba(28, 25, 23, 0.12);
+  z-index: 4;
+  pointer-events: none;
+  transition: transform 0.35s cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+
+:global(.dark) .mailboxProviderBadge {
+  background: rgba(28, 25, 23, 0.92);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.mailboxAvatarBtnActive .mailboxProviderBadge {
+  transform: scale(1.05);
+  box-shadow: 0 3px 10px rgba(194, 65, 12, 0.2);
+}
+
+.mailboxAvatarBtn:not(.mailboxAvatarBtnActive):hover .mailboxProviderBadge {
+  transform: scale(1.08);
+}

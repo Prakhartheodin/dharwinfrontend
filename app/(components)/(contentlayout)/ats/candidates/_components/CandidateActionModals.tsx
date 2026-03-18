@@ -15,6 +15,7 @@ export interface CandidateActionModalsProps {
   handleDocumentDownload: (candidateId: string, docIndex: number) => void
   handleDocumentVerify: (candidateId: string, docIndex: number, status: number) => void
   salarySlipsFromCandidate: Array<{ month?: string; year?: number; key?: string }>
+  handleSalarySlipView: (candidateId: string, idx: number) => void
   handleSalarySlipDelete: (candidateId: string, idx: number) => void
 
   salarySlipCandidate: CandidateDisplay | null
@@ -88,7 +89,7 @@ export interface CandidateActionModalsProps {
 export default function CandidateActionModals(props: CandidateActionModalsProps) {
   const {
     documentsCandidate, setDocumentsCandidate, documentsList, documentsLoading, documentStatusMap,
-    handleDocumentDownload, handleDocumentVerify, salarySlipsFromCandidate, handleSalarySlipDelete,
+    handleDocumentDownload, handleDocumentVerify, salarySlipsFromCandidate, handleSalarySlipView, handleSalarySlipDelete,
     salarySlipCandidate, setSalarySlipCandidate, salarySlipForm, setSalarySlipForm,
     salarySlipSubmitting, handleSalarySlipSubmit,
     feedbackCandidate, setFeedbackCandidate, feedbackForm, setFeedbackForm,
@@ -166,10 +167,17 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
                       <h6 className="form-label mb-2">Salary slips</h6>
                       <ul className="space-y-2">
                         {salarySlipsFromCandidate.map((slip, idx) => (
-                          <li key={idx} className="flex items-center justify-between p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
+                          <li key={idx} className="flex items-center justify-between gap-2 p-2 border border-gray-200 dark:border-defaultborder/10 rounded">
                             <span className="text-sm">{slip.month ?? ''} {slip.year ?? ''}</span>
                             {documentsCandidate && (
-                              <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => handleSalarySlipDelete(documentsCandidate.id, idx)}>Delete</button>
+                              <div className="flex gap-1">
+                                {(slip.key || (slip as any).documentUrl) && (
+                                  <button type="button" className="ti-btn ti-btn-sm ti-btn-primary" onClick={() => handleSalarySlipView(documentsCandidate.id, idx)}>
+                                    <i className="ri-external-link-line me-1"></i>View
+                                  </button>
+                                )}
+                                <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => handleSalarySlipDelete(documentsCandidate.id, idx)}>Delete</button>
+                              </div>
                             )}
                           </li>
                         ))}

@@ -7,7 +7,6 @@ const DatePicker = dynamic(() => import('react-datepicker').then((mod) => mod.de
 import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
-import { Range, getTrackBackground } from "react-range"
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
   listCandidates,
@@ -16,6 +15,7 @@ import {
   getCandidate,
   getCandidateDocuments,
   getDocumentDownloadUrl,
+  getSalarySlipDownloadUrl,
   addSalarySlipToCandidate,
   updateSalarySlip,
   deleteSalarySlip,
@@ -209,10 +209,8 @@ function CandidateAvatar({ candidate, className = 'w-10 h-10 rounded-full' }: { 
 
 interface FilterState {
   name: string[]
-  skills: string[]
-  education: string[]
   email: string
-  experience: [number, number] // [min, max] in years
+  employeeId: string
 }
 
 // Note type for candidate notes
@@ -224,8 +222,6 @@ interface CandidateNote {
   postedBy: string
   postedDate: string
 }
-
-const DEFAULT_EXPERIENCE_RANGE: [number, number] = [0, 20]
 
 const Candidates = () => {
   const router = useRouter()
@@ -253,41 +249,25 @@ const Candidates = () => {
   
   const [filters, setFilters] = useState<FilterState>({
     name: [],
-    skills: [],
-    education: [],
     email: '',
-    experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
+    employeeId: '',
   })
 
-  // Search states for filter dropdowns (also sent to API to search all candidates)
+  // Search state for name filter dropdown
   const [searchName, setSearchName] = useState('')
-  const [searchSkills, setSearchSkills] = useState('')
-  const [searchEducation, setSearchEducation] = useState('')
 
-  // Filter dropdown options: all names, skills, education from all candidates (not limited by pagination)
-  const [filterOptions, setFilterOptions] = useState<{ names: string[]; skills: string[]; education: string[] }>({
+  // Filter dropdown options: all names from all candidates (not limited by pagination)
+  const [filterOptions, setFilterOptions] = useState<{ names: string[] }>({
     names: [],
-    skills: [],
-    education: [],
   })
   const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
 
-  // Debounce search inputs so API is called after user stops typing
+  // Debounce search input so API is called after user stops typing
   const [debouncedSearchName, setDebouncedSearchName] = useState('')
-  const [debouncedSearchSkills, setDebouncedSearchSkills] = useState('')
-  const [debouncedSearchEducation, setDebouncedSearchEducation] = useState('')
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearchName(searchName), 400)
     return () => clearTimeout(t)
   }, [searchName])
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearchSkills(searchSkills), 400)
-    return () => clearTimeout(t)
-  }, [searchSkills])
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearchEducation(searchEducation), 400)
-    return () => clearTimeout(t)
-  }, [searchEducation])
 
   // Create candidate modal state
   const [createForm, setCreateForm] = useState({
@@ -318,24 +298,12 @@ const Candidates = () => {
       limit: pageSize,
       sortBy: 'createdAt:desc',
     }
-    // Typed search hits API and searches ALL candidates (not limited to current page)
     if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
     else if (filters.name?.length) params.fullName = filters.name[0]
-    const skillParams = [...(filters.skills ?? [])]
-    if (debouncedSearchSkills.trim()) {
-      const typed = debouncedSearchSkills.trim()
-      if (!skillParams.some((x) => x.toLowerCase() === typed.toLowerCase())) skillParams.push(typed)
-    }
-    if (skillParams.length > 0) params.skills = skillParams
-    if (debouncedSearchEducation.trim()) params.degree = debouncedSearchEducation.trim()
-    else if (filters.education?.length) params.degree = filters.education[0]
     if (filters.email?.trim()) params.email = filters.email.trim()
-    if (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]) {
-      params.minYearsOfExperience = filters.experience[0]
-      params.maxYearsOfExperience = filters.experience[1]
-    }
+    if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
     return params
-  }, [filters, pageSize, debouncedSearchName, debouncedSearchSkills, debouncedSearchEducation])
+  }, [filters, pageSize, debouncedSearchName])
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -361,33 +329,16 @@ const Candidates = () => {
     refreshCandidates(false)
   }, [apiPage, fetchParams])
 
-  // Fetch all unique names, skills, education for filter dropdowns (not limited by page)
+  // Fetch all unique names for filter dropdown (not limited by page)
   useEffect(() => {
     setFilterOptionsLoading(true)
     listCandidates({ limit: 5000, sortBy: 'fullName:asc' })
       .then((res) => {
         const results = (res.results ?? []).map(mapCandidateToDisplay)
         const names = [...new Set(results.map((c) => c.name).filter(Boolean))].sort()
-        const skillMap = new Map<string, string>()
-        const splitSkillString = (str: string) =>
-          str
-            .split(/[,;]|\.\s+|\r?\n+/)
-            .map((x) => x.trim())
-            .filter(Boolean)
-        results.forEach((c) => {
-          c.skills?.forEach((s) => {
-            const raw = typeof s === 'string' ? s : String(s)
-            splitSkillString(raw).forEach((p) => {
-              const key = p.toLowerCase()
-              if (!skillMap.has(key)) skillMap.set(key, p)
-            })
-          })
-        })
-        const skills = Array.from(skillMap.values()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
-        const education = [...new Set(results.map((c) => c.education).filter(Boolean))].sort()
-        setFilterOptions({ names, skills, education })
+        setFilterOptions({ names })
       })
-      .catch(() => setFilterOptions({ names: [], skills: [], education: [] }))
+      .catch(() => setFilterOptions({ names: [] }))
       .finally(() => setFilterOptionsLoading(false))
   }, [])
 
@@ -401,7 +352,7 @@ const Candidates = () => {
 
   useEffect(() => {
     setApiPage(1)
-  }, [debouncedSearchName, debouncedSearchSkills, debouncedSearchEducation])
+  }, [debouncedSearchName])
 
   // Note: Experience filter sync disabled with server-side pagination (data is paged)
 
@@ -652,6 +603,15 @@ const Candidates = () => {
       window.open(url, '_blank')
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Download failed')
+    }
+  }
+
+  const handleSalarySlipView = async (candidateId: string, salarySlipIndex: number) => {
+    try {
+      const { url } = await getSalarySlipDownloadUrl(candidateId, salarySlipIndex)
+      window.open(url, '_blank')
+    } catch (err: any) {
+      setActionError(err?.response?.data?.message ?? err?.message ?? 'Could not open salary slip')
     }
   }
 
@@ -1278,34 +1238,16 @@ const Candidates = () => {
 
   const data = useMemo(() => filteredData, [filteredData])
 
-  // Use filter options from all candidates (fetched separately), not limited by current page
   const allNames = filterOptions.names
-  const allSkills = filterOptions.skills
-  const allEducation = filterOptions.education
 
-  // Filter options based on search terms
   const filteredNames = useMemo(() => {
     if (!searchName) return allNames
-    return allNames.filter(name => 
+    return allNames.filter(name =>
       name.toLowerCase().includes(searchName.toLowerCase())
     )
   }, [allNames, searchName])
 
-  const filteredSkills = useMemo(() => {
-    if (!searchSkills) return allSkills
-    return allSkills.filter(skill => 
-      skill.toLowerCase().includes(searchSkills.toLowerCase())
-    )
-  }, [allSkills, searchSkills])
-
-  const filteredEducation = useMemo(() => {
-    if (!searchEducation) return allEducation
-    return allEducation.filter(edu => 
-      edu.toLowerCase().includes(searchEducation.toLowerCase())
-    )
-  }, [allEducation, searchEducation])
-
-  const handleMultiSelectChange = (key: 'name' | 'skills' | 'education', value: string) => {
+  const handleMultiSelectChange = (key: 'name', value: string) => {
     setFilters(prev => {
       const currentArray = prev[key]
       const newArray = currentArray.includes(value)
@@ -1315,50 +1257,33 @@ const Candidates = () => {
     })
   }
 
-  const handleRemoveFilter = (key: 'name' | 'skills' | 'education', value: string) => {
+  const handleRemoveFilter = (key: 'name', value: string) => {
     setFilters(prev => ({
       ...prev,
       [key]: prev[key].filter(item => item !== value)
     }))
   }
 
-  const handleExperienceRangeChange = (values: number[]) => {
-    setFilters(prev => ({ ...prev, experience: [values[0], values[1]] as [number, number] }))
-  }
-
   const handleResetFilters = () => {
     setFilters({
       name: [],
-      skills: [],
-      education: [],
       email: '',
-      experience: [DEFAULT_EXPERIENCE_RANGE[0], DEFAULT_EXPERIENCE_RANGE[1]]
+      employeeId: '',
     })
     setSearchName('')
-    setSearchSkills('')
-    setSearchEducation('')
   }
 
-  const hasActiveFilters = 
+  const hasActiveFilters =
     filters.name.length > 0 ||
-    filters.skills.length > 0 ||
-    filters.education.length > 0 ||
     filters.email !== '' ||
-    debouncedSearchName.trim() !== '' ||
-    debouncedSearchSkills.trim() !== '' ||
-    debouncedSearchEducation.trim() !== '' ||
-    filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] ||
-    filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1]
+    filters.employeeId !== '' ||
+    debouncedSearchName.trim() !== ''
 
-  const activeFilterCount = 
+  const activeFilterCount =
     filters.name.length +
-    filters.skills.length +
-    filters.education.length +
     (filters.email !== '' ? 1 : 0) +
-    (debouncedSearchName.trim() ? 1 : 0) +
-    (debouncedSearchSkills.trim() ? 1 : 0) +
-    (debouncedSearchEducation.trim() ? 1 : 0) +
-    (filters.experience[0] !== DEFAULT_EXPERIENCE_RANGE[0] || filters.experience[1] !== DEFAULT_EXPERIENCE_RANGE[1] ? 1 : 0)
+    (filters.employeeId !== '' ? 1 : 0) +
+    (debouncedSearchName.trim() ? 1 : 0)
 
   const tableInstance: any = useTable(
     {
@@ -1850,22 +1775,12 @@ const Candidates = () => {
         filters={filters}
         setFilters={setFilters}
         allNames={allNames}
-        allSkills={allSkills}
-        allEducation={allEducation}
         filterOptionsLoading={filterOptionsLoading}
         filteredNames={filteredNames}
-        filteredSkills={filteredSkills}
-        filteredEducation={filteredEducation}
         searchName={searchName}
         setSearchName={setSearchName}
-        searchSkills={searchSkills}
-        setSearchSkills={setSearchSkills}
-        searchEducation={searchEducation}
-        setSearchEducation={setSearchEducation}
-        experienceRanges={{ min: DEFAULT_EXPERIENCE_RANGE[0], max: DEFAULT_EXPERIENCE_RANGE[1] }}
         handleMultiSelectChange={handleMultiSelectChange}
         handleRemoveFilter={handleRemoveFilter}
-        handleExperienceRangeChange={handleExperienceRangeChange}
         handleResetFilters={handleResetFilters}
         hasActiveFilters={hasActiveFilters}
         activeFilterCount={activeFilterCount}
@@ -2153,10 +2068,17 @@ const Candidates = () => {
                           {previewCandidate._raw.salarySlips.map((slip: any, index: number) => (
                             <div key={index} className="flex items-center justify-between gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                               <span className="text-sm text-gray-900 dark:text-white truncate min-w-0 flex-1">{slip?.month ?? ''} {slip?.year ?? ''}</span>
-                              {slip?.documentUrl || slip?.url ? (
-                                <a href={slip.documentUrl || slip.url} target="_blank" rel="noopener noreferrer" className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 shrink-0 whitespace-nowrap inline-flex items-center">
+                              {(slip?.key || slip?.documentUrl || slip?.url) ? (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 shrink-0 whitespace-nowrap inline-flex items-center"
+                                  onClick={() => {
+                                    const cid = previewCandidate?.id ?? previewCandidate?._raw?._id
+                                    if (cid) handleSalarySlipView(cid, index)
+                                  }}
+                                >
                                   <i className="ri-external-link-line me-1"></i>View
-                                </a>
+                                </button>
                               ) : null}
                             </div>
                           ))}
@@ -2507,6 +2429,7 @@ const Candidates = () => {
         handleDocumentDownload={handleDocumentDownload}
         handleDocumentVerify={handleDocumentVerify}
         salarySlipsFromCandidate={salarySlipsFromCandidate}
+        handleSalarySlipView={handleSalarySlipView}
         handleSalarySlipDelete={handleSalarySlipDelete}
         salarySlipCandidate={salarySlipCandidate}
         setSalarySlipCandidate={setSalarySlipCandidate}

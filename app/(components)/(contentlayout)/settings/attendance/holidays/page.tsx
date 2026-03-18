@@ -8,12 +8,25 @@ import {
   deleteHoliday,
   type Holiday,
 } from "@/shared/lib/api/holidays";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
+
+const pageStyles = (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+    .holidays-page { font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif; }
+    @keyframes holiday-card-enter {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .holiday-row-enter {
+      animation: holiday-card-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+  `}</style>
+);
 
 export default function SettingsAttendanceHolidaysPage() {
   const { user } = useAuth();
@@ -28,7 +41,7 @@ export default function SettingsAttendanceHolidaysPage() {
   const [titleFilter, setTitleFilter] = useState("");
   const [startDateFilter, setStartDateFilter] = useState("");
   const [endDateFilter, setEndDateFilter] = useState("");
-  const [activeFilter, setActiveFilter] = useState<string>("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
   const [sortBy, setSortBy] = useState("date:asc");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -254,13 +267,26 @@ export default function SettingsAttendanceHolidaysPage() {
     }
   };
 
+  const hasActiveFilters =
+    titleFilter.trim() !== "" ||
+    startDateFilter !== "" ||
+    endDateFilter !== "" ||
+    activeFilter !== "all";
+
   if (isAdmin === null) {
     return (
       <>
         <Seo title="Holidays Management" />
-        <Pageheader currentpage="Holidays Management" activepage="Settings" mainpage="Attendance" />
-        <div className="box">
-          <div className="box-body py-8 text-center text-defaulttextcolor/70">Loading…</div>
+        {pageStyles}
+        <div className="holidays-page w-full mt-4">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5 ring-1 ring-primary/10">
+                <i className="ri-loader-4-line animate-spin text-4xl" />
+              </div>
+              <p className="text-sm font-semibold text-defaulttextcolor">Loading…</p>
+            </div>
+          </div>
         </div>
       </>
     );
@@ -270,12 +296,18 @@ export default function SettingsAttendanceHolidaysPage() {
     return (
       <>
         <Seo title="Holidays Management" />
-        <Pageheader currentpage="Holidays Management" activepage="Settings" mainpage="Attendance" />
-        <div className="box">
-          <div className="box-body py-12 text-center">
-            <i className="ri-error-warning-line text-5xl text-danger mb-4" />
-            <h3 className="text-xl font-semibold text-defaulttextcolor mb-2">Access Denied</h3>
-            <p className="text-defaulttextcolor/70">Only administrators can manage holidays.</p>
+        {pageStyles}
+        <div className="holidays-page w-full mt-4">
+          <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm overflow-hidden">
+            <div className="py-20 px-6 text-center">
+              <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-danger/10 text-danger mb-5 ring-1 ring-danger/20">
+                <i className="ri-error-warning-line text-5xl" />
+              </div>
+              <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">
+                Only administrators can manage holidays.
+              </p>
+            </div>
           </div>
         </div>
       </>
@@ -285,43 +317,97 @@ export default function SettingsAttendanceHolidaysPage() {
   return (
     <>
       <Seo title="Holidays Management" />
-      <Pageheader currentpage="Holidays Management" activepage="Settings" mainpage="Attendance" />
-      <div className="box">
-        <div className="box-header flex flex-wrap items-center justify-between gap-4">
-          <div className="box-title">Manage Holidays</div>
-          <button type="button" onClick={openCreateForm} className="ti-btn ti-btn-primary">
-            <i className="ri-add-line me-1" />
-            Add Holiday
-          </button>
-        </div>
-        <div className="box-body">
+      {pageStyles}
+      <div className="holidays-page relative mt-4 space-y-6 min-h-[50vh] w-full">
+        <div
+          className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none fixed inset-0 -z-10 bg-[linear-gradient(to_bottom,rgba(248,250,252,0.6),transparent_30%)] dark:bg-[linear-gradient(to_bottom,rgba(15,23,42,0.4),transparent_30%)]"
+          aria-hidden
+        />
+
+        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden transition-shadow duration-300 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none">
+          <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+            <div className="flex items-center gap-4 min-w-0">
+              <span
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
+                aria-hidden
+              >
+                <i className="ri-calendar-event-line text-2xl" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+                  Holidays Management
+                </h2>
+                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                  Manage holidays for attendance · Create and edit holiday dates
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openCreateForm}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]"
+            >
+              <i className="ri-add-line text-base" />
+              Add Holiday
+            </button>
+          </div>
+
           {error && (
-            <div className="mb-4 rounded-lg border border-danger/30 bg-danger/10 p-4 text-danger text-sm">
+            <div className="mx-6 mt-4 rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
               {error}
             </div>
           )}
 
-          <div className="mb-6 rounded-lg border border-defaultborder bg-black/5 dark:bg-white/5 p-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                  Search by Title
-                </label>
-                <input
-                  type="text"
-                  value={titleFilter}
-                  onChange={(e) => {
-                    setTitleFilter(e.target.value);
+          <div className="px-6 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/80 to-white dark:from-white/[0.02] dark:to-transparent">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-white/10 text-defaulttextcolor/70"
+                  aria-hidden
+                >
+                  <i className="ri-filter-3-line text-lg" />
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">
+                  Filters
+                </span>
+              </div>
+              {(["all", "active", "inactive"] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => {
+                    setActiveFilter(status);
                     setCurrentPage(1);
                   }}
-                  placeholder="Enter holiday title..."
-                  className="form-control"
-                />
+                  className={`rounded-full px-4 py-2 text-xs font-semibold transition-all duration-200 ${
+                    activeFilter === status
+                      ? "bg-primary text-white shadow-sm shadow-primary/20"
+                      : "bg-slate-100 dark:bg-white/10 text-defaulttextcolor/80 hover:bg-slate-200 dark:hover:bg-white/15 hover:text-defaulttextcolor"
+                  }`}
+                >
+                  {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
+                </button>
+              ))}
+              <div className="flex-1 min-w-[200px]">
+                <div className="relative">
+                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-base text-defaulttextcolor/40 pointer-events-none" aria-hidden />
+                  <input
+                    type="text"
+                    value={titleFilter}
+                    onChange={(e) => {
+                      setTitleFilter(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="Search by title…"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 pl-10 pr-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-150"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                  Start Date
-                </label>
+              <div className="flex items-center gap-2">
                 <input
                   type="date"
                   value={startDateFilter}
@@ -329,13 +415,10 @@ export default function SettingsAttendanceHolidaysPage() {
                     setStartDateFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="form-control"
+                  className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  title="Start date"
                 />
-              </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                  End Date
-                </label>
+                <span className="text-defaulttextcolor/40 text-sm">–</span>
                 <input
                   type="date"
                   value={endDateFilter}
@@ -343,259 +426,292 @@ export default function SettingsAttendanceHolidaysPage() {
                     setEndDateFilter(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="form-control"
+                  className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  title="End date"
                 />
               </div>
-              <div>
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                  Status
-                </label>
-                <select
-                  value={activeFilter}
-                  onChange={(e) => {
-                    setActiveFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="form-control"
+              <select
+                value={sortBy}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              >
+                <option value="date:asc">Date (Oldest First)</option>
+                <option value="date:desc">Date (Newest First)</option>
+                <option value="title:asc">Title (A–Z)</option>
+                <option value="title:desc">Title (Z–A)</option>
+              </select>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
                 >
-                  <option value="all">All</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-[180px]">
-                <label className="mb-2 block text-sm font-medium text-defaulttextcolor">Sort By</label>
-                <select
-                  value={sortBy}
-                  onChange={(e) => {
-                    setSortBy(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="form-control !w-auto"
-                >
-                  <option value="date:asc">Date (Oldest First)</option>
-                  <option value="date:desc">Date (Newest First)</option>
-                  <option value="title:asc">Title (A-Z)</option>
-                  <option value="title:desc">Title (Z-A)</option>
-                </select>
-              </div>
-              <div>
-                <button type="button" onClick={clearFilters} className="ti-btn ti-btn-light">
                   Clear Filters
                 </button>
-              </div>
+              )}
             </div>
           </div>
 
-          {showForm && (
+          <div className="px-6 py-6">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20">
+                <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-5 ring-1 ring-primary/10">
+                  <i className="ri-loader-4-line animate-spin text-4xl" />
+                </div>
+                <p className="text-sm font-semibold text-defaulttextcolor">Loading holidays…</p>
+                <p className="mt-1.5 text-xs text-defaulttextcolor/50">This may take a moment</p>
+              </div>
+            ) : holidays.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <div className="inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-100 dark:bg-white/10 text-defaulttextcolor/40 mb-5 ring-1 ring-defaultborder/50">
+                  <i className="ri-calendar-event-line text-5xl" />
+                </div>
+                <p className="text-lg font-semibold text-defaulttextcolor dark:text-white">No holidays found</p>
+                <p className="mt-2 max-w-sm text-sm text-defaulttextcolor/60 dark:text-white/60">
+                  {hasActiveFilters
+                    ? "Try adjusting your filters to see more results."
+                    : "Get started by creating your first holiday."}
+                </p>
+                {!hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={openCreateForm}
+                    className="mt-6 inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all"
+                  >
+                    <i className="ri-add-line" />
+                    Add Holiday
+                  </button>
+                )}
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-6 rounded-xl border border-defaultborder/80 bg-transparent px-5 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <>
+                <p className="mb-4 text-sm text-defaulttextcolor/70">
+                  Showing {holidays.length} of {totalResults} holiday{totalResults !== 1 ? "s" : ""}
+                </p>
+                <div className="overflow-hidden rounded-xl border border-defaultborder/70">
+                  <table className="min-w-full">
+                    <thead>
+                      <tr className="border-b border-defaultborder/60 bg-slate-50/80 dark:bg-white/[0.04]">
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                          Title
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                          Date / Range
+                        </th>
+                        <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                          Status
+                        </th>
+                        <th className="px-5 py-3.5 text-right text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-defaultborder/50">
+                      {holidays.map((holiday, index) => {
+                        const id = holiday._id ?? holiday.id;
+                        return (
+                          <tr
+                            key={id}
+                            style={{ animationDelay: `${index * 40}ms` }}
+                            className="holiday-row-enter opacity-0 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
+                          >
+                            <td className="px-5 py-4 font-medium text-defaulttextcolor">{holiday.title}</td>
+                            <td className="px-5 py-4 text-sm text-defaulttextcolor/85">
+                              {holiday.endDate
+                                ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
+                                : formatDate(holiday.date)}
+                            </td>
+                            <td className="px-5 py-4">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
+                                  holiday.isActive
+                                    ? "bg-success/10 text-success ring-1 ring-success/20"
+                                    : "bg-slate-100 dark:bg-white/10 text-defaulttextcolor/70"
+                                }`}
+                              >
+                                {holiday.isActive ? (
+                                  <>
+                                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                                    Active
+                                  </>
+                                ) : (
+                                  "Inactive"
+                                )}
+                              </span>
+                            </td>
+                            <td className="px-5 py-4 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditForm(holiday)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                                  title="Edit"
+                                >
+                                  <i className="ri-pencil-line text-lg" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(holiday)}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-danger/10 transition-colors"
+                                  title="Delete"
+                                >
+                                  <i className="ri-delete-bin-line text-lg" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {totalPages > 1 && (
+                  <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                    <p className="text-sm text-defaulttextcolor/70">
+                      Page {currentPage} of {totalPages}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:pointer-events-none transition-all"
+                      >
+                        Previous
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 disabled:opacity-50 disabled:pointer-events-none transition-all"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
+
+        {showForm && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={resetForm}
+            role="presentation"
+          >
             <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-              onClick={resetForm}
+              className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
               role="presentation"
             >
-              <div
-                className="box max-h-[90vh] w-full max-w-md overflow-y-auto"
-                onClick={(e) => e.stopPropagation()}
-                role="presentation"
-              >
-                <div className="box-header flex items-center justify-between">
-                  <div className="box-title">
-                    {editingHoliday ? "Edit Holiday" : "Create New Holiday"}
-                  </div>
-                  <button type="button" onClick={resetForm} className="text-defaulttextcolor/70 hover:text-defaulttextcolor">
-                    <i className="ri-close-line text-xl" />
+              <div className="flex items-center justify-between px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+                <h3 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+                  {editingHoliday ? "Edit Holiday" : "Create New Holiday"}
+                </h3>
+                <button
+                  type="button"
+                  onClick={resetForm}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/70 hover:text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                >
+                  <i className="ri-close-line text-xl" />
+                </button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">
+                    Holiday Title <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.title}
+                    onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))}
+                    placeholder="e.g. New Year's Day"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    required
+                    maxLength={200}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">
+                    Start Date <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.date}
+                    onChange={(e) => setFormData((p) => ({ ...p, date: e.target.value }))}
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">
+                    End Date{" "}
+                    <span className="text-defaulttextcolor/60 font-normal">(optional, for multi-day)</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData((p) => ({ ...p, endDate: e.target.value }))}
+                    min={formData.date || undefined}
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  />
+                  <p className="mt-1.5 text-xs text-defaulttextcolor/60">
+                    Leave empty for single-day. Set for multi-day holidays.
+                  </p>
+                </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-defaultborder/60 bg-slate-50/50 dark:bg-white/[0.04] px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData((p) => ({ ...p, isActive: e.target.checked }))}
+                    className="rounded border-defaultborder text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm font-medium text-defaulttextcolor">Active</span>
+                </label>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 transition-all disabled:opacity-60"
+                  >
+                    {submitting ? (
+                      <>
+                        <i className="ri-loader-4-line animate-spin text-lg" />
+                        {editingHoliday ? "Updating…" : "Creating…"}
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-save-line text-lg" />
+                        {editingHoliday ? "Update Holiday" : "Create Holiday"}
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="rounded-xl border border-defaultborder/80 bg-transparent px-5 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Cancel
                   </button>
                 </div>
-                <form onSubmit={handleSubmit} className="box-body space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                      Holiday Title <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.title}
-                      onChange={(e) => setFormData((p) => ({ ...p, title: e.target.value }))}
-                      placeholder="e.g., New Year's Day"
-                      className="form-control"
-                      required
-                      maxLength={200}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                      Start Date <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData((p) => ({ ...p, date: e.target.value }))}
-                      className="form-control"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-defaulttextcolor">
-                      End Date <span className="text-defaulttextcolor/60">(optional, for multi-day)</span>
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.endDate}
-                      onChange={(e) => setFormData((p) => ({ ...p, endDate: e.target.value }))}
-                      className="form-control"
-                      min={formData.date || undefined}
-                    />
-                    <p className="mt-1 text-xs text-defaulttextcolor/60">
-                      Leave empty for a single-day holiday. Set for festivals spanning multiple days.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="holiday-active"
-                      checked={formData.isActive}
-                      onChange={(e) => setFormData((p) => ({ ...p, isActive: e.target.checked }))}
-                      className="rounded border-defaultborder text-primary focus:ring-primary"
-                    />
-                    <label htmlFor="holiday-active" className="text-sm font-medium text-defaulttextcolor">
-                      Active
-                    </label>
-                  </div>
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="ti-btn flex-1 ti-btn-primary"
-                    >
-                      {submitting ? (
-                        <>
-                          <i className="ri-loader-4-line animate-spin me-2" />
-                          {editingHoliday ? "Updating…" : "Creating…"}
-                        </>
-                      ) : (
-                        <>
-                          <i className="ri-save-line me-2" />
-                          {editingHoliday ? "Update Holiday" : "Create Holiday"}
-                        </>
-                      )}
-                    </button>
-                    <button type="button" onClick={resetForm} className="ti-btn ti-btn-light">
-                      Cancel
-                    </button>
-                  </div>
-                </form>
-              </div>
+              </form>
             </div>
-          )}
-
-          {loading ? (
-            <div className="py-12 text-center text-defaulttextcolor/70">
-              <i className="ri-loader-4-line animate-spin text-3xl text-primary mb-2 block" />
-              Loading holidays…
-            </div>
-          ) : holidays.length === 0 ? (
-            <div className="py-12 text-center">
-              <i className="ri-calendar-line text-5xl text-defaulttextcolor/40 mb-4 block" />
-              <h3 className="text-lg font-semibold text-defaulttextcolor mb-2">No Holidays Found</h3>
-              <p className="text-defaulttextcolor/70 mb-4">
-                {titleFilter || startDateFilter || endDateFilter || activeFilter !== "all"
-                  ? "Try adjusting your filters"
-                  : "Get started by creating your first holiday"}
-              </p>
-              {!titleFilter && !startDateFilter && !endDateFilter && activeFilter === "all" && (
-                <button type="button" onClick={openCreateForm} className="ti-btn ti-btn-primary">
-                  Add Holiday
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              <p className="mb-4 text-sm text-defaulttextcolor/70">
-                Showing {holidays.length} of {totalResults} holiday(s)
-              </p>
-              <div className="table-responsive overflow-x-auto">
-                <table className="table min-w-full table-bordered">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-white/5">
-                      <th className="text-start text-xs font-medium uppercase text-defaulttextcolor/70">Title</th>
-                      <th className="text-start text-xs font-medium uppercase text-defaulttextcolor/70">Date / Range</th>
-                      <th className="text-start text-xs font-medium uppercase text-defaulttextcolor/70">Status</th>
-                      <th className="text-end text-xs font-medium uppercase text-defaulttextcolor/70">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {holidays.map((holiday) => {
-                      const id = holiday._id ?? holiday.id;
-                      return (
-                        <tr key={id} className="hover:bg-black/5 dark:hover:bg-white/5">
-                          <td className="font-medium text-defaulttextcolor">{holiday.title}</td>
-                          <td className="text-defaulttextcolor/80">
-                            {holiday.endDate
-                              ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
-                              : formatDate(holiday.date)}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${holiday.isActive ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor/70"}`}
-                            >
-                              {holiday.isActive ? "Active" : "Inactive"}
-                            </span>
-                          </td>
-                          <td className="text-end">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => openEditForm(holiday)}
-                                className="text-primary hover:underline"
-                                title="Edit"
-                              >
-                                <i className="ri-edit-line text-lg" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDelete(holiday)}
-                                className="text-danger hover:underline"
-                                title="Delete"
-                              >
-                                <i className="ri-delete-bin-line text-lg" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {totalPages > 1 && (
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-                  <p className="text-sm text-defaulttextcolor/70">
-                    Page {currentPage} of {totalPages}
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage === 1}
-                      className="ti-btn ti-btn-light"
-                    >
-                      Previous
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="ti-btn ti-btn-light"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );

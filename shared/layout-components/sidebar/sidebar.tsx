@@ -415,21 +415,21 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		setMenuitems((arr: any) => [...arr]);
 	}
 
-	function getParentObject(obj: any, childObject: any) {
-		for (const key in obj) {
-			if (obj.hasOwnProperty(key)) {
-				if (typeof obj[key] === 'object' && JSON.stringify(obj[key]) === JSON.stringify(childObject)) {
-					return obj; // Return the parent object
+	function getParentObject(items: any, childObject: any): any {
+		if (!Array.isArray(items)) return null;
+		for (const item of items) {
+			if (!item || typeof item !== 'object') continue;
+			if (item === childObject) continue;
+			const children = item.children;
+			if (Array.isArray(children)) {
+				if (children.includes(childObject)) {
+					return item;
 				}
-				if (typeof obj[key] === 'object') {
-					const parentObject: any = getParentObject(obj[key], childObject);
-					if (parentObject !== null) {
-						return parentObject;
-					}
-				}
+				const found = getParentObject(children, childObject);
+				if (found !== null) return found;
 			}
 		}
-		return null; // Object not found
+		return null;
 	}
 
 	function setMenuAncestorsActive(targetObject: any) {

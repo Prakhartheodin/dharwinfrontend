@@ -1,15 +1,17 @@
 "use client";
 
+import { DM_Sans, Newsreader } from "next/font/google";
 import Seo from "@/shared/layout-components/seo/seo";
 import TiptapEditor from "@/shared/data/forms/form-editors/tiptapeditor";
 import * as emailApi from "@/shared/lib/api/email";
+import mailStyles from "./mail-app.module.css";
 import type {
   EmailAccount,
   EmailLabel,
   EmailMessage,
   EmailThreadListItem,
 } from "@/shared/lib/api/email";
-import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "next/navigation";
 import PerfectScrollbar from "react-perfect-scrollbar";
@@ -18,7 +20,19 @@ import SimpleBar from "simplebar-react";
 
 type ComposeMode = "new" | "reply" | "forward";
 
+const mailBody = DM_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+const mailDisplay = Newsreader({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+});
+
 const LABEL_ICONS: Record<string, string> = {
+  // Gmail
   INBOX: "ri-inbox-line",
   SENT: "ri-send-plane-line",
   DRAFT: "ri-file-edit-line",
@@ -32,17 +46,33 @@ const LABEL_ICONS: Record<string, string> = {
   CATEGORY_PROMOTIONS: "ri-price-tag-3-line",
   CATEGORY_UPDATES: "ri-refresh-line",
   CATEGORY_FORUMS: "ri-chat-3-line",
+  // Outlook
+  JUNK: "ri-spam-2-line",
+  ARCHIVE: "ri-archive-line",
+  OUTBOX: "ri-send-plane-2-line",
+  conversationhistory: "ri-chat-history-line",
+  notes: "ri-sticky-note-line",
 };
+
+const MAX_GMAIL_ACCOUNTS = 3;
+const MAX_OUTLOOK_ACCOUNTS = 1;
+/** Snapshot of account ids before OAuth redirect; used to select newly linked mailbox on return. */
+const STORAGE_EMAIL_ACCOUNTS_SNAPSHOT = "dharwin_email_accounts_before_oauth";
 
 const MAILS_ORDER = [
   "INBOX",
   "SENT",
   "DRAFT",
+  "JUNK",
   "SPAM",
   "IMPORTANT",
   "TRASH",
+  "ARCHIVE",
+  "OUTBOX",
   "CATEGORY_PERSONAL",
   "STARRED",
+  "conversationhistory",
+  "notes",
 ];
 
 function getLabelIcon(labelId: string): string {
@@ -104,6 +134,22 @@ const Mailapp = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthSuccess, setOauthSuccess] = useState(false);
+
+  const mailProvider =
+    accounts.find((a) => a.id === selectedAccountId)?.provider === "outlook" ? "outlook" : "gmail";
+
+  const gmailAccountCount = useMemo(
+    () => accounts.filter((a) => a.provider === "gmail").length,
+    [accounts]
+  );
+  const outlookAccountCount = useMemo(
+    () => accounts.filter((a) => a.provider === "outlook").length,
+    [accounts]
+  );
+  const canAddMoreGmail = gmailAccountCount < MAX_GMAIL_ACCOUNTS;
+  const canAddOutlookMailbox = outlookAccountCount < MAX_OUTLOOK_ACCOUNTS;
+  const hasGmailAccount = gmailAccountCount > 0;
+  const hasOutlookAccount = outlookAccountCount > 0;
 
   const [isMailNavigationVisible, setMailNavigationVisible] = useState(false);
   const [isTotalMailsVisible, setTotalMailsVisible] = useState(true);
@@ -215,7 +261,7 @@ const Mailapp = () => {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
     if (error) setOauthError(decodeURIComponent(error));
-    if (connected === "gmail") setOauthSuccess(true);
+    if (connected === "gmail" || connected === "outlook") setOauthSuccess(true);
   }, [searchParams]);
 
   useEffect(() => {
@@ -256,16 +302,44 @@ const Mailapp = () => {
     async function load() {
       setLoading(true);
       try {
+        const oauthReturn =
+          typeof window !== "undefined" &&
+          (new URLSearchParams(window.location.search).get("connected") === "gmail" ||
+            new URLSearchParams(window.location.search).get("connected") === "outlook");
+
         const list = await emailApi.getEmailAccounts();
         if (cancelled) return;
+
+        let preferredId: string | null = null;
+        if (oauthReturn) {
+          try {
+            const raw = sessionStorage.getItem(STORAGE_EMAIL_ACCOUNTS_SNAPSHOT);
+            if (raw != null) {
+              const snapshot: string[] = JSON.parse(raw);
+              sessionStorage.removeItem(STORAGE_EMAIL_ACCOUNTS_SNAPSHOT);
+              const added = list.find((a) => !snapshot.includes(a.id));
+              if (added) preferredId = added.id;
+            }
+          } catch {
+            sessionStorage.removeItem(STORAGE_EMAIL_ACCOUNTS_SNAPSHOT);
+          }
+        }
+
         setAccounts(list);
-        if (list.length > 0 && !selectedAccountId) {
-          setSelectedAccountId(list[0].id);
-        } else if (list.length === 0) {
+        if (preferredId && list.some((a) => a.id === preferredId)) {
+          setSelectedAccountId(preferredId);
+        } else if (list.length > 0) {
+          setSelectedAccountId((prev) =>
+            prev && list.some((a) => a.id === prev) ? prev : list[0].id
+          );
+        } else {
           setSelectedAccountId(null);
         }
-      } catch (err) {
-        if (!cancelled) setAccounts([]);
+      } catch {
+        if (!cancelled) {
+          setAccounts([]);
+          setSelectedAccountId(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -286,7 +360,9 @@ const Mailapp = () => {
     let cancelled = false;
     async function load() {
       try {
-        const list = await emailApi.getLabels(id);
+        const p =
+          accounts.find((a) => a.id === id)?.provider === "outlook" ? "outlook" : "gmail";
+        const list = await emailApi.getLabels(id, p);
         if (!cancelled) setLabels(list);
       } catch {
         if (!cancelled) setLabels([]);
@@ -296,7 +372,24 @@ const Mailapp = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedAccountId]);
+  }, [selectedAccountId, accounts]);
+
+  // Outlook cannot use Gmail label ids as folder paths — reset when switching to Outlook
+  useEffect(() => {
+    if (!selectedAccountId || accounts.length === 0) return;
+    const acc = accounts.find((a) => a.id === selectedAccountId);
+    if (acc?.provider !== "outlook") return;
+    setSelectedLabelId((prev) => {
+      if (
+        prev.startsWith("CATEGORY_") ||
+        prev.startsWith("Label_") ||
+        ["STARRED", "IMPORTANT", "CHAT"].includes(prev)
+      ) {
+        return "INBOX";
+      }
+      return prev;
+    });
+  }, [selectedAccountId, accounts]);
 
   useEffect(() => {
     const accountId = selectedAccountId;
@@ -312,12 +405,17 @@ const Mailapp = () => {
     setNextPageToken(null);
     async function load() {
       try {
-        const res = await emailApi.getThreads({
-          accountId: id,
-          labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
-          pageSize: 20,
-          q: searchQuery || undefined,
-        });
+        const p =
+          accounts.find((a) => a.id === id)?.provider === "outlook" ? "outlook" : "gmail";
+        const res = await emailApi.getThreads(
+          {
+            accountId: id,
+            labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
+            pageSize: 20,
+            q: searchQuery || undefined,
+          },
+          p
+        );
         if (!cancelled) {
           setThreads(res.threads);
           setNextPageToken(res.nextPageToken);
@@ -333,25 +431,28 @@ const Mailapp = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedAccountId, selectedLabelId, searchQuery]);
+  }, [selectedAccountId, selectedLabelId, searchQuery, accounts]);
 
   const loadMoreThreads = useCallback(async () => {
     if (!selectedAccountId || !nextPageToken) return;
     setLoadingMessages(true);
     try {
-      const res = await emailApi.getThreads({
-        accountId: selectedAccountId,
-        labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
-        pageToken: nextPageToken,
-        pageSize: 20,
-        q: searchQuery || undefined,
-      });
+      const res = await emailApi.getThreads(
+        {
+          accountId: selectedAccountId,
+          labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
+          pageToken: nextPageToken,
+          pageSize: 20,
+          q: searchQuery || undefined,
+        },
+        mailProvider
+      );
       setThreads((prev) => [...prev, ...res.threads]);
       setNextPageToken(res.nextPageToken);
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccountId, selectedLabelId, searchQuery, nextPageToken]);
+  }, [selectedAccountId, selectedLabelId, searchQuery, nextPageToken, mailProvider]);
 
   useEffect(() => {
     if (!selectedAccountId || !selectedThreadId) {
@@ -361,8 +462,10 @@ const Mailapp = () => {
     const tid = selectedThreadId;
     let cancelled = false;
     setLoadingDetail(true);
+    const p =
+      accounts.find((a) => a.id === selectedAccountId)?.provider === "outlook" ? "outlook" : "gmail";
     emailApi
-      .getThread(selectedAccountId, tid)
+      .getThread(selectedAccountId, tid, p)
       .then((data) => {
         if (!cancelled && selectedThreadId === tid) setThreadMessages(data.messages);
       })
@@ -375,21 +478,60 @@ const Mailapp = () => {
     return () => {
       cancelled = true;
     };
-  }, [selectedAccountId, selectedThreadId]);
+  }, [selectedAccountId, selectedThreadId, accounts]);
 
   const handleConnectGmail = useCallback(async () => {
+    if (gmailAccountCount >= MAX_GMAIL_ACCOUNTS) {
+      setOauthError(
+        `Maximum of ${MAX_GMAIL_ACCOUNTS} Gmail accounts allowed. Disconnect one to add another.`
+      );
+      return;
+    }
     try {
+      try {
+        sessionStorage.setItem(
+          STORAGE_EMAIL_ACCOUNTS_SNAPSHOT,
+          JSON.stringify(accounts.map((a) => a.id).sort())
+        );
+      } catch {
+        /* ignore quota / private mode */
+      }
       const { url } = await emailApi.getGoogleAuthUrl();
       window.location.href = url;
     } catch (err) {
       setOauthError("Failed to get Google auth URL");
     }
-  }, []);
+  }, [gmailAccountCount, accounts]);
+
+  const handleConnectOutlook = useCallback(async () => {
+    if (outlookAccountCount >= MAX_OUTLOOK_ACCOUNTS) {
+      setOauthError(
+        "Only one Outlook account is allowed. Disconnect it to connect a different mailbox."
+      );
+      return;
+    }
+    try {
+      try {
+        sessionStorage.setItem(
+          STORAGE_EMAIL_ACCOUNTS_SNAPSHOT,
+          JSON.stringify(accounts.map((a) => a.id).sort())
+        );
+      } catch {
+        /* ignore */
+      }
+      const { url } = await emailApi.getMicrosoftAuthUrl();
+      window.location.href = url;
+    } catch (err) {
+      setOauthError("Failed to get Microsoft auth URL");
+    }
+  }, [outlookAccountCount, accounts]);
 
   const handleDisconnect = useCallback(
     async (accountId: string) => {
       try {
-        await emailApi.disconnectAccount(accountId);
+        const p =
+          accounts.find((a) => a.id === accountId)?.provider === "outlook" ? "outlook" : "gmail";
+        await emailApi.disconnectAccount(accountId, p);
         const remaining = accounts.filter((a) => a.id !== accountId);
         setAccounts(remaining);
         if (selectedAccountId === accountId) {
@@ -410,12 +552,15 @@ const Mailapp = () => {
       Medium();
       if (thread.isUnread && selectedAccountId) {
         try {
-          await emailApi.batchModifyThreads({
-            accountId: selectedAccountId,
-            threadIds: [thread.id],
-            addLabelIds: [],
-            removeLabelIds: ["UNREAD"],
-          });
+          await emailApi.batchModifyThreads(
+            {
+              accountId: selectedAccountId,
+              threadIds: [thread.id],
+              addLabelIds: [],
+              removeLabelIds: ["UNREAD"],
+            },
+            mailProvider
+          );
           setThreads((prev) =>
             prev.map((t) =>
               t.id === thread.id ? { ...t, isUnread: false, labelIds: (t.labelIds || []).filter((l) => l !== "UNREAD") } : t
@@ -429,31 +574,39 @@ const Mailapp = () => {
         }
       }
     },
-    [Medium, selectedAccountId, selectedLabelId]
+    [Medium, selectedAccountId, selectedLabelId, mailProvider]
   );
 
   const lastMessageInThread = threadMessages.length > 0 ? threadMessages[threadMessages.length - 1] : null;
 
   const handleSendInlineReply = useCallback(async () => {
-    if (!selectedAccountId || !lastMessageInThread) return;
+    console.log("[Email] handleSendInlineReply triggered");
+    if (!selectedAccountId || !lastMessageInThread) {
+      console.warn("[Email] handleSendInlineReply aborted:", { selectedAccountId, lastMessageInThread });
+      return;
+    }
     setSending(true);
     try {
-      await emailApi.replyMessage(lastMessageInThread.id, {
-        accountId: selectedAccountId,
-        html: cleanHtmlForSend(inlineReplyHtml),
-        attachments:
-          inlineReplyAttachments.length > 0
-            ? inlineReplyAttachments.map((a) => ({
-                filename: a.filename,
-                content: a.content,
-                mimeType: a.mimeType,
-              }))
-            : undefined,
-      });
+      await emailApi.replyMessage(
+        lastMessageInThread.id,
+        {
+          accountId: selectedAccountId,
+          html: cleanHtmlForSend(inlineReplyHtml),
+          attachments:
+            inlineReplyAttachments.length > 0
+              ? inlineReplyAttachments.map((a) => ({
+                  filename: a.filename,
+                  content: a.content,
+                  mimeType: a.mimeType,
+                }))
+              : undefined,
+        },
+        mailProvider
+      );
       setInlineReplyHtml("");
       setInlineReplyAttachments([]);
       if (selectedThreadId) {
-        const data = await emailApi.getThread(selectedAccountId, selectedThreadId);
+        const data = await emailApi.getThread(selectedAccountId, selectedThreadId, mailProvider);
         setThreadMessages(data.messages);
       }
     } catch {
@@ -467,9 +620,11 @@ const Mailapp = () => {
     inlineReplyHtml,
     inlineReplyAttachments,
     selectedThreadId,
+    mailProvider,
   ]);
 
   const openCompose = useCallback((mode: ComposeMode, msg?: EmailMessage) => {
+    console.log("[Email] openCompose:", { mode, msgId: msg?.id });
     composeMessageRef.current = msg ?? null;
     setComposeMode(mode);
     if (mode === "new") {
@@ -479,15 +634,16 @@ const Mailapp = () => {
       setComposeSubject("");
       setComposeHtml("");
     } else if (msg) {
+      const subject = msg.subject || "(No subject)";
       if (mode === "reply") {
         setComposeTo(msg.from ?? "");
-        setComposeSubject(msg.subject.startsWith("Re:") ? msg.subject : `Re: ${msg.subject}`);
+        setComposeSubject(subject.startsWith("Re:") ? subject : `Re: ${subject}`);
         const quoted = `\n\n<div class="mail-quoted"><p>On ${msg.date || ""} ${msg.from} wrote:</p><blockquote>${msg.htmlBody || msg.textBody || ""}</blockquote></div>`;
         setComposeHtml(quoted);
       } else {
         setComposeTo("");
-        setComposeSubject(msg.subject.startsWith("Fwd:") ? msg.subject : `Fwd: ${msg.subject}`);
-        const quoted = `\n\n<div class="mail-forwarded"><p>---------- Forwarded message ---------</p><p>From: ${msg.from}<br/>To: ${msg.to}<br/>Date: ${msg.date || ""}<br/>Subject: ${msg.subject}</p><blockquote>${msg.htmlBody || msg.textBody || ""}</blockquote></div>`;
+        setComposeSubject(subject.startsWith("Fwd:") ? subject : `Fwd: ${subject}`);
+        const quoted = `\n\n<div class="mail-forwarded"><p>---------- Forwarded message ---------</p><p>From: ${msg.from}<br/>To: ${msg.to}<br/>Date: ${msg.date || ""}<br/>Subject: ${subject}</p><blockquote>${msg.htmlBody || msg.textBody || ""}</blockquote></div>`;
         setComposeHtml(quoted);
       }
       setComposeCc("");
@@ -571,47 +727,57 @@ const Mailapp = () => {
         return;
       }
       if (composeMode === "new" || composeMode === "forward") {
-        await emailApi.sendMessage({
-          accountId: selectedAccountId,
-          to,
-          cc: composeCc ? composeCc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
-          bcc: composeBcc ? composeBcc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
-          subject: composeSubject,
-          html: cleanHtmlForSend(composeHtml),
-          attachments:
-            composeAttachments.length > 0
-              ? composeAttachments.map((a) => ({
-                  filename: a.filename,
-                  content: a.content,
-                  mimeType: a.mimeType,
-                }))
-              : undefined,
-        });
+        await emailApi.sendMessage(
+          {
+            accountId: selectedAccountId,
+            to,
+            cc: composeCc ? composeCc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
+            bcc: composeBcc ? composeBcc.split(/[,;]/).map((e) => e.trim()).filter(Boolean) : undefined,
+            subject: composeSubject,
+            html: cleanHtmlForSend(composeHtml),
+            attachments:
+              composeAttachments.length > 0
+                ? composeAttachments.map((a) => ({
+                    filename: a.filename,
+                    content: a.content,
+                    mimeType: a.mimeType,
+                  }))
+                : undefined,
+          },
+          mailProvider
+        );
       } else {
         const msg = composeMessageRef.current;
         if (!msg) return;
-        await emailApi.replyMessage(msg.id, {
-          accountId: selectedAccountId,
-          html: cleanHtmlForSend(composeHtml),
-          attachments:
-            composeAttachments.length > 0
-              ? composeAttachments.map((a) => ({
-                  filename: a.filename,
-                  content: a.content,
-                  mimeType: a.mimeType,
-                }))
-              : undefined,
-        });
+        await emailApi.replyMessage(
+          msg.id,
+          {
+            accountId: selectedAccountId,
+            html: cleanHtmlForSend(composeHtml),
+            attachments:
+              composeAttachments.length > 0
+                ? composeAttachments.map((a) => ({
+                    filename: a.filename,
+                    content: a.content,
+                    mimeType: a.mimeType,
+                  }))
+                : undefined,
+          },
+          mailProvider
+        );
       }
       closeCompose();
       setThreads([]);
       if (selectedAccountId) {
-        const res = await emailApi.getThreads({
-          accountId: selectedAccountId,
-          labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
-          pageSize: 20,
-          q: searchQuery || undefined,
-        });
+        const res = await emailApi.getThreads(
+          {
+            accountId: selectedAccountId,
+            labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
+            pageSize: 20,
+            q: searchQuery || undefined,
+          },
+          mailProvider
+        );
         setThreads(res.threads);
         setNextPageToken(res.nextPageToken);
       }
@@ -632,12 +798,13 @@ const Mailapp = () => {
     selectedLabelId,
     searchQuery,
     closeCompose,
+    mailProvider,
   ]);
 
   const handleTrash = useCallback(async () => {
     if (!selectedAccountId || !selectedThreadId) return;
     try {
-      await emailApi.trashThreads(selectedAccountId, [selectedThreadId]);
+      await emailApi.trashThreads(selectedAccountId, [selectedThreadId], mailProvider);
       setThreads((prev) => prev.filter((t) => t.id !== selectedThreadId));
       setSelectedThreadId(null);
       setThreadMessages([]);
@@ -650,7 +817,7 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, selectedThreadId, Close]);
+  }, [selectedAccountId, selectedThreadId, Close, mailProvider]);
 
   const refetchMessages = useCallback(async () => {
     if (!selectedAccountId) return;
@@ -658,12 +825,15 @@ const Mailapp = () => {
     setThreads([]);
     setNextPageToken(null);
     try {
-      const res = await emailApi.getThreads({
-        accountId: selectedAccountId,
-        labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
-        pageSize: 20,
-        q: searchQuery || undefined,
-      });
+      const res = await emailApi.getThreads(
+        {
+          accountId: selectedAccountId,
+          labelId: selectedLabelId === "ALL" ? undefined : selectedLabelId,
+          pageSize: 20,
+          q: searchQuery || undefined,
+        },
+        mailProvider
+      );
       setThreads(res.threads);
       setNextPageToken(res.nextPageToken);
       setResultSizeEstimate(res.resultSizeEstimate ?? 0);
@@ -672,7 +842,7 @@ const Mailapp = () => {
     } finally {
       setLoadingMessages(false);
     }
-  }, [selectedAccountId, selectedLabelId, searchQuery]);
+  }, [selectedAccountId, selectedLabelId, searchQuery, mailProvider]);
 
   const handleToggleStar = useCallback(
     async (thread: EmailThreadListItem, e?: React.MouseEvent) => {
@@ -680,12 +850,15 @@ const Mailapp = () => {
       if (!selectedAccountId) return;
       const isStarred = thread.labelIds?.includes("STARRED");
       try {
-        await emailApi.batchModifyThreads({
-          accountId: selectedAccountId,
-          threadIds: [thread.id],
-          addLabelIds: isStarred ? [] : ["STARRED"],
-          removeLabelIds: isStarred ? ["STARRED"] : [],
-        });
+        await emailApi.batchModifyThreads(
+          {
+            accountId: selectedAccountId,
+            threadIds: [thread.id],
+            addLabelIds: isStarred ? [] : ["STARRED"],
+            removeLabelIds: isStarred ? ["STARRED"] : [],
+          },
+          mailProvider
+        );
         setThreads((prev) =>
           prev.map((t) =>
             t.id === thread.id
@@ -702,18 +875,21 @@ const Mailapp = () => {
         // ignore
       }
     },
-    [selectedAccountId]
+    [selectedAccountId, mailProvider]
   );
 
   const handleArchive = useCallback(async () => {
     if (!selectedAccountId || !selectedThreadId) return;
     try {
-      await emailApi.batchModifyThreads({
-        accountId: selectedAccountId,
-        threadIds: [selectedThreadId],
-        addLabelIds: [],
-        removeLabelIds: ["INBOX"],
-      });
+      await emailApi.batchModifyThreads(
+        {
+          accountId: selectedAccountId,
+          threadIds: [selectedThreadId],
+          addLabelIds: [],
+          removeLabelIds: ["INBOX"],
+        },
+        mailProvider
+      );
       setThreads((prev) => prev.filter((t) => t.id !== selectedThreadId));
       setSelectedThreadId(null);
       setThreadMessages([]);
@@ -726,7 +902,7 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, selectedThreadId, Close]);
+  }, [selectedAccountId, selectedThreadId, Close, mailProvider]);
 
   const selectedThread = threads.find((t) => t.id === selectedThreadId);
 
@@ -735,17 +911,24 @@ const Mailapp = () => {
       if (!selectedAccountId || !name?.trim()) return;
       setCreatingLabel(true);
       try {
-        const created = await emailApi.createLabel(selectedAccountId, { name: name.trim() });
+        const created = await emailApi.createLabel(
+          selectedAccountId,
+          { name: name.trim() },
+          mailProvider
+        );
         setLabels((prev) => [...prev, { ...created, type: "user" }]);
         setNewLabelName("");
         setCreateLabelExpanded(false);
         if (selectedThreadId) {
-          await emailApi.batchModifyThreads({
-            accountId: selectedAccountId,
-            threadIds: [selectedThreadId],
-            addLabelIds: [created.id],
-            removeLabelIds: [],
-          });
+          await emailApi.batchModifyThreads(
+            {
+              accountId: selectedAccountId,
+              threadIds: [selectedThreadId],
+              addLabelIds: [created.id],
+              removeLabelIds: [],
+            },
+            mailProvider
+          );
           setThreads((prev) =>
             prev.map((t) =>
               t.id === selectedThreadId
@@ -761,7 +944,7 @@ const Mailapp = () => {
         setCreatingLabel(false);
       }
     },
-    [selectedAccountId, selectedThreadId]
+    [selectedAccountId, selectedThreadId, mailProvider]
   );
 
   const handleApplyLabel = useCallback(
@@ -770,12 +953,15 @@ const Mailapp = () => {
       const currentIds = selectedThread?.labelIds || [];
       const hasLabel = currentIds.includes(labelId);
       try {
-        await emailApi.batchModifyThreads({
-          accountId: selectedAccountId,
-          threadIds: [selectedThreadId],
-          addLabelIds: hasLabel ? [] : [labelId],
-          removeLabelIds: hasLabel ? [labelId] : [],
-        });
+        await emailApi.batchModifyThreads(
+          {
+            accountId: selectedAccountId,
+            threadIds: [selectedThreadId],
+            addLabelIds: hasLabel ? [] : [labelId],
+            removeLabelIds: hasLabel ? [labelId] : [],
+          },
+          mailProvider
+        );
         const nextIds = hasLabel ? currentIds.filter((l) => l !== labelId) : [...currentIds, labelId];
         setThreads((prev) =>
           prev.map((t) => (t.id === selectedThreadId ? { ...t, labelIds: nextIds } : t))
@@ -785,19 +971,22 @@ const Mailapp = () => {
         alert("Failed to apply label. Please try again.");
       }
     },
-    [selectedAccountId, selectedThreadId, selectedThread]
+    [selectedAccountId, selectedThreadId, selectedThread, mailProvider]
   );
 
   const handleMarkRead = useCallback(async () => {
     if (!selectedAccountId || !selectedThreadId) return;
     const wasUnread = selectedThread?.isUnread;
     try {
-      await emailApi.batchModifyThreads({
-        accountId: selectedAccountId,
-        threadIds: [selectedThreadId],
-        addLabelIds: [],
-        removeLabelIds: ["UNREAD"],
-      });
+      await emailApi.batchModifyThreads(
+        {
+          accountId: selectedAccountId,
+          threadIds: [selectedThreadId],
+          addLabelIds: [],
+          removeLabelIds: ["UNREAD"],
+        },
+        mailProvider
+      );
       setThreads((prev) =>
         prev.map((t) =>
           t.id === selectedThreadId ? { ...t, isUnread: false, labelIds: (t.labelIds || []).filter((l) => l !== "UNREAD") } : t
@@ -809,7 +998,7 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, selectedThreadId, selectedThread?.isUnread, selectedLabelId]);
+  }, [selectedAccountId, selectedThreadId, selectedThread?.isUnread, selectedLabelId, mailProvider]);
 
   const idsToUse = selectedThreadIds.size > 0 ? Array.from(selectedThreadIds) : threads.map((t) => t.id);
 
@@ -818,12 +1007,15 @@ const Mailapp = () => {
     setShowMailMenu(false);
     const unreadCount = idsToUse.filter((id) => threads.find((t) => t.id === id)?.isUnread).length;
     try {
-      await emailApi.batchModifyThreads({
-        accountId: selectedAccountId,
-        threadIds: idsToUse,
-        addLabelIds: [],
-        removeLabelIds: ["UNREAD"],
-      });
+      await emailApi.batchModifyThreads(
+        {
+          accountId: selectedAccountId,
+          threadIds: idsToUse,
+          addLabelIds: [],
+          removeLabelIds: ["UNREAD"],
+        },
+        mailProvider
+      );
       setThreads((prev) => prev.map((t) => ({ ...t, isUnread: false, labelIds: (t.labelIds || []).filter((l) => l !== "UNREAD") })));
       setSelectedThreadIds(new Set());
       if (unreadCount > 0 && selectedLabelId === "INBOX") {
@@ -832,18 +1024,21 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, threads, idsToUse, selectedLabelId]);
+  }, [selectedAccountId, threads, idsToUse, selectedLabelId, mailProvider]);
 
   const handleMoveToSpam = useCallback(async () => {
     if (!selectedAccountId || idsToUse.length === 0) return;
     setShowMailMenu(false);
     try {
-      await emailApi.batchModifyThreads({
-        accountId: selectedAccountId,
-        threadIds: idsToUse,
-        addLabelIds: ["SPAM"],
-        removeLabelIds: ["INBOX"],
-      });
+      await emailApi.batchModifyThreads(
+        {
+          accountId: selectedAccountId,
+          threadIds: idsToUse,
+          addLabelIds: ["SPAM"],
+          removeLabelIds: ["INBOX"],
+        },
+        mailProvider
+      );
       setThreads((prev) => prev.filter((t) => !idsToUse.includes(t.id)));
       if (selectedThreadId && idsToUse.includes(selectedThreadId)) {
         setSelectedThreadId(null);
@@ -853,13 +1048,13 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, idsToUse, selectedThreadId]);
+  }, [selectedAccountId, idsToUse, selectedThreadId, mailProvider]);
 
   const handleDeleteAll = useCallback(async () => {
     if (!selectedAccountId || idsToUse.length === 0) return;
     setShowMailMenu(false);
     try {
-      await emailApi.trashThreads(selectedAccountId, idsToUse);
+      await emailApi.trashThreads(selectedAccountId, idsToUse, mailProvider);
       setThreads((prev) => prev.filter((t) => !idsToUse.includes(t.id)));
       if (selectedThreadId && idsToUse.includes(selectedThreadId)) {
         setSelectedThreadId(null);
@@ -869,7 +1064,7 @@ const Mailapp = () => {
     } catch {
       // ignore
     }
-  }, [selectedAccountId, idsToUse, selectedThreadId]);
+  }, [selectedAccountId, idsToUse, selectedThreadId, mailProvider]);
 
   const handleMailMenuRecent = useCallback(() => {
     setShowMailMenu(false);
@@ -878,9 +1073,11 @@ const Mailapp = () => {
 
   const handleMailMenuUnread = useCallback(() => {
     setShowMailMenu(false);
-    setSearchQuery("is:unread");
-    setSearchInput("is:unread");
-  }, []);
+    // Use provider-appropriate search syntax: Gmail uses "is:unread", Outlook KQL uses "isRead:false"
+    const unreadQuery = mailProvider === "outlook" ? "isRead:false" : "is:unread";
+    setSearchQuery(unreadQuery);
+    setSearchInput(unreadQuery);
+  }, [mailProvider]);
 
   const handleSelectAll = useCallback(
     (checked: boolean) => {
@@ -980,13 +1177,29 @@ const Mailapp = () => {
     setQuickRecipients((prev) => prev.filter((r) => r.email !== email));
   }, []);
 
+  const switchToMailbox = useCallback((accountId: string) => {
+    if (accountId === selectedAccountId) return;
+    setSelectedAccountId(accountId);
+    setSelectedLabelId("INBOX");
+    setSelectedThreadId(null);
+    setThreadMessages([]);
+    setSelectedThreadIds(new Set());
+    setNextPageToken(null);
+  }, [selectedAccountId]);
+
   const quickRecipientList = quickRecipients;
 
   const handleSearch = useCallback(() => {
     setSearchQuery(searchInput.trim());
   }, [searchInput]);
 
+  const currentProvider = accounts.find((a) => a.id === selectedAccountId)?.provider ?? "gmail";
+
   const filteredLabels = labels.filter((l) => {
+    if (currentProvider === "outlook") {
+      // For Outlook show all folders; INBOX is shown via hardcoded nav item
+      return l.id !== "INBOX";
+    }
     const isSystem = ["INBOX", "SENT", "DRAFT", "TRASH", "SPAM", "STARRED", "IMPORTANT"].includes(l.id);
     const isArchive = l.id === "CATEGORY_PERSONAL";
     const isUser = l.type === "user";
@@ -1004,94 +1217,236 @@ const Mailapp = () => {
     return (a.type === "user" ? 1 : 0) - (b.type === "user" ? 1 : 0);
   });
 
-  const mailLabelsForNav = mailLabelsOrdered.filter(
-    (l) =>
-      l.id !== "INBOX" &&
-      !["CATEGORY_SOCIAL", "CATEGORY_PROMOTIONS", "CATEGORY_UPDATES", "CATEGORY_FORUMS"].includes(l.id || "")
-  );
-  const userLabelsForNav = filteredLabels.filter((l) => l.type === "user");
+  const mailLabelsForNav = mailLabelsOrdered.filter((l) => {
+    if (currentProvider === "outlook") {
+      // All Outlook folders shown in nav (INBOX excluded via filteredLabels)
+      return true;
+    }
+    return !["CATEGORY_SOCIAL", "CATEGORY_PROMOTIONS", "CATEGORY_UPDATES", "CATEGORY_FORUMS"].includes(l.id || "");
+  });
+
+  // For Outlook, user folders are already included in mailLabelsForNav; no separate "Labels" section
+  const userLabelsForNav = currentProvider === "outlook"
+    ? []
+    : filteredLabels.filter((l) => l.type === "user");
 
   return (
     <Fragment>
       <Seo title="Mail App" />
-      <div className="container-fluid">
+      <div className={`container-fluid ${mailBody.className} ${mailStyles.mailRoot}`}>
         {!loading && accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-4">
-              <i className="ri-mail-line text-6xl text-[#8c9097] dark:text-white/50"></i>
-            </div>
-            <h5 className="font-semibold text-defaulttextcolor dark:text-defaulttextcolor/70 mb-2">
-              Connect your Gmail account
-            </h5>
-            <p className="text-[#8c9097] dark:text-white/50 text-sm mb-6 max-w-md">
-              Connect your Gmail to read your inbox, compose, reply, forward, and manage emails from
-              Dharwin.
-            </p>
-            {oauthError && (
-              <div className="mb-4 px-4 py-2 rounded bg-danger/10 text-danger text-sm">
-                {oauthError}
+          <div className={mailStyles.mailEmptyStage}>
+            <div className={mailStyles.mailEmptyBg} aria-hidden />
+            <div className={mailStyles.mailEmptyMesh} aria-hidden />
+            <div className={mailStyles.mailEmptyGrain} aria-hidden />
+            <div className={mailStyles.mailEmptyOrbit} aria-hidden />
+            <div className={mailStyles.mailEmptyGrid}>
+              <div className={`text-center lg:text-left ${mailStyles.mailEmptyHeroWrap}`}>
+                <div className={`${mailStyles.emptyHero} ${mailStyles.fadeIn}`}>
+                  <div className="w-16 h-16 mx-auto lg:mx-0 mb-6 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/40 dark:to-orange-900/30 flex items-center justify-center shadow-inner ring-1 ring-amber-900/10 dark:ring-amber-500/20">
+                    <i className="ri-mail-send-fill text-3xl text-amber-800 dark:text-amber-400"></i>
+                  </div>
+                  <h2
+                    className={`${mailDisplay.className} text-2xl sm:text-3xl font-semibold text-stone-900 dark:text-stone-100 mb-3 tracking-tight`}
+                  >
+                    Your correspondence, one place
+                  </h2>
+                  <p
+                    className={`${mailBody.className} text-stone-600 dark:text-stone-400 text-sm leading-relaxed mb-8 max-w-md mx-auto lg:mx-0`}
+                  >
+                    Link Gmail or Outlook to read threads, compose, and reply—without leaving Dharwin.
+                  </p>
+                  {oauthError && (
+                    <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-sm text-left border border-red-100 dark:border-red-900/50">
+                      {oauthError}
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center lg:justify-start gap-3">
+                    <button
+                      type="button"
+                      onClick={handleConnectGmail}
+                      className={`ti-btn px-6 py-3 flex items-center justify-center gap-2 ${mailStyles.connectBtnGmail}`}
+                    >
+                      <i className="ri-google-fill text-lg"></i>
+                      Connect Gmail
+                    </button>
+                    {canAddOutlookMailbox && (
+                      <button
+                        type="button"
+                        onClick={handleConnectOutlook}
+                        className={`ti-btn px-6 py-3 flex items-center justify-center gap-2 ${mailStyles.connectBtnOutlook}`}
+                      >
+                        <i className="ri-microsoft-fill text-lg"></i>
+                        Connect Outlook
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-            <button
-              type="button"
-              onClick={handleConnectGmail}
-              className="ti-btn !bg-success text-white flex items-center justify-center !font-medium"
-            >
-              <i className="ri-google-fill text-[1rem] align-middle me-2"></i>
-              Connect Gmail
-            </button>
+              <aside className={mailStyles.mailEmptyAside}>
+                <div className={mailStyles.mailEmptyPreview}>
+                  <div className={mailStyles.mailEmptyPreviewChrome}>
+                    <span className={mailStyles.mailEmptyPreviewDot} />
+                    <span className={mailStyles.mailEmptyPreviewDot} />
+                    <span className={mailStyles.mailEmptyPreviewDot} />
+                    <span className={mailStyles.mailEmptyPreviewTitle}>Inbox preview</span>
+                  </div>
+                  <div className={mailStyles.mailEmptyPreviewBody}>
+                    {[
+                      { initial: "M", subj: "Onboarding — next steps", meta: "Gmail · 2m ago", tone: "gmail" as const },
+                      { initial: "T", subj: "Re: Q4 roadmap draft", meta: "Outlook · 1h", tone: "outlook" as const },
+                      { initial: "S", subj: "Files shared with you", meta: "Gmail · Yesterday", tone: "gmail" as const },
+                      { initial: "H", subj: "Team standup notes", meta: "Outlook · Tue", tone: "outlook" as const },
+                    ].map((row) => (
+                      <div key={row.subj} className={mailStyles.mailEmptyFakeRow}>
+                        <span
+                          className={`${mailStyles.mailEmptyFakeAvatar} ${
+                            row.tone === "outlook"
+                              ? "bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-950 dark:to-blue-900 text-blue-900 dark:text-blue-100"
+                              : "bg-gradient-to-br from-rose-100 to-amber-100 dark:from-rose-950 dark:to-amber-950 text-rose-900 dark:text-rose-100"
+                          }`}
+                        >
+                          {row.initial}
+                        </span>
+                        <div className="min-w-0 flex-1 text-left">
+                          <p
+                            className={`${mailBody.className} text-[0.8125rem] font-medium text-stone-800 dark:text-stone-200 truncate`}
+                          >
+                            {row.subj}
+                          </p>
+                          <p className="text-[0.65rem] text-stone-500 dark:text-stone-500 mt-0.5">{row.meta}</p>
+                        </div>
+                        <i className="ri-arrow-right-s-line text-stone-300 dark:text-stone-600 shrink-0 text-lg" aria-hidden />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className={mailStyles.mailEmptyBenefits}>
+                  {[
+                    {
+                      icon: "ri-inbox-unarchive-line",
+                      title: "One workspace",
+                      text: "Gmail and Outlook threads side by side—no tab hopping.",
+                    },
+                    {
+                      icon: "ri-reply-line",
+                      title: "Reply in context",
+                      text: "Read and answer mail where you already work.",
+                    },
+                    {
+                      icon: "ri-stack-line",
+                      title: "Multiple mailboxes",
+                      text: "Connect several accounts and switch in a tap.",
+                    },
+                  ].map((b) => (
+                    <div key={b.title} className={mailStyles.mailEmptyBenefit}>
+                      <span className={mailStyles.mailEmptyBenefitIcon}>
+                        <i className={b.icon} aria-hidden />
+                      </span>
+                      <div className="text-left min-w-0">
+                        <p
+                          className={`${mailBody.className} text-sm font-semibold text-stone-800 dark:text-stone-100`}
+                        >
+                          {b.title}
+                        </p>
+                        <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5 leading-relaxed">
+                          {b.text}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </aside>
+            </div>
           </div>
         ) : (
-          <div className="main-mail-container !p-2 gap-x-2 flex">
+          <div className={`main-mail-container !p-2 gap-x-2 flex ${mailStyles.shell} ${mailStyles.fadeIn}`}>
             <div
               className={`mail-navigation ${isMailNavigationVisible ? "!block" : ""} border dark:border-defaultborder/10`}
             >
-              <div className="!p-4 border-b dark:border-defaultborder/10">
+              <div className="!p-4 border-b border-stone-200/80 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => openCompose("new")}
-                  className="ti-btn !bg-success text-white flex items-center justify-center !font-medium w-full"
+                  className={`ti-btn w-full py-3 flex items-center justify-center gap-2 ${mailStyles.composeCta}`}
                 >
-                  <i className="ri-add-circle-line text-[1rem] align-middle me-2"></i>
-                  Compose Mail
+                  <i className="ri-quill-pen-line text-lg"></i>
+                  New message
                 </button>
               </div>
               {selectedAccountId && accounts.length > 0 && (
                 <>
-                  <div className="flex items-start !p-4 !bg-primary">
+                  <div className={`flex items-start gap-3 ${mailStyles.navProfile}`}>
                     <div>
-                      <span className="avatar avatar-md online avatar-rounded bg-white/20 flex items-center justify-center">
-                        <i className="ri-mail-line text-white text-lg"></i>
+                      <span className="avatar avatar-md online avatar-rounded bg-white/15 flex items-center justify-center ring-2 ring-white/10">
+                        <i className="ri-user-smile-line text-white text-lg"></i>
                       </span>
                     </div>
-                    <div className="ms-2 flex-1 min-w-0">
-                      <p className="font-semibold mb-0 text-white truncate">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold mb-0 text-white truncate text-[0.9rem]">
                         {emailToDisplayName(
                           accounts.find((a) => a.id === selectedAccountId)?.email ?? ""
                         )}
                       </p>
-                      <p className="text-white opacity-[0.8] text-[.6875rem] mb-0 truncate">
+                      <p className="text-white/70 text-[0.7rem] mb-0 truncate font-mono">
                         {accounts.find((a) => a.id === selectedAccountId)?.email ?? ""}
                       </p>
                       <button
                         type="button"
                         onClick={() => selectedAccountId && handleDisconnect(selectedAccountId)}
-                        className="text-white/80 hover:text-white text-[.6875rem] mt-0.5"
+                        className="text-white/60 hover:text-white text-[0.65rem] mt-1.5 underline underline-offset-2"
                       >
-                        Disconnect
+                        Sign out mailbox
                       </button>
                     </div>
                   </div>
                   <div>
                     <PerfectScrollbar>
                       <ul className="list-none mail-main-nav !text-[0.813rem]">
+                        {accounts.length > 1 && (
+                          <>
+                            <li className="!px-4 !pt-3 !pb-1">
+                              <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
+                                MAILBOXES
+                              </span>
+                            </li>
+                            {accounts.map((acc) => {
+                              const activeMb = acc.id === selectedAccountId;
+                              return (
+                                <li key={`mb-${acc.id}`} className="!px-2 !py-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      switchToMailbox(acc.id);
+                                      Toggle2();
+                                    }}
+                                    className={`w-full text-left rounded-md px-2 py-2 flex items-center gap-2 min-w-0 border-0 bg-transparent ${mailStyles.navItem} ${activeMb ? mailStyles.navItemActive : ""}`}
+                                    aria-current={activeMb ? "true" : undefined}
+                                    aria-pressed={activeMb}
+                                    aria-label={`${acc.provider === "outlook" ? "Outlook" : "Gmail"}: ${acc.email}`}
+                                  >
+                                    <i
+                                      className={`align-middle text-[.875rem] shrink-0 ${acc.provider === "outlook" ? "ri-microsoft-fill text-blue-500 dark:text-blue-400" : "ri-google-fill text-red-500 dark:text-red-400"}`}
+                                      aria-hidden
+                                    />
+                                    <span className="truncate min-w-0 text-[0.8125rem]">{acc.email}</span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                            <li
+                              className="!px-4 !pt-2 !pb-0 border-t border-stone-200/40 dark:border-white/10 mt-1"
+                              aria-hidden
+                            />
+                          </>
+                        )}
                         <li className="!px-4 !pt-3 !pb-1">
                           <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
                             MAILS
                           </span>
                         </li>
                         <li
-                          className={`mail-type cursor-pointer !px-4 !py-2 rounded-md ${selectedLabelId === "ALL" ? "!bg-primary/10 !text-primary" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+                          className={`mail-type cursor-pointer ${mailStyles.navItem} ${selectedLabelId === "ALL" ? mailStyles.navItemActive : ""}`}
                           onClick={() => {
                             setSelectedLabelId("ALL");
                             setSearchQuery("");
@@ -1111,7 +1466,7 @@ const Mailapp = () => {
                           </div>
                         </li>
                         <li
-                          className={`mail-type cursor-pointer !px-4 !py-2 rounded-md ${selectedLabelId === "INBOX" ? "!bg-primary/10 !text-primary" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+                          className={`mail-type cursor-pointer ${mailStyles.navItem} ${selectedLabelId === "INBOX" ? mailStyles.navItemActive : ""}`}
                           onClick={() => {
                             setSelectedLabelId("INBOX");
                             setSearchQuery("");
@@ -1133,7 +1488,7 @@ const Mailapp = () => {
                         {mailLabelsForNav.map((label) => (
                             <li
                               key={label.id}
-                              className={`mail-type cursor-pointer !px-4 !py-2 rounded-md ${selectedLabelId === label.id ? "!bg-primary/10 !text-primary" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+                              className={`mail-type cursor-pointer ${mailStyles.navItem} ${selectedLabelId === label.id ? mailStyles.navItemActive : ""}`}
                               onClick={() => {
                                 setSelectedLabelId(label.id);
                                 Toggle2();
@@ -1144,7 +1499,7 @@ const Mailapp = () => {
                                   className={`${getLabelIcon(label.id)} align-middle text-[.875rem] me-2`}
                                 ></i>
                                 <span className="flex-grow whitespace-nowrap">
-                                  {label.id === "CATEGORY_PERSONAL" ? "Archive" : label.name}
+                                  {label.id === "CATEGORY_PERSONAL" ? "Archive" : label.id === "conversationhistory" ? "Conversation History" : label.name}
                                 </span>
                               </div>
                             </li>
@@ -1155,48 +1510,116 @@ const Mailapp = () => {
                           </span>
                         </li>
                         <li>
-                          <a
-                            href="https://mail.google.com/mail/#settings"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="block !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                          {(() => {
+                            const provider = accounts.find((a) => a.id === selectedAccountId)?.provider;
+                            if (provider === "outlook") {
+                              return (
+                                <a
+                                  href="https://outlook.live.com/mail/options/general"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                                >
+                                  <div className="flex items-center">
+                                    <i className="ri-settings-3-line align-middle text-[.875rem] me-2"></i>
+                                    <span className="whitespace-nowrap">Outlook Settings</span>
+                                  </div>
+                                </a>
+                              );
+                            }
+                            return (
+                              <a
+                                href="https://mail.google.com/mail/#settings"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                              >
+                                <div className="flex items-center">
+                                  <i className="ri-settings-3-line align-middle text-[.875rem] me-2"></i>
+                                  <span className="whitespace-nowrap">Gmail Settings</span>
+                                </div>
+                              </a>
+                            );
+                          })()}
+                        </li>
+                        {(canAddMoreGmail ||
+                          canAddOutlookMailbox ||
+                          hasGmailAccount ||
+                          hasOutlookAccount) && (
+                          <li className="!px-4 !pt-4 !pb-1">
+                            <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
+                              ADD ACCOUNT
+                            </span>
+                          </li>
+                        )}
+                        {canAddMoreGmail && (
+                          <li
+                            className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                            onClick={handleConnectGmail}
                           >
                             <div className="flex items-center">
-                              <i className="ri-settings-3-line align-middle text-[.875rem] me-2"></i>
-                              <span className="whitespace-nowrap">Gmail Settings</span>
+                              <i className="ri-google-fill align-middle text-[.875rem] me-2 text-[#8c9097] dark:text-white/50"></i>
+                              <span className="whitespace-nowrap">
+                                {hasGmailAccount ? "Add Gmail account" : "Connect Gmail"}
+                              </span>
                             </div>
-                          </a>
-                        </li>
-                        <li className="!px-4 !pt-4 !pb-1">
-                          <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
-                            LABELS
-                          </span>
-                        </li>
-                        <li
-                          className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2"
-                          onClick={() => {
-                            const name = window.prompt("New label name:");
-                            if (name?.trim()) handleCreateLabel(name);
-                          }}
-                        >
-                          <i className="ri-add-line align-middle text-[.875rem] text-primary"></i>
-                          <span className="text-[0.75rem] text-primary">Create label</span>
-                        </li>
-                        {userLabelsForNav.map((label) => (
+                          </li>
+                        )}
+                        {!canAddMoreGmail && accounts.some((a) => a.provider === "gmail") && (
+                          <li className="!px-4 !py-2 text-[#8c9097] dark:text-white/45 text-[0.75rem]">
+                            Maximum {MAX_GMAIL_ACCOUNTS} Gmail accounts (disconnect one to add another)
+                          </li>
+                        )}
+                        {canAddOutlookMailbox && (
+                          <li
+                            className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                            onClick={handleConnectOutlook}
+                          >
+                            <div className="flex items-center">
+                              <i className="ri-microsoft-fill align-middle text-[.875rem] me-2 text-[#8c9097] dark:text-white/50"></i>
+                              <span className="whitespace-nowrap">Connect Outlook</span>
+                            </div>
+                          </li>
+                        )}
+                        {!canAddOutlookMailbox && accounts.some((a) => a.provider === "outlook") && (
+                          <li className="!px-4 !py-2 text-[#8c9097] dark:text-white/45 text-[0.75rem]">
+                            One Outlook account connected (disconnect to use a different mailbox)
+                          </li>
+                        )}
+                        {currentProvider !== "outlook" && (
+                          <>
+                            <li className="!px-4 !pt-4 !pb-1">
+                              <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
+                                LABELS
+                              </span>
+                            </li>
                             <li
-                              key={label.id}
-                              className={`cursor-pointer !px-4 !py-2 rounded-md ${selectedLabelId === label.id ? "!bg-primary/10 !text-primary" : "hover:bg-black/5 dark:hover:bg-white/5"}`}
+                              className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5 flex items-center gap-2"
                               onClick={() => {
-                                setSelectedLabelId(label.id);
-                                Toggle2();
+                                const name = window.prompt("New label name:");
+                                if (name?.trim()) handleCreateLabel(name);
                               }}
                             >
-                              <div className="flex items-center">
-                                <i className="ri-price-tag-line align-middle text-[.875rem] me-2 text-secondary"></i>
-                                <span className="whitespace-nowrap">{label.name}</span>
-                              </div>
+                              <i className="ri-add-line align-middle text-[.875rem] text-primary"></i>
+                              <span className="text-[0.75rem] text-primary">Create label</span>
                             </li>
-                          ))}
+                            {userLabelsForNav.map((label) => (
+                              <li
+                                key={label.id}
+                                className={`cursor-pointer ${mailStyles.navItem} ${selectedLabelId === label.id ? mailStyles.navItemActive : ""}`}
+                                onClick={() => {
+                                  setSelectedLabelId(label.id);
+                                  Toggle2();
+                                }}
+                              >
+                                <div className="flex items-center">
+                                  <i className="ri-price-tag-line align-middle text-[.875rem] me-2 text-secondary"></i>
+                                  <span className="whitespace-nowrap">{label.name}</span>
+                                </div>
+                              </li>
+                            ))}
+                          </>
+                        )}
                       </ul>
                     </PerfectScrollbar>
                   </div>
@@ -1216,10 +1639,12 @@ const Mailapp = () => {
                   checked={threads.length > 0 && selectedThreadIds.size === threads.length}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                 />
-                <div className="flex-grow">
-                  <h6 className="font-semibold mb-0 text-[1rem] !text-defaulttextcolor dark:!text-defaulttextcolor/70">
+                <div className="flex-grow min-w-0">
+                  <h6
+                    className={`${mailDisplay.className} font-semibold mb-0 text-lg text-stone-800 dark:text-stone-100 truncate`}
+                  >
                     {selectedLabelId === "ALL"
-                      ? "All Mails"
+                      ? "All mail"
                       : selectedLabelId === "INBOX"
                         ? "Inbox"
                         : labels.find((l) => l.id === selectedLabelId)?.name ?? selectedLabelId}
@@ -1337,23 +1762,24 @@ const Mailapp = () => {
                   <i className="ri-close-line"></i>
                 </button>
               </div>
-              <div className="p-4">
-                <div className="input-group">
+              <div className="px-4 pb-3 pt-1">
+                <div className={`flex items-stretch ${mailStyles.searchWrap}`}>
                   <input
                     type="text"
-                    className="form-control !bg-light !border-0 !rounded-s-md"
-                    placeholder="Search Email"
+                    className="form-control !border-0 !bg-transparent !shadow-none flex-1 !py-2.5 !px-4 !text-sm focus:!ring-0"
+                    placeholder="Search messages…"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    aria-label="Search mail"
                   />
                   <button
                     aria-label="Search"
                     type="button"
                     onClick={handleSearch}
-                    className="ti-btn ti-btn-light !rounded-s-none !mb-0"
+                    className="ti-btn !border-0 !bg-transparent !text-stone-500 hover:!text-amber-700 dark:hover:!text-amber-400 !mb-0 !px-4"
                   >
-                    <i className="ri-search-line text-[#8c9097] dark:text-white/50"></i>
+                    <i className="ri-search-line text-lg"></i>
                   </button>
                 </div>
               </div>
@@ -1361,19 +1787,24 @@ const Mailapp = () => {
                 <div className="mail-messages">
                   <ul className="list-none mb-0 mail-messages-container text-defaulttextcolor text-defaultsize w-full">
                     {loadingMessages ? (
-                      <li className="!p-4 text-center text-[#8c9097] shrink-0">
-                        <span className="whitespace-nowrap">Loading...</span>
+                      <li className="!p-6 space-y-3">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className={`h-16 ${mailStyles.skeleton}`} />
+                        ))}
                       </li>
                     ) : threads.length === 0 ? (
-                      <li className="!p-4 text-center text-[#8c9097]">No threads</li>
+                      <li className="!p-10 text-center text-stone-500 dark:text-stone-400 text-sm">
+                        <i className="ri-inbox-unarchive-line text-3xl mb-2 block opacity-40"></i>
+                        Nothing here yet
+                      </li>
                     ) : (
                       threads.map((thread) => (
                         <li
                           key={thread.id}
-                          className={`!border-x-0 border-b dark:border-defaultborder/10 cursor-pointer hover:bg-light dark:hover:bg-white/5 ${selectedThreadId === thread.id ? "!bg-primary/5" : ""}`}
+                          className={`cursor-pointer ${mailStyles.threadRow} ${selectedThreadId === thread.id ? mailStyles.threadRowActive : ""} ${thread.isUnread ? mailStyles.threadUnread : ""}`}
                           onClick={() => handleSelectThread(thread)}
                         >
-                          <div className="flex items-start !p-4">
+                          <div className="flex items-start !p-3.5">
                             <div className="me-2 mt-0.5" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
@@ -1445,29 +1876,41 @@ const Mailapp = () => {
               className={`mails-information ${isMailsInformationVisible ? "!block" : ""} border dark:border-defaultborder/10 text-defaulttextcolor text-defaultsize`}
             >
               {!selectedThreadId ? (
-                <div className="flex flex-col items-center justify-center py-16 text-[#8c9097] dark:text-white/50">
-                  <i className="ri-mail-open-line text-4xl mb-2"></i>
-                  <p>Select a conversation to view</p>
+                <div className="flex flex-col items-center justify-center py-24 px-8 text-center text-stone-500 dark:text-stone-400">
+                  <div className="w-20 h-20 rounded-full bg-stone-100 dark:bg-stone-800 flex items-center justify-center mb-5 shadow-inner">
+                    <i className="ri-mail-open-line text-4xl text-stone-400 dark:text-stone-500"></i>
+                  </div>
+                  <p className={`${mailDisplay.className} text-xl text-stone-700 dark:text-stone-300 mb-2`}>
+                    Pick a thread
+                  </p>
+                  <p className="text-sm max-w-[240px] leading-relaxed">
+                    Choose a message from the list to read the full conversation.
+                  </p>
                 </div>
               ) : loadingDetail ? (
-                <div className="flex items-center justify-center py-16">Loading...</div>
+                <div className="flex flex-col items-center justify-center py-24 gap-3">
+                  <div className={`w-48 h-3 ${mailStyles.skeleton}`} />
+                  <div className={`w-full max-w-md h-32 ${mailStyles.skeleton}`} />
+                </div>
               ) : (
                 <>
-                  <div className="mail-info-header flex flex-wrap gap-2 items-center !p-4 border-b dark:border-defaultborder/10">
+                  <div
+                    className={`mail-info-header flex flex-wrap gap-2 items-center !p-5 border-b border-stone-200/80 dark:border-white/10 ${mailStyles.readingHeader}`}
+                  >
                     <div className="me-2">
-                      <span className="avatar avatar-md online avatar-rounded flex items-center justify-center !bg-primary/20 !text-primary">
+                      <span className="avatar avatar-md online avatar-rounded flex items-center justify-center !bg-amber-100 !text-amber-900 dark:!bg-amber-900/40 dark:!text-amber-200 ring-2 ring-amber-200/50 dark:ring-amber-700/40">
                         {selectedThread?.from?.[0]?.toUpperCase() || "?"}
                       </span>
                     </div>
                     <div className="flex-grow min-w-0">
-                      <h6 className="mb-0 font-semibold text-[1rem] dark:text-defaulttextcolor/70 truncate">
+                      <h6 className="mb-0 font-semibold text-[1.05rem] text-stone-900 dark:text-stone-100 truncate">
                         {selectedThread?.from}
                       </h6>
-                      <span className="text-[#8c9097] dark:text-white/50 text-[0.75rem]">
+                      <span className="text-stone-500 dark:text-stone-400 text-[0.75rem] block truncate">
                         {selectedThread?.to}
                       </span>
                     </div>
-                    <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50 shrink-0">
+                    <span className="text-[0.7rem] text-stone-400 dark:text-stone-500 shrink-0 tabular-nums">
                       {selectedThread?.date}
                     </span>
                     <div className="flex items-center gap-1">
@@ -1643,10 +2086,19 @@ const Mailapp = () => {
                     </div>
                   </div>
                   <div className="mail-info-body dark:!border-defaultborder/10 p-6 overflow-auto">
-                    <div className="sm:flex block items-center justify-between mb-6">
-                      <p className="text-[1.25rem] font-semibold mb-0">{selectedThread?.subject}</p>
+                    <div className="sm:flex block items-start justify-between mb-8 gap-4">
+                      <p
+                        className={`${mailDisplay.className} ${mailStyles.subjectDisplay} font-semibold mb-0 flex-1`}
+                      >
+                        {selectedThread?.subject}
+                      </p>
                     </div>
                     <div className="space-y-6">
+                      {threadMessages.length === 0 && selectedThread?.snippet && (
+                        <div className="main-mail-content prose dark:prose-invert max-w-none mail-html-body text-sm border-b dark:border-defaultborder/10 pb-6 mb-2">
+                          <p className="whitespace-pre-wrap m-0">{selectedThread.snippet}</p>
+                        </div>
+                      )}
                       {threadMessages.map((msg) => (
                         <div
                           key={msg.id}
@@ -1672,7 +2124,7 @@ const Mailapp = () => {
                             className="main-mail-content prose dark:prose-invert max-w-none mail-html-body text-sm"
                             dangerouslySetInnerHTML={{
                               __html:
-                                msg.htmlBody ||
+                                (msg.htmlBody && msg.htmlBody.trim()) ||
                                 (msg.textBody
                                   ? `<pre class="whitespace-pre-wrap">${msg.textBody}</pre>`
                                   : "<p>No content</p>"),
@@ -1687,7 +2139,8 @@ const Mailapp = () => {
                                     href={emailApi.getAttachmentUrl(
                                       selectedAccountId!,
                                       msg.id,
-                                      att.attachmentId
+                                      att.attachmentId,
+                                      mailProvider
                                     )}
                                     target="_blank"
                                     rel="noopener noreferrer"
@@ -1703,11 +2156,14 @@ const Mailapp = () => {
                         </div>
                       ))}
                     </div>
-                    <div className="mt-6 pt-6 border-t dark:border-defaultborder/10">
-                      <span className="text-[.875rem] font-semibold block mb-2">
-                        <i className="ri-reply-all-line me-1 align-middle"></i>Reply:
+                    <div className="mt-8 pt-8 border-t border-stone-200/80 dark:border-white/10">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-stone-500 dark:text-stone-400 block mb-3">
+                        <i className="ri-reply-line me-1.5 align-middle text-amber-700 dark:text-amber-500"></i>
+                        Your reply
                       </span>
-                      <div className="mail-reply border dark:border-defaultborder/10 rounded-lg overflow-hidden bg-white dark:bg-bodydark [&_.tiptap-toolbar]:!bg-white [&_.tiptap-toolbar]:dark:!bg-bodydark [&_.tiptap-content]:!bg-white [&_.tiptap-content]:dark:!bg-bodydark [&_.ProseMirror]:!bg-white [&_.ProseMirror]:dark:!bg-bodydark">
+                      <div
+                        className={`mail-reply overflow-hidden bg-white dark:bg-stone-900 [&_.tiptap-toolbar]:!bg-stone-50 [&_.tiptap-toolbar]:dark:!bg-stone-900 [&_.tiptap-content]:!bg-white [&_.tiptap-content]:dark:!bg-stone-950 [&_.ProseMirror]:!bg-white [&_.ProseMirror]:dark:!bg-stone-950 ${mailStyles.replyZone}`}
+                      >
                         <TiptapEditor
                           content={inlineReplyHtml}
                           placeholder="Type your reply..."
@@ -1780,7 +2236,7 @@ const Mailapp = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={handleSendInlineReply}
+                        onClick={() => lastMessageInThread && openCompose("reply", lastMessageInThread)}
                         disabled={sending}
                         className="ti-btn ti-btn-danger-full"
                       >
@@ -1793,18 +2249,77 @@ const Mailapp = () => {
               )}
             </div>
 
-            <div className="mail-recepients border dark:border-defaultborder/10 flex flex-col overflow-hidden min-w-0">
-              <div className="p-2 border-b dark:border-defaultborder/10 flex justify-center shrink-0">
+            <div
+              className={`mail-recepients border-l border-stone-200/80 dark:border-white/10 flex flex-col overflow-hidden min-w-[3.25rem] w-[3.25rem] sm:min-w-[3.5rem] sm:w-[3.5rem] ${mailStyles.mailboxRail}`}
+            >
+              <div
+                className={`py-3 px-1.5 border-b border-stone-200/80 dark:border-white/10 flex flex-col items-center gap-3.5 shrink-0 ${mailStyles.mailboxRailTop}`}
+              >
                 <button
                   type="button"
                   onClick={handleAddQuickRecipient}
-                  className="ti-btn ti-btn-icon ti-btn-light !rounded-full"
-                  title="Add recipient for quick mail"
+                  className={`ti-btn ti-btn-icon ti-btn-light !rounded-full !w-9 !h-9 ${mailStyles.mailboxRailAdd}`}
+                  title="Add quick contact"
                 >
-                  <i className="ri-add-line"></i>
+                  <i className="ri-add-line text-lg"></i>
                 </button>
+                {accounts.map((acc, idx) => {
+                  const active = acc.id === selectedAccountId;
+                  const initial =
+                    (emailToDisplayName(acc.email || "")[0] || acc.email?.[0] || "?").toUpperCase();
+                  return (
+                    <div
+                      key={acc.id}
+                      className={`relative flex justify-center hs-tooltip ti-main-tooltip [--placement:left] ${mailStyles.mailboxSlot}`}
+                      style={{ animationDelay: `${Math.min(idx, 8) * 0.055}s` }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => switchToMailbox(acc.id)}
+                        className={`${mailStyles.mailboxAvatarBtn} ${active ? mailStyles.mailboxAvatarBtnActive : ""}`}
+                        title={acc.provider === "outlook" ? `Outlook — ${acc.email}` : `Gmail — ${acc.email}`}
+                        aria-label={`Switch to ${acc.email}`}
+                        aria-pressed={active}
+                      >
+                        <span
+                          key={`${acc.id}-${active}`}
+                          className={`${mailStyles.mailboxAvatarFace} ${
+                            acc.provider === "outlook"
+                              ? mailStyles.mailboxAvatarFaceOutlook
+                              : mailStyles.mailboxAvatarFaceGmail
+                          } ${mailDisplay.className}`}
+                        >
+                          {initial}
+                        </span>
+                      </button>
+                      <span className={mailStyles.mailboxProviderBadge} aria-hidden>
+                        {acc.provider === "outlook" ? (
+                          <i className="ri-microsoft-fill text-[11px] text-blue-600 dark:text-blue-400"></i>
+                        ) : (
+                          <i className="ri-google-fill text-[11px] text-red-500 dark:text-red-400"></i>
+                        )}
+                      </span>
+                      <span
+                        className="hs-tooltip-content ti-main-tooltip-content !py-1.5 px-2 !bg-stone-900 !text-xs !font-medium !text-white shadow-lg max-w-[220px] break-all"
+                        role="tooltip"
+                      >
+                        <span className="block text-[0.65rem] uppercase tracking-wider text-stone-400 mb-0.5">
+                          {acc.provider === "outlook" ? "Outlook" : "Gmail"}
+                        </span>
+                        {acc.email}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="p-2 flex flex-col gap-3 overflow-y-auto overflow-x-hidden max-h-[calc(100vh-12rem)] total-mail-recepients">
+              {quickRecipientList.length > 0 && (
+                <div className="px-1 py-1.5 border-b border-stone-200/60 dark:border-white/5 text-center">
+                  <span className="text-[0.55rem] uppercase tracking-widest text-stone-400 dark:text-stone-500 font-semibold">
+                    Quick
+                  </span>
+                </div>
+              )}
+              <div className="p-2 flex flex-col gap-3 overflow-y-auto overflow-x-hidden flex-1 min-h-0 max-h-[calc(100vh-14rem)] total-mail-recepients">
                 {quickRecipientList.map((r) => (
                   <div
                     key={r.email}
@@ -1847,17 +2362,18 @@ const Mailapp = () => {
 
         {showComposeModal && (
           <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center overflow-auto p-4"
-            style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+            className={`fixed inset-0 z-[9999] flex items-center justify-center overflow-auto p-4 ${mailStyles.modalBackdrop}`}
             onClick={(e) => e.target === e.currentTarget && closeCompose()}
           >
             <div
-              className="ti-modal-box bg-white dark:bg-bodydark rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+              className={`ti-modal-box bg-white dark:bg-stone-950 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col ${mailStyles.modalPanel}`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="ti-modal-content flex flex-col flex-1 min-h-0">
-                <div className="ti-modal-header flex-shrink-0 !p-4 border-b dark:border-defaultborder/10 flex items-center justify-between bg-white dark:bg-bodydark">
-                  <h6 className="modal-title text-[1rem] font-semibold text-defaulttextcolor">
+                <div className="ti-modal-header flex-shrink-0 !p-5 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between bg-gradient-to-r from-stone-50 to-white dark:from-stone-900 dark:to-stone-950">
+                  <h6
+                    className={`modal-title text-xl font-semibold text-stone-900 dark:text-stone-100 ${mailDisplay.className}`}
+                  >
                     {composeMode === "new"
                       ? "Compose Mail"
                       : composeMode === "reply"
@@ -1969,21 +2485,21 @@ const Mailapp = () => {
                     </div>
                   </div>
                 </div>
-                <div className="ti-modal-footer flex-shrink-0 !p-4 border-t dark:border-defaultborder/10 flex justify-end gap-2 bg-white dark:bg-bodydark">
+                <div className="ti-modal-footer flex-shrink-0 !p-5 border-t border-stone-200 dark:border-stone-800 flex justify-end gap-3 bg-stone-50/80 dark:bg-stone-900/80">
                   <button
                     type="button"
                     onClick={closeCompose}
-                    className="ti-btn ti-btn-secondary-full"
+                    className="ti-btn px-5 py-2.5 rounded-xl border border-stone-300 dark:border-stone-600 text-stone-700 dark:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800"
                   >
-                    Close
+                    Discard
                   </button>
                   <button
                     type="button"
                     onClick={handleSendCompose}
                     disabled={sending}
-                    className="ti-btn bg-primary text-white !font-medium"
+                    className={`ti-btn px-6 py-2.5 rounded-xl text-white font-semibold shadow-lg disabled:opacity-50 ${mailStyles.composeCta}`}
                   >
-                    {sending ? "Sending..." : "Send"}
+                    {sending ? "Sending…" : "Send message"}
                   </button>
                 </div>
               </div>

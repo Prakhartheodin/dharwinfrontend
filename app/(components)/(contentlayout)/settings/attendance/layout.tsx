@@ -5,6 +5,25 @@ import { usePathname } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import { useAuth } from "@/shared/contexts/auth-context";
 
+const sidebarStyles = (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+    .attendance-sidebar { font-family: 'Figtree', ui-sans-serif, system-ui, sans-serif; }
+  `}</style>
+);
+
+const NAV_ICONS: Record<string, string> = {
+  [ROUTES.settingsAttendanceWeekOff]: "ri-calendar-week-line",
+  [ROUTES.settingsAttendanceHolidays]: "ri-calendar-event-line",
+  [ROUTES.settingsAttendanceAssignHolidays]: "ri-calendar-check-line",
+  [ROUTES.settingsAttendanceCandidateGroups]: "ri-group-line",
+  [ROUTES.settingsAttendanceManageShifts]: "ri-time-line",
+  [ROUTES.settingsAttendanceAssignShift]: "ri-user-add-line",
+  [ROUTES.settingsAttendanceAssignLeave]: "ri-calendar-todo-line",
+  [ROUTES.settingsAttendanceLeaveRequests]: "ri-file-list-3-line",
+  [ROUTES.settingsAttendanceBackdated]: "ri-calendar-2-line",
+};
+
 /** attendance.assign = students.manage OR attendance.manage - agent-visible links */
 function hasAttendanceAssign(permissions: string[], isAdministrator: boolean): boolean {
   if (isAdministrator) return true;
@@ -56,36 +75,62 @@ export default function SettingsAttendanceLayout({
   );
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      <div className="xl:col-span-3 col-span-12">
-        <div className="box">
-          <div className="box-header">
-            <div className="box-title text-[0.875rem]">Attendance</div>
-          </div>
-          <div className="box-body p-0">
-            <nav className="flex flex-col" aria-label="Attendance settings">
+    <>
+      {sidebarStyles}
+      <div className="grid grid-cols-12 gap-6 attendance-sidebar">
+        <div className="xl:col-span-3 col-span-12">
+          <aside
+            className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden sticky top-4"
+            aria-label="Attendance navigation"
+          >
+            <div className="px-5 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+              <div className="flex items-center gap-3">
+                <span
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
+                  aria-hidden
+                >
+                  <i className="ri-calendar-line text-xl" />
+                </span>
+                <h2 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+                  Attendance
+                </h2>
+              </div>
+            </div>
+            <nav className="p-2" aria-label="Attendance settings">
               {visibleLinks.map(({ href, label }) => {
                 const isActive =
                   pathname === href || pathname.replace(/\/$/, "") === href.replace(/\/$/, "");
+                const icon = NAV_ICONS[href] ?? "ri-arrow-right-s-line";
                 return (
                   <Link
                     key={href}
                     href={href}
-                    className={`block px-4 py-2.5 text-[0.8125rem] font-medium border-b border-defaultborder last:border-b-0 ${
+                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                       isActive
-                        ? "bg-primary/10 text-primary border-s-2 border-s-primary"
-                        : "text-defaulttextcolor hover:bg-black/5 dark:hover:bg-white/5"
+                        ? "bg-primary/10 text-primary shadow-sm"
+                        : "text-defaulttextcolor/80 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-defaulttextcolor"
                     }`}
                   >
-                    {label}
+                    <i
+                      className={`${icon} text-lg shrink-0 ${
+                        isActive ? "text-primary" : "text-defaulttextcolor/60"
+                      }`}
+                    />
+                    <span className="truncate">{label}</span>
+                    {isActive && (
+                      <span
+                        className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0"
+                        aria-hidden
+                      />
+                    )}
                   </Link>
                 );
               })}
             </nav>
-          </div>
+          </aside>
         </div>
+        <div className="xl:col-span-9 col-span-12">{children}</div>
       </div>
-      <div className="xl:col-span-9 col-span-12">{children}</div>
-    </div>
+    </>
   );
 }
