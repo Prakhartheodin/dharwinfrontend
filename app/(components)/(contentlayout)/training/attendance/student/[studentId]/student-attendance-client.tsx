@@ -1,12 +1,13 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import * as studentsApi from "@/shared/lib/api/students";
+import { listCandidates } from "@/shared/lib/api/candidates";
 import { createBackdatedAttendanceRequest } from "@/shared/lib/api/backdated-attendance-requests";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
@@ -97,10 +98,26 @@ function getUtcDateKey(isoDateStr: string): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/** joiningDate / resignDate (ISO) → local calendar day (same as attendance overlays). */
+function parseCalendarDayLocal(raw: string | null | undefined): Date | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const ymd = String(raw).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatLocalYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export default function StudentAttendancePage() {
   const params = useParams();
   const studentId = typeof params.studentId === "string" ? params.studentId : "";
   const [student, setStudent] = useState<studentsApi.Student | null>(null);
+  /** Local midnight of last employment day from linked ATS candidate (candidate.resignDate). */
+  const [resignDateEnd, setResignDateEnd] = useState<Date | null>(null);
   const [status, setStatus] = useState<attendanceApi.PunchStatusResponse | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [punchLoading, setPunchLoading] = useState(false);
@@ -195,6 +212,26 @@ export default function StudentAttendancePage() {
       cancelled = true;
     };
   }, [studentId]);
+
+  useEffect(() => {
+    if (!student?.user?.id) {
+      setResignDateEnd(null);
+      return;
+    }
+    let cancelled = false;
+    listCandidates({ owner: student.user.id, limit: 1, page: 1 })
+      .then((res) => {
+        if (cancelled) return;
+        const c = res.results?.[0];
+        setResignDateEnd(parseCalendarDayLocal(c?.resignDate ?? undefined));
+      })
+      .catch(() => {
+        if (!cancelled) setResignDateEnd(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [student?.user?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -753,6 +790,11 @@ export default function StudentAttendancePage() {
   };
 
   const weekOffDays = student?.weekOff ?? [];
+  const joiningDateStart = useMemo(
+    () => parseCalendarDayLocal(student?.joiningDate ?? undefined),
+    [student?.joiningDate]
+  );
+
   const isWeekOffDay = useCallback(
     (date: Date) => {
       const dayName = date.toLocaleDateString("en-US", { weekday: "long" });
@@ -762,6 +804,17 @@ export default function StudentAttendancePage() {
       return weekOffDays.includes(dayName);
     },
     [weekOffDays]
+  );
+
+  const isInactiveEmployment = useCallback(
+    (date: Date) => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      if (joiningDateStart && d.getTime() < joiningDateStart.getTime()) return true;
+      if (resignDateEnd && d.getTime() > resignDateEnd.getTime()) return true;
+      return false;
+    },
+    [joiningDateStart, resignDateEnd]
   );
 
   /** Month stats for summary cards (same logic as Dharwrin candidate attendance). */
@@ -798,6 +851,8 @@ export default function StudentAttendancePage() {
       const date = new Date(year, month, day);
       date.setHours(0, 0, 0, 0);
       if (date > today) continue;
+      if (joiningDateStart && date.getTime() < joiningDateStart.getTime()) continue;
+      if (resignDateEnd && date.getTime() > resignDateEnd.getTime()) continue;
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const info = byDate[dateKey];
       const isPresent = !!info?.present;
@@ -816,7 +871,7 @@ export default function StudentAttendancePage() {
     const totalHours = formatDurationHours(totalDuration);
     const absentDays = Math.max(0, workingDays - presentDays - leaveDays);
     return { totalHours, presentDays, absentDays, leaveDays };
-  }, [attendanceList, calendarYear, calendarMonth, isWeekOffDay]);
+  }, [attendanceList, calendarYear, calendarMonth, isWeekOffDay, joiningDateStart, resignDateEnd]);
 
   /** Parse holiday name from notes (backend stores "Holiday: {title}"). */
   const getHolidayNameFromNotes = (notes?: string): string => {
@@ -942,6 +997,23 @@ export default function StudentAttendancePage() {
                 <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
                   {student?.user?.email ?? ""}
                 </p>
+                {(joiningDateStart || resignDateEnd) && (
+                  <p className="text-[0.65rem] text-defaulttextcolor/50 dark:text-white/40 mt-1">
+                    {joiningDateStart && (
+                      <>
+                        <i className="ri-login-circle-line me-0.5" aria-hidden />
+                        From {formatLocalYmd(joiningDateStart)}
+                      </>
+                    )}
+                    {joiningDateStart && resignDateEnd && " · "}
+                    {resignDateEnd && (
+                      <>
+                        <i className="ri-logout-circle-line me-0.5" aria-hidden />
+                        Until {formatLocalYmd(resignDateEnd)}
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1000,9 +1072,6 @@ export default function StudentAttendancePage() {
                   </button>
                 </div>
                 <div className="box-body space-y-4">
-                  <p className="text-[0.75rem] text-defaulttextcolor/60">
-                    Timezone: {getDetectedTimezone()}
-                  </p>
                   <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`badge ${status?.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
@@ -1122,7 +1191,7 @@ export default function StudentAttendancePage() {
         <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-bodybg shadow-sm overflow-hidden mb-6">
           <div className="px-5 py-4 border-b border-defaultborder/60 bg-gray-50/80 dark:bg-white/5">
             <h5 className="font-semibold text-defaulttextcolor dark:text-white mb-0 flex items-center gap-2 text-sm">
-              <i className="ri-global-line text-defaulttextcolor/70" />
+              <i className="ri-time-line text-defaulttextcolor/70" />
               Shift Details
             </h5>
           </div>
@@ -1131,7 +1200,6 @@ export default function StudentAttendancePage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div><span className="text-defaulttextcolor/70">Name</span><div className="font-medium text-defaulttextcolor">{student.shift.name ?? "—"}</div></div>
                 <div><span className="text-defaulttextcolor/70">Start – End</span><div className="font-medium text-defaulttextcolor">{(student.shift.startTime ?? "—") + " – " + (student.shift.endTime ?? "—")}</div></div>
-                <div><span className="text-defaulttextcolor/70">Timezone</span><div className="font-medium text-defaulttextcolor">{student.shift.timezone ?? "—"}</div></div>
                 {student.shift.description ? <div className="sm:col-span-2"><span className="text-defaulttextcolor/70">Description</span><div className="font-medium text-defaulttextcolor">{student.shift.description}</div></div> : null}
               </div>
             ) : (
@@ -1314,7 +1382,16 @@ export default function StudentAttendancePage() {
                       const isPast = cellDate < today;
                       const isFuture = cellDate > today;
                       const isEmpty = cell.day === 0;
-                      const isWeekOff = cell.day > 0 && isWeekOffDay(cell.date);
+                      const inactiveEmployment = cell.day > 0 && isInactiveEmployment(cell.date);
+                      const beforeJoining =
+                        cell.day > 0 &&
+                        joiningDateStart != null &&
+                        cellDate.getTime() < joiningDateStart.getTime();
+                      const afterResign =
+                        cell.day > 0 &&
+                        resignDateEnd != null &&
+                        cellDate.getTime() > resignDateEnd.getTime();
+                      const isWeekOff = cell.day > 0 && isWeekOffDay(cell.date) && !inactiveEmployment;
                       const isHoliday = cell.status === "Holiday";
                       const isLeave = cell.status === "Leave";
                       return (
@@ -1325,21 +1402,23 @@ export default function StudentAttendancePage() {
                           } ${
                             isEmpty
                               ? "bg-gray-50 dark:bg-white/5"
-                              : isWeekOff
-                                ? "bg-gray-50 dark:bg-white/5"
-                                : isHoliday
-                                  ? "bg-info/10"
-                                  : isLeave
-                                    ? "bg-secondary/10"
-                                    : cell.present
-                                      ? "bg-success/10"
-                                      : cell.incomplete
-                                        ? "bg-warning/10"
-                                        : isPast
-                                          ? "bg-danger/5"
-                                          : isFuture
-                                            ? "bg-gray-50 dark:bg-white/5"
-                                            : "bg-white dark:bg-bodydark"
+                              : inactiveEmployment && !isHoliday && !isLeave && !cell.present && !cell.incomplete
+                                ? "bg-slate-50 dark:bg-white/[0.03]"
+                                : isWeekOff
+                                  ? "bg-gray-50 dark:bg-white/5"
+                                  : isHoliday
+                                    ? "bg-info/10"
+                                    : isLeave
+                                      ? "bg-secondary/10"
+                                      : cell.present
+                                        ? "bg-success/10"
+                                        : cell.incomplete
+                                          ? "bg-warning/10"
+                                          : isPast
+                                            ? "bg-danger/5"
+                                            : isFuture
+                                              ? "bg-gray-50 dark:bg-white/5"
+                                              : "bg-white dark:bg-bodydark"
                           }`}
                         >
                           {cell.day > 0 && (
@@ -1368,6 +1447,12 @@ export default function StudentAttendancePage() {
                               {isToday && (
                                 <span className="text-[0.7rem] text-primary font-medium mt-0.5">Today</span>
                               )}
+                              {afterResign && !isHoliday && !isLeave && !cell.present && !cell.incomplete && (
+                                <span className="text-[0.7rem] text-defaulttextcolor/50 dark:text-white/35 mt-0.5">After resign</span>
+                              )}
+                              {beforeJoining && !afterResign && !isHoliday && !isLeave && !cell.present && !cell.incomplete && (
+                                <span className="text-[0.7rem] text-defaulttextcolor/50 dark:text-white/35 mt-0.5">Before joining</span>
+                              )}
                               {isWeekOff && !isToday && (
                                 <span className="text-[0.7rem] text-defaulttextcolor/60 dark:text-white/40 mt-0.5">Week-Off</span>
                               )}
@@ -1382,16 +1467,16 @@ export default function StudentAttendancePage() {
                               {isLeave && (
                                 <span className="text-[0.7rem] text-secondary mt-0.5">Leave</span>
                               )}
-                              {!isWeekOff && !isHoliday && !isLeave && cell.present && (
+                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.present && (
                                 <>
                                   <span className="text-[0.7rem] text-success mt-0.5">Present</span>
                                   <span className="text-[0.7rem] text-success">{cell.totalHours.toFixed(1)}h</span>
                                 </>
                               )}
-                              {!isWeekOff && !isHoliday && !isLeave && cell.incomplete && (
+                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.incomplete && (
                                 <span className="text-[0.7rem] text-warning mt-0.5">Incomplete</span>
                               )}
-                              {!isWeekOff && !isHoliday && !isLeave && !cell.present && !cell.incomplete && isPast && (
+                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && !cell.present && !cell.incomplete && isPast && (
                                 <span className="text-[0.7rem] text-danger/80 mt-0.5">Absent</span>
                               )}
                             </div>

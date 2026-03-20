@@ -11,12 +11,14 @@ import {
   type AttendanceEntry,
 } from "@/shared/lib/api/backdated-attendance-requests";
 import { listStudents, getStudent, type Student } from "@/shared/lib/api/students";
+import { listCandidates } from "@/shared/lib/api/candidates";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
+import StudentAttendanceOverlay from "./StudentAttendanceOverlay";
 
 function getStudentName(request: BackdatedAttendanceRequest): string {
   const s = request.student;
@@ -57,6 +59,14 @@ export default function SettingsAttendanceBackdatedPage() {
   const [students, setStudents] = useState<Student[]>([]);
 
   const [requests, setRequests] = useState<BackdatedAttendanceRequest[]>([]);
+  const [attendanceViewStudent, setAttendanceViewStudent] = useState<{
+    studentId?: string;
+    userId?: string;
+    /** Same ATS candidate as the calendar — enables /candidates/:id/attendance when student route is forbidden. */
+    candidateId?: string;
+    name: string;
+    initialDate?: string;
+  } | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 10,
@@ -553,6 +563,82 @@ export default function SettingsAttendanceBackdatedPage() {
     } finally {
       setProcessingId(null);
     }
+  };
+
+  const openAttendanceView = async (request: BackdatedAttendanceRequest) => {
+    const rawStudent = request.student as unknown;
+    // Accept populated object, plain id string, or fallback by studentEmail from loaded students.
+    let studentId = "";
+    if (rawStudent && typeof rawStudent === "object") {
+      const obj = rawStudent as { _id?: string; id?: string };
+      studentId = String(obj._id ?? obj.id ?? "").trim();
+    } else if (typeof rawStudent === "string") {
+      studentId = rawStudent.trim();
+    }
+    if (!studentId && request.studentEmail) {
+      const match = students.find(
+        (s) => (s.user?.email ?? "").trim().toLowerCase() === request.studentEmail!.trim().toLowerCase()
+      );
+      studentId = String(match?.id ?? "").trim();
+    }
+    if (!studentId && request.requestedBy?._id) {
+      const matchByRequester = students.find(
+        (s) => String(s.user?.id ?? "").trim() === String(request.requestedBy?._id ?? "").trim()
+      );
+      studentId = String(matchByRequester?.id ?? "").trim();
+    }
+    const rawReq = request as unknown as { user?: { _id?: string; id?: string } | string; requestedBy?: { _id?: string; id?: string } };
+    let userId = "";
+    if (rawReq.user && typeof rawReq.user === "object") {
+      userId = String(rawReq.user._id ?? rawReq.user.id ?? "").trim();
+    } else if (typeof rawReq.user === "string") {
+      userId = rawReq.user.trim();
+    }
+    if (!userId && rawReq.requestedBy) {
+      userId = String(rawReq.requestedBy._id ?? rawReq.requestedBy.id ?? "").trim();
+    }
+
+    const entryDates = [...(request.attendanceEntries ?? [])]
+      .map((e) => e.date)
+      .filter((d): d is string => Boolean(d))
+      .sort();
+    /** Open on the latest requested day, not the earliest (sort()[0] was jumping to February for Feb–Mar ranges). */
+    const initialDate = entryDates.length > 0 ? entryDates[entryDates.length - 1] : undefined;
+
+    let candidateId: string | undefined;
+    const emailForCandidate =
+      request.studentEmail?.trim() ||
+      request.requestedBy?.email?.trim() ||
+      (typeof rawStudent === "object" && rawStudent && "user" in rawStudent
+        ? (rawStudent as { user?: { email?: string } }).user?.email?.trim()
+        : undefined);
+    if (emailForCandidate) {
+      try {
+        const candRes = await listCandidates({ email: emailForCandidate, limit: 1, page: 1 });
+        const cand = candRes.results?.[0];
+        candidateId = String(cand?.id ?? cand?._id ?? "").trim() || undefined;
+      } catch {
+        // Overlay still uses student / user attendance APIs
+      }
+    }
+
+    if (!studentId && !userId && !candidateId) {
+      Swal.fire({
+        icon: "warning",
+        title: "Student not found",
+        text: "This request is not linked to a student, user, or ATS candidate (by email).",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+
+    setAttendanceViewStudent({
+      studentId: studentId || undefined,
+      userId: userId || undefined,
+      candidateId,
+      name: getStudentName(request),
+      initialDate,
+    });
   };
 
   const getStatusConfig = (status: string) => {
@@ -1235,6 +1321,20 @@ return (
                                 <div className="flex gap-2" role="group" aria-label="Secondary actions">
                                   <button
                                     type="button"
+                                    onClick={() => void openAttendanceView(request)}
+                                    disabled={isProcessing}
+                                    className="
+                                      inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
+                                      border border-sky-400/60 text-sky-700 bg-sky-50/70
+                                      hover:bg-sky-100/80 hover:border-sky-500 text-sm font-medium
+                                      transition-colors duration-150
+                                      disabled:opacity-50 disabled:pointer-events-none
+                                    "
+                                  >
+                                    <i className="ri-calendar-check-line text-sm" /> View
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => handleUpdate(request)}
                                     disabled={isProcessing}
                                     className="
@@ -1336,6 +1436,16 @@ return (
           </div>
         </section>
       </div>
+
+      <StudentAttendanceOverlay
+        open={!!attendanceViewStudent}
+        onClose={() => setAttendanceViewStudent(null)}
+        studentId={attendanceViewStudent?.studentId}
+        userId={attendanceViewStudent?.userId}
+        candidateId={attendanceViewStudent?.candidateId}
+        studentName={attendanceViewStudent?.name ?? ""}
+        initialDate={attendanceViewStudent?.initialDate}
+      />
     </>
   );
 }

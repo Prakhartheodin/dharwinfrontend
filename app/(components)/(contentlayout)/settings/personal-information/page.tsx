@@ -52,7 +52,7 @@ function validateNewPassword(password: string): string | null {
 
 export default function PersonalInformationPage() {
   const { user, logout, sessions, checkAuth, refreshUser, isAdministrator } = useAuth();
-  const { hasCandidateRole, isLoading: candidateRoleLoading } = useHasCandidateRole();
+  const { hasCandidateRole, hasCandidateProfile, isLoading: candidateRoleLoading } = useHasCandidateRole();
   const [roles, setRoles] = useState<Role[]>([]);
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
 
@@ -60,6 +60,14 @@ export default function PersonalInformationPage() {
   const [lastName, setLastName] = useState("");
   const [userName, setUserName] = useState("");
   const [email, setEmail] = useState("");
+
+  /** User-model fields for staff (no linked Candidate profile): Settings → Personal Information. */
+  const [staffPhone, setStaffPhone] = useState("");
+  const [staffCountryCode, setStaffCountryCode] = useState("IN");
+  const [staffLocation, setStaffLocation] = useState("");
+  const [staffProfileSummary, setStaffProfileSummary] = useState("");
+  const [staffEducation, setStaffEducation] = useState("");
+  const [staffDomain, setStaffDomain] = useState("");
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
@@ -142,7 +150,7 @@ export default function PersonalInformationPage() {
   }, []);
 
   useEffect(() => {
-    if (!hasCandidateRole) {
+    if (!hasCandidateProfile) {
       setCandidate(null);
       return;
     }
@@ -151,7 +159,7 @@ export default function PersonalInformationPage() {
       if (!cancelled && res?.candidate) setCandidate(res.candidate);
     });
     return () => { cancelled = true; };
-  }, [hasCandidateRole]);
+  }, [hasCandidateProfile]);
 
   useEffect(() => {
     if (!candidate) return;
@@ -214,7 +222,12 @@ export default function PersonalInformationPage() {
       setSaveError("Email is required.");
       return;
     }
-    if (hasCandidateRole) {
+    if (hasCandidateProfile && !candidate) {
+      setSaveError("Still loading your profile. Please wait a moment and try again.");
+      return;
+    }
+
+    if (hasCandidateProfile && candidate) {
       const phoneErr = validatePhoneForCandidate(phoneNumber);
       if (phoneErr) {
         setSaveError(phoneErr);
@@ -222,9 +235,17 @@ export default function PersonalInformationPage() {
       }
     }
 
+    if (!hasCandidateProfile) {
+      const digits = staffPhone.replace(/\D/g, "");
+      if (digits && (digits.length < 6 || digits.length > 15)) {
+        setSaveError("Phone number must be 6–15 digits.");
+        return;
+      }
+    }
+
     setSaveLoading(true);
     try {
-      if (hasCandidateRole && candidate) {
+      if (hasCandidateProfile && candidate) {
         const DOCUMENT_TYPES = ["Aadhar", "PAN", "Bank", "Passport", "CV/Resume", "Marksheet", "Degree Certificate", "Experience Letter", "Other"] as const;
         let finalDocs: Array<{ type: string; label?: string; url?: string; key?: string; originalName?: string; size?: number; mimeType?: string }> = existingDocs.map((d) => ({
           type: d.type || "Other",
@@ -313,17 +334,28 @@ export default function PersonalInformationPage() {
         setDocumentsList([]);
         setSalarySlips([]);
         await refreshUser();
-      } else if (isAdministrator) {
-        await usersApi.updateUser(user.id, {
-          name: fullName || undefined,
-          email: trimmedEmail || undefined,
-          notificationPreferences: notificationPrefs,
-        });
-      } else {
-        await authApi.updateMyProfile({
+      } else if (!hasCandidateProfile) {
+        const digits = staffPhone.replace(/\D/g, "");
+        const domainArr = staffDomain.split(",").map((s) => s.trim()).filter(Boolean);
+        const staffPayload = {
           name: fullName || undefined,
           notificationPreferences: notificationPrefs,
-        });
+          phoneNumber: digits || undefined,
+          countryCode: staffCountryCode || undefined,
+          location: staffLocation.trim() || undefined,
+          profileSummary: staffProfileSummary.trim() || undefined,
+          education: staffEducation.trim() || undefined,
+          domain: domainArr,
+        };
+        if (isAdministrator) {
+          await usersApi.updateUser(user.id, {
+            ...staffPayload,
+            email: trimmedEmail || undefined,
+          });
+        } else {
+          await authApi.updateMyProfile(staffPayload);
+        }
+        await refreshUser();
       }
       await checkAuth();
       setSaveSuccess("Profile updated successfully.");
@@ -360,7 +392,7 @@ export default function PersonalInformationPage() {
     try {
       const result = await uploadDocument(file);
       const profilePicture = { url: result.url, key: result.key, originalName: result.originalName, size: result.size, mimeType: result.mimeType };
-      if (hasCandidateRole && candidate) {
+      if (hasCandidateProfile && candidate) {
         const res = await authApi.updateMeWithCandidate({ profilePicture });
         setCandidate(res.candidate);
       } else {
@@ -382,7 +414,7 @@ export default function PersonalInformationPage() {
     setSaveError("");
     setAvatarRemoveLoading(true);
     try {
-      if (hasCandidateRole && candidate) {
+      if (hasCandidateProfile && candidate) {
         const res = await authApi.updateMeWithCandidate({ profilePicture: null });
         setCandidate(res.candidate);
       } else {
@@ -478,7 +510,18 @@ export default function PersonalInformationPage() {
         recruiterUpdates: prefs.recruiterUpdates ?? true,
       });
     }
-  }, [user]);
+
+    if (!hasCandidateProfile) {
+      const u = user as Record<string, unknown>;
+      setStaffPhone(typeof u.phoneNumber === "string" ? u.phoneNumber : "");
+      setStaffCountryCode(typeof u.countryCode === "string" ? u.countryCode : "IN");
+      setStaffLocation(typeof u.location === "string" ? u.location : "");
+      setStaffProfileSummary(typeof u.profileSummary === "string" ? u.profileSummary : "");
+      setStaffEducation(typeof u.education === "string" ? u.education : "");
+      const dom = u.domain;
+      setStaffDomain(Array.isArray(dom) ? dom.map((x) => String(x)).join(", ") : "");
+    }
+  }, [user, hasCandidateProfile]);
 
   return (
     <Fragment>
@@ -518,6 +561,25 @@ export default function PersonalInformationPage() {
                 <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Role</dt>
                 <dd className="text-[0.9375rem]">{roleDisplayName} (System)</dd>
               </div>
+              {!hasCandidateProfile && (staffPhone || staffLocation) && (
+                <>
+                  {staffPhone && (
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Phone</dt>
+                      <dd className="text-[0.9375rem]">
+                        {staffCountryCode ? `${staffCountryCode} ` : ""}
+                        {staffPhone}
+                      </dd>
+                    </div>
+                  )}
+                  {staffLocation && (
+                    <div>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Location</dt>
+                      <dd className="text-[0.9375rem]">{staffLocation}</dd>
+                    </div>
+                  )}
+                </>
+              )}
             </dl>
           </div>
         </div>
@@ -631,8 +693,92 @@ export default function PersonalInformationPage() {
           </div>
         </div>
 
-        {/* Candidate-only sections */}
-        {hasCandidateRole && !candidateRoleLoading && (
+        {!hasCandidateProfile && !candidateRoleLoading && (
+          <div className="box border border-defaultborder rounded-lg overflow-hidden mb-6">
+            <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
+              <h6 className="font-semibold mb-0 text-[0.9375rem]">Contact &amp; professional details</h6>
+            </div>
+            <div className="box-body px-4 py-4 sm:grid grid-cols-12 gap-4">
+              <p className="col-span-12 text-[0.75rem] text-defaulttextcolor/70 mb-0 -mt-1">
+                These fields are stored on your user account (not the ATS candidate record). Use them to keep your contact info and a short bio up to date.
+              </p>
+              <div className="col-span-12 sm:col-span-4">
+                <label className="form-label">Country</label>
+                <PhoneCountrySelect value={staffCountryCode} onChange={setStaffCountryCode} className="w-full" />
+              </div>
+              <div className="col-span-12 sm:col-span-8">
+                <label htmlFor="staff-phone" className="form-label">
+                  Phone
+                </label>
+                <input
+                  id="staff-phone"
+                  type="tel"
+                  className="form-control w-full !rounded-md"
+                  placeholder="Digits only (optional)"
+                  value={staffPhone}
+                  onChange={(e) => setStaffPhone(e.target.value)}
+                  autoComplete="tel"
+                />
+              </div>
+              <div className="col-span-12">
+                <label htmlFor="staff-location" className="form-label">
+                  Location / city
+                </label>
+                <input
+                  id="staff-location"
+                  type="text"
+                  className="form-control w-full !rounded-md"
+                  placeholder="e.g. Bangalore, India"
+                  value={staffLocation}
+                  onChange={(e) => setStaffLocation(e.target.value)}
+                />
+              </div>
+              <div className="col-span-12">
+                <label htmlFor="staff-profile-summary" className="form-label">
+                  About you
+                </label>
+                <textarea
+                  id="staff-profile-summary"
+                  className="form-control w-full !rounded-md"
+                  rows={3}
+                  placeholder="Short professional summary (optional)"
+                  value={staffProfileSummary}
+                  onChange={(e) => setStaffProfileSummary(e.target.value)}
+                />
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label htmlFor="staff-education" className="form-label">
+                  Education
+                </label>
+                <input
+                  id="staff-education"
+                  type="text"
+                  className="form-control w-full !rounded-md"
+                  placeholder="e.g. M.Sc. Computer Science"
+                  value={staffEducation}
+                  onChange={(e) => setStaffEducation(e.target.value)}
+                />
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label htmlFor="staff-domain" className="form-label">
+                  Domains / skills
+                </label>
+                <input
+                  id="staff-domain"
+                  type="text"
+                  className="form-control w-full !rounded-md"
+                  placeholder="Comma-separated, e.g. React, HR, Sales"
+                  value={staffDomain}
+                  onChange={(e) => setStaffDomain(e.target.value)}
+                />
+                <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">Stored as tags on your profile.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Candidate profile (includes Agent + Candidate hybrids) */}
+        {hasCandidateProfile && !candidateRoleLoading && (
           <div className="space-y-6 mb-6">
             <h6 className="font-semibold text-[1rem]">Candidate information</h6>
 
@@ -826,6 +972,11 @@ export default function PersonalInformationPage() {
                     onChange={(e) => setSalaryRange(e.target.value)}
                   >
                     <option value="">Select Salary Range</option>
+                    <option value="Under $5,000">Under $5,000</option>
+                    <option value="$5,000 - $10,000">$5,000 - $10,000</option>
+                    <option value="$10,000 - $15,000">$10,000 - $15,000</option>
+                    <option value="$15,000 - $20,000">$15,000 - $20,000</option>
+                    <option value="$20,000 - $30,000">$20,000 - $30,000</option>
                     <option value="$30,000 - $50,000">$30,000 - $50,000</option>
                     <option value="$50,000 - $70,000">$50,000 - $70,000</option>
                     <option value="$70,000 - $90,000">$70,000 - $90,000</option>
@@ -833,7 +984,10 @@ export default function PersonalInformationPage() {
                     <option value="$110,000 - $130,000">$110,000 - $130,000</option>
                     <option value="$130,000 - $150,000">$130,000 - $150,000</option>
                     <option value="$150,000 - $200,000">$150,000 - $200,000</option>
-                    <option value="$200,000+">$200,000+</option>
+                    <option value="$200,000 - $250,000">$200,000 - $250,000</option>
+                    <option value="$250,000 - $300,000">$250,000 - $300,000</option>
+                    <option value="$300,000 - $400,000">$300,000 - $400,000</option>
+                    <option value="$400,000+">$400,000+</option>
                     <option value="Prefer not to disclose">Prefer not to disclose</option>
                   </select>
                 </div>

@@ -3,13 +3,16 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
 
-// Use env URL (e.g. http://localhost:3000/v1) or in browser fallback to same-origin proxy from next.config rewrites
-const baseURL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" ? "/api/v1" : "");
+/** Strip trailing slashes so paths join cleanly with axios `baseURL`. */
+function normalizeApiBase(): string {
+  const raw = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
+  if (raw) return raw;
+  if (typeof window !== "undefined") return "/api/v1";
+  return "http://127.0.0.1:3000/v1";
+}
 
 export const apiClient = axios.create({
-  baseURL,
+  baseURL: normalizeApiBase(),
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
@@ -20,12 +23,39 @@ export function setSessionExpiredHandler(handler: () => void) {
   onSessionExpired = handler;
 }
 
+const RESIGN_SESSION_FLAG = "dharwin_candidate_resigned_redirect";
+
+/** Call when token refresh fails because the candidate has resigned (admin must clear/change resign date). */
+export function flagCandidateResignedRedirect() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(RESIGN_SESSION_FLAG, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Sign-in page: show resign popup once after redirect from failed refresh. */
+export function consumeCandidateResignedRedirect(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (sessionStorage.getItem(RESIGN_SESSION_FLAG) !== "1") return false;
+    sessionStorage.removeItem(RESIGN_SESSION_FLAG);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isAuthEndpoint(url: string): boolean {
   const path = url.split("?")[0];
   return (
     path.endsWith("/auth/login") ||
+    path.endsWith("auth/login") ||
     path.endsWith("/auth/refresh-tokens") ||
-    path.endsWith("/auth/logout")
+    path.endsWith("auth/refresh-tokens") ||
+    path.endsWith("/auth/logout") ||
+    path.endsWith("auth/logout")
   );
 }
 
@@ -44,7 +74,11 @@ apiClient.interceptors.response.use(
     try {
       await apiClient.post(AUTH_ENDPOINTS.refreshTokens, {});
       return apiClient(config);
-    } catch {
+    } catch (refreshErr) {
+      const data = (refreshErr as AxiosError)?.response?.data as { errorCode?: string } | undefined;
+      if (data?.errorCode === "CANDIDATE_RESIGNED") {
+        flagCandidateResignedRedirect();
+      }
       onSessionExpired?.();
       return Promise.reject(error);
     }

@@ -6,7 +6,7 @@ import Link from "next/link";
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
-import { getMeWithCandidate } from "@/shared/lib/api/auth";
+import { getMeWithCandidate, sendMyVerificationEmail } from "@/shared/lib/api/auth";
 import type { CandidateWithProfile } from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
 import { listActivityLogs } from "@/shared/lib/api/activity-logs";
@@ -51,10 +51,12 @@ function humanizeAction(action: string): string {
 }
 
 function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | null }) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [resendVerificationSending, setResendVerificationSending] = useState(false);
+  const [resendVerificationMessage, setResendVerificationMessage] = useState<"success" | "error" | null>(null);
 
   const u = user as (User & { phoneNumber?: string; countryCode?: string; location?: string; profileSummary?: string; education?: string; domain?: string[] }) | null;
   const displayName = (candidate?.fullName ?? u?.name ?? u?.email) ?? "—";
@@ -104,18 +106,75 @@ function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | 
     );
   }
 
+  const displayEmployeeId = candidate?.employeeId ?? "—";
   const personalInfo = [
     { label: "Name :", value: displayName },
     { label: "Email :", value: u?.email ?? "—" },
     ...(displayPhone ? [{ label: "Phone :", value: `${displayCountryCode ? displayCountryCode + " " : ""}${displayPhone}` }] : []),
+    { label: "Employee ID :", value: displayEmployeeId },
     { label: "Role :", value: roleDisplayName },
     ...(displayAddress ? [{ label: "Address :", value: displayAddress }] : []),
     ...(u.education ? [{ label: "Education :", value: u.education }] : []),
     ...(u.domain && u.domain.length > 0 ? [{ label: "Domain :", value: u.domain.join(", ") }] : []),
   ];
 
+  const isEmailVerified = (u as { isEmailVerified?: boolean }).isEmailVerified !== false;
+  const handleResendVerification = async () => {
+    setResendVerificationMessage(null);
+    setResendVerificationSending(true);
+    try {
+      await sendMyVerificationEmail();
+      setResendVerificationMessage("success");
+      refreshUser?.();
+    } catch {
+      setResendVerificationMessage("error");
+    } finally {
+      setResendVerificationSending(false);
+    }
+  };
+
   return (
     <div className="grid grid-cols-12 gap-x-6">
+      {!isEmailVerified && (
+        <div className="col-span-12 mb-4">
+          <div className="box border border-warning/30 bg-warning/5">
+            <div className="box-body flex flex-wrap items-center justify-between gap-3">
+              <p className="text-defaulttextcolor dark:text-white/90 mb-0">
+                <i className="ri-mail-unread-line me-2 align-middle text-warning" />
+                Your email is not verified. Check your inbox for the verification link, or request a new one.
+              </p>
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendVerificationSending}
+                className="ti-btn ti-btn-warning !font-medium"
+              >
+                {resendVerificationSending ? (
+                  <>
+                    <span className="animate-spin inline-block me-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-mail-send-line me-1 align-middle" />
+                    Resend verification email
+                  </>
+                )}
+              </button>
+            </div>
+            {resendVerificationMessage === "success" && (
+              <div className="box-body pt-0 text-success text-sm">
+                Verification email sent. Check your inbox (and spam folder).
+              </div>
+            )}
+            {resendVerificationMessage === "error" && (
+              <div className="box-body pt-0 text-danger text-sm">
+                Failed to send. Try again later.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {/* Left sidebar */}
       <div className="xxl:col-span-4 xl:col-span-12 col-span-12">
         <div className="box overflow-hidden">
@@ -405,7 +464,7 @@ function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | 
 
 export default function MyProfilePage() {
   const { user } = useAuth();
-  const { hasCandidateRole, isLoading: rolesLoading } = useHasCandidateRole();
+  const { hasCandidateProfile, isLoading: rolesLoading } = useHasCandidateRole();
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
@@ -415,7 +474,7 @@ export default function MyProfilePage() {
       return;
     }
     let cancelled = false;
-    if (hasCandidateRole) {
+    if (hasCandidateProfile) {
       getMeWithCandidate()
         .then((res) => {
           if (!cancelled) setCandidate(res?.candidate ?? null);
@@ -431,7 +490,7 @@ export default function MyProfilePage() {
       setDataLoading(false);
     }
     return () => { cancelled = true; };
-  }, [user, hasCandidateRole]);
+  }, [user, hasCandidateProfile]);
 
   if (user && !rolesLoading && !dataLoading) {
     return (

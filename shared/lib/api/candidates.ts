@@ -25,7 +25,13 @@ export interface CandidateListItem {
   isCompleted?: boolean;
   createdAt?: string;
   updatedAt?: string;
-  owner?: { name?: string; email?: string };
+  joiningDate?: string | null;
+  resignDate?: string | null;
+  owner?: { id?: string; _id?: string; name?: string; email?: string } | string;
+  /** Linked training Student id (attendance); set when owner has a Student profile. */
+  studentId?: string | null;
+  /** Candidate owner User id (for user-based attendance when no Student). */
+  ownerId?: string | null;
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
@@ -54,6 +60,11 @@ export interface ListCandidatesParams {
   fullName?: string;
   email?: string;
   employeeId?: string;
+  /** Substring match against Agent users' name or email; lists candidates with matching assignedAgent */
+  agent?: string;
+  /** Comma-separated Agent user ids (from agent checklist); OR match on assignedAgent */
+  agentIds?: string;
+  employmentStatus?: "current" | "resigned" | "all" | "";
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -73,6 +84,46 @@ export interface ListCandidatesParams {
 
 export async function listCandidates(params?: ListCandidatesParams): Promise<CandidatesListResponse> {
   const { data } = await apiClient.get<CandidatesListResponse>("/candidates", { params });
+  return data;
+}
+
+/** Assignable people (owner has Student and/or Candidate role) with optional assigned Agent — requires `candidates.manage`. */
+export interface StudentAgentAssignmentRow {
+  id: string;
+  fullName: string;
+  email: string;
+  employeeId: string | null;
+  ownerId: string;
+  /** e.g. `Student`, `Candidate`, or `Student · Candidate` */
+  ownerRoleLabel: string;
+  studentId: string | null;
+  assignedAgent: { id: string; name: string; email: string } | null;
+}
+
+export interface AgentOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export async function getStudentAgentAssignments(): Promise<{
+  students: StudentAgentAssignmentRow[];
+  agents: AgentOption[];
+}> {
+  const { data } = await apiClient.get<{ students: StudentAgentAssignmentRow[]; agents: AgentOption[] }>(
+    "/candidates/student-agent-assignments"
+  );
+  return data;
+}
+
+/** All Agent-role users for ATS filter checklist — requires `candidates.read`. */
+export async function getCandidateFilterAgents(): Promise<{ agents: AgentOption[] }> {
+  const { data } = await apiClient.get<{ agents: AgentOption[] }>("/candidates/agents");
+  return data;
+}
+
+export async function assignAgentToStudent(candidateId: string, agentId: string | null): Promise<unknown> {
+  const { data } = await apiClient.post(`/candidates/${candidateId}/assign-agent`, { agentId });
   return data;
 }
 
@@ -361,6 +412,15 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
     isEmailVerified: (c as any).isEmailVerified ?? true,
     isProfileCompleted: (c as any).isProfileCompleted ?? 0,
     isCompleted: (c as any).isCompleted ?? false,
+    studentId: (c as CandidateListItem).studentId ?? null,
+    ownerUserId: (() => {
+      const row = c as CandidateListItem;
+      if (row.ownerId) return row.ownerId;
+      const o = row.owner;
+      if (!o) return null;
+      if (typeof o === "string") return o;
+      return o.id ?? o._id?.toString?.() ?? null;
+    })(),
     _raw: c,
   };
 }

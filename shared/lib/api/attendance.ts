@@ -197,6 +197,28 @@ export async function listAttendance(
   return data;
 }
 
+/** Attendance stored on User (agent / user-based punch) when there is no Student profile */
+export async function listAttendanceByUser(
+  userId: string,
+  params?: ListAttendanceParams
+): Promise<ListAttendanceResponse> {
+  const { data } = await apiClient.get<ListAttendanceResponse>(`/training/attendance/user/${userId}`, {
+    params,
+  });
+  return data;
+}
+
+/** Resolve Student vs user-based attendance by ATS candidate id (on candidates API — avoids attendance /student routes) */
+export async function listAttendanceByCandidate(
+  candidateId: string,
+  params?: ListAttendanceParams
+): Promise<ListAttendanceResponse> {
+  const { data } = await apiClient.get<ListAttendanceResponse>(`/candidates/${candidateId}/attendance`, {
+    params,
+  });
+  return data;
+}
+
 export async function getAttendanceStatistics(
   studentId: string,
   params?: { startDate?: string; endDate?: string }

@@ -1,5 +1,4 @@
 "use client"
-import PrelineScript from "@/app/PrelineScript"
 import Backtotop from "@/shared/layout-components/backtotop/backtotop"
 import Footer from "@/shared/layout-components/footer/footer"
 import Header from "@/shared/layout-components/header/header"
@@ -46,7 +45,6 @@ const Layout = ({ children }: any) => {
           <div className="fixed inset-0 z-[9999] w-screen h-screen overflow-hidden bg-[#0f1012]">
             {children}
           </div>
-          <PrelineScript />
         </PermissionGuard>
       </ProtectedRoute>
     );
@@ -78,7 +76,6 @@ const Layout = ({ children }: any) => {
                 <Footer/>
               </div>
               <Backtotop/>
-              <PrelineScript/>
             </>
           )}
         >

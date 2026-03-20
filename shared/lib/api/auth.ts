@@ -73,11 +73,18 @@ export interface UpdateMyProfilePayload {
     size?: number;
     mimeType?: string;
   } | null;
+  /** Digits-only phone (6–15), stored on User */
+  phoneNumber?: string;
+  countryCode?: string;
+  education?: string;
+  domain?: string[];
+  location?: string;
+  profileSummary?: string;
 }
 
 /**
  * Update own profile (PATCH /v1/auth/me). Auth only; no users.manage required.
- * Allowed fields: name, notificationPreferences, profilePicture. Email cannot be changed.
+ * Allowed fields: name, notificationPreferences, profilePicture, phone, location, education, etc. Email cannot be changed.
  */
 export async function updateMyProfile(payload: UpdateMyProfilePayload): Promise<User> {
   const { data } = await apiClient.patch<User>(AUTH_ENDPOINTS.me, payload);
@@ -103,6 +110,7 @@ export interface CandidateWithProfile {
   supervisorContact?: string;
   supervisorCountryCode?: string;
   salaryRange?: string;
+  employeeId?: string;
   profilePicture?: { url?: string; key?: string; originalName?: string; size?: number; mimeType?: string };
   qualifications?: Array<{ degree: string; institute: string; location?: string; startYear?: number; endYear?: number; description?: string }>;
   experiences?: Array<{ company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean; description?: string }>;
@@ -206,6 +214,11 @@ export async function stopImpersonation(): Promise<AuthResponse> {
  */
 export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   await apiClient.post(AUTH_ENDPOINTS.changePassword, { currentPassword, newPassword });
+}
+
+/** Request a verification email for the current user (POST /v1/auth/me/send-verification-email). Auth only; no permission required. */
+export async function sendMyVerificationEmail(): Promise<void> {
+  await apiClient.post(AUTH_ENDPOINTS.sendMyVerificationEmail);
 }
 
 /** Forgot password payload: email address to send reset link to. */

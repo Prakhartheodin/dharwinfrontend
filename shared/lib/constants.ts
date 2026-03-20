@@ -1,39 +1,39 @@
-const BASE_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
-
 /**
  * Auth API – JWT + HttpOnly cookies; frontend does not store tokens.
- * GET /v1/auth/me restores user state on app load (e.g. after refresh) when cookies are valid.
- * Override me URL via NEXT_PUBLIC_AUTH_ME_URL if your backend uses a different path.
+ * Paths are relative to `apiClient` baseURL (e.g. `/api/v1` via Next rewrite, or full `.../v1`).
+ * Override me URL via NEXT_PUBLIC_AUTH_ME_URL if your backend uses a different path (absolute URL ok).
  */
 export const AUTH_ENDPOINTS = {
-  login: `${BASE_API_URL}/auth/login`,
-  register: `${BASE_API_URL}/auth/register`,
+  login: "auth/login",
+  register: "auth/register",
   /** Student registration – creates User + Student profile, auto-assigns Student role. */
-  registerStudent: `${BASE_API_URL}/auth/register-student`,
+  registerStudent: "auth/register-student",
   /** Mentor registration – creates User + Mentor profile, auto-assigns Mentor role. */
-  registerMentor: `${BASE_API_URL}/auth/register-mentor`,
+  registerMentor: "auth/register-mentor",
   /** Recruiter registration (Admin only) – creates User with Recruiter role. */
-  registerRecruiter: `${BASE_API_URL}/auth/register-recruiter`,
+  registerRecruiter: "auth/register-recruiter",
   /** Public registration – no auth; user created with status pending. */
-  publicRegister: `${BASE_API_URL}/public/register`,
+  publicRegister: "public/register",
   /** Public candidate onboarding – no auth; creates User + Candidate for ATS list. */
-  publicRegisterCandidate: `${BASE_API_URL}/public/register-candidate`,
-  me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? `${BASE_API_URL}/auth/me`,
+  publicRegisterCandidate: "public/register-candidate",
+  me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? "auth/me",
   /** User + Candidate merged for candidates (GET/PATCH). Single source for Personal Information and My Profile. */
-  meWithCandidate: `${BASE_API_URL}/auth/me/with-candidate`,
+  meWithCandidate: "auth/me/with-candidate",
+  /** Request verification email for the current user (auth only; no permission required). */
+  sendMyVerificationEmail: "auth/me/send-verification-email",
   /** Current user's resolved permissions (auth only, no permission required). */
-  myPermissions: `${BASE_API_URL}/auth/my-permissions`,
-  refreshTokens: `${BASE_API_URL}/auth/refresh-tokens`,
-  logout: `${BASE_API_URL}/auth/logout`,
-  impersonate: `${BASE_API_URL}/auth/impersonate`,
-  stopImpersonation: `${BASE_API_URL}/auth/stop-impersonation`,
-  changePassword: `${BASE_API_URL}/auth/change-password`,
+  myPermissions: "auth/my-permissions",
+  refreshTokens: "auth/refresh-tokens",
+  logout: "auth/logout",
+  impersonate: "auth/impersonate",
+  stopImpersonation: "auth/stop-impersonation",
+  changePassword: "auth/change-password",
   /** Forgot password – request reset link by email (no auth). */
-  forgotPassword: `${BASE_API_URL}/auth/forgot-password`,
+  forgotPassword: "auth/forgot-password",
   /** Reset password – use token from email link to set a new password. */
-  resetPassword: `${BASE_API_URL}/auth/reset-password`,
+  resetPassword: "auth/reset-password",
   /** Send candidate onboarding/preboarding invitation(s). Auth required. Single: { email, onboardUrl }. Bulk: { invitations: [{ email, onboardUrl }] }. */
-  sendCandidateInvitation: `${BASE_API_URL}/auth/send-candidate-invitation`,
+  sendCandidateInvitation: "auth/send-candidate-invitation",
 } as const;
 
 export const ROUTES = {
@@ -57,6 +57,8 @@ export const ROUTES = {
   settingsUsersAdd: "/settings/users/add/",
   settingsUsersEdit: (id: string) => `/settings/users/edit/?id=${encodeURIComponent(id)}`,
   settingsPersonalInfo: "/settings/personal-information/",
+  /** Administrator only — assign training students to Agent users */
+  settingsAgents: "/settings/agents/",
   // Settings > Attendance
   settingsAttendance: "/settings/attendance/",
   settingsAttendanceWeekOff: "/settings/attendance/week-off/",

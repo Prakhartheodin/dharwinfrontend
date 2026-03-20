@@ -113,6 +113,13 @@ export default function CreateModuleWithAIPage() {
     )
   }
 
+  useEffect(() => {
+    if (!titleOnlyContentTypes.includes("blog") && numBlogs !== 0) setNumBlogs(0)
+    if (!titleOnlyContentTypes.includes("video") && numVideos !== 0) setNumVideos(0)
+    if (!titleOnlyContentTypes.includes("quiz") && numQuizzes !== 0) setNumQuizzes(0)
+    if (!titleOnlyContentTypes.includes("essay") && numEssays !== 0) setNumEssays(0)
+  }, [titleOnlyContentTypes, numBlogs, numVideos, numQuizzes, numEssays])
+
   const downloadTemplate = (file: string) => {
     const a = document.createElement("a")
     a.href = `/templates/${file}`
@@ -283,6 +290,16 @@ export default function CreateModuleWithAIPage() {
 
   const handleGenerateFromTitle = async () => {
     if (!outlinePreview?.moduleName?.trim()) return
+    const includeBlog = titleOnlyContentTypes.includes("blog")
+    const includeVideo = titleOnlyContentTypes.includes("video")
+    const includeQuiz = titleOnlyContentTypes.includes("quiz")
+    const includeEssay = titleOnlyContentTypes.includes("essay")
+
+    const effectiveNumBlogs = includeBlog ? numBlogs : 0
+    const effectiveNumVideos = includeVideo ? numVideos : 0
+    const effectiveNumQuizzes = includeQuiz ? numQuizzes : 0
+    const effectiveNumEssays = includeEssay ? numEssays : 0
+
     setGeneratingFromTitle(true)
     setError(null)
     setSteps([
@@ -300,11 +317,11 @@ export default function CreateModuleWithAIPage() {
         shortDescription: outlinePreview.shortDescription,
         level: outlinePreview.level || titleOnlyLevel,
         sections: outlinePreview.sections || [],
-        numBlogs,
-        numVideos,
-        numQuizzes,
+        numBlogs: effectiveNumBlogs,
+        numVideos: effectiveNumVideos,
+        numQuizzes: effectiveNumQuizzes,
         questionsPerQuiz,
-        numEssays,
+        numEssays: effectiveNumEssays,
         questionsPerEssay,
         videoLanguage: videoLanguage || "en",
       })) {
@@ -869,7 +886,12 @@ export default function CreateModuleWithAIPage() {
                           disabled={
                             generatingFromTitle ||
                             !outlinePreview.moduleName.trim() ||
-                            (numBlogs === 0 && numQuizzes === 0 && numEssays === 0)
+                            (
+                              (titleOnlyContentTypes.includes("blog") ? numBlogs : 0) +
+                              (titleOnlyContentTypes.includes("video") ? numVideos : 0) +
+                              (titleOnlyContentTypes.includes("quiz") ? numQuizzes : 0) +
+                              (titleOnlyContentTypes.includes("essay") ? numEssays : 0)
+                            ) === 0
                           }
                           className="ti-btn ti-btn-primary-full"
                         >

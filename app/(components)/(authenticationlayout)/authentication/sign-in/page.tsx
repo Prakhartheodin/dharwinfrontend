@@ -3,12 +3,27 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import React, { Fragment, useState } from "react";
+import React, { Fragment, useEffect, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import { AxiosError } from "axios";
+import Swal from "sweetalert2";
+import { consumeCandidateResignedRedirect } from "@/shared/lib/api/client";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
+
+const RESIGNED_POPUP = {
+  title: "Cannot sign in",
+  text: "You have resigned and cannot sign in. Please contact an administrator for more information.",
+};
+
+function isCandidateResignedResponse(err: unknown): boolean {
+  if (!(err instanceof AxiosError) || !err.response?.data) return false;
+  const d = err.response.data as { errorCode?: string; code?: string };
+  if (d.errorCode === "CANDIDATE_RESIGNED") return true;
+  if (d.code === "CANDIDATE_RESIGNED") return true;
+  return false;
+}
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
@@ -23,6 +38,17 @@ export default function SignInPage() {
   const [error, setError] = useState("");
   const { login, isLoading } = useAuth();
 
+  useEffect(() => {
+    if (consumeCandidateResignedRedirect()) {
+      void Swal.fire({
+        icon: "info",
+        title: RESIGNED_POPUP.title,
+        text: RESIGNED_POPUP.text,
+        confirmButtonText: "OK",
+      });
+    }
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -33,6 +59,15 @@ export default function SignInPage() {
     try {
       await login(email.trim(), password);
     } catch (err) {
+      if (isCandidateResignedResponse(err)) {
+        void Swal.fire({
+          icon: "info",
+          title: RESIGNED_POPUP.title,
+          text: RESIGNED_POPUP.text,
+          confirmButtonText: "OK",
+        });
+        return;
+      }
       const message =
         err instanceof AxiosError && err.response?.data?.message
           ? String(err.response.data.message)
