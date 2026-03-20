@@ -753,9 +753,6 @@ export function StudentAttendanceClient() {
                   </button>
                 </div>
                 <div className="box-body space-y-4">
-                  <p className="text-[0.75rem] text-defaulttextcolor/60">
-                    Timezone: {getDetectedTimezone()}
-                  </p>
                   <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`badge ${status?.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
@@ -845,7 +842,7 @@ export function StudentAttendanceClient() {
         <div className="box mb-6">
           <div className="box-header">
             <h5 className="font-semibold text-defaulttextcolor mb-0 flex items-center gap-2">
-              <i className="ri-global-line text-defaulttextcolor/70" />
+              <i className="ri-time-line text-defaulttextcolor/70" />
               Shift Details
             </h5>
           </div>
@@ -854,7 +851,6 @@ export function StudentAttendanceClient() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div><span className="text-defaulttextcolor/70">Name</span><div className="font-medium text-defaulttextcolor">{student.shift.name ?? "—"}</div></div>
                 <div><span className="text-defaulttextcolor/70">Start – End</span><div className="font-medium text-defaulttextcolor">{(student.shift.startTime ?? "—") + " – " + (student.shift.endTime ?? "—")}</div></div>
-                <div><span className="text-defaulttextcolor/70">Timezone</span><div className="font-medium text-defaulttextcolor">{student.shift.timezone ?? "—"}</div></div>
                 {student.shift.description ? <div className="sm:col-span-2"><span className="text-defaulttextcolor/70">Description</span><div className="font-medium text-defaulttextcolor">{student.shift.description}</div></div> : null}
               </div>
             ) : (

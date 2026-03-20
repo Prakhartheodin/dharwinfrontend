@@ -8,10 +8,13 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 
-function getActiveTab(pathname: string): "roles" | "users" | "attendance" | "personal-information" | null {
+function getActiveTab(
+  pathname: string
+): "roles" | "users" | "attendance" | "agents" | "personal-information" | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
   if (pathname.startsWith("/settings/users")) return "users";
   if (pathname.startsWith("/settings/attendance")) return "attendance";
+  if (pathname.startsWith("/settings/agents")) return "agents";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
   return null;
 }
@@ -84,10 +87,12 @@ export default function SettingsLayout({
       if (!hasUsersAccess) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "attendance") {
       if (!hasAttendanceAccess) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "agents") {
+      if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [isAdmin, hasUsersAccess, hasAttendanceAccess, activeTab, router]);
 
-  const tabClass = (tab: "roles" | "users" | "attendance" | "personal-information") =>
+  const tabClass = (tab: "roles" | "users" | "attendance" | "agents" | "personal-information") =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
         ? "bg-primary/10 text-primary"
@@ -130,6 +135,15 @@ export default function SettingsLayout({
                     aria-current={activeTab === "attendance" ? "page" : undefined}
                   >
                     Attendance
+                  </Link>
+                )}
+                {isAdmin && (
+                  <Link
+                    href={ROUTES.settingsAgents}
+                    className={tabClass("agents")}
+                    aria-current={activeTab === "agents" ? "page" : undefined}
+                  >
+                    Agents
                   </Link>
                 )}
                 <Link

@@ -73,6 +73,20 @@ export interface RegisterUserPayload {
   password: string;
   roleIds?: string[];
   isEmailVerified?: boolean;
+  /** Saved on User; also used when creating linked Candidate/Student profiles. */
+  phoneNumber?: string;
+  countryCode?: string;
+  /** Optional — applied to linked Candidate record when Candidate role is assigned. */
+  employeeId?: string;
+  shortBio?: string;
+  /** ISO date string (YYYY-MM-DD) or full ISO datetime */
+  joiningDate?: string | null;
+  department?: string;
+  designation?: string;
+  degree?: string;
+  salaryRange?: string;
+  /** Administrators only — `pending` blocks sign-in until activated. */
+  status?: "active" | "pending";
 }
 
 /** Public registration – POST /v1/auth/register. No auth required; sets HttpOnly cookies on success. */

@@ -2366,6 +2366,11 @@ export const Basicwizard = ({
                   id="salaryRange"
                 >
                   <option value="">Select Salary Range</option>
+                  <option value="Under $5,000">Under $5,000</option>
+                  <option value="$5,000 - $10,000">$5,000 - $10,000</option>
+                  <option value="$10,000 - $15,000">$10,000 - $15,000</option>
+                  <option value="$15,000 - $20,000">$15,000 - $20,000</option>
+                  <option value="$20,000 - $30,000">$20,000 - $30,000</option>
                   <option value="$30,000 - $50,000">$30,000 - $50,000</option>
                   <option value="$50,000 - $70,000">$50,000 - $70,000</option>
                   <option value="$70,000 - $90,000">$70,000 - $90,000</option>
@@ -2373,7 +2378,10 @@ export const Basicwizard = ({
                   <option value="$110,000 - $130,000">$110,000 - $130,000</option>
                   <option value="$130,000 - $150,000">$130,000 - $150,000</option>
                   <option value="$150,000 - $200,000">$150,000 - $200,000</option>
-                  <option value="$200,000+">$200,000+</option>
+                  <option value="$200,000 - $250,000">$200,000 - $250,000</option>
+                  <option value="$250,000 - $300,000">$250,000 - $300,000</option>
+                  <option value="$300,000 - $400,000">$300,000 - $400,000</option>
+                  <option value="$400,000+">$400,000+</option>
                   <option value="Prefer not to disclose">Prefer not to disclose</option>
                 </select>
                 {fieldErrors['salaryRange'] && (

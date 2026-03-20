@@ -61,6 +61,8 @@ export interface Student {
   bio?: string | null;
   profileImageUrl?: string | null;
   status: string;
+  /** First day attendance applies (aligned with candidate joining; used in attendance UI). */
+  joiningDate?: string | null;
   weekOff?: string[];
   holidays?: string[];
   /** Populated when fetching a single student (e.g. for attendance detail). */

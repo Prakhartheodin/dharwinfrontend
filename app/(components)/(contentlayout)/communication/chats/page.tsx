@@ -16,6 +16,7 @@ import {
   removeParticipant,
   setParticipantRole,
   updateGroupName,
+  uploadGroupAvatar,
   listCalls,
   initiateCall,
   endCallByRoom,
@@ -25,15 +26,91 @@ import {
   reactToMessage,
   uploadChatFiles,
   deleteConversation as deleteConversationApi,
+  type ChatCall,
   type Conversation,
   type Message,
 } from "@/shared/lib/api/chat";
 import { useSearchParams } from "next/navigation";
-import { useChatSocket, type IncomingCallData } from "@/shared/contexts/ChatSocketContext";
+import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
+import chatStyles from "./chats.module.scss";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
+
+function callLogStatusLabel(status: string | undefined): string {
+  if (!status || status === "ongoing") return "";
+  if (status === "completed" || status === "ended") return "Ended";
+  if (status === "missed") return "Missed";
+  if (status === "declined") return "Declined";
+  if (status === "initiated") return "Started";
+  return status;
+}
+
+/** Short line for merged thread timeline (enriched calls from getCallsForConversation). */
+function timelineCallPillText(call: {
+  direction?: "incoming" | "outgoing";
+  peer?: { name?: string; isGroup?: boolean };
+  callType?: string;
+  status?: string;
+}): string {
+  const kind = call.callType === "video" ? "Video" : "Voice";
+  const dir = call.direction === "outgoing" ? "Outgoing" : "Incoming";
+  const status = callLogStatusLabel(call.status);
+  const peerName = (call.peer?.name || "Unknown").trim() || "Unknown";
+  const chunks: string[] = [];
+  if (call.peer?.isGroup) {
+    chunks.push(`${peerName} · ${kind} · ${dir}`);
+  } else if (call.direction === "outgoing") {
+    chunks.push(`You called ${peerName} · ${kind}`);
+  } else if (call.direction === "incoming") {
+    chunks.push(`${peerName} called · ${kind}`);
+  } else {
+    chunks.push(`${kind} call`);
+  }
+  if (status) chunks.push(status);
+  return chunks.join(" · ");
+}
+
+function participantIdFromCallUser(p: { id?: string; _id?: string } | null | undefined): string {
+  if (!p) return "";
+  return String((p as { id?: string }).id ?? (p as { _id?: string })._id ?? "").trim();
+}
+
+/** Calls list row title: explicit callee (outgoing) or caller (incoming); group name for group calls. */
+function callsTabHeadline(call: ChatCall): string {
+  const peer = call.peer;
+  const name = (peer?.name || (call.caller as { name?: string } | undefined)?.name || "Unknown").trim() || "Unknown";
+  if (peer?.isGroup) {
+    if (call.direction === "outgoing") return `You called ${name}`;
+    return name;
+  }
+  if (call.direction === "outgoing") return `You called ${name}`;
+  if (call.direction === "incoming") return `${name} called you`;
+  return name;
+}
+
+/** Names of users who actually joined the LiveKit room (You for viewer); omit if no join data. */
+function callJoinedParticipantsLine(
+  call: { roomJoinedUserIds?: Array<{ id?: string; _id?: string; name?: string }> },
+  myId: string | undefined
+): string | null {
+  const list = call.roomJoinedUserIds?.length ? call.roomJoinedUserIds : [];
+  if (list.length === 0) return null;
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  for (const p of list) {
+    const pid = participantIdFromCallUser(p);
+    const label =
+      myId && pid && pid === String(myId) ? "You" : (p.name || "Unknown").trim() || "Unknown";
+    const dedupe = label.toLowerCase();
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    labels.push(label);
+  }
+  if (labels.length === 0) return null;
+  return labels.join(", ");
+}
 
 const getId = (x: { id?: string; _id?: string } | null | undefined) =>
   x && (x.id || (x as any)._id?.toString?.());
@@ -75,6 +152,10 @@ function GroupInfoPanel({
   const [editNameVal, setEditNameVal] = useState(conversation.name || "Group");
   const [saving, setSaving] = useState(false);
   const [adding, setAdding] = useState(false);
+  /** Display names for pending invites (survives if search results refresh). */
+  const [pendingAddLabels, setPendingAddLabels] = useState<Record<string, string>>({});
+  const groupAvatarFileRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
 
   const cid = getId(conversation);
   const participants = (conversation.participants || []) as { user: { id?: string; _id?: string; name: string; email?: string }; role?: string }[];
@@ -86,7 +167,30 @@ function GroupInfoPanel({
   const amCreator = creatorId && String(creatorId) === String(myId);
   const isAdmin = myPart?.role === "admin" || amCreator;
   const avatarForGroup = (n?: string) =>
-    `https://ui-avatars.com/api/?name=${encodeURIComponent((n || "G").slice(0, 2).toUpperCase())}&size=80`;
+    `https://ui-avatars.com/api/?name=${encodeURIComponent((n || "G").slice(0, 2).toUpperCase())}&size=128&background=f1f5f9&color=0f172a&bold=true`;
+
+  const groupPhotoSrc = conversation.avatarUrl || avatarForGroup(conversation.name);
+
+  const handleGroupAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !cid || !isAdmin) return;
+    const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+    if (!allowed.includes(file.type) || file.size > 5 * 1024 * 1024) return;
+    setAvatarUploading(true);
+    try {
+      await uploadGroupAvatar(cid, file);
+      onRefresh();
+    } catch {
+      // ignore
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const addMemberCandidates = addMemberResults.filter(
+    (u) => !participants.some((p: any) => String((p.user as any)?.id || (p.user as any)?._id) === u.id)
+  );
 
   const handleSaveName = async () => {
     if (!cid || !isAdmin) return;
@@ -108,6 +212,7 @@ function GroupInfoPanel({
     try {
       await addParticipants(cid, Array.from(addMemberSelected));
       setAddMemberSelected(new Set());
+      setPendingAddLabels({});
       setAddMemberSearch("");
       setAddMemberResults([]);
       onRefresh();
@@ -138,78 +243,147 @@ function GroupInfoPanel({
     }
   };
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = (id: string, displayName: string) => {
     const existing = new Set(addMemberSelected);
-    if (existing.has(id)) existing.delete(id);
-    else existing.add(id);
+    if (existing.has(id)) {
+      existing.delete(id);
+      setPendingAddLabels((m) => {
+        const next = { ...m };
+        delete next[id];
+        return next;
+      });
+    } else {
+      existing.add(id);
+      if (displayName.trim()) setPendingAddLabels((m) => ({ ...m, [id]: displayName.trim() }));
+    }
     setAddMemberSelected(existing);
   };
 
   if (loading) {
     return (
-      <div className="p-4 flex items-center justify-center">
-        <i className="ri-loader-4-line animate-spin text-2xl text-primary" />
+      <div className={chatStyles.groupInfoRoot}>
+        <div className={chatStyles.groupInfoLoading} role="status" aria-live="polite" aria-busy="true">
+          <span className="flex flex-col items-center gap-3 text-[#64748b] dark:text-slate-400">
+            <i className="ri-loader-4-line animate-spin text-3xl text-primary" aria-hidden />
+            <span className="text-sm font-medium">Loading group…</span>
+          </span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-4 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
-        <h5 className="font-semibold">Group info</h5>
-        <button type="button" className="ti-btn ti-btn-icon ti-btn-ghost" onClick={onClose}>
-          <i className="ri-close-line" />
+    <div className={chatStyles.groupInfoRoot}>
+      <header className={chatStyles.groupInfoHeader}>
+        <div className={chatStyles.groupInfoHeaderTitles}>
+          <span className={chatStyles.groupInfoHeaderEyebrow}>Details</span>
+          <h2 className={chatStyles.groupInfoHeaderTitle}>Group info</h2>
+        </div>
+        <button type="button" className={chatStyles.groupInfoClose} onClick={onClose} aria-label="Close group info">
+          <i className="ri-close-line" aria-hidden />
         </button>
-      </div>
-      <div className="text-center mb-4">
-        <span className="avatar avatar-xxl avatar-rounded">
-          <img src={avatarForGroup(conversation.name)} alt="" />
-        </span>
-        {editingName ? (
-          <div className="flex flex-wrap items-center gap-2 justify-center mt-2">
-            <input
-              className="form-control !w-auto max-w-[180px] shrink-0"
-              value={editNameVal}
-              onChange={(e) => setEditNameVal(e.target.value)}
-              autoFocus
-            />
+      </header>
+
+      <div className={chatStyles.groupInfoHero}>
+        <div className={chatStyles.groupInfoAvatarWrap}>
+          <span className={chatStyles.groupInfoAvatarGlow} aria-hidden />
+          <span className={chatStyles.groupInfoAvatarRing} aria-hidden />
+          <input
+            ref={groupAvatarFileRef}
+            type="file"
+            accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleGroupAvatarChange}
+            aria-hidden
+            tabIndex={-1}
+          />
+          {isAdmin ? (
             <button
               type="button"
-              className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !px-3"
-              onClick={handleSaveName}
-              disabled={saving}
+              className={chatStyles.groupInfoAvatarEditable}
+              onClick={() => !avatarUploading && groupAvatarFileRef.current?.click()}
+              disabled={avatarUploading}
+              aria-label={avatarUploading ? "Uploading group photo" : "Change group photo"}
             >
-              Save
+              <img className={chatStyles.groupInfoAvatar} src={groupPhotoSrc} alt="" width={92} height={92} />
+              <span className={chatStyles.groupInfoAvatarOverlay} aria-hidden>
+                {avatarUploading ? (
+                  <i className="ri-loader-4-line animate-spin text-2xl" />
+                ) : (
+                  <i className="ri-camera-line text-2xl" />
+                )}
+              </span>
             </button>
-            <button
-              type="button"
-              className="ti-btn ti-btn-sm shrink-0 whitespace-nowrap !px-3"
-              onClick={() => setEditingName(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <p className="mb-0 font-semibold mt-2">
-            {conversation.name || "Group"}
-            {isAdmin && (
-              <button
-                type="button"
-                className="ms-2 ti-btn ti-btn-ghost ti-btn-icon !p-0 !min-w-0"
-                onClick={() => {
-                  setEditNameVal(conversation.name || "Group");
-                  setEditingName(true);
-                }}
-              >
-                <i className="ri-pencil-line text-sm" />
-              </button>
-            )}
-          </p>
-        )}
+          ) : (
+            <img className={chatStyles.groupInfoAvatar} src={groupPhotoSrc} alt="" width={92} height={92} />
+          )}
+        </div>
+
+        <div className={chatStyles.groupInfoNameBlock}>
+          {editingName ? (
+            <div className={chatStyles.groupInfoRenameBlock}>
+              <input
+                className={chatStyles.groupInfoRenameInput}
+                value={editNameVal}
+                onChange={(e) => setEditNameVal(e.target.value)}
+                autoFocus
+                aria-label="Group name"
+              />
+              <div className={chatStyles.groupInfoRenameActions}>
+                <button
+                  type="button"
+                  className={chatStyles.groupInfoRenameBtnSecondary}
+                  onClick={() => setEditingName(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={chatStyles.groupInfoRenameBtnPrimary}
+                  onClick={handleSaveName}
+                  disabled={saving}
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className={chatStyles.groupInfoNameRow}>
+                <p className={chatStyles.groupInfoNameText}>{conversation.name || "Group"}</p>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className={chatStyles.groupInfoEditBtn}
+                    onClick={() => {
+                      setEditNameVal(conversation.name || "Group");
+                      setEditingName(true);
+                    }}
+                    title="Rename group"
+                    aria-label="Rename group"
+                  >
+                    <i className="ri-pencil-line text-[1.0625rem]" aria-hidden />
+                  </button>
+                )}
+              </div>
+              <p className={chatStyles.groupInfoHint}>
+                {isAdmin
+                  ? "You can change the name or group photo for everyone."
+                  : "Only admins can change the name or group photo."}
+              </p>
+            </>
+          )}
+        </div>
       </div>
-      <PerfectScrollbar className="flex-1 min-h-0" style={{ maxHeight: "calc(100vh - 24rem)" }}>
+
+      <PerfectScrollbar className={chatStyles.groupInfoScroll} style={{ maxHeight: "calc(100vh - 22rem)" }}>
         <div className="mb-4">
-          <p className="text-xs text-[#8c9097] mb-2">Participants ({participants.length})</p>
+          <div className={chatStyles.groupInfoSectionHead}>
+            <p className={`${chatStyles.sectionLabel} !mb-0`}>Members</p>
+            <span className={chatStyles.groupInfoCountPill} title={`${participants.length} members`}>
+              {participants.length}
+            </span>
+          </div>
           <ul className="list-none">
             {participants.map((p: any) => {
               const uid = (p.user as any)?.id || (p.user as any)?._id?.toString?.();
@@ -217,12 +391,14 @@ function GroupInfoPanel({
               const isMe = uid && String(uid) === String(myId);
               const isPartCreator = uid && creatorId && String(uid) === String(creatorId);
               return (
-                <li key={uid} className="flex items-center justify-between gap-3 py-2 border-b border-defaultborder/10 last:border-0">
+                <li key={uid} className={chatStyles.participantRow}>
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className={`avatar avatar-sm avatar-rounded flex-shrink-0 ${onlineUsers.has(String(uid)) ? "online" : ""}`}>
                       <img src={`https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&size=40`} alt="" />
                     </span>
-                    <span className="truncate">{name}</span>
+                    <span className="min-w-0 truncate font-medium text-[0.875rem]" title={name}>
+                      {name}
+                    </span>
                     {p.role === "admin" && (
                       <span className="badge bg-primary/20 text-primary text-[0.65rem] flex-shrink-0">Admin</span>
                     )}
@@ -268,52 +444,94 @@ function GroupInfoPanel({
           </ul>
         </div>
         {isAdmin && (
-          <div className="mb-4">
-            <p className="text-xs text-[#8c9097] mb-2">Add participants</p>
-            <div className="flex gap-2 mb-2">
+          <div className={`mb-4 ${chatStyles.addParticipantsSection}`}>
+            <p className={chatStyles.sectionLabel}>Add participants</p>
+            <div className={chatStyles.addSearchShell}>
               <input
-                className="form-control flex-1 text-sm"
-                placeholder="Search users..."
+                className={chatStyles.addSearchInput}
+                placeholder="Search by name or email…"
                 value={addMemberSearch}
                 onChange={(e) => setAddMemberSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUsers())}
+                aria-label="Search users to add"
               />
-              <button type="button" className="ti-btn ti-btn-sm ti-btn-outline-primary" onClick={handleSearchUsers}>
-                <i className="ri-search-line" />
+              <button
+                type="button"
+                className={chatStyles.addSearchSubmit}
+                onClick={handleSearchUsers}
+                aria-label="Run search"
+              >
+                <i className="ri-search-line text-lg leading-none" />
               </button>
             </div>
-            {addMemberResults.length > 0 && (
-              <ul className="list-none mb-2 max-h-32 overflow-y-auto">
-                {addMemberResults
-                  .filter((u) => !participants.some((p: any) => String((p.user as any)?.id || (p.user as any)?._id) === u.id))
-                  .map((u) => (
-                    <li key={u.id} className="flex items-center justify-between py-1">
-                      <span className="text-sm">{u.name}</span>
+            {addMemberSelected.size > 0 && (
+              <div className={chatStyles.addChipTray}>
+                <p className={chatStyles.addChipTrayLabel}>Ready to invite</p>
+                {Array.from(addMemberSelected).map((id) => (
+                  <span key={id} className={chatStyles.addChip}>
+                    <span className={chatStyles.addChipLabel} title={pendingAddLabels[id] || id}>
+                      {pendingAddLabels[id] || "Selected user"}
+                    </span>
+                    <button
+                      type="button"
+                      className={chatStyles.addChipRemove}
+                      onClick={() => toggleSelect(id, pendingAddLabels[id] || "")}
+                      aria-label={`Remove ${pendingAddLabels[id] || "user"} from invite list`}
+                    >
+                      <i className="ri-close-line text-sm leading-none" aria-hidden />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {addMemberCandidates.length > 0 && (
+              <ul className={chatStyles.addResultsList}>
+                {addMemberCandidates.map((u) => {
+                  const selected = addMemberSelected.has(u.id);
+                  return (
+                    <li key={u.id} className={chatStyles.addResultRow}>
+                      <span
+                        className={chatStyles.addResultName}
+                        title={u.email ? `${u.name} · ${u.email}` : u.name}
+                      >
+                        {u.name}
+                      </span>
                       <button
                         type="button"
-                        className="ti-btn ti-btn-sm"
-                        onClick={() => toggleSelect(u.id)}
+                        className={`${chatStyles.addResultAction} ${selected ? chatStyles.addResultActionSelected : ""}`}
+                        onClick={() => toggleSelect(u.id, u.name)}
                       >
-                        {addMemberSelected.has(u.id) ? "Remove" : "Add"}
+                        {selected ? "Remove" : "Add"}
                       </button>
                     </li>
-                  ))}
+                  );
+                })}
               </ul>
             )}
             {addMemberSelected.size > 0 && (
               <button
                 type="button"
-                className="ti-btn ti-btn-sm ti-btn-primary"
+                className={chatStyles.addMembersCta}
                 onClick={handleAddMembers}
                 disabled={adding}
               >
-                Add {addMemberSelected.size} member{addMemberSelected.size > 1 ? "s" : ""}
+                {adding ? (
+                  <>
+                    <i className="ri-loader-4-line animate-spin shrink-0" aria-hidden />
+                    Adding…
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-user-add-line shrink-0 text-base" aria-hidden />
+                    Add {addMemberSelected.size} member{addMemberSelected.size > 1 ? "s" : ""} to group
+                  </>
+                )}
               </button>
             )}
           </div>
         )}
       </PerfectScrollbar>
-      <div className="flex flex-wrap justify-center gap-3 mt-4 pt-4 border-t border-defaultborder/10">
+      <div className={`${chatStyles.panelActions} ${chatStyles.groupInfoFooterBar}`}>
         <button
           type="button"
           className="ti-btn ti-btn-outline-primary !inline-flex items-center gap-2 !py-1.5 !px-3 !text-sm"
@@ -344,7 +562,6 @@ const Chat = () => {
     onNewMessage,
     onConversationUpdated,
     onConversationDeleted,
-    onIncomingCall,
     onCallEnded,
     onMessageDeleted,
     onMessageReacted,
@@ -367,7 +584,7 @@ const Chat = () => {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calls, setCalls] = useState<any[]>([]);
+  const [calls, setCalls] = useState<ChatCall[]>([]);
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatMode, setNewChatMode] = useState<"direct" | "group">("direct");
   const [userSearch, setUserSearch] = useState("");
@@ -378,7 +595,6 @@ const Chat = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [typingUser, setTypingUser] = useState<string | null>(null);
-  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [activeCallForConv, setActiveCallForConv] = useState<{
     id: string;
@@ -397,6 +613,10 @@ const Chat = () => {
   const [addMemberSearch, setAddMemberSearch] = useState("");
   const [addMemberResults, setAddMemberResults] = useState<{ id: string; name: string; email: string }[]>([]);
   const [addMemberSelected, setAddMemberSelected] = useState<Set<string>>(new Set());
+  const [dismissedCallNotificationPrompt, setDismissedCallNotificationPrompt] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return !!sessionStorage.getItem("chats-call-notification-prompt-dismissed");
+  });
 
   const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -420,7 +640,14 @@ const Chat = () => {
     try {
       setLoading(true);
       const res = await listConversations({ page: 1, limit: 50 });
-      setConversations(res.results || []);
+      const next = res.results || [];
+      setConversations(next);
+      setSelectedConversation((sel) => {
+        if (!sel) return sel;
+        const sid = getId(sel);
+        const found = next.find((c) => getId(c) === sid);
+        return found ?? sel;
+      });
     } catch (e: any) {
       setError(e?.response?.data?.message || "Failed to load conversations");
       setConversations([]);
@@ -515,6 +742,10 @@ const Chat = () => {
   }, [searchParams, conversations, selectedConversation]);
 
   const convId = getId(selectedConversation);
+
+  useEffect(() => {
+    if (!selectedConversation) setIsOpen(false);
+  }, [selectedConversation]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -630,16 +861,6 @@ const Chat = () => {
     });
     return unsub;
   }, [onMessagesRead, convId, myId]);
-
-  // Incoming call
-  useEffect(() => {
-    const unsub = onIncomingCall((data) => {
-      if (data.caller?.id !== myId) {
-        setIncomingCall(data);
-      }
-    });
-    return unsub;
-  }, [onIncomingCall, myId]);
 
   // Calls tab
   useEffect(() => {
@@ -830,8 +1051,9 @@ const Chat = () => {
     const cid = getId(selectedConversation);
     if (!cid) return;
     try {
-      const { roomName } = await initiateCall(cid, callType);
+      const { call, roomName } = await initiateCall(cid, callType);
       const params = new URLSearchParams({ from: "chat", conv: cid });
+      if (call?.id) params.set("callId", call.id);
       if (callType === "audio") params.set("video", "0");
       else params.set("video", "1");
       const url = `/meetings/room/${encodeURIComponent(roomName)}?${params}`;
@@ -863,24 +1085,6 @@ const Chat = () => {
     } finally {
       setDeletingChat(false);
     }
-  };
-
-  const acceptCall = () => {
-    if (!incomingCall) return;
-    const convId = incomingCall.conversationId;
-    const callType = incomingCall.callType || "video";
-    const params = new URLSearchParams();
-    if (convId) params.set("conv", convId);
-    params.set("from", "chat");
-    if (callType === "audio") params.set("video", "0");
-    else params.set("video", "1");
-    const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
-    window.open(url, "_blank", "noopener");
-    setIncomingCall(null);
-  };
-
-  const declineCall = () => {
-    setIncomingCall(null);
   };
 
   const handleSearchUsers = async () => {
@@ -973,6 +1177,9 @@ const Chat = () => {
     const initials = (name || "G").slice(0, 2).toUpperCase();
     return `https://ui-avatars.com/api/?name=${encodeURIComponent(initials)}&size=80`;
   };
+
+  const conversationAvatar = (c: Conversation) =>
+    c.type === "group" ? c.avatarUrl || avatarForGroup(c.name) : avatarFor(c);
 
   const isGroupAdmin = (c: Conversation) => {
     const p = (c.participants || []).find((x: any) => {
@@ -1178,46 +1385,91 @@ const Chat = () => {
     return <i className="ri-check-double-line text-[#8c9097] ms-1" title="Delivered" />;
   };
 
+  const showCallNotificationBanner =
+    typeof window !== "undefined" &&
+    "Notification" in window &&
+    Notification.permission === "default" &&
+    !dismissedCallNotificationPrompt;
+
+  const handleEnableCallNotifications = () => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    Notification.requestPermission();
+  };
+
+  const handleDismissCallNotificationPrompt = () => {
+    if (typeof window !== "undefined") sessionStorage.setItem("chats-call-notification-prompt-dismissed", "1");
+    setDismissedCallNotificationPrompt(true);
+  };
+
   return (
-    <div>
+    <div className={chatStyles.shell}>
       <Seo title="Chat" />
-      <div className="main-chart-wrapper p-2 gap-2 lg:flex">
+      {showCallNotificationBanner && (
+        <div className={chatStyles.notifBanner}>
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span className={chatStyles.notifIcon}>
+              <i className="ri-notification-3-line text-lg" />
+            </span>
+            <p className="mb-0 min-w-0 text-sm text-defaulttextcolor dark:text-defaulttextcolor/90">
+              Get notified of incoming calls when this tab is in the background.
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:justify-start">
+            <button
+              type="button"
+              className="ti-btn ti-btn-sm ti-btn-primary !inline-flex !h-8 !w-auto !min-w-0 items-center gap-1.5 !whitespace-nowrap !py-1.5 !px-3"
+              onClick={handleEnableCallNotifications}
+            >
+              <i className="ri-bell-line shrink-0 text-sm" />
+              <span>Enable</span>
+            </button>
+            <button
+              type="button"
+              className="ti-btn ti-btn-sm ti-btn-outline-secondary !inline-flex !h-8 !w-auto !min-w-0 items-center !whitespace-nowrap !py-1.5 !px-3"
+              onClick={handleDismissCallNotificationPrompt}
+            >
+              <span>Not now</span>
+            </button>
+          </div>
+        </div>
+      )}
+      <div className={`main-chart-wrapper ${chatStyles.grid} p-2 gap-2 lg:flex`}>
         {/* ── Left sidebar ── */}
-        <div className="chat-info border dark:border-defaultborder/10">
+        <div className={`chat-info ${chatStyles.rail} border-0 dark:border-0`}>
           <button
             type="button"
             aria-label="New chat or group"
             onClick={() => openNewChatModal(activeTab === "groups" ? "group" : "direct")}
-            className="ti-btn bg-secondary text-white !font-medium ti-btn-icon !rounded-full chat-add-icon"
+            className={chatStyles.railFab}
           >
             <i className="ri-add-line" />
           </button>
-          <div className="flex items-center justify-between w-full p-4 border-b dark:border-defaultborder/10">
-            <h5 className="font-semibold mb-0 text-[1.25rem] !text-defaulttextcolor dark:text-defaulttextcolor/70">
-              Messages
-            </h5>
+          <div className={chatStyles.railHeader}>
+            <h5 className={chatStyles.railTitle}>Messages</h5>
           </div>
-          <div className="chat-search p-4 border-b dark:border-defaultborder/10">
-            <div className="input-group">
+          <div className={chatStyles.railSearch}>
+            <div className={chatStyles.searchField}>
               <input
                 type="text"
-                className="form-control !bg-light border-0 !rounded-s-md"
-                placeholder="Search Chat"
+                className={`form-control ${chatStyles.searchInput}`}
+                placeholder="Search conversations…"
                 onChange={(e) => setUserSearch(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSearchUsers()}
               />
-              <button type="button" className="ti-btn ti-btn-light !rounded-s-none !mb-0" onClick={handleSearchUsers}>
-                <i className="ri-search-line text-[#8c9097] dark:text-white/50" />
+              <button type="button" className={chatStyles.searchBtn} onClick={handleSearchUsers} aria-label="Search">
+                <i className="ri-search-line text-lg" />
               </button>
             </div>
           </div>
-          <nav className="flex border-b border-defaultborder dark:border-defaultborder/10">
+          <nav className={chatStyles.tabRow} role="tablist" aria-label="Conversation filters">
             {(["recent", "groups", "calls"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-grow py-2 px-4 text-sm font-medium ${activeTab === tab ? "border-b-2 border-b-primary text-primary" : "text-defaulttextcolor"}`}
+                className={`${chatStyles.tab} ${activeTab === tab ? chatStyles.tabActive : ""}`}
               >
                 <i className={`me-1 ${tab === "recent" ? "ri-history-line" : tab === "groups" ? "ri-group-2-line" : "ri-phone-line"}`} />
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -1225,113 +1477,183 @@ const Chat = () => {
             ))}
           </nav>
 
-          <div className="tab-content overflow-y-scroll" style={{ maxHeight: "calc(100vh - 21rem)" }}>
+          <div className={`tab-content ${chatStyles.listScroll}`}>
             {activeTab === "recent" && (
-              <div className="tab-pane fade show active !border-0 chat-users-tab p-4">
+              <div className="tab-pane fade show active !border-0 chat-users-tab">
+                <div className={chatStyles.listPane}>
                 {loading ? (
-                  <p className="text-[#8c9097]">Loading...</p>
+                  <p className={chatStyles.emptyList}>Loading…</p>
                 ) : error ? (
-                  <p className="text-danger">{error}</p>
+                  <p className="text-danger px-1">{error}</p>
                 ) : recentConvs.length === 0 ? (
-                  <p className="text-[#8c9097] dark:text-white/50">No conversations yet. Start a new chat.</p>
+                  <p className={chatStyles.emptyList}>No conversations yet. Use + to start a chat.</p>
                 ) : (
                   <ul className="list-none mb-0">
                     {recentConvsByDate.map((g) => (
                       <React.Fragment key={g.label}>
-                        <li className="px-2 py-1.5 text-[0.7rem] font-medium text-[#8c9097] uppercase tracking-wide sticky top-0 bg-white dark:bg-bodybg z-10">
+                        <li data-chat-section className={chatStyles.dateChip}>
                           {g.label}
                         </li>
-                        {g.convs.map((c) => (
-                          <li
-                            key={getId(c) || ""}
-                            className={`py-3 px-2 rounded cursor-pointer ${getId(selectedConversation) === getId(c) ? "bg-primary/10" : ""}`}
-                            onClick={() => setSelectedConversation(c)}
-                          >
-                            <div className="flex items-start">
-                              <span className={`avatar avatar-md me-2 avatar-rounded ${isUserOnline(c) ? "online" : ""}`}>
-                                <img src={avatarFor(c)} alt="" className="rounded-full" />
-                              </span>
-                              <div className="flex-grow min-w-0">
-                                <p className="mb-0 font-semibold truncate">{displayName(c)}</p>
-                                <p className="text-[0.75rem] mb-0 text-[#8c9097] truncate">
-                                  {c.lastMessage?.content || "No messages"}
-                                </p>
+                        {g.convs.map((c) => {
+                          const convId = getId(c);
+                          const hasActiveCall = activeCallForConv && String(activeCallForConv.conversation) === String(convId);
+                          const active = getId(selectedConversation) === convId;
+                          return (
+                            <li
+                              key={convId || ""}
+                              className={`${chatStyles.convItem} ${active ? chatStyles.convItemActive : ""}`}
+                              onClick={() => setSelectedConversation(c)}
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className={`avatar avatar-md avatar-rounded flex-shrink-0 ${isUserOnline(c) ? "online" : ""}`}>
+                                  <img src={conversationAvatar(c)} alt="" className="rounded-full" />
+                                </span>
+                                <div className="flex-grow min-w-0">
+                                  <p className={`${chatStyles.convName} truncate`}>
+                                    {displayName(c)}
+                                    {hasActiveCall && (
+                                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-primary" title="Call in progress">
+                                        <i className="ri-phone-fill text-[0.65rem]" />
+                                        Live
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className={`${chatStyles.convPreview} truncate`}>
+                                    {c.lastMessage?.content || "No messages yet"}
+                                  </p>
+                                </div>
+                                {(c.unreadCount || 0) > 0 && (
+                                  <span className={chatStyles.unreadBadge}>{c.unreadCount}</span>
+                                )}
                               </div>
-                              {(c.unreadCount || 0) > 0 && (
-                                <span className="badge bg-primary rounded-full">{c.unreadCount}</span>
-                              )}
-                            </div>
-                          </li>
-                        ))}
+                            </li>
+                          );
+                        })}
                       </React.Fragment>
                     ))}
                   </ul>
                 )}
+                </div>
               </div>
             )}
             {activeTab === "groups" && (
-              <div className="tab-pane fade show active !border-0 p-4">
+              <div className="tab-pane fade show active !border-0 chat-groups-tab">
+                <div className={chatStyles.listPane}>
                 {groupConvs.length === 0 ? (
-                  <p className="text-[#8c9097]">No groups yet.</p>
+                  <p className={chatStyles.emptyList}>No groups yet. Create one with +</p>
                 ) : (
                   <ul className="list-none mb-0">
                     {groupConvs.map((c) => (
                       <li
                         key={getId(c) || ""}
-                        className="py-3 px-2 rounded cursor-pointer"
+                        className={`${chatStyles.convItem} ${getId(selectedConversation) === getId(c) ? chatStyles.convItemActive : ""}`}
                         onClick={() => setSelectedConversation(c)}
                       >
-                        <div className="flex items-center">
-                          <span className="avatar avatar-md me-2 avatar-rounded">
-                            <img src={avatarFor(c)} alt="" />
+                        <div className="flex items-center gap-2">
+                          <span className="avatar avatar-md avatar-rounded flex-shrink-0">
+                            <img src={conversationAvatar(c)} alt="" />
                           </span>
-                          <p className="mb-0 font-semibold">{displayName(c)}</p>
+                          <p className={`${chatStyles.convName} mb-0`}>{displayName(c)}</p>
                         </div>
                       </li>
                     ))}
                   </ul>
                 )}
+                </div>
               </div>
             )}
             {activeTab === "calls" && (
-              <div className="tab-pane fade show active !border-0 p-4">
+              <div className="tab-pane fade show active !border-0 chat-calls-tab">
+                <div className={chatStyles.listPane}>
                 {calls.length === 0 ? (
-                  <p className="text-[#8c9097]">No call history.</p>
+                  <p className={chatStyles.emptyList}>No call history yet.</p>
                 ) : (
-                  <ul className="list-none mb-0">
-                    {calls.map((call) => (
-                      <li key={call.id} className="py-3 flex items-center justify-between">
-                        <span className="avatar avatar-md me-2 avatar-rounded">
-                          <img src={DEFAULT_AVATAR} alt="" />
-                        </span>
-                        <div className="flex-grow">
-                          <p className="mb-0 font-semibold">{(call.caller as any)?.name || "Unknown"}</p>
-                          <p className="text-[0.75rem] text-[#8c9097]">
-                            <i className={`me-1 ${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"}`} />
-                            {call.callType === "video" ? "Video" : "Voice"} call
-                            {call.status && call.status !== "ongoing" && (
-                              <> &middot; {call.status === "completed" ? "Ended" : call.status}</>
-                            )}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
+                  <ul className="list-none mb-0" role="list">
+                    {calls.map((call) => {
+                      const peer = call.peer;
+                      const peerAvatarName = peer?.name || (call.caller as { name?: string })?.name || "Unknown";
+                      const title = callsTabHeadline(call);
+                      const isOutgoing = call.direction === "outgoing";
+                      const dirLabel = isOutgoing ? "Outgoing" : "Incoming";
+                      const typeLabel = call.callType === "video" ? "Video" : "Voice";
+                      const statusText = callLogStatusLabel(call.status);
+                      const timeText =
+                        call.createdAt &&
+                        formatDistanceToNow(new Date(call.createdAt), { addSuffix: true });
+                      const subtitleParts = [
+                        `${typeLabel} call`,
+                        statusText || undefined,
+                        timeText || undefined,
+                      ].filter(Boolean);
+                      const joined = callJoinedParticipantsLine(call, myId);
+                      const ariaLabel = `${title}. ${subtitleParts.join(". ")}${
+                        joined ? `. Participants: ${joined}` : ""
+                      }`;
+                      const avatarSrc = peer?.isGroup
+                        ? `https://ui-avatars.com/api/?name=${encodeURIComponent((peerAvatarName || "G").slice(0, 2).toUpperCase())}&size=80`
+                        : `https://ui-avatars.com/api/?name=${encodeURIComponent(peerAvatarName)}&size=80`;
+                      return (
+                        <li
+                          key={call.id}
+                          className={`${chatStyles.convItem} flex items-center justify-between gap-2`}
+                          role="listitem"
+                          aria-label={ariaLabel}
+                        >
+                          <span className="avatar avatar-md me-2 avatar-rounded shrink-0">
+                            <img src={avatarSrc} alt="" />
+                          </span>
+                          <div className="flex min-w-0 flex-1 items-start gap-2">
+                            <span className="text-[#8c9097] dark:text-[#9ca3af] shrink-0 pt-0.5" aria-hidden="true">
+                              <i
+                                className={`text-base ${isOutgoing ? "ri-arrow-right-up-line" : "ri-arrow-left-down-line"}`}
+                              />
+                            </span>
+                            <div className="min-w-0 flex-grow">
+                              <p className="mb-0 truncate font-semibold" title={title}>
+                                {title}
+                              </p>
+                              <p
+                                className={`mb-0 text-[0.75rem] ${
+                                  call.status === "missed"
+                                    ? "text-rose-600 dark:text-rose-400"
+                                    : "text-[#8c9097] dark:text-[#9ca3af]"
+                                }`}
+                              >
+                                <i
+                                  className={`me-1 ${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"}`}
+                                  aria-hidden="true"
+                                />
+                                <span className="me-1">{dirLabel}.</span>
+                                {subtitleParts.join(" · ")}
+                              </p>
+                              {joined && (
+                                <p className="mb-0 mt-0.5 truncate text-[0.6875rem] text-[#8c9097] dark:text-[#9ca3af]">
+                                  Joined: {joined}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
+                </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Main chat area ── */}
-        <div className="main-chat-area border dark:border-defaultborder/10 flex-1 flex flex-col">
+        {/* ── Main chat + details (slide panel on lg+; template .chat-user-details.open under 1400px) ── */}
+        <div className={chatStyles.mainWithDetails}>
+        <div className={`main-chat-area ${chatStyles.main} border-0 dark:border-0 flex-1 flex flex-col`}>
           {selectedConversation ? (
             <>
               {/* Rejoin bar (WhatsApp-style) */}
               {activeCallForConv && String(activeCallForConv.conversation) === String(convId) && (
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-primary/15 border-b border-primary/20 dark:border-primary/30">
+                <div className={chatStyles.rejoinBar}>
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className="flex items-center gap-2 text-primary font-medium">
+                    <span className="flex items-center gap-2 text-primary font-semibold text-sm">
                       <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} text-lg`} />
                       {activeCallForConv.participantCount && activeCallForConv.participantCount > 1
                         ? `${activeCallForConv.participantCount} in call`
@@ -1343,6 +1665,7 @@ const Chat = () => {
                     className="ti-btn ti-btn-sm ti-btn-primary !rounded-full shrink-0"
                     onClick={() => {
                       const params = new URLSearchParams({ from: "chat", conv: activeCallForConv.conversation });
+                      if (activeCallForConv.id) params.set("callId", activeCallForConv.id);
                       params.set("video", activeCallForConv.callType === "audio" ? "0" : "1");
                       const url = `/meetings/room/${encodeURIComponent(activeCallForConv.roomName)}?${params}`;
                       window.open(url, "_blank", "noopener");
@@ -1353,38 +1676,39 @@ const Chat = () => {
                   </button>
                 </div>
               )}
-              <div className="sm:flex items-center justify-between p-4 border-b dark:border-defaultborder/10">
-                <div className="flex items-center">
-                  <span className={`avatar avatar-lg me-4 avatar-rounded ${isUserOnline(selectedConversation) ? "online" : ""}`}>
-                    <img src={selectedConversation.type === "group" ? avatarForGroup(selectedConversation.name) : avatarFor(selectedConversation)} alt="" />
+              <div className={`${chatStyles.threadHeader} sm:flex-nowrap`}>
+                <div className="flex items-center min-w-0">
+                  <span className={`avatar avatar-lg me-3 sm:me-4 avatar-rounded flex-shrink-0 ${isUserOnline(selectedConversation) ? "online" : ""}`}>
+                    <img src={conversationAvatar(selectedConversation)} alt="" />
                   </span>
-                  <div>
-                    <p className="mb-0 font-semibold">
-                      {selectedConversation.type === "group" ? (
-                        <button
-                          type="button"
-                          className="hover:underline text-left"
-                          onClick={() => setIsOpen(true)}
-                        >
-                          {displayName(selectedConversation)}
-                        </button>
-                      ) : (
-                        displayName(selectedConversation)
-                      )}
+                  <div className="min-w-0">
+                    <p className={`${chatStyles.threadTitle} mb-0 truncate`}>
+                      <button
+                        type="button"
+                        className="hover:underline text-left truncate max-w-full"
+                        onClick={() => {
+                          if (!selectedConversation) return;
+                          setIsOpen((open) => !open);
+                        }}
+                        aria-expanded={!!selectedConversation && isOpen}
+                        aria-controls="chat-side-details-panel"
+                      >
+                        {displayName(selectedConversation)}
+                      </button>
                     </p>
-                    <p className="text-[0.75rem] text-[#8c9097]">
+                    <p className={`${chatStyles.threadMeta} ${typingUser ? chatStyles.threadMetaTyping : ""}`}>
                       {typingUser
-                        ? `${typingUser} is typing...`
+                        ? `${typingUser} is typing…`
                         : isUserOnline(selectedConversation)
-                          ? "online"
-                          : "offline"}
+                          ? "Online"
+                          : "Offline"}
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2 mt-2 sm:mt-0">
+                <div className={`${chatStyles.toolbar} mt-2 sm:mt-0`}>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-icon ti-btn-outline-primary !rounded-full"
+                    className={chatStyles.toolBtn}
                     title="Voice call"
                     onClick={() => handleCall("audio")}
                   >
@@ -1392,7 +1716,7 @@ const Chat = () => {
                   </button>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-icon ti-btn-outline-primary !rounded-full"
+                    className={chatStyles.toolBtn}
                     title="Video call"
                     onClick={() => handleCall("video")}
                   >
@@ -1400,15 +1724,7 @@ const Chat = () => {
                   </button>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full"
-                    title="Info"
-                    onClick={() => setIsOpen(!isOpen)}
-                  >
-                    <i className="ri-information-line" />
-                  </button>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-icon ti-btn-outline-danger !rounded-full"
+                    className={`${chatStyles.toolBtn} ${chatStyles.toolBtnDanger}`}
                     title="Delete chat"
                     disabled={deletingChat}
                     onClick={handleDeleteChat}
@@ -1418,20 +1734,21 @@ const Chat = () => {
                 </div>
               </div>
               {error && (
-                <div className="mx-4 mt-2 px-3 py-2 rounded-lg bg-danger/10 text-danger text-sm">
+                <div className={chatStyles.errorInline}>
                   {error}
                 </div>
               )}
               <PerfectScrollbar
+                className={chatStyles.transcript}
                 style={{ height: "calc(100vh - 18rem)" }}
                 containerRef={(el) => { chatContainerRef.current = el; }}
               >
-                <div className="chat-content p-4">
+                <div className={`chat-content ${chatStyles.transcriptInner}`}>
                   {hasMoreMessages && !loadingMessages && messages.length > 0 && (
-                    <div className="flex justify-center mb-4">
+                    <div className={chatStyles.loadOlder}>
                       <button
                         type="button"
-                        className="ti-btn ti-btn-sm ti-btn-outline-secondary"
+                        className="ti-btn ti-btn-sm ti-btn-outline-secondary !rounded-full"
                         onClick={fetchOlderMessages}
                         disabled={loadingOlder}
                       >
@@ -1447,35 +1764,65 @@ const Chat = () => {
                     </div>
                   )}
                   {loadingMessages ? (
-                    <p className="text-[#8c9097]">Loading messages...</p>
+                    <p className={chatStyles.emptyList}>Loading messages…</p>
                   ) : chatTimeline.length === 0 ? (
-                    <p className="text-[#8c9097] text-center py-8">No messages yet. Say hello!</p>
+                    <div className={chatStyles.emptyThread}>
+                      <span className={chatStyles.emptyThreadIcon} aria-hidden>
+                        <i className="ri-chat-smile-2-line" />
+                      </span>
+                      <h3>Start the thread</h3>
+                      <p>Send a message to kick things off. Replies and files show up here.</p>
+                    </div>
                   ) : (
                     <ul className="list-none">
                       {chatTimeline.map((item, idx) => {
                         if (item.type === "date") {
                           return (
-                            <li key={`date-${item.data}-${idx}`} className="flex justify-center my-4">
-                              <span className="px-4 py-1 rounded-full bg-light dark:bg-white/5 text-[#8c9097] text-xs font-medium">
-                                {item.data}
-                              </span>
+                            <li key={`date-${item.data}-${idx}`} className={chatStyles.timelineDate}>
+                              <span>{item.data}</span>
                             </li>
                           );
                         }
                         if (item.type === "call") {
                           const call = item.data as any;
-                          const callLabel = call.callType === "video" ? "Video call" : "Voice call";
+                          const hasEnriched = call.direction && call.peer;
+                          const callLabel = hasEnriched
+                            ? timelineCallPillText(call)
+                            : call.callType === "video"
+                              ? "Video call"
+                              : "Voice call";
                           const duration = call.duration ? formatCallDuration(call.duration) : null;
                           const callDate = call.endedAt || call.createdAt || call.startedAt;
+                          const isOutgoing = call.direction === "outgoing";
+                          const joinedThread = callJoinedParticipantsLine(call, myId);
                           return (
-                            <li key={`call-${call.id || call._id}-${idx}`} className="mb-4 flex justify-center">
-                              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-light dark:bg-white/5 text-[#8c9097] text-sm">
-                                <i className={`${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} text-base`} />
-                                <span>
-                                  {callLabel}
-                                  {duration && ` (${duration})`}
-                                  {callDate && ` · ${format(new Date(callDate), "h:mm a")}`}
-                                </span>
+                            <li key={`call-${call.id || call._id}-${idx}`} className={`${chatStyles.timelineDate} mb-4`}>
+                              <div
+                                className={`${chatStyles.callPill} ${joinedThread ? chatStyles.callPillWithJoined : ""}`}
+                              >
+                                <div className={chatStyles.callPillMainRow}>
+                                  {hasEnriched ? (
+                                    <i
+                                      className={`shrink-0 text-base ${isOutgoing ? "ri-arrow-right-up-line" : "ri-arrow-left-down-line"}`}
+                                      aria-hidden
+                                    />
+                                  ) : (
+                                    <i
+                                      className={`${call.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} shrink-0 text-base`}
+                                      aria-hidden
+                                    />
+                                  )}
+                                  <span className="min-w-0">
+                                    {callLabel}
+                                    {duration && ` (${duration})`}
+                                    {callDate && ` · ${format(new Date(callDate), "h:mm a")}`}
+                                  </span>
+                                </div>
+                                {joinedThread && (
+                                  <div className={`${chatStyles.callPillJoined} truncate`} title={`Joined: ${joinedThread}`}>
+                                    Joined: {joinedThread}
+                                  </div>
+                                )}
                               </div>
                             </li>
                           );
@@ -1487,17 +1834,18 @@ const Chat = () => {
                         return (
                           <li
                             key={m.id || (m as any)._id}
-                            className={`mb-4 flex ${isMe ? "justify-end" : "justify-start"} group`}
+                            data-message-row
+                            className={`${chatStyles.msgRow} group ${isMe ? chatStyles.msgRowMe : chatStyles.msgRowThem}`}
                           >
-                            <div className={`flex ${isMe ? "flex-row-reverse" : ""} max-w-[80%]`}>
+                            <div className={`${chatStyles.msgCluster} ${isMe ? chatStyles.msgClusterMe : ""}`}>
                               <span className="avatar avatar-md avatar-rounded flex-shrink-0">
                                 <img
                                   src={`https://ui-avatars.com/api/?name=${encodeURIComponent((m.sender as any)?.name || "U")}&size=40`}
                                   alt=""
                                 />
                               </span>
-                              <div className={`ms-3 me-0 ${isMe ? "text-end" : ""}`}>
-                                <span className={`text-[0.75rem] text-[#8c9097] flex items-center gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+                              <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
+                                <span className={`${chatStyles.msgMeta} ${isMe ? chatStyles.msgMetaMe : ""}`}>
                                   {isMe && !(m as any).deletedAt && (
                                     <>
                                       <button
@@ -1550,7 +1898,9 @@ const Chat = () => {
                                   {isMe && renderReadStatus(m)}
                                 </span>
                                 <div className="relative">
-                                  <div className="main-chat-msg bg-light dark:bg-white/5 rounded p-2 mt-1">
+                                  <div
+                                    className={`${chatStyles.bubble} mt-1 ${isMe ? chatStyles.bubbleSent : chatStyles.bubbleRecv}`}
+                                  >
                                     {renderMessageContent(m)}
                                   </div>
                                   {(m as any).reactions?.length > 0 && (
@@ -1627,19 +1977,19 @@ const Chat = () => {
                     </ul>
                   )}
                   {typingUser && (
-                    <div className="flex items-center gap-2 text-[#8c9097] text-sm py-2">
-                      <span className="flex gap-1">
-                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
-                        <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                    <div className={chatStyles.typingRow}>
+                      <span className="flex gap-1" aria-hidden>
+                        <span className={chatStyles.typingDot} />
+                        <span className={chatStyles.typingDot} />
+                        <span className={chatStyles.typingDot} />
                       </span>
-                      {typingUser} is typing...
+                      <span>{typingUser} is typing…</span>
                     </div>
                   )}
                 </div>
               </PerfectScrollbar>
               {replyingTo && (
-                <div className="px-4 py-2 border-t dark:border-defaultborder/10 flex items-center justify-between gap-2 bg-light/50 dark:bg-white/5">
+                <div className={chatStyles.replyStrip}>
                   <div className="min-w-0 flex-1">
                     <p className="text-[0.75rem] font-medium text-primary mb-0">Replying to {(replyingTo.sender as any)?.name}</p>
                     <p className="text-[0.75rem] text-[#8c9097] truncate mb-0">{getReplyPreviewText(replyingTo)}</p>
@@ -1654,7 +2004,7 @@ const Chat = () => {
                   </button>
                 </div>
               )}
-              <div className="chat-footer flex items-center gap-2 p-4 border-t dark:border-defaultborder/10">
+              <div className={`chat-footer ${chatStyles.composer}`}>
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -1665,7 +2015,7 @@ const Chat = () => {
                 />
                 <button
                   type="button"
-                  className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full flex-shrink-0"
+                  className={`${chatStyles.toolBtn} flex-shrink-0`}
                   title="Attach file"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading}
@@ -1689,7 +2039,7 @@ const Chat = () => {
                   ) : (
                     <button
                       type="button"
-                      className="ti-btn ti-btn-icon ti-btn-outline-secondary !rounded-full flex-shrink-0"
+                      className={`${chatStyles.toolBtn} flex-shrink-0`}
                       title="Record voice note"
                       onClick={startVoiceNote}
                       disabled={uploading}
@@ -1699,43 +2049,68 @@ const Chat = () => {
                   )
                 ) : null}
                 <input
-                  className="form-control flex-1 !rounded-md"
-                  placeholder="Type your message here..."
+                  className={`form-control flex-1 ${chatStyles.composerInput}`}
+                  placeholder="Message…"
                   value={messageInput}
                   onChange={(e) => {
                     setMessageInput(e.target.value);
                     handleTyping();
                   }}
                   onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  aria-label="Message text"
                 />
                 <button
                   type="button"
-                  className="ti-btn bg-primary text-white ti-btn-icon ti-btn-send"
+                  className={`ti-btn ti-btn-icon ti-btn-send ${chatStyles.sendBtn}`}
                   onClick={handleSend}
                   disabled={sending || !messageInput.trim()}
+                  title="Send"
+                  aria-label="Send message"
                 >
                   <i className="ri-send-plane-2-line" />
                 </button>
               </div>
             </>
           ) : (
-            <div className="flex items-center justify-center h-full text-[#8c9097]">
-              Select a conversation or start a new chat
+            <div className={chatStyles.emptySelect}>
+              <i className={`ri-chat-3-line ${chatStyles.emptySelectIcon}`} aria-hidden />
+              <p className="mb-0 text-sm font-medium text-defaulttextcolor dark:text-white/80">Select a conversation</p>
+              <p className="mb-0 mt-1 text-xs max-w-[14rem]">Pick someone from the list or tap + to start a new chat.</p>
             </div>
           )}
         </div>
 
         {/* ── Right details panel ── */}
-        <div className={`chat-user-details border dark:border-defaultborder/10 ${isOpen ? "open" : ""}`}>
+        <div
+          className={`${chatStyles.sidePanelShell} ${
+            isOpen && selectedConversation ? chatStyles.sidePanelShellOpen : chatStyles.sidePanelShellClosed
+          }`}
+          aria-hidden={!isOpen || !selectedConversation}
+        >
+        <div
+          id="chat-side-details-panel"
+          className={`chat-user-details ${chatStyles.sidePanel} border-0 dark:border-0 ${
+            isOpen && selectedConversation ? "open" : ""
+          }`}
+        >
           {selectedConversation && selectedConversation.type === "group" && (
             <GroupInfoPanel
               conversation={groupInfoData || selectedConversation}
               loading={groupInfoLoading}
               myId={myId || ""}
               onlineUsers={onlineUsers}
-              onRefresh={() => {
+              onRefresh={async () => {
                 const cid = getId(selectedConversation);
-                if (cid) getConversation(cid).then(setGroupInfoData).catch(() => {});
+                if (cid) {
+                  try {
+                    const fresh = await getConversation(cid);
+                    setGroupInfoData(fresh);
+                    setSelectedConversation((prev) => (prev && getId(prev) === cid ? fresh : prev));
+                  } catch {
+                    /* ignore */
+                  }
+                }
+                await fetchConversations();
               }}
               onClose={() => setIsOpen(false)}
               onLeave={() => {
@@ -1763,7 +2138,7 @@ const Chat = () => {
             />
           )}
           {selectedConversation && selectedConversation.type !== "group" && (
-            <div className="p-4">
+            <div className={chatStyles.sideCard}>
               <div className="text-center mb-4">
                 <span className={`avatar avatar-xxl avatar-rounded ${isUserOnline(selectedConversation) ? "online" : ""}`}>
                   <img src={avatarFor(selectedConversation)} alt="" />
@@ -1777,7 +2152,7 @@ const Chat = () => {
                   {isUserOnline(selectedConversation) ? "Online" : "Offline"}
                 </p>
               </div>
-              <div className="flex flex-wrap justify-center gap-3 mb-4">
+              <div className={chatStyles.panelActions}>
                 <button
                   type="button"
                   className="ti-btn ti-btn-outline-primary !inline-flex items-center justify-center gap-2 !py-1.5 !px-3 !text-sm !w-auto !min-w-0"
@@ -1798,39 +2173,35 @@ const Chat = () => {
             </div>
           )}
         </div>
+        </div>
+        </div>
       </div>
 
       {/* ── New chat / New group modal ── */}
       {showNewChat && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNewChat(false)}>
+        <div className={chatStyles.modalBackdrop} onClick={() => setShowNewChat(false)} role="presentation">
           <div
-            className="bg-white dark:bg-bodybg rounded-xl shadow-xl w-full max-w-md max-h-[90vh] overflow-hidden flex flex-col"
+            className={chatStyles.modalPanel}
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-labelledby="new-chat-title"
           >
-            <div className="p-5 border-b border-defaultborder dark:border-white/10">
-              <h5 className="text-lg font-semibold mb-4 text-defaulttextcolor dark:text-defaulttextcolor/90">
-                {newChatMode === "group" ? "New Group" : "New Chat"}
+            <div className={chatStyles.modalHead}>
+              <h5 id="new-chat-title" className={chatStyles.modalTitle}>
+                {newChatMode === "group" ? "New group" : "New chat"}
               </h5>
-              <div className="inline-flex p-0.5 rounded-lg bg-light dark:bg-white/5">
+              <div className={chatStyles.modeSwitch} role="group" aria-label="Chat type">
                 <button
                   type="button"
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    newChatMode === "direct"
-                      ? "bg-white dark:bg-white/10 text-primary shadow-sm"
-                      : "text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                  }`}
+                  className={`${chatStyles.modeBtn} ${newChatMode === "direct" ? chatStyles.modeBtnActive : ""}`}
                   onClick={() => setNewChatMode("direct")}
                 >
                   <i className="ri-chat-3-line me-1.5 align-middle" />
-                  Direct Chat
+                  Direct
                 </button>
                 <button
                   type="button"
-                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    newChatMode === "group"
-                      ? "bg-white dark:bg-white/10 text-primary shadow-sm"
-                      : "text-defaulttextcolor/70 hover:text-defaulttextcolor"
-                  }`}
+                  className={`${chatStyles.modeBtn} ${newChatMode === "group" ? chatStyles.modeBtnActive : ""}`}
                   onClick={() => setNewChatMode("group")}
                 >
                   <i className="ri-group-2-line me-1.5 align-middle" />
@@ -1838,7 +2209,7 @@ const Chat = () => {
                 </button>
               </div>
             </div>
-            <div className="p-5 overflow-y-auto flex-1">
+            <div className={chatStyles.modalBody}>
               {newChatMode === "group" && (
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-defaulttextcolor/80 mb-1.5">Group name</label>
@@ -1851,21 +2222,25 @@ const Chat = () => {
                 </div>
               )}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-defaulttextcolor/80 mb-1.5">Add participants</label>
-                <div className="flex gap-2">
+                <label className="block text-sm font-medium text-defaulttextcolor/80 mb-1.5" htmlFor="new-chat-user-search">
+                  Add participants
+                </label>
+                <div className={chatStyles.addSearchShell}>
                   <input
-                    className="form-control flex-1 rounded-lg"
-                    placeholder="Search users by name or email..."
+                    id="new-chat-user-search"
+                    className={chatStyles.addSearchInput}
+                    placeholder="Search by name or email…"
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleSearchUsers())}
                   />
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary rounded-lg shrink-0"
+                    className={chatStyles.addSearchSubmit}
                     onClick={handleSearchUsers}
+                    aria-label="Search users"
                   >
-                    <i className="ri-search-line" />
+                    <i className="ri-search-line text-lg leading-none" />
                   </button>
                 </div>
               </div>
@@ -1875,9 +2250,9 @@ const Chat = () => {
                     ? "Select at least one user. Click a user to toggle selection."
                     : "Click a user to start a chat."}
                 </p>
-                <ul className="list-none max-h-52 overflow-y-auto rounded-lg border border-defaultborder dark:border-white/10 divide-y divide-defaultborder dark:divide-white/10">
+                <ul className={chatStyles.userPickList}>
                   {searchResults.length === 0 ? (
-                    <li className="py-8 text-center text-defaulttextcolor/60 text-sm">
+                    <li className="py-8 text-center text-defaulttextcolor/60 text-sm px-3">
                       {userSearch.trim() ? "No users found. Try a different search." : "Search for users to add."}
                     </li>
                   ) : (
@@ -1887,10 +2262,8 @@ const Chat = () => {
                       return (
                         <li
                           key={uid}
-                          className={`py-3 px-3 cursor-pointer flex items-center gap-3 transition-colors ${
-                            newChatMode === "group" && isSelected
-                              ? "bg-primary/10 dark:bg-primary/20"
-                              : "hover:bg-light dark:hover:bg-white/5"
+                          className={`${chatStyles.userPickItem} ${
+                            newChatMode === "group" && isSelected ? chatStyles.userPickSelected : ""
                           }`}
                           onClick={() =>
                             newChatMode === "group" ? toggleUserForGroup(String(uid)) : handleStartChat(u)
@@ -1919,7 +2292,7 @@ const Chat = () => {
                 </ul>
               </div>
             </div>
-            <div className="p-5 border-t border-defaultborder dark:border-white/10 flex gap-3 justify-end">
+            <div className={chatStyles.modalFoot}>
               <button
                 type="button"
                 className="ti-btn ti-btn-outline-secondary rounded-lg"
@@ -1952,54 +2325,17 @@ const Chat = () => {
         </div>
       )}
 
-      {/* ── Incoming call modal ── */}
-      {incomingCall && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60]">
-          <div className="bg-white dark:bg-bodybg rounded-xl p-8 w-full max-w-sm text-center shadow-xl">
-            <div className="mb-4">
-              <span className="avatar avatar-xxl avatar-rounded mx-auto">
-                <img
-                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(incomingCall.caller?.name || "U")}&size=80`}
-                  alt=""
-                />
-              </span>
-            </div>
-            <h5 className="mb-1">{incomingCall.caller?.name || "Unknown"}</h5>
-            <p className="text-[#8c9097] mb-6">
-              Incoming {incomingCall.callType} call...
-            </p>
-            <div className="flex justify-center gap-4">
-              <button
-                type="button"
-                className="ti-btn ti-btn-icon ti-btn-danger !rounded-full !w-14 !h-14"
-                onClick={declineCall}
-                title="Decline"
-              >
-                <i className="ri-phone-fill text-xl rotate-[135deg]" />
-              </button>
-              <button
-                type="button"
-                className="ti-btn ti-btn-icon ti-btn-success !rounded-full !w-14 !h-14"
-                onClick={acceptCall}
-                title="Accept"
-              >
-                <i className={`text-xl ${incomingCall.callType === "video" ? "ri-vidicon-fill" : "ri-phone-fill"}`} />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* ── Image preview lightbox ── */}
       {imagePreview && (
         <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[70] cursor-pointer"
+          className={chatStyles.lightbox}
           onClick={() => setImagePreview(null)}
+          role="presentation"
         >
           <img
             src={imagePreview}
-            alt=""
-            className="max-w-[90vw] max-h-[90vh] rounded-lg shadow-2xl"
+            alt="Preview"
+            className={chatStyles.lightboxImg}
             onClick={(e) => e.stopPropagation()}
           />
         </div>

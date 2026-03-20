@@ -6,9 +6,11 @@ import { useRouter } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
+import type { RegisterUserPayload } from "@/shared/lib/api/users";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
+import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
@@ -38,6 +40,16 @@ export default function SettingsUsersAddPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [countryCode, setCountryCode] = useState("IN");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [shortBio, setShortBio] = useState("");
+  const [joiningDate, setJoiningDate] = useState("");
+  const [department, setDepartment] = useState("");
+  const [designation, setDesignation] = useState("");
+  const [degree, setDegree] = useState("");
+  const [salaryRange, setSalaryRange] = useState("");
+  const [accountStatus, setAccountStatus] = useState<"active" | "pending">("active");
   const [roles, setRoles] = useState<Role[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -60,6 +72,22 @@ export default function SettingsUsersAddPage() {
     if (isAgent) return roles.filter((r) => AGENT_ASSIGNABLE_ROLE_NAMES.includes(r.name ?? ""));
     return roles;
   }, [roles, isAdministrator, isAgent]);
+
+  const roleIdToName = useMemo(() => {
+    const m = new Map<string, string>();
+    roles.forEach((r) => m.set(r.id, (r.name ?? "").toLowerCase()));
+    return m;
+  }, [roles]);
+
+  const selectionIncludesCandidate = useMemo(
+    () => roleIds.some((id) => roleIdToName.get(id) === "candidate"),
+    [roleIds, roleIdToName]
+  );
+
+  const selectionIncludesStudent = useMemo(
+    () => roleIds.some((id) => roleIdToName.get(id) === "student"),
+    [roleIds, roleIdToName]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -113,13 +141,26 @@ export default function SettingsUsersAddPage() {
     try {
       const assignableIds = new Set(assignableRoles.map((r) => r.id));
       const roleIdsToSend = isAgent ? roleIds.filter((id) => assignableIds.has(id)) : roleIds;
-      await usersApi.registerUser({
+      const digits = phoneNumber.replace(/\D/g, "");
+      const payload: RegisterUserPayload = {
         name: trimmedName,
         email: trimmedEmail,
         password,
         isEmailVerified: true,
         ...(roleIdsToSend.length > 0 && { roleIds: roleIdsToSend }),
-      });
+        ...(isAdministrator && accountStatus === "pending" && { status: "pending" }),
+        ...(digits && { phoneNumber: digits, countryCode: countryCode || undefined }),
+        ...(selectionIncludesCandidate && {
+          ...(employeeId.trim() && { employeeId: employeeId.trim() }),
+          ...(shortBio.trim() && { shortBio: shortBio.trim() }),
+          ...(joiningDate.trim() && { joiningDate: joiningDate.trim() }),
+          ...(department.trim() && { department: department.trim() }),
+          ...(designation.trim() && { designation: designation.trim() }),
+          ...(degree.trim() && { degree: degree.trim() }),
+          ...(salaryRange.trim() && { salaryRange: salaryRange.trim() }),
+        }),
+      };
+      await usersApi.registerUser(payload);
       await Swal.fire({
         icon: "success",
         title: "User created",
@@ -215,6 +256,168 @@ export default function SettingsUsersAddPage() {
                         : "Optional. Search and select one or more roles."}
                     </p>
                   </div>
+
+                  {isAdministrator && (
+                    <div className="mb-6">
+                      <label htmlFor="user-account-status" className="form-label">
+                        Account status
+                      </label>
+                      <select
+                        id="user-account-status"
+                        className="form-control"
+                        value={accountStatus}
+                        onChange={(e) => setAccountStatus(e.target.value as "active" | "pending")}
+                      >
+                        <option value="active">Active — can sign in immediately</option>
+                        <option value="pending">Pending — must be activated before sign-in</option>
+                      </select>
+                      <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
+                        Use Pending for users who should not access the app until an administrator activates them.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="mb-6">
+                    <h6 className="text-[0.9375rem] font-semibold mb-3 text-defaulttextcolor dark:text-white/90">
+                      Contact &amp; profile
+                    </h6>
+                    <p className="text-[0.75rem] text-defaulttextcolor/70 mb-4">
+                      Optional. Phone and country are stored on the user account and used when creating linked Candidate or Student records.
+                      {selectionIncludesStudent && (
+                        <span className="block mt-1">
+                          With the <strong>Student</strong> role, a training profile is created automatically; joining date can be set from the candidate record if this user is also a candidate.
+                        </span>
+                      )}
+                    </p>
+                    <div className="sm:grid grid-cols-12 gap-4">
+                      <div className="col-span-12 sm:col-span-4">
+                        <label className="form-label">Country</label>
+                        <PhoneCountrySelect value={countryCode} onChange={setCountryCode} className="w-full" />
+                      </div>
+                      <div className="col-span-12 sm:col-span-8">
+                        <label htmlFor="user-phone" className="form-label">
+                          Phone
+                        </label>
+                        <input
+                          id="user-phone"
+                          type="tel"
+                          className="form-control"
+                          placeholder="Digits only"
+                          value={phoneNumber}
+                          onChange={(e) => setPhoneNumber(e.target.value)}
+                          autoComplete="tel"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {selectionIncludesCandidate && (
+                    <div className="mb-6 p-4 rounded-lg border border-defaultborder dark:border-white/10 bg-defaultbackground/40 dark:bg-white/[0.02]">
+                      <h6 className="text-[0.9375rem] font-semibold mb-1 text-defaulttextcolor dark:text-white/90">
+                        Candidate (ATS) profile
+                      </h6>
+                      <p className="text-[0.75rem] text-defaulttextcolor/70 mb-4">
+                        These fields are saved to the candidate profile created for this user. Leave Employee ID blank to auto-assign (e.g. DBS…).
+                      </p>
+                      <div className="space-y-4">
+                        <div>
+                          <label htmlFor="user-employee-id" className="form-label">
+                            Employee ID
+                          </label>
+                          <input
+                            id="user-employee-id"
+                            type="text"
+                            className="form-control"
+                            placeholder="Optional — auto-assigned if empty"
+                            value={employeeId}
+                            onChange={(e) => setEmployeeId(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="user-joining-date" className="form-label">
+                            Joining date
+                          </label>
+                          <input
+                            id="user-joining-date"
+                            type="date"
+                            className="form-control"
+                            value={joiningDate}
+                            onChange={(e) => setJoiningDate(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="user-short-bio" className="form-label">
+                            Short bio
+                          </label>
+                          <textarea
+                            id="user-short-bio"
+                            className="form-control"
+                            rows={3}
+                            placeholder="Brief professional summary (optional)"
+                            value={shortBio}
+                            onChange={(e) => setShortBio(e.target.value)}
+                          />
+                        </div>
+                        <div className="sm:grid grid-cols-12 gap-4">
+                          <div className="col-span-12 sm:col-span-6">
+                            <label htmlFor="user-department" className="form-label">
+                              Department
+                            </label>
+                            <input
+                              id="user-department"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. Engineering"
+                              value={department}
+                              onChange={(e) => setDepartment(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-6">
+                            <label htmlFor="user-designation" className="form-label">
+                              Designation / title
+                            </label>
+                            <input
+                              id="user-designation"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. Software Engineer"
+                              value={designation}
+                              onChange={(e) => setDesignation(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div className="sm:grid grid-cols-12 gap-4">
+                          <div className="col-span-12 sm:col-span-6">
+                            <label htmlFor="user-degree" className="form-label">
+                              Highest degree
+                            </label>
+                            <input
+                              id="user-degree"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. B.Tech Computer Science"
+                              value={degree}
+                              onChange={(e) => setDegree(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-6">
+                            <label htmlFor="user-salary-range" className="form-label">
+                              Salary range
+                            </label>
+                            <input
+                              id="user-salary-range"
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. 8–12 LPA (free text)"
+                              value={salaryRange}
+                              onChange={(e) => setSalaryRange(e.target.value)}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="mb-6">
                     <label htmlFor="user-password" className="form-label">
                       Password

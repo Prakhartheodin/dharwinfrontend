@@ -10,6 +10,7 @@ import Link from 'next/link'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
   listCandidates,
+  getCandidateFilterAgents,
   createCandidate as createCandidateApi,
   mapCandidateToDisplay,
   getCandidate,
@@ -36,6 +37,7 @@ import {
   verifyDocument,
   getDocumentStatus,
   type CandidateDocument,
+  type AgentOption,
 } from '@/shared/lib/api/candidates'
 import { listUsers } from '@/shared/lib/api/users'
 import { getAllShifts } from '@/shared/lib/api/shifts'
@@ -45,9 +47,31 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
+import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
+import { canEditCandidateJoiningDate, canEditCandidateResignDate } from '@/shared/lib/candidate-permissions'
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
+
+/** Resigned = resign date set and on or before today (matches API “employmentStatus: resigned”). */
+function isCandidateResigned(candidate: CandidateDisplay): boolean {
+  const rd = candidate._raw?.resignDate
+  if (rd == null || rd === "") return false
+  const d = new Date(rd as string)
+  if (Number.isNaN(d.getTime())) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime() <= today.getTime()
+}
+
+function resignDateLabel(candidate: CandidateDisplay): string | null {
+  const rd = candidate._raw?.resignDate
+  if (rd == null || rd === "") return null
+  const d = new Date(rd as string)
+  if (Number.isNaN(d.getTime())) return null
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
 
 /** Initials from name (up to 2 chars), same logic as my profile. */
 function getInitials(name: string | undefined | null): string {
@@ -152,11 +176,11 @@ function PersonalInfoDateField({
                 />
               </div>
             </div>
-            <div className="px-6 py-4 flex items-center justify-end gap-2 border-t border-defaultborder dark:border-white/10 bg-defaultbackground/50 dark:bg-white/[0.02]">
+            <div className="px-6 py-4 flex flex-wrap items-center justify-end gap-3 border-t border-defaultborder dark:border-white/10 bg-defaultbackground/50 dark:bg-white/[0.02]">
               {allowClear && (local || value) && (
                 <button
                   type="button"
-                  className="ti-btn ti-btn-outline-secondary ti-btn-sm !rounded-lg"
+                  className="inline-flex items-center justify-center min-h-[2.5rem] px-4 py-2 text-sm font-medium rounded-lg border border-defaultborder dark:border-white/20 bg-white dark:bg-bodybg text-defaulttextcolor dark:text-white/90 hover:bg-defaultbackground dark:hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bodybg disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0"
                   disabled={saving}
                   onClick={() => {
                     setLocal('')
@@ -170,7 +194,7 @@ function PersonalInfoDateField({
               )}
               <button
                 type="button"
-                className="ti-btn ti-btn-primary !rounded-lg !font-medium shadow-sm"
+                className="inline-flex items-center justify-center min-h-[2.5rem] min-w-[5.75rem] px-5 py-2 text-sm font-semibold rounded-lg bg-primary text-white hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bodybg shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0"
                 disabled={saving || !canSave}
                 onClick={handleSave}
               >
@@ -211,6 +235,10 @@ interface FilterState {
   name: string[]
   email: string
   employeeId: string
+  /** Assigned agent user ids (from checklist) */
+  agentIds: string[]
+  /** 'current' | 'resigned' | 'all' - default current */
+  employmentStatus: 'current' | 'resigned' | 'all'
 }
 
 // Note type for candidate notes
@@ -225,7 +253,15 @@ interface CandidateNote {
 
 const Candidates = () => {
   const router = useRouter()
-  const { isAdministrator } = useAuth()
+  const { isAdministrator, permissions } = useAuth()
+  const canEditJoiningDate = useMemo(
+    () => canEditCandidateJoiningDate(permissions ?? [], isAdministrator),
+    [permissions, isAdministrator]
+  )
+  const canEditResignDate = useMemo(
+    () => canEditCandidateResignDate(permissions ?? [], isAdministrator),
+    [permissions, isAdministrator]
+  )
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
@@ -251,16 +287,22 @@ const Candidates = () => {
     name: [],
     email: '',
     employeeId: '',
+    agentIds: [],
+    employmentStatus: 'current',
   })
 
   // Search state for name filter dropdown
   const [searchName, setSearchName] = useState('')
+  const [searchAgent, setSearchAgent] = useState('')
 
   // Filter dropdown options: all names from all candidates (not limited by pagination)
   const [filterOptions, setFilterOptions] = useState<{ names: string[] }>({
     names: [],
   })
   const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
+
+  const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
+  const [agentsLoading, setAgentsLoading] = useState(false)
 
   // Debounce search input so API is called after user stops typing
   const [debouncedSearchName, setDebouncedSearchName] = useState('')
@@ -291,6 +333,11 @@ const Candidates = () => {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionSuccess, setActionSuccess] = useState<string | null>(null)
   const [moreMenuState, setMoreMenuState] = useState<{ candidate: CandidateDisplay; top: number; left: number } | null>(null)
+  const [attendanceOverlayCandidate, setAttendanceOverlayCandidate] = useState<CandidateDisplay | null>(null)
+
+  const openAttendanceOverlay = useCallback((c: CandidateDisplay) => {
+    setAttendanceOverlayCandidate(c)
+  }, [])
 
   // Experience range from data (for slider min/max)
   const fetchParams = useMemo(() => {
@@ -302,6 +349,8 @@ const Candidates = () => {
     else if (filters.name?.length) params.fullName = filters.name[0]
     if (filters.email?.trim()) params.email = filters.email.trim()
     if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
+    if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
+    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
     return params
   }, [filters, pageSize, debouncedSearchName])
 
@@ -329,10 +378,12 @@ const Candidates = () => {
     refreshCandidates(false)
   }, [apiPage, fetchParams])
 
-  // Fetch all unique names for filter dropdown (not limited by page)
+  // Fetch all unique names for filter dropdown (not limited by page); respect employmentStatus
   useEffect(() => {
     setFilterOptionsLoading(true)
-    listCandidates({ limit: 5000, sortBy: 'fullName:asc' })
+    const params: Record<string, unknown> = { limit: 5000, sortBy: 'fullName:asc' }
+    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
+    listCandidates(params)
       .then((res) => {
         const results = (res.results ?? []).map(mapCandidateToDisplay)
         const names = [...new Set(results.map((c) => c.name).filter(Boolean))].sort()
@@ -340,6 +391,14 @@ const Candidates = () => {
       })
       .catch(() => setFilterOptions({ names: [] }))
       .finally(() => setFilterOptionsLoading(false))
+  }, [filters.employmentStatus])
+
+  useEffect(() => {
+    setAgentsLoading(true)
+    getCandidateFilterAgents()
+      .then((d) => setAgentOptions(d.agents ?? []))
+      .catch(() => setAgentOptions([]))
+      .finally(() => setAgentsLoading(false))
   }, [])
 
   const prevFiltersRef = React.useRef(filters)
@@ -876,7 +935,8 @@ const Candidates = () => {
 
   const openJoiningDateModal = (candidate: CandidateDisplay) => {
     setJoiningDateCandidate(candidate)
-    setJoiningDateValue('')
+    const j = (candidate as CandidateDisplay)._raw?.joiningDate
+    setJoiningDateValue(j ? new Date(j as string).toISOString().slice(0, 10) : '')
     setActionError(null)
     setTimeout(() => {
       ;(window as any).HSOverlay?.open(document.querySelector('#joining-date-modal'))
@@ -903,7 +963,8 @@ const Candidates = () => {
 
   const openResignDateModal = (candidate: CandidateDisplay) => {
     setResignDateCandidate(candidate)
-    setResignDateValue('')
+    const r = candidate._raw?.resignDate
+    setResignDateValue(r ? new Date(r as string).toISOString().slice(0, 10) : '')
     setActionError(null)
     setTimeout(() => {
       ;(window as any).HSOverlay?.open(document.querySelector('#resign-date-modal'))
@@ -1055,20 +1116,40 @@ const Candidates = () => {
         Header: 'Candidate Info',
         accessor: 'candidateInfo',
         Cell: ({ row }: any) => {
-          const candidate = row.original
+          const candidate = row.original as CandidateDisplay
+          const resigned = isCandidateResigned(candidate)
           return (
             <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
+              <div
+                className={`flex-shrink-0 rounded-full ${resigned ? "ring-2 ring-red-500/60 shadow-sm" : ""}`}
+              >
                 <CandidateAvatar candidate={candidate} className="w-10 h-10 rounded-full" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <div 
-                    className="font-semibold text-gray-800 dark:text-white truncate cursor-pointer hover:text-primary"
+                    className={`font-semibold truncate cursor-pointer hover:text-primary ${
+                      resigned
+                        ? "text-red-950 dark:text-red-100"
+                        : "text-gray-800 dark:text-white"
+                    }`}
                     onClick={() => openCandidatePreview(candidate)}
                   >
                     {candidate.name}
                   </div>
+                  {resigned && (
+                    <span
+                      className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white shadow-sm"
+                      title={
+                        resignDateLabel(candidate)
+                          ? `Resigned · ${resignDateLabel(candidate)}`
+                          : "Resigned"
+                      }
+                    >
+                      <i className="ri-logout-box-r-line text-[10px]" aria-hidden />
+                      Resigned
+                    </span>
+                  )}
                   {((candidate.isProfileCompleted ?? candidate._raw?.isProfileCompleted ?? 0) < 100) && (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded" title="Profile completion">
                       <i className="ri-pie-chart-line text-[10px]"></i>
@@ -1109,7 +1190,23 @@ const Candidates = () => {
             ? new Date(joiningDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             : '—'
           return (
-            <div className="text-sm text-gray-800 dark:text-white whitespace-nowrap">
+            <div
+              className={`text-sm text-gray-800 dark:text-white whitespace-nowrap ${canEditJoiningDate ? 'cursor-pointer hover:text-primary' : ''}`}
+              onClick={canEditJoiningDate ? () => openJoiningDateModal(candidate) : undefined}
+              onKeyDown={
+                canEditJoiningDate
+                  ? (e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        openJoiningDateModal(candidate)
+                      }
+                    }
+                  : undefined
+              }
+              role={canEditJoiningDate ? 'button' : undefined}
+              tabIndex={canEditJoiningDate ? 0 : undefined}
+              title={canEditJoiningDate ? 'Click to edit joining date' : undefined}
+            >
               <span className="inline-flex items-center gap-1.5">
                 <i className="ri-calendar-check-line text-gray-500 dark:text-gray-400" />
                 {displayText}
@@ -1161,12 +1258,20 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share Candidate</span>
                 </button>
               </div>
-              {/* <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => { setActionSuccess('Attendance is not configured for candidates in this environment'); setTimeout(() => setActionSuccess(null), 3000) }} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white" title="View Attendance">
-                  <i className="ri-calendar-line"></i>
-                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Attendance</span>
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  onClick={() => openAttendanceOverlay(c)}
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-purple-500/10 text-purple-500 hover:bg-purple-500 hover:text-white"
+                  title="Attendance calendar"
+                  aria-label="View attendance calendar"
+                >
+                  <i className="ri-calendar-check-line"></i>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">
+                    Attendance
+                  </span>
                 </button>
-              </div> */}
+              </div>
               {c.isEmailVerified === false && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button type="button" onClick={() => handleResendVerification(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white" title="Resend Email Verification">
@@ -1230,7 +1335,7 @@ const Candidates = () => {
         },
       },
     ],
-    [selectedRows, moreMenuState, deletingCandidateId]
+    [selectedRows, moreMenuState, deletingCandidateId, openAttendanceOverlay, canEditJoiningDate]
   )
 
   // Server-side filtering: API returns filtered results, no client-side filter
@@ -1247,7 +1352,15 @@ const Candidates = () => {
     )
   }, [allNames, searchName])
 
-  const handleMultiSelectChange = (key: 'name', value: string) => {
+  const filteredAgents = useMemo(() => {
+    if (!searchAgent.trim()) return agentOptions
+    const q = searchAgent.trim().toLowerCase()
+    return agentOptions.filter(
+      (a) => a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)
+    )
+  }, [agentOptions, searchAgent])
+
+  const handleMultiSelectChange = (key: 'name' | 'agentIds', value: string) => {
     setFilters(prev => {
       const currentArray = prev[key]
       const newArray = currentArray.includes(value)
@@ -1257,7 +1370,7 @@ const Candidates = () => {
     })
   }
 
-  const handleRemoveFilter = (key: 'name', value: string) => {
+  const handleRemoveFilter = (key: 'name' | 'agentIds', value: string) => {
     setFilters(prev => ({
       ...prev,
       [key]: prev[key].filter(item => item !== value)
@@ -1269,21 +1382,60 @@ const Candidates = () => {
       name: [],
       email: '',
       employeeId: '',
+      agentIds: [],
+      employmentStatus: 'current',
     })
     setSearchName('')
+    setSearchAgent('')
   }
+
+  /** Preline only binds `data-hs-overlay` toggles that exist during `autoInit`; open explicitly so Search always works. */
+  const openCandidatesFilterPanel = useCallback(() => {
+    const el = document.querySelector('#candidates-filter-panel')
+    if (!el) return
+    const run = () => {
+      try {
+        ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
+      } catch {
+        /* ignore */
+      }
+      requestAnimationFrame(() => {
+        ;(window as unknown as { HSOverlay?: { open: (n: Element) => void } }).HSOverlay?.open(el)
+      })
+    }
+    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
+      run()
+      return
+    }
+    void import('preline/preline').then(run)
+  }, [])
 
   const hasActiveFilters =
     filters.name.length > 0 ||
     filters.email !== '' ||
     filters.employeeId !== '' ||
+    filters.agentIds.length > 0 ||
+    filters.employmentStatus !== 'current' ||
     debouncedSearchName.trim() !== ''
 
   const activeFilterCount =
     filters.name.length +
     (filters.email !== '' ? 1 : 0) +
     (filters.employeeId !== '' ? 1 : 0) +
+    filters.agentIds.length +
+    (filters.employmentStatus !== 'current' ? 1 : 0) +
     (debouncedSearchName.trim() ? 1 : 0)
+
+  const employmentScopeLabel = useMemo(() => {
+    switch (filters.employmentStatus) {
+      case 'resigned':
+        return 'Former employees'
+      case 'all':
+        return 'All employment statuses'
+      default:
+        return 'Active employees'
+    }
+  }, [filters.employmentStatus])
 
   const tableInstance: any = useTable(
     {
@@ -1369,39 +1521,100 @@ const Candidates = () => {
   return (
     <Fragment>
       <Seo title="Candidates" />
-      <div className="container-fluid pt-6">
+      <div className="container-fluid pt-6 pb-8">
       {candidatesLoading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+        <div
+          className="mb-6 rounded-2xl border border-defaultborder/70 bg-white/70 p-8 shadow-sm ring-1 ring-black/[0.03] dark:bg-bodybg/80 dark:ring-white/10"
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="mx-auto max-w-2xl space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-primary/15" />
+              <div className="flex-1 space-y-2">
+                <div className="h-5 w-40 animate-pulse rounded-md bg-gray-200/90 dark:bg-white/10" />
+                <div className="h-3 w-56 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
+              </div>
+            </div>
+            <div className="space-y-2.5">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="h-11 animate-pulse rounded-lg bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 dark:from-white/[0.04] dark:via-white/[0.07] dark:to-white/[0.04]" />
+              ))}
+            </div>
+            <p className="text-center text-xs font-medium text-textmuted dark:text-white/45">Loading candidates…</p>
+          </div>
         </div>
       )}
       {!candidatesLoading && candidatesError && (
-        <div className="p-4 rounded-lg bg-danger/10 text-danger mb-4">
-          {candidatesError}
+        <div
+          className="mb-6 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger/[0.07] p-4 text-danger shadow-sm"
+          role="alert"
+        >
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-danger/15">
+            <i className="ri-error-warning-line text-lg" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1 text-sm leading-relaxed">{candidatesError}</div>
         </div>
       )}
       {actionError && (
-        <div className="p-4 rounded-lg bg-danger/10 text-danger mb-4 flex justify-between items-center">
-          <span>{actionError}</span>
-          <button type="button" onClick={() => setActionError(null)} className="ti-btn ti-btn-sm ti-btn-ghost">×</button>
+        <div
+          className="mb-6 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger/[0.07] p-4 text-danger shadow-sm"
+          role="alert"
+        >
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-danger/15">
+            <i className="ri-alert-line text-lg" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1 text-sm leading-relaxed">{actionError}</div>
+          <button
+            type="button"
+            onClick={() => setActionError(null)}
+            className="ti-btn ti-btn-sm ti-btn-ghost shrink-0 !px-2"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
       {actionSuccess && (
-        <div className="p-4 rounded-lg bg-success/10 text-success mb-4">
-          {actionSuccess}
+        <div
+          className="mb-6 flex items-start gap-3 rounded-2xl border border-success/25 bg-success/[0.08] p-4 text-success shadow-sm"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-success/15">
+            <i className="ri-checkbox-circle-line text-lg" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1 text-sm font-medium leading-relaxed">{actionSuccess}</div>
         </div>
       )}
       <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
-            <div className="box-header flex items-center justify-between flex-wrap gap-4">
-              <div className="box-title">
-                Candidates
-                <span className="badge bg-primary/10 text-primary rounded-full ms-1 text-[0.75rem] align-middle">
-                  {filteredData.length}
+          <div className="box custom-box flex h-full flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
+            <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
+                <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
+                  <i className="ri-team-line text-xl" aria-hidden />
                 </span>
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="box-title !mb-0 text-xl font-semibold tracking-tight text-defaulttextcolor dark:text-white sm:text-2xl">
+                      Candidates
+                    </h1>
+                    <span
+                      className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
+                      title="Total matching your filters"
+                    >
+                      {totalResults} total
+                    </span>
+                  </div>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
+                    {employmentScopeLabel}
+                    {hasActiveFilters ? ' · filters on' : ''}
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="relative z-20 flex flex-wrap items-center gap-2 overflow-visible sm:justify-end">
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
@@ -1416,7 +1629,7 @@ const Candidates = () => {
                     </option>
                   ))}
                 </select>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
                   <button
                     type="button"
                     className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
@@ -1499,7 +1712,7 @@ const Candidates = () => {
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add Candidate
                 </Link>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
                   <button
                     type="button"
                     className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
@@ -1542,7 +1755,7 @@ const Candidates = () => {
                 <button
                   type="button"
                   className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#candidates-filter-panel"
+                  onClick={openCandidatesFilterPanel}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
                   {hasActiveFilters && (
@@ -1564,8 +1777,13 @@ const Candidates = () => {
                 )}
                 <button
                   type="button"
-                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] disabled:opacity-50"
                   disabled={selectedRows.size === 0 || bulkDeleteSubmitting}
+                  title={
+                    selectedRows.size === 0 && !bulkDeleteSubmitting
+                      ? 'Select one or more rows in the table, then click Delete'
+                      : 'Delete selected candidates'
+                  }
                   onClick={handleBulkDelete}
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>{bulkDeleteSubmitting ? 'Deleting...' : 'Delete'}
@@ -1573,11 +1791,32 @@ const Candidates = () => {
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600" style={{ tableLayout: 'fixed' }}>
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:px-5">
+                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
+                  <i className="ri-checkbox-blank-circle-fill text-[0.5rem] text-emerald-500" aria-hidden />
+                  Active row
+                </span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-red-500/[0.06] px-2.5 py-1 text-red-950 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-100/95">
+                  <i className="ri-checkbox-blank-circle-fill text-[0.5rem] text-red-500" aria-hidden />
+                  Resigned (exit in the past)
+                </span>
+              </div>
+              <div
+                className="table-responsive flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
+                style={{ minHeight: 0 }}
+              >
+                <table
+                  {...getTableProps()}
+                  className="table min-w-full table-fixed border-separate border-spacing-0 whitespace-nowrap border-0 text-sm"
+                  style={{ tableLayout: 'fixed' }}
+                >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                      <tr
+                        {...headerGroup.getHeaderGroupProps()}
+                        className="border-b border-defaultborder/70 bg-primary/[0.05] dark:border-white/10 dark:bg-primary/10"
+                        key={`header-group-${i}`}
+                      >
                         {headerGroup.headers.map((column: any, i: number) => {
                           const headerProps = column.getHeaderProps(column.getSortByToggleProps());
                           const isCheckboxCol = column.id === 'checkbox';
@@ -1585,7 +1824,7 @@ const Candidates = () => {
                           <th
                             {...headerProps}
                             scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
+                            className="sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]"
                             key={column.id || `col-${i}`}
                             style={{ 
                               ...headerProps.style,
@@ -1631,8 +1870,25 @@ const Candidates = () => {
                   <tbody {...getTableBodyProps()}>
                     {page.map((row: any, i: number) => {
                       prepareRow(row)
+                      const rowCandidate = row.original as CandidateDisplay
+                      const resigned = isCandidateResigned(rowCandidate)
+                      const rdLabel = resignDateLabel(rowCandidate)
                       return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
+                        <tr
+                          {...row.getRowProps()}
+                          className={
+                            "border-b border-gray-300 dark:border-gray-600 transition-colors " +
+                            (resigned
+                              ? "!bg-red-50 dark:!bg-red-950/35 !bg-gradient-to-r from-red-100/95 via-red-50/90 to-red-50/70 dark:from-red-950/50 dark:via-red-950/35 dark:to-red-950/25 border-l-[5px] !border-l-red-600 hover:!bg-red-100/95 dark:hover:!bg-red-950/45"
+                              : "border-l-[4px] border-l-emerald-500/35 dark:border-l-emerald-500/30 odd:!bg-gray-50/80 dark:odd:!bg-white/[0.03] hover:!bg-emerald-50/40 dark:hover:!bg-emerald-950/15")
+                          }
+                          title={
+                            resigned
+                              ? `Resigned${rdLabel ? ` · ${rdLabel}` : ""}`
+                              : "Active candidate"
+                          }
+                          key={row.id || `row-${i}`}
+                        >
                           {row.cells.map((cell: any, i: number) => {
                             const isCheckboxCol = cell.column.id === 'checkbox';
                             const cellProps = cell.getCellProps();
@@ -1652,15 +1908,48 @@ const Candidates = () => {
                         </tr>
                       )
                     })}
+                    {page.length === 0 && (
+                      <tr>
+                        <td colSpan={headerGroups[0]?.headers?.length ?? 4} className="!border-0 !p-0 align-top">
+                          <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+                            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                              <i className="ri-inbox-archive-line text-2xl" aria-hidden />
+                            </span>
+                            <div className="max-w-md space-y-1">
+                              <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No candidates on this page</p>
+                              <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
+                                Try changing employment status, clearing name filters, or widening your search in the panel.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              className="ti-btn ti-btn-primary !rounded-xl !px-4 !py-2 !text-sm font-medium shadow-sm"
+                              onClick={openCandidatesFilterPanel}
+                            >
+                              <i className="ri-filter-3-line me-1.5 align-middle" />
+                              Open filters
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
-            <div className="box-footer !border-t-0">
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
-                  Showing {totalResults === 0 ? 0 : (apiPage - 1) * pageSize + 1} to {Math.min(apiPage * pageSize, totalResults)} of {totalResults} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
+            <div className="box-footer border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="text-sm text-textmuted dark:text-white/55">
+                  Showing{' '}
+                  <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
+                    {totalResults === 0 ? 0 : (apiPage - 1) * pageSize + 1}
+                  </span>
+                  {'–'}
+                  <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
+                    {Math.min(apiPage * pageSize, totalResults)}
+                  </span>
+                  {' '}
+                  of <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">{totalResults}</span> entries
                 </div>
                 <div className="ms-auto">
                   <nav aria-label="Page navigation" className="pagination-style-4">
@@ -1779,6 +2068,11 @@ const Candidates = () => {
         filteredNames={filteredNames}
         searchName={searchName}
         setSearchName={setSearchName}
+        agentOptions={agentOptions}
+        agentsLoading={agentsLoading}
+        filteredAgents={filteredAgents}
+        searchAgent={searchAgent}
+        setSearchAgent={setSearchAgent}
         handleMultiSelectChange={handleMultiSelectChange}
         handleRemoveFilter={handleRemoveFilter}
         handleResetFilters={handleResetFilters}
@@ -1838,37 +2132,36 @@ const Candidates = () => {
                         {previewCandidate.isProfileCompleted ?? previewCandidate._raw?.isProfileCompleted ?? 0}% complete
                       </span>
                     )}
-                    {isAdministrator ? (
-                      <>
-                        <PersonalInfoDateField
-                          label="Joining Date"
-                          value={previewCandidate._raw?.joiningDate}
-                          onSave={handlePersonalInfoJoiningDateSave}
-                          saving={personalInfoDateSaving === 'joining'}
-                          badgeClassName="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
-                          icon="ri-calendar-check-line"
-                        />
-                        <PersonalInfoDateField
-                          label="Resign Date"
-                          value={previewCandidate._raw?.resignDate}
-                          onSave={handlePersonalInfoResignDateSave}
-                          saving={personalInfoDateSaving === 'resign'}
-                          allowClear
-                          badgeClassName="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
-                          icon="ri-calendar-close-line"
-                        />
-                      </>
+                    {canEditJoiningDate ? (
+                      <PersonalInfoDateField
+                        label="Joining Date"
+                        value={previewCandidate._raw?.joiningDate}
+                        onSave={handlePersonalInfoJoiningDateSave}
+                        saving={personalInfoDateSaving === 'joining'}
+                        badgeClassName="bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                        icon="ri-calendar-check-line"
+                      />
                     ) : (
-                      <>
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded" title="Joining Date">
-                          <i className="ri-calendar-check-line"></i>
-                          {previewCandidate._raw?.joiningDate ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
-                        </span>
-                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded" title="Resign Date">
-                          <i className="ri-calendar-close-line"></i>
-                          {previewCandidate._raw?.resignDate ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
-                        </span>
-                      </>
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded" title="Joining Date">
+                        <i className="ri-calendar-check-line"></i>
+                        {previewCandidate._raw?.joiningDate ? new Date(previewCandidate._raw.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
+                      </span>
+                    )}
+                    {canEditResignDate ? (
+                      <PersonalInfoDateField
+                        label="Resign Date"
+                        value={previewCandidate._raw?.resignDate}
+                        onSave={handlePersonalInfoResignDateSave}
+                        saving={personalInfoDateSaving === 'resign'}
+                        allowClear
+                        badgeClassName="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400"
+                        icon="ri-calendar-close-line"
+                      />
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 rounded" title="Resign Date">
+                        <i className="ri-calendar-close-line"></i>
+                        {previewCandidate._raw?.resignDate ? new Date(previewCandidate._raw.resignDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not set'}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -2491,6 +2784,13 @@ const Candidates = () => {
       />
 
       {/* Share Candidate Modal */}
+      <CandidateAttendanceOverlay
+        open={!!attendanceOverlayCandidate}
+        onClose={() => setAttendanceOverlayCandidate(null)}
+        candidateId={attendanceOverlayCandidate?.id ?? ''}
+        candidateName={attendanceOverlayCandidate?.name ?? ''}
+      />
+
       <CandidateShareModal
         shareCandidate={shareCandidate}
         setShareCandidate={setShareCandidate}
@@ -2522,12 +2822,16 @@ const Candidates = () => {
             <li>
               <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openAssignRecruiterModal(moreMenuState.candidate) }}><i className="ri-user-add-line me-2"></i>Assign recruiter</button>
             </li>
+            {canEditJoiningDate && (
             <li>
               <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openJoiningDateModal(moreMenuState.candidate) }}><i className="ri-calendar-check-line me-2"></i>Joining date</button>
             </li>
+            )}
+            {canEditResignDate && (
             <li>
               <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openResignDateModal(moreMenuState.candidate) }}><i className="ri-calendar-close-line me-2"></i>Resign date</button>
             </li>
+            )}
             <li>
               <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openWeekOffModal([moreMenuState.candidate.id]) }}><i className="ri-calendar-week-line me-2"></i>Week-off</button>
             </li>

@@ -16,6 +16,16 @@ export interface Conversation {
   participants: { user: { id: string; name: string; email: string }; role?: "member" | "admin" }[];
   name?: string;
   displayName?: string;
+  /** Same shape as user profilePicture; url is refreshed when loading conversation (presigned). */
+  avatar?: {
+    url?: string;
+    key?: string;
+    originalName?: string;
+    size?: number;
+    mimeType?: string;
+  };
+  /** Convenience: same as avatar.url when present */
+  avatarUrl?: string;
   createdBy?: { id: string; name: string; email?: string };
   lastMessage?: { content: string; sender?: string; createdAt: string };
   unreadCount?: number;
@@ -37,11 +47,21 @@ export interface Message {
   deletedFor?: "me" | "everyone";
 }
 
+/** Other party (or group label) for personal call log rows from GET /chats/calls */
+export interface ChatCallPeer {
+  id?: string;
+  name: string;
+  email?: string;
+  isGroup?: boolean;
+}
+
 export interface ChatCall {
   id: string;
   conversation: string | { id: string };
   caller: { id: string; name: string; email: string };
   participants: { id: string; name: string; email: string }[];
+  /** Populated users who actually joined the LiveKit room; omit or empty for legacy calls */
+  roomJoinedUserIds?: { id?: string; _id?: string; name: string; email?: string }[];
   callType: "audio" | "video";
   status: string;
   livekitRoom?: string;
@@ -49,6 +69,9 @@ export interface ChatCall {
   createdAt: string;
   /** Presigned playback URL when call was recorded via LiveKit Egress */
   recordingUrl?: string | null;
+  /** Present on GET /chats/calls (personal log) */
+  direction?: "incoming" | "outgoing";
+  peer?: ChatCallPeer;
 }
 
 const BASE = "/chats";
@@ -192,7 +215,7 @@ export async function getActiveCallForConversation(
 
 export async function updateCall(
   callId: string,
-  body: { status?: string; duration?: number }
+  body: { status?: string; duration?: number; recordRoomJoin?: true }
 ): Promise<ChatCall> {
   const { data } = await apiClient.patch(`${BASE}/calls/${callId}`, body);
   return data;
@@ -255,6 +278,24 @@ export async function updateGroupName(
   const { data } = await apiClient.patch(
     `${BASE}/conversations/${conversationId}`,
     { name }
+  );
+  return data;
+}
+
+export async function uploadGroupAvatar(conversationId: string, file: File): Promise<Conversation> {
+  const formData = new FormData();
+  formData.append("avatar", file);
+  const { data } = await apiClient.post(
+    `${BASE}/conversations/${conversationId}/avatar`,
+    formData,
+    {
+      transformRequest: [
+        (body: unknown, headers: Record<string, string>) => {
+          delete headers["Content-Type"];
+          return body;
+        },
+      ],
+    } as any
   );
   return data;
 }

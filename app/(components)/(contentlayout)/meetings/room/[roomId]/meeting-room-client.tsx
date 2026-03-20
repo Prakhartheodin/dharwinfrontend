@@ -17,12 +17,34 @@ import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { updateMeeting } from "@/shared/lib/api/meetings";
-import { endCallByRoom } from "@/shared/lib/api/chat";
+import { endCallByRoom, updateCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_DELAY = 20000; // 10 seconds
+
+/** Registers current user on ChatCall when they connect to a chat LiveKit room (see roomJoinedUserIds). */
+function RecordChatCallJoin({ callId }: { callId: string | null }) {
+  const room = useRoomContext();
+  const reportedRef = useRef(false);
+
+  useEffect(() => {
+    if (!callId) return;
+    const report = () => {
+      if (reportedRef.current) return;
+      reportedRef.current = true;
+      updateCall(callId, { recordRoomJoin: true }).catch(() => {});
+    };
+    if (room.state === ConnectionState.Connected) report();
+    room.on(RoomEvent.Connected, report);
+    return () => {
+      room.off(RoomEvent.Connected, report);
+    };
+  }, [room, callId]);
+
+  return null;
+}
 
 function RoomContent({
   onLeave,
@@ -727,6 +749,14 @@ export default function MeetingRoomClient() {
   const roomId = params.roomId as string;
   const fromChat = searchParams.get("from") === "chat";
   const returnConvId = searchParams.get("conv") || null;
+  const chatCallIdParam = searchParams.get("callId");
+  const recordChatCallJoinId = useMemo(() => {
+    if (!fromChat) return null;
+    const name = decodeURIComponent(roomId);
+    if (!name.startsWith("chat-")) return null;
+    const id = chatCallIdParam?.trim();
+    return id || null;
+  }, [fromChat, roomId, chatCallIdParam]);
   const participantName = useMemo(() => {
     return (
       searchParams.get("name") || user?.name || user?.email || `user-${Math.random().toString(36).substr(2, 9)}`
@@ -980,6 +1010,7 @@ export default function MeetingRoomClient() {
       data-lk-theme="default"
       className="room-page !h-full !min-h-screen w-full"
     >
+      {recordChatCallJoinId ? <RecordChatCallJoin callId={recordChatCallJoinId} /> : null}
       <RoomContent
         onLeave={handleLeave}
         onReconnect={handleReconnect}

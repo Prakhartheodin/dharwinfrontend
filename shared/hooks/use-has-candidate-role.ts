@@ -6,13 +6,19 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 
 /**
- * Returns true when the user has the Candidate role and should see candidate UI (Personal Information candidate sections).
- * Show for: users with Candidate or "user" role who do NOT have Agent/Administrator.
- * Hide for: Agent, Administrator, and other staff roles.
+ * Returns two flags:
+ * - `hasCandidateRole`: “candidate-only” UX — Candidate role and NOT Agent/Administrator (legacy nav / sections).
+ * - `hasCandidateProfile`: user has Candidate (or legacy `user`) role in roleIds, **including** Agent+Candidate hybrids.
+ *   Use `hasCandidateProfile` to load GET /auth/me/with-candidate so Employee ID and candidate fields resolve when the user is both staff and candidate.
  */
-export function useHasCandidateRole(): { hasCandidateRole: boolean; isLoading: boolean } {
+export function useHasCandidateRole(): {
+  hasCandidateRole: boolean;
+  hasCandidateProfile: boolean;
+  isLoading: boolean;
+} {
   const { user } = useAuth();
   const [hasCandidateRole, setHasCandidateRole] = useState(false);
+  const [hasCandidateProfile, setHasCandidateProfile] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -22,16 +28,16 @@ export function useHasCandidateRole(): { hasCandidateRole: boolean; isLoading: b
         if (!user) {
           if (!cancelled) {
             setHasCandidateRole(false);
+            setHasCandidateProfile(false);
             setIsLoading(false);
           }
           return;
         }
-        const roleStr = (user.role ?? "").toString().toLowerCase();
-        const legacyUserOrCandidate = roleStr === "user" || roleStr === "candidate";
 
         if (!user.roleIds || (user.roleIds as string[]).length === 0) {
           if (!cancelled) {
-            setHasCandidateRole(legacyUserOrCandidate);
+            setHasCandidateRole(false);
+            setHasCandidateProfile(false);
             setIsLoading(false);
           }
           return;
@@ -48,16 +54,16 @@ export function useHasCandidateRole(): { hasCandidateRole: boolean; isLoading: b
 
         const hasStaffRole = userRoleNames.some((name) => name === "agent" || name === "administrator");
         const hasCandidateRoleName = userRoleNames.some((name) => name === "candidate" || name === "user");
-        const hasCandidate =
-          !hasStaffRole && (hasCandidateRoleName || (userRoleNames.length === 0 && legacyUserOrCandidate));
+        const hasCandidate = !hasStaffRole && hasCandidateRoleName;
 
         if (!cancelled) {
           setHasCandidateRole(hasCandidate);
+          setHasCandidateProfile(hasCandidateRoleName);
         }
       } catch {
         if (!cancelled) {
-          const roleStr = (user?.role ?? "").toString().toLowerCase();
-          setHasCandidateRole(roleStr === "user" || roleStr === "candidate");
+          setHasCandidateRole(false);
+          setHasCandidateProfile(false);
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -69,5 +75,5 @@ export function useHasCandidateRole(): { hasCandidateRole: boolean; isLoading: b
     };
   }, [user]);
 
-  return { hasCandidateRole, isLoading };
+  return { hasCandidateRole, hasCandidateProfile, isLoading };
 }

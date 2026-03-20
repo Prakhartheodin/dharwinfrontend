@@ -40,6 +40,8 @@ const nextConfig = {
 
     return [
       { source: "/api/v1/:path*", destination: `${b}/v1/:path*` },
+      // trailingSlash: true redirects /api/v1/foo → /api/v1/foo/; without this, the trailing-slash URL misses the rewrite and returns Next 404 ("Not found")
+      { source: "/api/v1/:path*/", destination: `${b}/v1/:path*/` },
       ...oauthCallbacks,
     ];
   },

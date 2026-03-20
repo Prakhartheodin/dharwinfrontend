@@ -3,10 +3,12 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
 import { apiClient } from "@/shared/lib/api/client";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { GlobalIncomingCall, IncomingCallBar } from "@/shared/components/GlobalIncomingCall";
 
 function getSocketUrl(): string {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-  if (apiUrl) {
+  const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "").trim();
+  if (apiUrl.startsWith("http://") || apiUrl.startsWith("https://")) {
     try {
       const u = new URL(apiUrl);
       return `${u.protocol}//${u.host}`;
@@ -26,12 +28,19 @@ export interface IncomingCallData {
   roomName: string;
   callType: "audio" | "video";
   caller: { id: string; name: string; email?: string };
+  /** From server when call is in a group conversation */
+  conversationType?: "direct" | "group";
+  /** Present for group calls; display as secondary context under caller */
+  groupName?: string;
 }
 
 interface ChatSocketContextValue {
   socket: Socket | null;
   connected: boolean;
   onlineUsers: Set<string>;
+  /** Set when an incoming call is received (callee only). Cleared on accept/decline/timeout. */
+  incomingCall: IncomingCallData | null;
+  setIncomingCall: (data: IncomingCallData | null) => void;
   joinConversation: (conversationId: string) => void;
   leaveConversation: (conversationId: string) => void;
   onNewMessage: (callback: (msg: unknown) => void) => () => void;
@@ -49,10 +58,20 @@ interface ChatSocketContextValue {
 
 const ChatSocketContext = createContext<ChatSocketContextValue | null>(null);
 
+function authUserId(user: { id?: string; _id?: string } | null | undefined): string {
+  if (!user) return "";
+  const id = user.id ?? (typeof user._id === "string" ? user._id : (user._id as { toString?: () => string })?.toString?.());
+  return id ? String(id).trim() : "";
+}
+
 export function ChatSocketProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+  const userId = authUserId(user as { id?: string; _id?: string } | null);
+
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
 
   const newMsgListeners = useRef<Set<(msg: unknown) => void>>(new Set());
   const convUpdateListeners = useRef<Set<() => void>>(new Set());
@@ -141,11 +160,24 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     const url = getSocketUrl();
     if (!url) return;
 
+    if (!userId) {
+      setIncomingCall(null);
+      setSocket((prev) => {
+        prev?.disconnect();
+        return null;
+      });
+      setConnected(false);
+      setOnlineUsers(new Set());
+      return;
+    }
+
+    let cancelled = false;
     let sock: Socket | null = null;
 
-    async function connect() {
+    (async () => {
       try {
         const { data } = await apiClient.get<{ token: string }>("/chats/socket-token");
+        if (cancelled) return;
         const token = data?.token;
         if (!token) return;
 
@@ -194,41 +226,46 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           readListeners.current.forEach((cb) => cb(data));
         });
 
-        sock.on("user_online", ({ userId }: { userId: string }) => {
+        sock.on("user_online", ({ userId: onlineId }: { userId: string }) => {
           setOnlineUsers((prev) => {
             const next = new Set(prev);
-            next.add(userId);
+            next.add(onlineId);
             return next;
           });
         });
 
-        sock.on("user_offline", ({ userId }: { userId: string }) => {
+        sock.on("user_offline", ({ userId: offlineId }: { userId: string }) => {
           setOnlineUsers((prev) => {
             const next = new Set(prev);
-            next.delete(userId);
+            next.delete(offlineId);
             return next;
           });
         });
 
+        if (cancelled) {
+          sock.disconnect();
+          return;
+        }
         setSocket(sock);
       } catch {
         // Not authenticated or token fetch failed
       }
-    }
-
-    connect();
+    })();
 
     return () => {
+      cancelled = true;
       sock?.disconnect();
       setSocket(null);
       setConnected(false);
     };
-  }, []);
+  }, [userId]);
 
   const value: ChatSocketContextValue = {
     socket,
     connected,
     onlineUsers,
+    incomingCall,
+    setIncomingCall,
     joinConversation,
     leaveConversation,
     onNewMessage,
@@ -245,7 +282,11 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   };
 
   return (
-    <ChatSocketContext.Provider value={value}>{children}</ChatSocketContext.Provider>
+    <ChatSocketContext.Provider value={value}>
+      {children}
+      <IncomingCallBar />
+      <GlobalIncomingCall />
+    </ChatSocketContext.Provider>
   );
 }
 

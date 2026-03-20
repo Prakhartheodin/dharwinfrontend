@@ -654,7 +654,7 @@ export default function AttendanceTracking() {
       {/* Sticky Active Banner */}
       {canPunch && status?.isPunchedIn && (
         <div className="sticky top-0 z-10 mx-4 mb-4">
-          <div className="flex items-center justify-between gap-3 rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
+          <div className="flex items-center gap-3 rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
@@ -665,10 +665,6 @@ export default function AttendanceTracking() {
               </span>
               <span className="text-[0.9375rem] font-semibold text-success">{elapsedDisplay}</span>
             </div>
-            <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50">
-              <i className="ri-global-line me-1" />
-              {getDetectedTimezone()}
-            </span>
           </div>
         </div>
       )}
@@ -803,9 +799,6 @@ export default function AttendanceTracking() {
                             )}
                           </button>
                         </div>
-                        <p className="mt-2 text-[0.6875rem] text-[#8c9097] dark:text-white/50">
-                          <i className="ri-global-line me-1" />{getDetectedTimezone()}
-                        </p>
                       </div>
                     </div>
                   </div>
@@ -827,12 +820,6 @@ export default function AttendanceTracking() {
                           <p className="text-[0.9375rem] text-[#8c9097] dark:text-white/50">
                             {(myShift.startTime ?? "—")} – {(myShift.endTime ?? "—")}
                           </p>
-                          {myShift.timezone && (
-                            <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-1">
-                              <i className="ri-global-line me-1" />
-                              {myShift.timezone}
-                            </p>
-                          )}
                         </>
                       ) : (
                         <p className="text-[1rem] text-[#8c9097] dark:text-white/50 mb-0">No shift assigned</p>
