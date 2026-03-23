@@ -152,6 +152,8 @@ module.exports = {
       'spin-slow': 'spin 3s linear infinite',
       'slow-ping':'ping 2s linear infinite',
       'animate-wase': 'wase 4s linear infinite',
+      'external-jobs-shimmer': 'externalJobsShimmer 1.2s ease-in-out infinite',
+      'external-jobs-orbit': 'externalJobsOrbit 2.75s linear infinite',
     },
     keyframes: {
       particles: {
@@ -225,6 +227,15 @@ module.exports = {
         to: {
           transform: "rotate(360deg)",
         },
+      },
+      externalJobsShimmer: {
+        "0%": { transform: "translateX(-100%)" },
+        "100%": { transform: "translateX(100%)" },
+      },
+      externalJobsOrbit: {
+        "0%": { transform: "rotate(0deg)", opacity: "0.5" },
+        "50%": { opacity: "0.9" },
+        "100%": { transform: "rotate(360deg)", opacity: "0.5" },
       },
     },
   },

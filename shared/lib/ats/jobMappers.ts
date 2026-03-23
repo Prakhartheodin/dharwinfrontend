@@ -29,7 +29,6 @@ export interface DisplayJob {
   location: string;
   experience: string;
   salary: string;
-  postedBy: string;
   active: boolean;
   postingDate: string;
   jobType: string;
@@ -38,6 +37,7 @@ export interface DisplayJob {
   isRemote?: boolean;
   urgency?: string;
   salaryTier?: string;
+  jobOrigin?: "internal" | "external";
 }
 
 export function mapJobToDisplay(apiJob: Job): DisplayJob {
@@ -48,11 +48,11 @@ export function mapJobToDisplay(apiJob: Job): DisplayJob {
     location: apiJob.location ?? "",
     experience: mapExperienceLevel(apiJob.experienceLevel),
     salary: formatSalaryRange(apiJob.salaryRange),
-    postedBy: (apiJob.createdBy as { name?: string })?.name ?? "",
     active: apiJob.status === "Active",
     postingDate: apiJob.createdAt ? apiJob.createdAt.split("T")[0] ?? "" : "",
     jobType: (apiJob.jobType ?? "").toLowerCase(),
     description: apiJob.jobDescription,
     companyInfo: apiJob.organisation ? { ...apiJob.organisation } : undefined,
+    jobOrigin: apiJob.jobOrigin === "external" ? "external" : "internal",
   };
 }

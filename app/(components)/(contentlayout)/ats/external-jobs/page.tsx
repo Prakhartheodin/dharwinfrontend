@@ -1,7 +1,7 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useMemo, useState, useEffect, useCallback } from "react";
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useTable, useSortBy, usePagination } from "react-table";
 import {
   searchExternalJobs,
@@ -13,6 +13,10 @@ import {
   type SavedExternalJob,
 } from "@/shared/lib/api/external-jobs";
 import ExternalJobPreviewPanel from "./_components/ExternalJobPreviewPanel";
+import {
+  ExternalJobsButtonSpinner,
+  ExternalJobsTableLoader,
+} from "./_components/ExternalJobsLoadingAnimation";
 
 const SOURCE_OPTIONS: { value: ExternalJobSource; label: string }[] = [
   { value: "active-jobs-db", label: "Active Jobs DB" },
@@ -21,6 +25,9 @@ const SOURCE_OPTIONS: { value: ExternalJobSource; label: string }[] = [
 
 const SEARCH_COOLDOWN_SEC = 5;
 const PAGE_SIZES = [10, 25, 50];
+/** Must match backend batch size for search `offset` steps (see /external-jobs/search). */
+const SEARCH_BATCH_SIZE = 10;
+const SAVED_LIST_LIMIT = 100;
 
 function formatSalary(job: ExternalJob): string {
   if (job.salaryMin != null && job.salaryMax != null) {
@@ -43,6 +50,7 @@ export default function ExternalJobsPage() {
   const [rateLimitError, setRateLimitError] = useState<string | null>(null);
   const [previewJob, setPreviewJob] = useState<ExternalJob | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [browseListedHint, setBrowseListedHint] = useState(false);
 
   const [filters, setFilters] = useState({
     job_title: "",
@@ -58,7 +66,7 @@ export default function ExternalJobsPage() {
 
   const loadSavedJobs = useCallback((page: number = 1) => {
     setSavedLoading(true);
-    listSavedExternalJobs({ page, limit: 20 })
+    listSavedExternalJobs({ page, limit: SAVED_LIST_LIMIT })
       .then((res) => {
         setSavedJobs(res.results || []);
         setSavedTotal(res.totalResults || 0);
@@ -101,7 +109,7 @@ export default function ExternalJobsPage() {
   };
 
   const handleLoadMore = () => {
-    const nextOffset = searchOffset + 10;
+    const nextOffset = searchOffset + SEARCH_BATCH_SIZE;
     setSearchLoading(true);
     searchExternalJobs({ ...filters, offset: nextOffset })
       .then((res) => {
@@ -118,6 +126,7 @@ export default function ExternalJobsPage() {
     try {
       await saveExternalJob(job);
       setSavedJobs((prev) => [...prev, { ...job, savedAt: new Date().toISOString() }]);
+      setBrowseListedHint(true);
     } catch {
       // ignore
     } finally {
@@ -140,10 +149,13 @@ export default function ExternalJobsPage() {
 
   const openPreview = (job: ExternalJob) => {
     setPreviewJob(job);
-    setTimeout(() => {
-      (window as any).HSOverlay?.open(document.querySelector("#external-job-preview-panel"));
-    }, 50);
   };
+
+  useEffect(() => {
+    if (!previewJob) return;
+    const el = document.querySelector("#external-job-preview-panel");
+    if (el) (window as any).HSOverlay?.open(el);
+  }, [previewJob]);
 
   const closePreview = () => {
     const el = document.querySelector("#external-job-preview-panel");
@@ -163,12 +175,16 @@ export default function ExternalJobsPage() {
         accessor: "title",
         Cell: ({ row }: any) => (
           <div className="flex flex-col">
-            <span
-              className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary transition-colors"
-              onClick={() => openPreview(row.original)}
+            <button
+              type="button"
+              className="inline-block max-w-full truncate text-start font-semibold text-gray-800 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 dark:text-white dark:ring-offset-bodybg dark:hover:text-primary"
+              onClick={(e) => {
+                e.stopPropagation();
+                openPreview(row.original);
+              }}
             >
               {row.original.title || "—"}
-            </span>
+            </button>
             {row.original.company && (
               <span className="text-[0.7rem] text-gray-500 dark:text-gray-400">
                 {row.original.company}
@@ -186,7 +202,9 @@ export default function ExternalJobsPage() {
           return (
             <div className="flex items-center gap-1.5">
               <i className="ri-map-pin-line text-gray-400 text-xs" />
-              <span className="max-w-[180px] truncate" title={loc}>{loc}</span>
+              <span className="max-w-full truncate" title={loc}>
+                {loc}
+              </span>
             </div>
           );
         },
@@ -258,6 +276,7 @@ export default function ExternalJobsPage() {
                 type="button"
                 disabled={saving}
                 title={saved ? "Remove from saved" : "Save job"}
+                aria-label={saved ? "Remove from saved" : "Save job"}
                 onClick={(e) => {
                   e.stopPropagation();
                   saved ? handleUnsave(job.externalId, job.source) : handleSave(job);
@@ -268,18 +287,19 @@ export default function ExternalJobsPage() {
                     : "ti-btn-light"
                 }`}
               >
-                <i className={`${saved ? "ri-bookmark-fill" : "ri-bookmark-line"} ${saving ? "animate-pulse" : ""}`} />
+                <i className={`${saved ? "ri-bookmark-fill" : "ri-bookmark-line"} ${saving ? "animate-pulse" : ""}`} aria-hidden />
               </button>
               {job.platformUrl && (
                 <a
                   href={job.platformUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  title="Open on LinkedIn"
+                  title="Open listing in new tab"
                   className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-light"
                   onClick={(e) => e.stopPropagation()}
+                  aria-label="Open listing in new tab"
                 >
-                  <i className="ri-external-link-line" />
+                  <i className="ri-external-link-line" aria-hidden />
                 </a>
               )}
             </div>
@@ -307,185 +327,257 @@ export default function ExternalJobsPage() {
     nextPage,
     previousPage,
     pageOptions,
+    gotoPage,
     state: { pageIndex, pageSize },
     setPageSize,
   } = tableInstance as any;
 
   const totalPages = pageOptions.length;
+  const prevTabRef = useRef(activeTab);
+
+  useEffect(() => {
+    if (prevTabRef.current !== activeTab) {
+      prevTabRef.current = activeTab;
+      gotoPage?.(0);
+    }
+  }, [activeTab, gotoPage]);
+
+  /** New search (offset reset) should show page 1 — avoid staying on an empty high page index. */
+  useEffect(() => {
+    if (activeTab !== "search" || searchOffset !== 0) return;
+    gotoPage?.(0);
+  }, [searchResults, activeTab, searchOffset, gotoPage]);
 
   return (
     <Fragment>
       <Seo title="External Jobs" />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-12 gap-4 mb-4">
-        <div className="xl:col-span-3 lg:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden">
-            <div className="box-body !p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-primary/10">
-                  <i className="ri-search-line text-primary text-xl" />
-                </div>
-                <div>
-                  <p className="text-[0.7rem] text-gray-500 dark:text-gray-400 mb-0">Search Results</p>
-                  <h5 className="font-semibold text-gray-800 dark:text-white mb-0">{searchResults.length}</h5>
-                </div>
-              </div>
-            </div>
+      <div className="container-fluid pt-6 pb-8">
+        {browseListedHint && (
+          <div
+            className="mb-4 flex flex-wrap items-start justify-between gap-3 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-defaulttextcolor dark:text-white/90"
+            role="status"
+          >
+            <span className="min-w-0 pt-0.5">
+              <strong className="font-semibold">Listed for candidates.</strong> Saved jobs appear on{" "}
+              <span className="font-medium">Browse jobs</span> automatically.
+            </span>
+            <button
+              type="button"
+              className="ti-btn ti-btn-sm ti-btn-light shrink-0"
+              aria-label="Dismiss"
+              onClick={() => setBrowseListedHint(false)}
+            >
+              Dismiss
+            </button>
           </div>
-        </div>
-        <div className="xl:col-span-3 lg:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden">
-            <div className="box-body !p-4">
+        )}
+        {/* Summary — matches ATS elevated card style */}
+        <div className="grid grid-cols-12 gap-4 mb-6">
+          <div className="xl:col-span-3 lg:col-span-6 col-span-12">
+            <div className="rounded-2xl border border-defaultborder/70 bg-white/90 p-4 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/90 dark:ring-white/10">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-warning/10">
-                  <i className="ri-bookmark-line text-warning text-xl" />
-                </div>
-                <div>
-                  <p className="text-[0.7rem] text-gray-500 dark:text-gray-400 mb-0">Saved Jobs</p>
-                  <h5 className="font-semibold text-gray-800 dark:text-white mb-0">{savedTotal || savedJobs.length}</h5>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="xl:col-span-3 lg:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden">
-            <div className="box-body !p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-success/10">
-                  <i className="ri-home-wifi-line text-success text-xl" />
-                </div>
-                <div>
-                  <p className="text-[0.7rem] text-gray-500 dark:text-gray-400 mb-0">Remote Jobs</p>
-                  <h5 className="font-semibold text-gray-800 dark:text-white mb-0">{remoteCount}</h5>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="xl:col-span-3 lg:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden">
-            <div className="box-body !p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-info/10">
-                  <i className="ri-database-2-line text-info text-xl" />
-                </div>
-                <div>
-                  <p className="text-[0.7rem] text-gray-500 dark:text-gray-400 mb-0">API Source</p>
-                  <h5 className="font-semibold text-gray-800 dark:text-white mb-0 text-[0.875rem]">
-                    {filters.source === "active-jobs-db" ? "Active Jobs DB" : "LinkedIn Jobs"}
-                  </h5>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="grid grid-cols-12 gap-6">
-        <div className="xl:col-span-12 col-span-12 flex flex-col">
-          <div className="box custom-box flex flex-col" style={{ minHeight: "calc(100vh - 22rem)" }}>
-
-            {/* Box Header */}
-            <div className="box-header flex items-center justify-between flex-wrap gap-4">
-              <div className="box-title flex items-center gap-3">
-                <span className="text-[0.9375rem]">External Jobs</span>
-                <span className="badge bg-light text-default rounded-full text-[0.75rem]">
-                  {displayData.length}
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20 dark:bg-primary/20">
+                  <i className="ri-search-line text-lg" aria-hidden />
                 </span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem]"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  {PAGE_SIZES.map((size) => (
-                    <option key={size} value={size}>Show {size}</option>
-                  ))}
-                </select>
-
-                {/* Tab Buttons */}
-                <div className="inline-flex rounded-md shadow-sm">
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("search")}
-                    className={`ti-btn !py-1 !px-3 !text-[0.75rem] !rounded-e-none border ${
-                      activeTab === "search"
-                        ? "ti-btn-primary-full"
-                        : "ti-btn-light"
-                    }`}
-                  >
-                    <i className="ri-search-line me-1 align-middle" />
-                    Search
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab("saved")}
-                    className={`ti-btn !py-1 !px-3 !text-[0.75rem] !rounded-s-none border-s-0 border ${
-                      activeTab === "saved"
-                        ? "ti-btn-primary-full"
-                        : "ti-btn-light"
-                    }`}
-                  >
-                    <i className="ri-bookmark-line me-1 align-middle" />
-                    Saved
-                    {(savedTotal || savedJobs.length) > 0 && (
-                      <span className="badge bg-white/20 text-white rounded-full ms-1 text-[0.65rem]">
-                        {savedTotal || savedJobs.length}
-                      </span>
-                    )}
-                  </button>
+                <div className="min-w-0">
+                  <p className="mb-0 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/45">Search results</p>
+                  <p className="mb-0 text-xl font-semibold tabular-nums text-defaulttextcolor dark:text-white">{searchResults.length}</p>
                 </div>
               </div>
             </div>
+          </div>
+          <div className="xl:col-span-3 lg:col-span-6 col-span-12">
+            <div className="rounded-2xl border border-defaultborder/70 bg-white/90 p-4 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/90 dark:ring-white/10">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-700 ring-1 ring-amber-500/20 dark:bg-amber-500/15 dark:text-amber-300">
+                  <i className="ri-bookmark-line text-lg" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="mb-0 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/45">Saved jobs</p>
+                  <p className="mb-0 text-xl font-semibold tabular-nums text-defaulttextcolor dark:text-white">{savedTotal || savedJobs.length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="xl:col-span-3 lg:col-span-6 col-span-12">
+            <div className="rounded-2xl border border-defaultborder/70 bg-white/90 p-4 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/90 dark:ring-white/10">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  <i className="ri-home-wifi-line text-lg" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="mb-0 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/45">Remote in results</p>
+                  <p className="mb-0 text-xl font-semibold tabular-nums text-defaulttextcolor dark:text-white">{remoteCount}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="xl:col-span-3 lg:col-span-6 col-span-12">
+            <div className="rounded-2xl border border-defaultborder/70 bg-white/90 p-4 shadow-sm ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/90 dark:ring-white/10">
+              <div className="flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-sky-500/12 text-sky-700 ring-1 ring-sky-500/20 dark:bg-sky-500/15 dark:text-sky-300">
+                  <i className="ri-database-2-line text-lg" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <p className="mb-0 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/45">Data source</p>
+                  <p className="mb-0 text-sm font-semibold leading-snug text-defaulttextcolor dark:text-white">
+                    {filters.source === "active-jobs-db" ? "Active Jobs DB" : "LinkedIn Jobs API"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {/* Filters (only in search tab) */}
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12 flex flex-col">
+            <div className="box custom-box flex h-[calc(100vh-8rem)] min-h-[28rem] flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
+              <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                <div className="flex min-w-0 flex-1 items-start gap-3">
+                  <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
+                    <i className="ri-global-line text-xl" aria-hidden />
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="box-title !mb-0 text-xl font-semibold tracking-tight text-defaulttextcolor dark:text-white sm:text-2xl">
+                        External jobs
+                      </h1>
+                      <span
+                        className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
+                        title="Rows in the current table view"
+                      >
+                        {displayData.length} shown
+                      </span>
+                    </div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
+                      {activeTab === "search"
+                        ? "Search external listings · rate-limited API"
+                        : "Jobs you saved from search"}
+                    </p>
+                  </div>
+                </div>
+                <div className="relative z-20 flex flex-wrap items-center gap-2 sm:justify-end">
+                  <div className="me-2 inline-flex items-center gap-2">
+                    <label
+                      htmlFor="external-jobs-page-size"
+                      className="mb-0 hidden whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/45 sm:inline"
+                    >
+                      Rows
+                    </label>
+                    <select
+                      id="external-jobs-page-size"
+                      className="form-select !m-0 !h-auto !w-auto !min-w-[6.75rem] !rounded-lg !border-defaultborder/80 !py-1.5 !ps-3 !pe-10 !text-[0.75rem] !leading-normal shadow-sm dark:!border-white/15"
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      aria-label="Rows per page"
+                    >
+                      {PAGE_SIZES.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div
+                    className="inline-flex overflow-hidden rounded-xl border border-defaultborder/80 bg-defaultbackground/40 p-0.5 dark:border-white/10 dark:bg-white/[0.04]"
+                    role="tablist"
+                    aria-label="External jobs view"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === "search"}
+                      onClick={() => setActiveTab("search")}
+                      className={`ti-btn !rounded-lg !py-1.5 !px-3 !text-[0.75rem] !border-0 ${
+                        activeTab === "search" ? "ti-btn-primary-full shadow-sm" : "ti-btn-ghost !bg-transparent"
+                      }`}
+                    >
+                      <i className="ri-search-line me-1 align-middle" aria-hidden />
+                      Search
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === "saved"}
+                      onClick={() => setActiveTab("saved")}
+                      className={`ti-btn !rounded-lg !py-1.5 !px-3 !text-[0.75rem] !border-0 ${
+                        activeTab === "saved" ? "ti-btn-primary-full shadow-sm" : "ti-btn-ghost !bg-transparent"
+                      }`}
+                    >
+                      <i className="ri-bookmark-line me-1 align-middle" aria-hidden />
+                      Saved
+                      {(savedTotal || savedJobs.length) > 0 && (
+                        <span
+                          className={`ms-1.5 inline-flex min-w-[1.25rem] justify-center rounded-full px-1.5 text-[0.65rem] font-semibold tabular-nums ${
+                            activeTab === "saved" ? "bg-white/25 text-white" : "bg-primary/15 text-primary dark:bg-white/10 dark:text-white/90"
+                          }`}
+                        >
+                          {savedTotal || savedJobs.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
             {activeTab === "search" && (
-              <div className="box-body !py-3 !px-4 border-b border-gray-200 dark:border-defaultborder/10 bg-gray-50/50 dark:bg-black/10">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="relative">
-                    <i className="ri-briefcase-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-                    <input
-                      type="text"
-                      className="form-control !py-1.5 !ps-8 !pe-3 !text-[0.8125rem] min-w-[180px]"
-                      placeholder="Job title..."
-                      value={filters.job_title}
-                      onChange={(e) => setFilters((f) => ({ ...f, job_title: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && !searchLoading && searchCooldown <= 0 && handleSearch()}
-                    />
+              <div className="box-body !py-4 !px-5 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02]">
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[11rem] flex-1 sm:max-w-[14rem]">
+                    <label className="form-label mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/50">Title</label>
+                    <div className="relative">
+                      <i className="ri-briefcase-line pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-sm text-textmuted dark:text-white/40" aria-hidden />
+                      <input
+                        type="text"
+                        className="form-control !py-2 !ps-9 !pe-3 !text-[0.8125rem]"
+                        placeholder="Role or keywords"
+                        value={filters.job_title}
+                        onChange={(e) => setFilters((f) => ({ ...f, job_title: e.target.value }))}
+                        onKeyDown={(e) => e.key === "Enter" && !searchLoading && searchCooldown <= 0 && handleSearch()}
+                      />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <i className="ri-map-pin-line absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-                    <input
-                      type="text"
-                      className="form-control !py-1.5 !ps-8 !pe-3 !text-[0.8125rem] min-w-[160px]"
-                      placeholder="Location..."
-                      value={filters.job_location}
-                      onChange={(e) => setFilters((f) => ({ ...f, job_location: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && !searchLoading && searchCooldown <= 0 && handleSearch()}
-                    />
+                  <div className="min-w-[10rem] flex-1 sm:max-w-[13rem]">
+                    <label className="form-label mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/50">Location</label>
+                    <div className="relative">
+                      <i className="ri-map-pin-line pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-sm text-textmuted dark:text-white/40" aria-hidden />
+                      <input
+                        type="text"
+                        className="form-control !py-2 !ps-9 !pe-3 !text-[0.8125rem]"
+                        placeholder="City or region"
+                        value={filters.job_location}
+                        onChange={(e) => setFilters((f) => ({ ...f, job_location: e.target.value }))}
+                        onKeyDown={(e) => e.key === "Enter" && !searchLoading && searchCooldown <= 0 && handleSearch()}
+                      />
+                    </div>
                   </div>
-                  <select
-                    className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[160px]"
-                    value={filters.source}
-                    onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value as ExternalJobSource }))}
-                  >
-                    {SOURCE_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <select
-                    className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
-                    value={filters.date_posted}
-                    onChange={(e) => setFilters((f) => ({ ...f, date_posted: e.target.value }))}
-                  >
-                    <option value="24h">Last 24 hours</option>
-                    <option value="7d">Last 7 days</option>
-                  </select>
-                  <label className="flex items-center gap-2 text-[0.8125rem] text-gray-600 dark:text-gray-300 cursor-pointer select-none">
+                  <div className="min-w-[10rem]">
+                    <label className="form-label mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/50">Source</label>
+                    <select
+                      className="form-select !py-2 !text-[0.8125rem]"
+                      value={filters.source}
+                      onChange={(e) => setFilters((f) => ({ ...f, source: e.target.value as ExternalJobSource }))}
+                    >
+                      {SOURCE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-[9rem]">
+                    <label className="form-label mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/50">Posted</label>
+                    <select
+                      className="form-select !py-2 !text-[0.8125rem]"
+                      value={filters.date_posted}
+                      onChange={(e) => setFilters((f) => ({ ...f, date_posted: e.target.value }))}
+                    >
+                      <option value="24h">Last 24 hours</option>
+                      <option value="7d">Last 7 days</option>
+                    </select>
+                  </div>
+                  <label className="mb-2 flex cursor-pointer select-none items-center gap-2 text-[0.8125rem] text-defaulttextcolor dark:text-white/80">
                     <input
                       type="checkbox"
                       className="form-check-input !mt-0"
@@ -498,22 +590,22 @@ export default function ExternalJobsPage() {
                     type="button"
                     disabled={searchLoading || searchCooldown > 0}
                     onClick={handleSearch}
-                    className="ti-btn ti-btn-primary-full !py-1.5 !px-4 !text-[0.8125rem]"
+                    className="ti-btn ti-btn-primary-full mb-0.5 !rounded-xl !py-2 !px-5 !text-[0.8125rem] font-medium shadow-sm"
                   >
                     {searchLoading ? (
                       <>
-                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true" />
-                        Searching...
+                        <ExternalJobsButtonSpinner className="me-2 text-white" />
+                        Searching…
                       </>
                     ) : searchCooldown > 0 ? (
                       <>
-                        <i className="ri-time-line me-1 align-middle" />
+                        <i className="ri-time-line me-1 align-middle" aria-hidden />
                         Wait {searchCooldown}s
                       </>
                     ) : (
                       <>
-                        <i className="ri-search-line me-1 align-middle" />
-                        Search
+                        <i className="ri-search-line me-1 align-middle" aria-hidden />
+                        Run search
                       </>
                     )}
                   </button>
@@ -521,50 +613,91 @@ export default function ExternalJobsPage() {
               </div>
             )}
 
-            {/* Rate limit warning */}
             {rateLimitError && (
-              <div className="mx-4 mt-3 p-3 rounded-lg bg-warning/10 border border-warning/20 text-warning text-sm flex items-center gap-2">
-                <i className="ri-error-warning-line text-lg" />
-                {rateLimitError}
+              <div
+                className="mx-5 mt-4 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/[0.08] p-4 text-sm text-warning shadow-sm dark:border-warning/25 dark:bg-warning/10"
+                role="alert"
+              >
+                <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/15">
+                  <i className="ri-error-warning-line text-lg" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1 leading-relaxed">{rateLimitError}</span>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-sm ti-btn-ghost shrink-0 !px-2"
+                  aria-label="Dismiss"
+                  onClick={() => setRateLimitError(null)}
+                >
+                  ×
+                </button>
               </div>
             )}
 
-            {/* Table */}
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
-              {(activeTab === "saved" && savedLoading && savedJobs.length === 0) ? (
-                <div className="flex-1 flex flex-col items-center justify-center py-16 text-gray-400">
-                  <span className="spinner-border spinner-border-sm mb-3" role="status" />
-                  <span className="text-[0.8125rem]">Loading saved jobs...</span>
-                </div>
+              {activeTab === "saved" && savedLoading && savedJobs.length === 0 ? (
+                <ExternalJobsTableLoader
+                  title="Restoring your shortlist"
+                  hint="Syncing saved roles from Dharwin — almost there."
+                />
+              ) : activeTab === "search" && searchLoading && searchResults.length === 0 ? (
+                <ExternalJobsTableLoader
+                  title="Scanning external feeds"
+                  hint="Pulling live listings from the selected source. Large result sets may take a moment."
+                />
               ) : (
                 <>
-                  <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+                  {displayData.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:px-5">
+                      <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/[0.06] px-2.5 py-1 text-primary dark:border-primary/25 dark:bg-primary/10">
+                        <i className="ri-cursor-line text-[0.65rem]" aria-hidden />
+                        Click a row or the job title to preview
+                      </span>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-defaultborder/60 bg-white/60 px-2.5 py-1 dark:border-white/10 dark:bg-white/[0.04]">
+                        <i className="ri-bookmark-line text-[0.65rem] opacity-70" aria-hidden />
+                        Use bookmark to save without opening the drawer
+                      </span>
+                    </div>
+                  )}
+                  <div
+                    className="table-responsive flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
+                    style={{ minHeight: 0 }}
+                  >
                     <table
                       {...getTableProps()}
-                      className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600"
+                      className="table min-w-full border-separate border-spacing-0 border-0 text-sm"
                     >
+                      <colgroup>
+                        <col className="min-w-[12rem] sm:min-w-[16rem]" />
+                        <col className="w-[10rem] sm:w-[12rem]" />
+                        <col className="w-[7rem] sm:w-[8rem]" />
+                        <col className="w-[8rem] sm:w-[9rem]" />
+                        <col className="w-[6rem] sm:w-[7rem]" />
+                        <col className="w-[7rem] sm:w-[8rem]" />
+                        <col className="w-[5.5rem]" />
+                      </colgroup>
                       <thead>
-                        {headerGroups.map((headerGroup: any) => (
+                        {headerGroups.map((headerGroup: any, hgIdx: number) => (
                           <tr
                             {...headerGroup.getHeaderGroupProps()}
-                            className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600"
-                            key={headerGroup.getHeaderGroupProps().key}
+                            className="border-b border-defaultborder/70 bg-primary/[0.05] dark:border-white/10 dark:bg-primary/10"
+                            key={headerGroup.getHeaderGroupProps().key ?? `hg-${hgIdx}`}
                           >
-                            {headerGroup.headers.map((column: any) => (
+                            {headerGroup.headers.map((column: any, colIdx: number) => (
                               <th
                                 {...column.getHeaderProps(column.getSortByToggleProps?.() || column.getHeaderProps())}
                                 scope="col"
-                                className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
-                                key={column.id}
+                                className="sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]"
+                                key={column.id ?? `col-${colIdx}`}
+                                style={{ position: "sticky", top: 0, zIndex: 10 }}
                               >
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 px-3 py-3">
                                   <span className="tabletitle">{column.render("Header")}</span>
                                   {column.isSorted && (
                                     <span>
                                       {column.isSortedDesc ? (
-                                        <i className="ri-arrow-down-s-line text-[0.875rem]" />
+                                        <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
                                       ) : (
-                                        <i className="ri-arrow-up-s-line text-[0.875rem]" />
+                                        <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
                                       )}
                                     </span>
                                   )}
@@ -577,34 +710,50 @@ export default function ExternalJobsPage() {
                       <tbody {...getTableBodyProps()}>
                         {page.length === 0 ? (
                           <tr>
-                            <td colSpan={columns.length} className="!py-0 !px-0">
-                              <div className="flex flex-col items-center justify-center py-16 text-center">
-                                <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-4">
-                                  <i className={`${activeTab === "search" ? "ri-search-line" : "ri-bookmark-line"} text-2xl text-gray-300 dark:text-gray-600`} />
+                            <td colSpan={columns.length} className="!border-0 !p-0 align-top">
+                              <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+                                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                                  <i
+                                    className={`text-2xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
+                                    aria-hidden
+                                  />
+                                </span>
+                                <div className="max-w-md space-y-1">
+                                  <p className="text-base font-semibold text-defaulttextcolor dark:text-white">
+                                    {activeTab === "search" ? "No results yet" : "No saved jobs"}
+                                  </p>
+                                  <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
+                                    {activeTab === "search"
+                                      ? "Set title or location, then run search. External APIs may rate-limit repeated requests."
+                                      : "Save roles from the search tab to build a shortlist here."}
+                                  </p>
                                 </div>
-                                <h6 className="font-semibold text-gray-500 dark:text-gray-400 mb-1">
-                                  {activeTab === "search" ? "No search results" : "No saved jobs"}
-                                </h6>
-                                <p className="text-[0.8125rem] text-gray-400 dark:text-gray-500 max-w-[300px]">
-                                  {activeTab === "search"
-                                    ? "Enter a job title or location and click Search to find jobs from RapidAPI."
-                                    : "Save jobs from search results to access them here later."}
-                                </p>
+                                {activeTab === "search" && (
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-primary !rounded-xl !px-4 !py-2 !text-sm font-medium shadow-sm"
+                                    disabled={searchLoading || searchCooldown > 0}
+                                    onClick={handleSearch}
+                                  >
+                                    <i className="ri-search-line me-1.5 align-middle" aria-hidden />
+                                    Run search
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
                         ) : (
-                          page.map((row: any) => {
+                          page.map((row: any, rowIdx: number) => {
                             prepareRow(row);
                             return (
                               <tr
                                 {...row.getRowProps()}
-                                className="border-b border-gray-300 dark:border-gray-600 hover:bg-gray-50/50 dark:hover:bg-white/5 cursor-pointer transition-colors"
-                                key={row.id}
+                                className="cursor-pointer border-b border-gray-300 transition-colors odd:!bg-gray-50/80 hover:!bg-primary/[0.04] dark:border-gray-600 dark:odd:!bg-white/[0.03] dark:hover:!bg-primary/10"
+                                key={row.id ?? `row-${rowIdx}`}
                                 onClick={() => openPreview(row.original)}
                               >
-                                {row.cells.map((cell: any) => (
-                                  <td {...cell.getCellProps()} key={cell.column.id}>
+                                {row.cells.map((cell: any, cellIdx: number) => (
+                                  <td {...cell.getCellProps()} key={cell.column.id ?? `cell-${cellIdx}`} className="align-middle">
                                     {cell.render("Cell")}
                                   </td>
                                 ))}
@@ -616,81 +765,96 @@ export default function ExternalJobsPage() {
                     </table>
                   </div>
 
-                  {/* Load More for API pagination */}
                   {activeTab === "search" && searchResults.length > 0 && hasMore && (
-                    <div className="px-4 py-3 border-t border-gray-200 dark:border-defaultborder/10 text-center">
+                    <div className="border-t border-defaultborder/60 bg-defaultbackground/30 px-4 py-3 text-center dark:bg-white/[0.02]">
                       <button
                         type="button"
                         disabled={searchLoading}
                         onClick={handleLoadMore}
-                        className="ti-btn ti-btn-primary !py-1.5 !px-4 !text-[0.8125rem] whitespace-nowrap"
+                        className="ti-btn ti-btn-primary-full !rounded-xl !py-2 !px-5 !text-[0.8125rem] font-medium shadow-sm"
                       >
                         {searchLoading ? (
-                          <span className="flex items-center gap-2">
-                            <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" />
-                            Loading...
+                          <span className="inline-flex items-center gap-2">
+                            <ExternalJobsButtonSpinner className="text-white" />
+                            Loading…
                           </span>
                         ) : (
-                          <span className="flex items-center gap-1.5">
-                            <i className="ri-arrow-down-line" />
-                            Load More
+                          <span className="inline-flex items-center gap-1.5">
+                            <i className="ri-arrow-down-line" aria-hidden />
+                            Load more from API
                           </span>
                         )}
                       </button>
                     </div>
                   )}
 
-                  {/* Pagination Footer */}
                   {displayData.length > 0 && (
-                    <div className="box-footer !py-3 !px-4 flex items-center justify-between flex-wrap gap-3">
-                      <div className="text-[0.8125rem] text-gray-500 dark:text-gray-400">
-                        Showing <span className="font-semibold text-gray-700 dark:text-gray-300">{Math.min(pageIndex * pageSize + 1, displayData.length)}</span> to{" "}
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">{Math.min((pageIndex + 1) * pageSize, displayData.length)}</span> of{" "}
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">{displayData.length}</span> entries
+                    <div className="box-footer flex flex-wrap items-center justify-between gap-4 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
+                      <div className="text-sm text-textmuted dark:text-white/55">
+                        <span className="block sm:inline">
+                          Showing{" "}
+                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
+                            {Math.min(pageIndex * pageSize + 1, displayData.length)}
+                          </span>
+                          {" – "}
+                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
+                            {Math.min((pageIndex + 1) * pageSize, displayData.length)}
+                          </span>{" "}
+                          of{" "}
+                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">{displayData.length}</span>{" "}
+                          in this table
+                        </span>
+                        {activeTab === "saved" && savedTotal > savedJobs.length ? (
+                          <span className="mt-1 block text-xs text-amber-800/90 dark:text-amber-200/90 sm:mt-0 sm:ms-2 sm:inline">
+                            · Showing first {savedJobs.length} of {savedTotal} saved
+                          </span>
+                        ) : null}
                       </div>
                       {totalPages > 1 && (
-                        <nav aria-label="Page navigation">
-                          <ul className="ti-pagination mb-0">
-                            <li className={`page-item ${!canPreviousPage ? "disabled" : ""}`}>
-                              <button
-                                type="button"
-                                className="page-link !py-[0.375rem] !px-[0.75rem]"
-                                onClick={() => previousPage()}
-                                disabled={!canPreviousPage}
-                              >
-                                Prev
-                              </button>
-                            </li>
-                            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                              let pageNum: number;
-                              if (totalPages <= 5) pageNum = i;
-                              else if (pageIndex < 3) pageNum = i;
-                              else if (pageIndex > totalPages - 4) pageNum = totalPages - 5 + i;
-                              else pageNum = pageIndex - 2 + i;
-                              return (
-                                <li key={pageNum} className={`page-item ${pageIndex === pageNum ? "active" : ""}`}>
-                                  <button
-                                    type="button"
-                                    className="page-link !py-[0.375rem] !px-[0.75rem]"
-                                    onClick={() => (tableInstance as any).gotoPage(pageNum)}
-                                  >
-                                    {pageNum + 1}
-                                  </button>
-                                </li>
-                              );
-                            })}
-                            <li className={`page-item ${!canNextPage ? "disabled" : ""}`}>
-                              <button
-                                type="button"
-                                className="page-link !py-[0.375rem] !px-[0.75rem]"
-                                onClick={() => nextPage()}
-                                disabled={!canNextPage}
-                              >
-                                Next
-                              </button>
-                            </li>
-                          </ul>
-                        </nav>
+                        <div className="ms-auto">
+                          <nav aria-label="Page navigation" className="pagination-style-4">
+                            <ul className="ti-pagination mb-0">
+                              <li className={`page-item ${!canPreviousPage ? "disabled" : ""}`}>
+                                <button
+                                  type="button"
+                                  className="page-link px-3 py-[0.375rem]"
+                                  onClick={() => previousPage()}
+                                  disabled={!canPreviousPage}
+                                >
+                                  Prev
+                                </button>
+                              </li>
+                              {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+                                let pageNum: number;
+                                if (totalPages <= 5) pageNum = i;
+                                else if (pageIndex < 3) pageNum = i;
+                                else if (pageIndex > totalPages - 4) pageNum = totalPages - 5 + i;
+                                else pageNum = pageIndex - 2 + i;
+                                return (
+                                  <li key={pageNum} className={`page-item ${pageIndex === pageNum ? "active" : ""}`}>
+                                    <button
+                                      type="button"
+                                      className="page-link px-3 py-[0.375rem]"
+                                      onClick={() => (tableInstance as any).gotoPage(pageNum)}
+                                    >
+                                      {pageNum + 1}
+                                    </button>
+                                  </li>
+                                );
+                              })}
+                              <li className={`page-item ${!canNextPage ? "disabled" : ""}`}>
+                                <button
+                                  type="button"
+                                  className="page-link px-3 py-[0.375rem]"
+                                  onClick={() => nextPage()}
+                                  disabled={!canNextPage}
+                                >
+                                  Next
+                                </button>
+                              </li>
+                            </ul>
+                          </nav>
+                        </div>
                       )}
                     </div>
                   )}
@@ -699,6 +863,7 @@ export default function ExternalJobsPage() {
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       <ExternalJobPreviewPanel

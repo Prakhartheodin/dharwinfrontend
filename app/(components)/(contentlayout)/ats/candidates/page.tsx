@@ -740,8 +740,11 @@ const Candidates = () => {
   const handleResendVerification = async (candidate: CandidateDisplay) => {
     setActionError(null)
     try {
-      await resendVerificationEmail(candidate.id)
-      setActionSuccess('Verification email sent')
+      const res = await resendVerificationEmail(candidate.id)
+      const to = res.sentToEmail?.trim()
+      setActionSuccess(
+        to ? `Verification email sent to ${to}` : `Verification email sent${res.message ? `: ${res.message}` : ''}`
+      )
       refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
@@ -989,8 +992,8 @@ const Candidates = () => {
     }
   }
 
-  const handlePersonalInfoJoiningDateSave = async (value: string) => {
-    if (!previewCandidate?.id || !value) return
+  const handlePersonalInfoJoiningDateSave = async (value: string | null) => {
+    if (!previewCandidate?.id || value == null || !String(value).trim()) return
     setPersonalInfoDateSaving('joining')
     setActionError(null)
     try {
@@ -1615,20 +1618,30 @@ const Candidates = () => {
                 </div>
               </div>
               <div className="relative z-20 flex flex-wrap items-center gap-2 overflow-visible sm:justify-end">
-                <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value))
-                    setApiPage(1)
-                  }}
-                >
-                  {[10, 25, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      Show {size}
-                    </option>
-                  ))}
-                </select>
+                <div className="me-2 inline-flex items-center gap-2">
+                  <label
+                    htmlFor="candidates-page-size"
+                    className="mb-0 hidden whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/45 sm:inline"
+                  >
+                    Rows
+                  </label>
+                  <select
+                    id="candidates-page-size"
+                    className="form-select !m-0 !h-auto !w-auto !min-w-[4.5rem] !rounded-lg !border-defaultborder/80 !py-1.5 !ps-3 !pe-10 !text-[0.75rem] !leading-normal shadow-sm dark:!border-white/15"
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value))
+                      setApiPage(1)
+                    }}
+                    aria-label="Rows per page"
+                  >
+                    {[10, 25, 50, 100].map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
                   <button
                     type="button"
@@ -1964,7 +1977,6 @@ const Candidates = () => {
                         </button>
                       </li>
                       {pageOptions.length <= 7 ? (
-                        // Show all pages if 7 or fewer
                         pageOptions.map((page: number) => (
                           <li
                             key={page}
@@ -1979,7 +1991,6 @@ const Candidates = () => {
                           </li>
                         ))
                       ) : (
-                        // Show smart pagination for more pages
                         <>
                           {apiPage > 3 && (
                             <>
@@ -2014,9 +2025,9 @@ const Candidates = () => {
                               >
                                 <button
                                   className="page-link px-3 py-[0.375rem]"
-                                onClick={() => setApiPage(pageNum)}
-                              >
-                                {pageNum}
+                                  onClick={() => setApiPage(pageNum)}
+                                >
+                                  {pageNum}
                                 </button>
                               </li>
                             )
@@ -2052,11 +2063,11 @@ const Candidates = () => {
                     </ul>
                   </nav>
                 </div>
-                </div>
               </div>
             </div>
           </div>
         </div>
+      </div>
       </div>
 
       {/* Filter Panel Offcanvas */}

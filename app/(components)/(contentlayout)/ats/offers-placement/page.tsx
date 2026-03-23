@@ -49,6 +49,25 @@ const mapOfferToRow = (o: Offer) => {
   }
 }
 
+/** Exclude offers whose job or candidate refs were not populated (orphan / deleted records). */
+function offerHasUsableJobAndCandidate(o: Offer): boolean {
+  const job = o.job as unknown
+  if (job == null || typeof job === 'string' || typeof job !== 'object') return false
+  const title = String((job as { title?: string }).title ?? '').trim()
+  if (!title || title === '-') return false
+
+  const cand = o.candidate as unknown
+  if (cand == null || typeof cand === 'string' || typeof cand !== 'object') return false
+  const c = cand as { fullName?: string; email?: string; _id?: string; id?: string }
+  const candId = String(c._id ?? c.id ?? '').trim()
+  if (!candId) return false
+  const name = String(c.fullName ?? '').trim()
+  const email = String(c.email ?? '').trim()
+  if (name && name !== '-') return true
+  if (email) return true
+  return false
+}
+
 // Legacy mock data fallback (filtered to offer rows only - used when API empty)
 const OFFERS_PLACEMENT_DATA_LEGACY = [
   {
@@ -459,7 +478,10 @@ const OffersPlacement = () => {
 
   const refreshOffers = () => fetchOffers()
 
-  const tableDataFromApi = useMemo(() => offersData.map(mapOfferToRow), [offersData])
+  const tableDataFromApi = useMemo(
+    () => offersData.filter(offerHasUsableJobAndCandidate).map(mapOfferToRow),
+    [offersData]
+  )
   const OFFERS_PLACEMENT_DATA = tableDataFromApi
 
   const [filters, setFilters] = useState<FilterState>({

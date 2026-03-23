@@ -10,8 +10,30 @@ import { getMeWithCandidate, sendMyVerificationEmail } from "@/shared/lib/api/au
 import type { CandidateWithProfile } from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
 import { listActivityLogs } from "@/shared/lib/api/activity-logs";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { User, ActivityLog, Role } from "@/shared/lib/types";
+import type { User, ActivityLog } from "@/shared/lib/types";
+import { getDocumentDownloadUrl } from "@/shared/lib/api/candidates";
+import Swal from "sweetalert2";
+
+function normalizeSocialUrlForHref(raw: string): string {
+  const u = raw.trim();
+  if (!u) return "#";
+  if (/^https?:\/\//i.test(u)) return u;
+  return `https://${u}`;
+}
+
+function normalizeRoleIdList(raw: unknown): string[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw
+    .map((x) => {
+      if (typeof x === "string" || typeof x === "number") return String(x);
+      if (x && typeof x === "object") {
+        const o = x as { id?: string; _id?: string };
+        return String(o.id ?? o._id ?? "");
+      }
+      return "";
+    })
+    .filter(Boolean);
+}
 
 function getInitial(name: string | undefined | null): string {
   if (!name) return "?";
@@ -50,11 +72,17 @@ function humanizeAction(action: string): string {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | null }) {
-  const { user, refreshUser } = useAuth();
+function DynamicProfileView({
+  candidate,
+  serverEmailVerified,
+}: {
+  candidate?: CandidateWithProfile | null;
+  /** From GET /auth/me/with-candidate `user.isEmailVerified` — avoids stale auth context after verify */
+  serverEmailVerified?: boolean | null;
+}) {
+  const { user, refreshUser, roleNames, permissionsLoaded } = useAuth();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
-  const [roles, setRoles] = useState<Role[]>([]);
   const [resendVerificationSending, setResendVerificationSending] = useState(false);
   const [resendVerificationMessage, setResendVerificationMessage] = useState<"success" | "error" | null>(null);
 
@@ -69,26 +97,23 @@ function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | 
         .join(", ")
     : (u as { location?: string })?.location;
 
-  const rolesById = useMemo(() => {
-    const map = new Map<string, Role>();
-    roles.forEach((r) => map.set(r.id, r));
-    return map;
-  }, [roles]);
-
   const roleDisplayName = useMemo(() => {
     if (!u) return "—";
-    const ids = u.roleIds ?? [];
+    const apiNames = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
+    if (permissionsLoaded && apiNames.length > 0) {
+      return apiNames.join(", ");
+    }
+    const ids = normalizeRoleIdList(u.roleIds);
     if (ids.length === 0) {
-      const r = (u.role ?? "User").toString();
+      const r = (u.role ?? "").toString().trim().toLowerCase();
+      if (!r) return "—";
+      if (r === "user" || r === "candidate") return "Candidate";
       return r.charAt(0).toUpperCase() + r.slice(1);
     }
-    const names = ids.map((id) => rolesById.get(id)?.name).filter(Boolean);
-    return names.length > 0 ? names.join(", ") : (u.role ?? "User").toString();
-  }, [u, rolesById]);
-
-  useEffect(() => {
-    rolesApi.listRoles({ limit: 100 }).then((r) => setRoles(r.results)).catch(() => {});
-  }, []);
+    const fallback = (u.role ?? "").toString().trim();
+    if (!fallback) return "—";
+    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+  }, [u, roleNames, permissionsLoaded]);
 
   useEffect(() => {
     if (!u) return;
@@ -107,18 +132,24 @@ function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | 
   }
 
   const displayEmployeeId = candidate?.employeeId ?? "—";
+  const socialLinksList = Array.isArray(candidate?.socialLinks)
+    ? candidate.socialLinks.filter((s) => String(s?.url ?? "").trim() || String(s?.platform ?? "").trim())
+    : [];
+  const candidateIdForDocs = candidate?.id ?? candidate?._id;
+
   const personalInfo = [
     { label: "Name :", value: displayName },
     { label: "Email :", value: u?.email ?? "—" },
     ...(displayPhone ? [{ label: "Phone :", value: `${displayCountryCode ? displayCountryCode + " " : ""}${displayPhone}` }] : []),
     { label: "Employee ID :", value: displayEmployeeId },
-    { label: "Role :", value: roleDisplayName },
+    { label: roleDisplayName.includes(",") ? "Roles :" : "Role :", value: roleDisplayName },
     ...(displayAddress ? [{ label: "Address :", value: displayAddress }] : []),
     ...(u.education ? [{ label: "Education :", value: u.education }] : []),
     ...(u.domain && u.domain.length > 0 ? [{ label: "Domain :", value: u.domain.join(", ") }] : []),
   ];
 
-  const isEmailVerified = (u as { isEmailVerified?: boolean }).isEmailVerified !== false;
+  const contextVerified = (u as { isEmailVerified?: boolean }).isEmailVerified === true;
+  const isEmailVerified = contextVerified || serverEmailVerified === true;
   const handleResendVerification = async () => {
     setResendVerificationMessage(null);
     setResendVerificationSending(true);
@@ -441,17 +472,81 @@ function DynamicProfileView({ candidate }: { candidate?: CandidateWithProfile | 
             </div>
           )}
 
-          {/* Documents summary (candidate) */}
+          {/* Social links — same data as Settings → Personal Information & candidate edit */}
+          {socialLinksList.length > 0 && (
+            <div className="xl:col-span-12 col-span-12">
+              <div className="box">
+                <div className="box-header flex flex-wrap items-center justify-between gap-2">
+                  <div className="box-title mb-0">Social links</div>
+                  <Link href="/settings/personal-information/" className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap">
+                    <i className="ri-edit-line me-1" />
+                    Edit
+                  </Link>
+                </div>
+                <div className="box-body">
+                  <ul className="list-group list-group-flush">
+                    {socialLinksList.map((s, i) => {
+                      const href = normalizeSocialUrlForHref(String(s.url ?? ""));
+                      const label = String(s.platform ?? "").trim() || "Link";
+                      return (
+                        <li className="list-group-item !border-x-0 !border-t-0 !px-0" key={`${label}-${i}`}>
+                          <a
+                            href={href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary font-medium hover:underline inline-flex items-center gap-2"
+                          >
+                            <i className="ri-external-link-line" />
+                            {label}
+                          </a>
+                          {s.url ? (
+                            <div className="text-[0.7rem] text-[#8c9097] dark:text-white/45 truncate mt-0.5">{s.url}</div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Documents — matches personal info / edit candidate */}
           {candidate?.documents && candidate.documents.length > 0 && (
             <div className="xl:col-span-12 col-span-12">
               <div className="box">
-                <div className="box-header">
-                  <div className="box-title">Documents</div>
+                <div className="box-header flex flex-wrap items-center justify-between gap-2">
+                  <div className="box-title mb-0">Documents</div>
+                  <Link href="/settings/personal-information/" className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap">
+                    <i className="ri-edit-line me-1" />
+                    Manage
+                  </Link>
                 </div>
                 <div className="box-body">
-                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
-                    {candidate.documents.length} document(s) on file.
-                  </p>
+                  <ul className="list-group list-group-flush">
+                    {candidate.documents.map((doc, index) => (
+                      <li className="list-group-item !border-x-0 !border-t-0 !px-0 flex flex-wrap items-center justify-between gap-2" key={index}>
+                        <span className="text-[0.875rem]">{doc.label || doc.type || `Document ${index + 1}`}</span>
+                        {candidateIdForDocs && (doc.key || doc.url) ? (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap"
+                            onClick={async () => {
+                              try {
+                                const { url } = await getDocumentDownloadUrl(candidateIdForDocs, index);
+                                window.open(url, "_blank", "noopener,noreferrer");
+                              } catch {
+                                Swal.fire("Error", "Could not open document.", "error");
+                              }
+                            }}
+                          >
+                            <i className="ri-external-link-line me-1" />
+                            View
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -466,27 +561,39 @@ export default function MyProfilePage() {
   const { user } = useAuth();
   const { hasCandidateProfile, isLoading: rolesLoading } = useHasCandidateRole();
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
+  const [serverEmailVerified, setServerEmailVerified] = useState<boolean | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
 
   useEffect(() => {
     if (!user) {
       setDataLoading(false);
+      setServerEmailVerified(null);
       return;
     }
     let cancelled = false;
     if (hasCandidateProfile) {
       getMeWithCandidate()
         .then((res) => {
-          if (!cancelled) setCandidate(res?.candidate ?? null);
+          if (!cancelled) {
+            setCandidate(res?.candidate ?? null);
+            const v = res?.user && typeof (res.user as { isEmailVerified?: boolean }).isEmailVerified === "boolean"
+              ? (res.user as { isEmailVerified: boolean }).isEmailVerified
+              : null;
+            setServerEmailVerified(v);
+          }
         })
         .catch(() => {
-          if (!cancelled) setCandidate(null);
+          if (!cancelled) {
+            setCandidate(null);
+            setServerEmailVerified(null);
+          }
         })
         .finally(() => {
           if (!cancelled) setDataLoading(false);
         });
     } else {
       setCandidate(null);
+      setServerEmailVerified(null);
       setDataLoading(false);
     }
     return () => { cancelled = true; };
@@ -497,7 +604,7 @@ export default function MyProfilePage() {
       <Fragment>
         <Seo title="My Profile" />
         <Pageheader currentpage="My Profile" activepage="ATS" mainpage="My Profile" />
-        <DynamicProfileView candidate={candidate} />
+        <DynamicProfileView candidate={candidate} serverEmailVerified={serverEmailVerified} />
       </Fragment>
     );
   }

@@ -2,6 +2,10 @@
 
 import React from "react";
 import type { ExternalJob, ExternalJobSource } from "@/shared/lib/api/external-jobs";
+import {
+  formatJobDescriptionForDisplay,
+  JOB_DESCRIPTION_PROSE_CLASS,
+} from "@/shared/lib/ats/jobDescriptionHtml";
 
 const SOURCE_LABELS: Record<ExternalJobSource, string> = {
   "active-jobs-db": "Active Jobs DB",
@@ -57,35 +61,43 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
     },
   ];
 
+  const listingCta =
+    job.source === "linkedin-jobs-api"
+      ? { label: "View on LinkedIn", icon: "ri-linkedin-box-fill" as const }
+      : { label: "Open original listing", icon: "ri-external-link-line" as const };
+
   return (
     <div
       id="external-job-preview-panel"
       className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !max-w-[50rem] lg:!max-w-[60rem]"
       tabIndex={-1}
     >
-      {/* Header */}
-      <div className="ti-offcanvas-header !py-3 !px-4 border-b border-gray-200 dark:border-defaultborder/10">
-        <div className="flex-1 min-w-0">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2 mb-1">
-            <i className="ri-briefcase-line text-primary text-lg" />
-            <span className="truncate">{job.title || "Job Preview"}</span>
+      <div className="ti-offcanvas-header flex items-start justify-between gap-4 border-b border-defaultborder/80 bg-gray-50/90 !px-5 !py-4 dark:border-defaultborder/10 dark:bg-black/25">
+        <div className="min-w-0 flex-1">
+          <h6 className="ti-offcanvas-title mb-2 flex items-center gap-2 text-base font-semibold text-defaulttextcolor dark:text-white">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20">
+              <i className="ri-briefcase-line text-lg" aria-hidden />
+            </span>
+            <span className="truncate leading-snug">{job.title || "Job preview"}</span>
           </h6>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`badge text-[0.7rem] ${
-                job.source === "active-jobs-db" ? "bg-info/10 text-info" : "bg-primary/10 text-primary"
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[0.7rem] font-semibold ${
+                job.source === "active-jobs-db"
+                  ? "border border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300"
+                  : "border border-primary/25 bg-primary/10 text-primary"
               }`}
             >
               {sourceLabel}
             </span>
             {job.jobType && (
-              <span className="badge bg-gray-100 dark:bg-white/10 text-defaulttextcolor text-[0.7rem]">
+              <span className="inline-flex items-center rounded-full border border-defaultborder/50 bg-white/80 px-2.5 py-0.5 text-[0.7rem] font-medium text-defaulttextcolor dark:border-white/10 dark:bg-white/5">
                 {job.jobType}
               </span>
             )}
             {job.isRemote && (
-              <span className="badge bg-success/10 text-success text-[0.7rem]">
-                <i className="ri-home-wifi-line me-1" />
+              <span className="inline-flex items-center rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-0.5 text-[0.7rem] font-semibold text-emerald-800 dark:text-emerald-200">
+                <i className="ri-home-wifi-line me-1" aria-hidden />
                 Remote
               </span>
             )}
@@ -93,80 +105,86 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
         </div>
         <button
           type="button"
-          className="ti-btn ti-btn-light !p-1.5 !rounded-full flex-shrink-0"
+          className="ti-btn flex-shrink-0 rounded-lg p-1 text-gray-500 transition-none hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/20"
           onClick={handleClose}
           aria-label="Close"
         >
-          <i className="ri-close-line text-lg" />
+          <span className="sr-only">Close</span>
+          <svg className="h-3.5 w-3.5" width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+            <path
+              d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z"
+              fill="currentColor"
+            />
+          </svg>
         </button>
       </div>
 
-      {/* Body */}
       <div className="ti-offcanvas-body !p-0">
-        {/* Info Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-0 border-b border-gray-200 dark:border-defaultborder/10">
+        <div className="grid grid-cols-1 gap-3 border-b border-defaultborder/60 bg-gradient-to-br from-slate-50/80 via-white/50 to-transparent p-4 sm:grid-cols-2 lg:grid-cols-3 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
           {infoItems
             .filter((item) => item.value)
             .map((item) => (
               <div
                 key={item.label}
-                className="p-3 border-b border-e border-gray-100 dark:border-defaultborder/10 last:border-e-0"
+                className="rounded-xl border border-defaultborder/50 bg-white/90 p-3 shadow-sm ring-1 ring-black/[0.02] dark:border-white/10 dark:bg-bodybg/80 dark:ring-white/5"
               >
-                <div className="flex items-center gap-1.5 text-[0.7rem] text-gray-500 dark:text-gray-400 mb-1">
-                  <i className={`${item.icon} text-xs`} />
+                <div className="mb-1 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/45">
+                  <i className={`${item.icon} text-xs opacity-80`} aria-hidden />
                   {item.label}
                 </div>
-                <p className="font-medium text-[0.8125rem] text-gray-800 dark:text-white mb-0 truncate" title={item.value || ""}>
+                <p
+                  className="mb-0 truncate text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white"
+                  title={item.value || ""}
+                >
                   {item.value}
                 </p>
               </div>
             ))}
         </div>
 
-        {/* Description */}
         {job.description && (
-          <div className="p-4">
-            <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-              <i className="ri-file-text-line text-gray-400" />
-              Job Description
+          <div className="p-5">
+            <h6 className="mb-3 flex items-center gap-2 text-sm font-semibold text-defaulttextcolor dark:text-white">
+              <i className="ri-file-text-line text-primary/80" aria-hidden />
+              Description
             </h6>
             <div
-              className="text-[0.8125rem] leading-relaxed text-gray-600 dark:text-gray-300 prose dark:prose-invert max-w-none max-h-[400px] overflow-y-auto p-3 bg-gray-50 dark:bg-black/10 rounded-lg border border-gray-100 dark:border-defaultborder/10"
-              dangerouslySetInnerHTML={{ __html: job.description.replace(/\n/g, "<br />") }}
+              className={`${JOB_DESCRIPTION_PROSE_CLASS} max-h-[min(24rem,50vh)] overflow-y-auto rounded-2xl border border-defaultborder/60 bg-slate-50/80 p-4 text-[0.8125rem] dark:border-white/10 dark:bg-black/20`}
+              dangerouslySetInnerHTML={{
+                __html: formatJobDescriptionForDisplay(job.description),
+              }}
             />
           </div>
         )}
 
-        {/* Actions */}
-        <div className="p-4 border-t border-gray-200 dark:border-defaultborder/10 bg-gray-50/50 dark:bg-black/10">
-          <div className="flex flex-wrap gap-2">
+        <div className="border-t border-defaultborder/60 bg-defaultbackground/60 p-4 dark:!bg-white/[0.03]">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={saving}
               onClick={() => (isSaved ? onUnsave(job.externalId, job.source) : onSave(job))}
-              className={`ti-btn !py-1.5 !px-4 !text-[0.8125rem] ${
+              className={`ti-btn !rounded-xl !py-2 !px-4 !text-[0.8125rem] font-medium shadow-sm ${
                 isSaved ? "ti-btn-warning-full" : "ti-btn-primary-full"
               }`}
             >
-              <i className={`${isSaved ? "ri-bookmark-fill" : "ri-bookmark-line"} me-1.5 ${saving ? "animate-pulse" : ""}`} />
-              {saving ? "Saving..." : isSaved ? "Unsave" : "Save Job"}
+              <i
+                className={`${isSaved ? "ri-bookmark-fill" : "ri-bookmark-line"} me-1.5 ${saving ? "animate-pulse" : ""}`}
+                aria-hidden
+              />
+              {saving ? "Saving…" : isSaved ? "Remove from saved" : "Save to list"}
             </button>
             {job.platformUrl && (
               <a
                 href={job.platformUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="ti-btn !py-1.5 !px-4 !text-[0.8125rem] ti-btn-success-full"
+                className="ti-btn ti-btn-success-full !rounded-xl !py-2 !px-4 !text-[0.8125rem] font-medium shadow-sm"
               >
-                <i className="ri-linkedin-box-fill me-1.5" />
-                View on LinkedIn
+                <i className={`${listingCta.icon} me-1.5`} aria-hidden />
+                {listingCta.label}
               </a>
             )}
-            <button
-              type="button"
-              onClick={handleClose}
-              className="ti-btn !py-1.5 !px-4 !text-[0.8125rem] ti-btn-light ms-auto"
-            >
+            <button type="button" onClick={handleClose} className="ti-btn ti-btn-light ms-auto !rounded-xl !py-2 !px-4 !text-[0.8125rem]">
               Close
             </button>
           </div>

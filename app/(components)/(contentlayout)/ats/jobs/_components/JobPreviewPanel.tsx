@@ -2,14 +2,10 @@
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { type JobApplication } from '@/shared/lib/api/jobApplications'
-
-/** Decode HTML entities (e.g. &lt; → <). Backend xss-clean stores jobDescription entity-encoded. */
-function decodeHtmlEntities(html: string): string {
-  if (!html || typeof html !== 'string') return ''
-  const txt = document.createElement('textarea')
-  txt.innerHTML = html
-  return txt.value
-}
+import {
+  formatJobDescriptionForDisplay,
+  JOB_DESCRIPTION_PROSE_CLASS,
+} from '@/shared/lib/ats/jobDescriptionHtml'
 
 interface JobPreviewPanelProps {
   previewJob: any
@@ -179,6 +175,11 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           </span>
                         )
                       })()}
+                      {previewJob.jobOrigin === 'external' && (
+                        <span className="badge bg-info/10 text-info border border-info/30">
+                          <i className="ri-external-link-line me-1"></i>External listing
+                        </span>
+                      )}
                       {previewJob.isRemote && (
                         <span className="badge bg-success/10 text-success border border-success/30">
                           <i className="ri-home-line me-1"></i>Remote
@@ -292,35 +293,31 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                   {previewJob.description && (
                     <div>
                       <h6 className="font-semibold text-gray-800 dark:text-white mb-3">Job Description</h6>
-                      <div 
-                        className="prose prose-sm dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 job-description-content"
-                        dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(previewJob.description) }}
+                      <div
+                        className={JOB_DESCRIPTION_PROSE_CLASS}
+                        dangerouslySetInnerHTML={{
+                          __html: formatJobDescriptionForDisplay(previewJob.description),
+                        }}
                       />
                     </div>
                   )}
 
                   {/* Additional Info */}
                   <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">Posted By: </span>
-                        <span className="font-medium text-gray-800 dark:text-white">{previewJob.postedBy || '—'}</span>
-                      </div>
-                      <div>
-                        <span className="text-gray-500 dark:text-gray-400">Posted Date: </span>
-                        <span className="font-medium text-gray-800 dark:text-white">
-                          {previewJob.postingDate
-                            ? (() => {
-                                try {
-                                  const d = new Date(previewJob.postingDate)
-                                  return isNaN(d.getTime()) ? previewJob.postingDate : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
-                                } catch {
-                                  return previewJob.postingDate
-                                }
-                              })()
-                            : '—'}
-                        </span>
-                      </div>
+                    <div className="text-sm">
+                      <span className="text-gray-500 dark:text-gray-400">Posted Date: </span>
+                      <span className="font-medium text-gray-800 dark:text-white">
+                        {previewJob.postingDate
+                          ? (() => {
+                              try {
+                                const d = new Date(previewJob.postingDate)
+                                return isNaN(d.getTime()) ? previewJob.postingDate : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+                              } catch {
+                                return previewJob.postingDate
+                              }
+                            })()
+                          : '—'}
+                      </span>
                     </div>
                   </div>
                   </div>
@@ -452,7 +449,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                         >
                           {callingCandidates.size > 0 ? 'Calling Candidates...' : `Call Selected (${selectedCandidates.size})`}
                         </button>
-                      ) : (
+                      ) : previewJob.jobOrigin !== 'external' ? (
                         <button
                           type="button"
                           className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -461,7 +458,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                         >
                           {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
                         </button>
-                      )}
+                      ) : null}
                       <button
                         type="button"
                         className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"

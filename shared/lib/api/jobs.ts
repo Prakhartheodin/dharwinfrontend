@@ -29,9 +29,17 @@ export interface Job {
   salaryRange?: JobSalaryRange;
   experienceLevel?: string | null;
   status: string;
+  /** internal = ATS-created; external = mirrored from saved external listing */
+  jobOrigin?: "internal" | "external";
+  externalRef?: { externalId: string; source: string };
+  externalPlatformUrl?: string;
   createdBy?: { _id: string; name?: string; email?: string } | { id: string; name?: string };
   createdAt?: string;
   updatedAt?: string;
+}
+
+export function isExternalJob(job: { jobOrigin?: string }): boolean {
+  return job.jobOrigin === "external";
 }
 
 export interface JobsListParams {
@@ -43,6 +51,7 @@ export interface JobsListParams {
   createdBy?: string;
   search?: string;
   forCandidates?: boolean;
+  jobOrigin?: "internal" | "external";
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -56,8 +65,11 @@ export interface JobsListResponse {
   totalResults: number;
 }
 
-export async function listJobs(params?: JobsListParams): Promise<JobsListResponse> {
-  const { data } = await apiClient.get<JobsListResponse>("/jobs", { params });
+export async function listJobs(
+  params?: JobsListParams,
+  requestConfig?: { signal?: AbortSignal }
+): Promise<JobsListResponse> {
+  const { data } = await apiClient.get<JobsListResponse>("/jobs", { params, ...requestConfig });
   return data;
 }
 
@@ -109,6 +121,7 @@ export interface BrowseJobsParams {
   jobType?: string;
   location?: string;
   experienceLevel?: string;
+  jobOrigin?: "internal" | "external";
   sortBy?: string;
   limit?: number;
   page?: number;

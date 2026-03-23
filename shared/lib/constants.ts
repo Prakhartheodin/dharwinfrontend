@@ -32,6 +32,8 @@ export const AUTH_ENDPOINTS = {
   forgotPassword: "auth/forgot-password",
   /** Reset password – use token from email link to set a new password. */
   resetPassword: "auth/reset-password",
+  /** Confirm email – POST with ?token= (from verification email link). No auth. */
+  verifyEmail: "auth/verify-email",
   /** Send candidate onboarding/preboarding invitation(s). Auth required. Single: { email, onboardUrl }. Bulk: { invitations: [{ email, onboardUrl }] }. */
   sendCandidateInvitation: "auth/send-candidate-invitation",
 } as const;
@@ -41,6 +43,8 @@ export const ROUTES = {
   /** Public registration – no auth required; shareable URL. */
   register: "/authentication/register/",
   resetPassword: "/authentication/reset-password/",
+  /** Email verification landing page (loads token from query, POSTs to API). */
+  verifyEmail: "/authentication/verify-email/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
   /** Candidate profile (for users with role 'user' from share-candidate-form). Redirects to edit form. */

@@ -304,6 +304,7 @@ const NOTIF_ICONS: Record<string, { icon: string; color: string }> = {
   project: { icon: "ti ti-layout-grid", color: "primary" },
   account: { icon: "ti ti-user", color: "warning" },
   recruiter: { icon: "ti ti-users", color: "secondary" },
+  assignment: { icon: "ti ti-user-plus", color: "primary" },
   general: { icon: "ti ti-info-circle", color: "secondary" },
 };
 
@@ -748,7 +749,7 @@ export default function DashboardPage() {
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">open</span>
                       </div>
                       <span className="avatar avatar-md bg-secondary text-white p-2">
-                        <i className="ti ti-briefcase-2 text-[1.25rem] opacity-[0.7]"></i>
+                        <i className="ti ti-clipboard-list text-[1.25rem] opacity-[0.7]"></i>
                       </span>
                     </div>
                   </div>

@@ -90,6 +90,15 @@ export default function EditJobClient() {
     if (!jobId || jobId === '_') return
     getJobById(jobId)
       .then((job) => {
+        if (job.jobOrigin === 'external') {
+          Swal.fire({
+            icon: 'info',
+            title: 'External job',
+            text: 'External jobs are managed from External jobs. They cannot be edited here.',
+          })
+          router.replace('/ats/jobs')
+          return
+        }
         const parsedPhone = parseOrganisationPhone(job.organisation?.phone || '')
         setFormData({
           jobTitle: job.title || '',
