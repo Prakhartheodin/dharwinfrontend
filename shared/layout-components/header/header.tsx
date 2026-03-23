@@ -83,12 +83,16 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const typeToIcon: Record<string, string> = {
     leave: 'clock', task: 'circle-check', offer: 'gift', meeting: 'video', meeting_reminder: 'video', course: 'book',
     certificate: 'certificate', job_application: 'briefcase', project: 'folder', account: 'user-check',
-    recruiter: 'user', general: 'bell',
+    recruiter: 'user',
+    assignment: 'user-plus',
+    general: 'bell',
   };
   const typeToColor: Record<string, string> = {
     leave: 'primary', task: 'success', offer: 'secondary', meeting: 'primary', meeting_reminder: 'primary', course: 'pinkmain',
     certificate: 'warning', job_application: 'secondary', project: 'primary', account: 'success',
-    recruiter: 'pinkmain', general: 'secondary',
+    recruiter: 'pinkmain',
+    assignment: 'primary',
+    general: 'secondary',
   };
   const mapNotificationToItem = (n: Notification) => ({
     id: n._id,

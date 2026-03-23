@@ -16,6 +16,7 @@ export type NotificationType =
   | "project"
   | "account"
   | "recruiter"
+  | "assignment"
   | "general";
 
 export interface Notification {

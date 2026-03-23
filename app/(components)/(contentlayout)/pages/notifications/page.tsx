@@ -47,6 +47,7 @@ const TYPE_LABELS: Record<NotificationType | 'all', string> = {
   project: 'Projects',
   account: 'Account',
   recruiter: 'Recruiter',
+  assignment: 'Assignment',
   general: 'General',
 };
 
@@ -79,6 +80,7 @@ const getTypeBadgeClass = (type: NotificationType): string => {
     project: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400',
     account: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
     recruiter: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
+    assignment: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
     general: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
   };
   return map[type] ?? map.general;

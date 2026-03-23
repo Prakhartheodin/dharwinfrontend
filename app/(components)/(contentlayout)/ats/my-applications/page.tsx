@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import React, { Fragment, useState, useEffect } from "react";
@@ -70,7 +69,6 @@ export default function MyApplicationsPage() {
     return (
       <>
         <Seo title="My Applications" />
-        <Pageheader currentpage="My Applications" activepage="ATS" mainpage="My Applications" />
         <div className="container-fluid">
           <div className="box custom-box">
             <div className="box-body text-center py-8">
@@ -90,7 +88,6 @@ export default function MyApplicationsPage() {
   return (
     <Fragment>
       <Seo title="My Applications" />
-      <Pageheader currentpage="My Applications" activepage="ATS" mainpage="My Applications" />
       <div className="container-fluid pt-6">
         {/* Header bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">

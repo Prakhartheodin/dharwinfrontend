@@ -1,21 +1,79 @@
 "use client";
 
-import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import React, { Fragment, useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
-import * as rolesApi from "@/shared/lib/api/roles";
 import * as usersApi from "@/shared/lib/api/users";
-import { uploadDocument, uploadDocuments, getDocumentDownloadUrl, getSalarySlipDownloadUrl } from "@/shared/lib/api/candidates";
+import {
+  uploadDocument,
+  uploadDocuments,
+  getDocumentDownloadUrl,
+  getSalarySlipDownloadUrl,
+  getMyCandidate,
+} from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
-import type { Role } from "@/shared/lib/types";
 import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import type { CandidateWithProfile, UpdateMeWithCandidatePayload } from "@/shared/lib/api/auth";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
+
+type NotificationPrefKey = keyof NotificationPreferences;
+
+/** Grouped email notification toggles — keys must match `NotificationPreferences`. */
+const NOTIFICATION_PREF_GROUPS: {
+  id: string;
+  title: string;
+  summary: string;
+  icon: string;
+  items: { key: NotificationPrefKey; label: string; description?: string }[];
+}[] = [
+  {
+    id: "work",
+    title: "Work & attendance",
+    summary: "HR, leave, and tasks",
+    icon: "ri-time-line",
+    items: [
+      { key: "leaveUpdates", label: "Leave & attendance updates", description: "Absences, approvals, and attendance changes" },
+      { key: "taskAssignments", label: "Task assignments", description: "When new work is assigned to you" },
+    ],
+  },
+  {
+    id: "hiring",
+    title: "Applications & offers",
+    summary: "Recruiting and recruiter touchpoints",
+    icon: "ri-briefcase-4-line",
+    items: [
+      { key: "applicationUpdates", label: "Job application updates", description: "Status changes on roles you applied to" },
+      { key: "offerUpdates", label: "Offer updates", description: "Offers, negotiations, and outcomes" },
+      { key: "recruiterUpdates", label: "Recruiter assignments", description: "When a recruiter is linked to you" },
+    ],
+  },
+  {
+    id: "learning",
+    title: "Meetings & learning",
+    summary: "Calendar, reminders, and programmes",
+    icon: "ri-calendar-event-line",
+    items: [
+      { key: "meetingInvitations", label: "Meeting invitations", description: "Invites and schedule updates" },
+      { key: "meetingReminders", label: "Meeting reminders", description: "Alerts before your sessions" },
+      { key: "certificates", label: "Certificates", description: "Issued credentials and completions" },
+      { key: "courseUpdates", label: "Course / training updates", description: "Modules, deadlines, and programme news" },
+    ],
+  },
+];
+
+const ALL_NOTIFICATION_PREF_KEYS = NOTIFICATION_PREF_GROUPS.flatMap((g) => g.items.map((i) => i.key));
+
+function normalizeSocialUrl(raw: string): string {
+  const u = raw.trim();
+  if (!u) return "";
+  if (/^https?:\/\//i.test(u)) return u;
+  return `https://${u}`;
+}
 
 function validatePhoneForCandidate(phone: string): string | null {
   const digits = (phone || "").replace(/\D/g, "");
@@ -31,6 +89,21 @@ function formatDate(isoString: string | undefined): string {
   } catch {
     return "—";
   }
+}
+
+/** roleIds from API may be strings or populated subdocs; Role rows may use id or _id. */
+function normalizeRoleIdList(raw: unknown): string[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw
+    .map((x) => {
+      if (typeof x === "string" || typeof x === "number") return String(x);
+      if (x && typeof x === "object") {
+        const o = x as { id?: string; _id?: string };
+        return String(o.id ?? o._id ?? "");
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 function parseUserAgent(ua: string | null | undefined): string {
@@ -51,9 +124,8 @@ function validateNewPassword(password: string): string | null {
 }
 
 export default function PersonalInformationPage() {
-  const { user, logout, sessions, checkAuth, refreshUser, isAdministrator } = useAuth();
+  const { user, logout, sessions, checkAuth, refreshUser, isAdministrator, roleNames, permissionsLoaded } = useAuth();
   const { hasCandidateRole, hasCandidateProfile, isLoading: candidateRoleLoading } = useHasCandidateRole();
-  const [roles, setRoles] = useState<Role[]>([]);
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
 
   const [firstName, setFirstName] = useState("");
@@ -105,6 +177,7 @@ export default function PersonalInformationPage() {
   const [existingDocs, setExistingDocs] = useState<Array<{ type?: string; label?: string; url?: string; key?: string; originalName?: string }>>([]);
   const [salarySlips, setSalarySlips] = useState<Array<{ id: number; month: string; year: string; file: File | null }>>([]);
   const [existingSalarySlips, setExistingSalarySlips] = useState<Array<{ month: string; year: string; documentUrl?: string; key?: string; originalName?: string }>>([]);
+  const [socialLinkRows, setSocialLinkRows] = useState<Array<{ id: number; platform: string; url: string }>>([]);
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     leaveUpdates: true,
@@ -118,91 +191,168 @@ export default function PersonalInformationPage() {
     recruiterUpdates: true,
   });
 
-  const rolesById = useMemo(() => {
-    const map = new Map<string, Role>();
-    roles.forEach((r) => map.set(r.id, r));
-    return map;
-  }, [roles]);
+  const notificationPanelId = useId();
+  const [notificationSectionOpen, setNotificationSectionOpen] = useState(true);
+
+  const enabledNotificationEmailCount = useMemo(
+    () => ALL_NOTIFICATION_PREF_KEYS.filter((k) => notificationPrefs[k] !== false).length,
+    [notificationPrefs]
+  );
+
+  const enableAllNotificationPrefs = () => {
+    setNotificationPrefs((p) => {
+      const next = { ...p };
+      ALL_NOTIFICATION_PREF_KEYS.forEach((k) => {
+        next[k] = true;
+      });
+      return next;
+    });
+  };
+
+  const disableAllNotificationPrefs = () => {
+    setNotificationPrefs((p) => {
+      const next = { ...p };
+      ALL_NOTIFICATION_PREF_KEYS.forEach((k) => {
+        next[k] = false;
+      });
+      return next;
+    });
+  };
+
+  const setNotificationGroupPrefs = (keys: NotificationPrefKey[], on: boolean) => {
+    setNotificationPrefs((p) => {
+      const next = { ...p };
+      keys.forEach((k) => {
+        next[k] = on;
+      });
+      return next;
+    });
+  };
 
   const roleDisplayName = useMemo(() => {
     if (!user) return "—";
-    const ids = user.roleIds ?? [];
-    if (ids.length === 0) {
-      const r = (user.role ?? "User").toString().toLowerCase();
-      return r === "user" || r === "candidate" ? "Candidate" : r.charAt(0).toUpperCase() + r.slice(1);
+    const apiNames = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
+    if (permissionsLoaded && apiNames.length > 0) {
+      return apiNames.join(", ");
     }
-    const names = ids.map((id) => rolesById.get(id)?.name).filter(Boolean);
-    const display = names.length > 0 ? names.join(", ") : (user.role ?? "User").toString();
-    return display.toLowerCase() === "user" && hasCandidateRole ? "Candidate" : display;
-  }, [user, rolesById, hasCandidateRole]);
+    const ids = normalizeRoleIdList(user.roleIds);
+    if (ids.length === 0) {
+      const r = (user.role ?? "").toString().trim().toLowerCase();
+      if (!r) return "—";
+      if (r === "user" || r === "candidate") return "Candidate";
+      return r.charAt(0).toUpperCase() + r.slice(1);
+    }
+    const fallback = (user.role ?? "").toString().trim();
+    if (!fallback) return "—";
+    if (fallback.toLowerCase() === "user" && hasCandidateRole) return "Candidate";
+    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
+  }, [user, hasCandidateRole, roleNames, permissionsLoaded]);
 
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
-    rolesApi
-      .listRoles({ limit: 100 })
-      .then((res) => {
-        if (!cancelled) setRoles(res.results ?? []);
-      })
-      .catch(() => {});
+
+    const load = async () => {
+      try {
+        if (isAdministrator) {
+          if (!hasCandidateProfile) {
+            if (!cancelled) setCandidate(null);
+            return;
+          }
+          const res = await authApi.getMeWithCandidate();
+          if (cancelled) return;
+          if (res?.candidate) setCandidate(res.candidate);
+          else setCandidate(null);
+          return;
+        }
+
+        const res = await authApi.getMeWithCandidate();
+        if (cancelled) return;
+        if (res?.candidate) {
+          setCandidate(res.candidate);
+          return;
+        }
+        try {
+          const c = await getMyCandidate();
+          if (cancelled) return;
+          setCandidate(c ? (c as CandidateWithProfile) : null);
+        } catch {
+          if (!cancelled) setCandidate(null);
+        }
+      } catch {
+        if (!cancelled) setCandidate(null);
+      }
+    };
+
+    load();
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useEffect(() => {
-    if (!hasCandidateProfile) {
-      setCandidate(null);
-      return;
-    }
-    let cancelled = false;
-    authApi.getMeWithCandidate().then((res) => {
-      if (!cancelled && res?.candidate) setCandidate(res.candidate);
-    });
-    return () => { cancelled = true; };
-  }, [hasCandidateProfile]);
+  }, [user, isAdministrator, hasCandidateProfile]);
 
   useEffect(() => {
     if (!candidate) return;
-    setPhoneNumber(candidate.phoneNumber ?? "");
-    setCountryCode(candidate.countryCode ?? "IN");
-    setShortBio(candidate.shortBio ?? "");
-    setAddress({
-      streetAddress: candidate.address?.streetAddress ?? "",
-      streetAddress2: candidate.address?.streetAddress2 ?? "",
-      city: candidate.address?.city ?? "",
-      state: candidate.address?.state ?? "",
-      zipCode: candidate.address?.zipCode ?? "",
-      country: candidate.address?.country ?? "",
-    });
-    setSevisId(candidate.sevisId ?? "");
-    setEad(candidate.ead ?? "");
-    setVisaType(candidate.visaType ?? "");
-    setCustomVisaType(candidate.customVisaType ?? "");
-    setDegree(candidate.degree ?? "");
-    setSupervisorName(candidate.supervisorName ?? "");
-    setSupervisorContact(candidate.supervisorContact ?? "");
-    setSalaryRange(candidate.salaryRange ?? "");
-    setQualifications(candidate.qualifications && candidate.qualifications.length > 0 ? candidate.qualifications : []);
-    setExperiences(candidate.experiences && candidate.experiences.length > 0 ? candidate.experiences : []);
-    setExistingDocs(
-      candidate.documents?.map((d) => ({
-        type: d.type,
-        label: d.label,
-        url: d.url,
-        key: d.key,
-        originalName: d.originalName,
-      })) ?? []
-    );
-    setExistingSalarySlips(
-      candidate.salarySlips?.map((s) => ({
-        month: s.month ?? "",
-        year: String(s.year ?? ""),
-        documentUrl: s.documentUrl,
-        key: s.key,
-        originalName: s.originalName,
-      })) ?? []
-    );
-  }, [candidate]);
+
+    const syncAttachmentsFromCandidate = () => {
+      setExistingDocs(
+        candidate.documents?.map((d) => ({
+          type: d.type,
+          label: d.label,
+          url: d.url,
+          key: d.key,
+          originalName: d.originalName,
+        })) ?? []
+      );
+      setExistingSalarySlips(
+        candidate.salarySlips?.map((s) => ({
+          month: s.month ?? "",
+          year: String(s.year ?? ""),
+          documentUrl: s.documentUrl,
+          key: s.key,
+          originalName: s.originalName,
+        })) ?? []
+      );
+      const sl = candidate.socialLinks;
+      if (Array.isArray(sl) && sl.length > 0) {
+        setSocialLinkRows(
+          sl.map((s, i) => ({
+            id: Date.now() + i,
+            platform: typeof s?.platform === "string" ? s.platform : "",
+            url: typeof s?.url === "string" ? s.url : "",
+          }))
+        );
+      } else {
+        setSocialLinkRows([]);
+      }
+    };
+
+    if (hasCandidateProfile) {
+      setPhoneNumber(candidate.phoneNumber ?? "");
+      setCountryCode(candidate.countryCode ?? "IN");
+      setShortBio(candidate.shortBio ?? "");
+      setAddress({
+        streetAddress: candidate.address?.streetAddress ?? "",
+        streetAddress2: candidate.address?.streetAddress2 ?? "",
+        city: candidate.address?.city ?? "",
+        state: candidate.address?.state ?? "",
+        zipCode: candidate.address?.zipCode ?? "",
+        country: candidate.address?.country ?? "",
+      });
+      setSevisId(candidate.sevisId ?? "");
+      setEad(candidate.ead ?? "");
+      setVisaType(candidate.visaType ?? "");
+      setCustomVisaType(candidate.customVisaType ?? "");
+      setDegree(candidate.degree ?? "");
+      setSupervisorName(candidate.supervisorName ?? "");
+      setSupervisorContact(candidate.supervisorContact ?? "");
+      setSalaryRange(candidate.salaryRange ?? "");
+      setQualifications(candidate.qualifications && candidate.qualifications.length > 0 ? candidate.qualifications : []);
+      setExperiences(candidate.experiences && candidate.experiences.length > 0 ? candidate.experiences : []);
+      syncAttachmentsFromCandidate();
+    } else {
+      syncAttachmentsFromCandidate();
+    }
+  }, [candidate, hasCandidateProfile]);
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -243,9 +393,18 @@ export default function PersonalInformationPage() {
       }
     }
 
+    const pendingDocUploads = documentsList.some((d) => d.file && d.name);
+    const pendingSlipUploads = salarySlips.some((s) => s.file && s.month && s.year);
+    if (!isAdministrator && !candidate && (pendingDocUploads || pendingSlipUploads)) {
+      setSaveError("No candidate profile is linked to your account. Document and salary slip uploads require a candidate record.");
+      return;
+    }
+
     setSaveLoading(true);
     try {
-      if (hasCandidateProfile && candidate) {
+      const useCandidateApi = Boolean(candidate && (hasCandidateProfile || !isAdministrator));
+
+      if (useCandidateApi && candidate) {
         const DOCUMENT_TYPES = ["Aadhar", "PAN", "Bank", "Passport", "CV/Resume", "Marksheet", "Degree Certificate", "Experience Letter", "Other"] as const;
         let finalDocs: Array<{ type: string; label?: string; url?: string; key?: string; originalName?: string; size?: number; mimeType?: string }> = existingDocs.map((d) => ({
           type: d.type || "Other",
@@ -302,33 +461,80 @@ export default function PersonalInformationPage() {
           }
         }
 
-        const payload: UpdateMeWithCandidatePayload = {
-          name: fullName || undefined,
-          notificationPreferences: notificationPrefs,
-          phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
-          countryCode: countryCode || undefined,
-          shortBio: shortBio || undefined,
-          sevisId: sevisId || undefined,
-          ead: ead || undefined,
-          visaType: visaType || undefined,
-          customVisaType: customVisaType || undefined,
-          degree: degree || undefined,
-          supervisorName: supervisorName || undefined,
-          supervisorContact: (supervisorContact || "").replace(/\D/g, "") || undefined,
-          salaryRange: salaryRange || undefined,
-          address: {
-            streetAddress: address.streetAddress || undefined,
-            streetAddress2: address.streetAddress2 || undefined,
-            city: address.city || undefined,
-            state: address.state || undefined,
-            zipCode: address.zipCode || undefined,
-            country: address.country || undefined,
-          },
-          qualifications: qualifications.length > 0 ? qualifications : undefined,
-          experiences: experiences.length > 0 ? experiences : undefined,
-          documents: finalDocs,
-          salarySlips: finalSalarySlips,
-        };
+        const socialPayload = socialLinkRows
+          .filter((row) => row.platform.trim() && row.url.trim())
+          .map((row) => ({
+            platform: row.platform.trim(),
+            url: normalizeSocialUrl(row.url),
+          }));
+
+        let payload: UpdateMeWithCandidatePayload;
+
+        if (hasCandidateProfile) {
+          payload = {
+            name: fullName || undefined,
+            notificationPreferences: notificationPrefs,
+            phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
+            countryCode: countryCode || undefined,
+            shortBio: shortBio || undefined,
+            sevisId: sevisId || undefined,
+            ead: ead || undefined,
+            visaType: visaType || undefined,
+            customVisaType: customVisaType || undefined,
+            degree: degree || undefined,
+            supervisorName: supervisorName || undefined,
+            supervisorContact: (supervisorContact || "").replace(/\D/g, "") || undefined,
+            salaryRange: salaryRange || undefined,
+            address: {
+              streetAddress: address.streetAddress || undefined,
+              streetAddress2: address.streetAddress2 || undefined,
+              city: address.city || undefined,
+              state: address.state || undefined,
+              zipCode: address.zipCode || undefined,
+              country: address.country || undefined,
+            },
+            qualifications: qualifications.length > 0 ? qualifications : undefined,
+            experiences: experiences.length > 0 ? experiences : undefined,
+            documents: finalDocs,
+            salarySlips: finalSalarySlips,
+            socialLinks: socialPayload,
+          };
+        } else {
+          const staffDigits = staffPhone.replace(/\D/g, "");
+          const candDigits = (candidate.phoneNumber ?? "").replace(/\D/g, "");
+          payload = {
+            name: fullName || undefined,
+            notificationPreferences: notificationPrefs,
+            phoneNumber: staffDigits || candDigits || undefined,
+            countryCode: staffCountryCode || candidate.countryCode || undefined,
+            shortBio: candidate.shortBio ?? undefined,
+            sevisId: candidate.sevisId ?? undefined,
+            ead: candidate.ead ?? undefined,
+            visaType: candidate.visaType ?? undefined,
+            customVisaType: candidate.customVisaType ?? undefined,
+            degree: candidate.degree ?? undefined,
+            supervisorName: candidate.supervisorName ?? undefined,
+            supervisorContact: (candidate.supervisorContact ?? "").replace(/\D/g, "") || undefined,
+            supervisorCountryCode: candidate.supervisorCountryCode ?? undefined,
+            salaryRange: candidate.salaryRange ?? undefined,
+            address: candidate.address
+              ? {
+                  streetAddress: candidate.address.streetAddress || undefined,
+                  streetAddress2: candidate.address.streetAddress2 || undefined,
+                  city: candidate.address.city || undefined,
+                  state: candidate.address.state || undefined,
+                  zipCode: candidate.address.zipCode || undefined,
+                  country: candidate.address.country || undefined,
+                }
+              : undefined,
+            qualifications: candidate.qualifications?.length ? candidate.qualifications : undefined,
+            experiences: candidate.experiences?.length ? candidate.experiences : undefined,
+            documents: finalDocs,
+            salarySlips: finalSalarySlips,
+            socialLinks: socialPayload,
+          };
+        }
+
         const res = await authApi.updateMeWithCandidate(payload);
         setCandidate(res.candidate);
         setDocumentsList([]);
@@ -392,7 +598,7 @@ export default function PersonalInformationPage() {
     try {
       const result = await uploadDocument(file);
       const profilePicture = { url: result.url, key: result.key, originalName: result.originalName, size: result.size, mimeType: result.mimeType };
-      if (hasCandidateProfile && candidate) {
+      if (candidate && (hasCandidateProfile || !isAdministrator)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture });
         setCandidate(res.candidate);
       } else {
@@ -414,7 +620,7 @@ export default function PersonalInformationPage() {
     setSaveError("");
     setAvatarRemoveLoading(true);
     try {
-      if (hasCandidateProfile && candidate) {
+      if (candidate && (hasCandidateProfile || !isAdministrator)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture: null });
         setCandidate(res.candidate);
       } else {
@@ -558,8 +764,10 @@ export default function PersonalInformationPage() {
                 <dd className="text-[0.9375rem]">{user?.username ?? user?.email ?? "—"}</dd>
               </div>
               <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Role</dt>
-                <dd className="text-[0.9375rem]">{roleDisplayName} (System)</dd>
+                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
+                  {roleDisplayName.includes(",") ? "Roles" : "Role"}
+                </dt>
+                <dd className="text-[0.9375rem]">{roleDisplayName}</dd>
               </div>
               {!hasCandidateProfile && (staffPhone || staffLocation) && (
                 <>
@@ -1140,6 +1348,89 @@ export default function PersonalInformationPage() {
                 </button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Social links, documents & salary slips: all non-administrators (staff with linked candidate included); hidden for Administrator */}
+        {!isAdministrator && !candidateRoleLoading && (
+          <div className="space-y-6 mb-6">
+            <h6 className="font-semibold text-[1rem]">Profile attachments</h6>
+            {!candidate && (
+              <p className="text-[0.875rem] text-defaulttextcolor/80 mb-0">
+                When your account is linked to a candidate record, you can add social links and upload documents here. If uploads are disabled, no candidate profile is linked yet—contact your administrator.
+              </p>
+            )}
+
+            {/* Social links — same fields as ATS candidate edit (Basicwizard); saved with PATCH /auth/me/with-candidate */}
+            <div className="box border border-defaultborder rounded-lg overflow-hidden">
+              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between">
+                <h6 className="font-semibold mb-0 text-[0.9375rem]">Social links</h6>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
+                  onClick={() => setSocialLinkRows((arr) => [...arr, { id: Date.now(), platform: "", url: "" }])}
+                  disabled={!candidate}
+                >
+                  <i className="ri-add-line me-1 align-middle" />
+                  Add link
+                </button>
+              </div>
+              <div className="box-body px-4 py-4 space-y-4">
+                <p className="text-defaulttextcolor/70 text-sm mb-0">
+                  Optional. Shown on My Profile and kept in sync when recruiters edit your candidate record.
+                </p>
+                {socialLinkRows.map((row, i) => (
+                  <div key={row.id} className="p-3 border border-defaultborder rounded-md sm:grid grid-cols-12 gap-3 relative">
+                    <button
+                      type="button"
+                      className="absolute top-2 end-2 ti-btn ti-btn-soft-danger ti-btn-sm !p-1 !min-h-0"
+                      aria-label="Remove link"
+                      onClick={() => setSocialLinkRows((arr) => arr.filter((r) => r.id !== row.id))}
+                      disabled={!candidate}
+                    >
+                      <i className="ri-close-line" />
+                    </button>
+                    <div className="col-span-12 sm:col-span-5">
+                      <label className="form-label text-xs">Platform</label>
+                      <select
+                        className="form-control !rounded-md"
+                        value={row.platform}
+                        disabled={!candidate}
+                        onChange={(e) =>
+                          setSocialLinkRows((arr) => arr.map((r, j) => (j === i ? { ...r, platform: e.target.value } : r)))
+                        }
+                      >
+                        <option value="">Select</option>
+                        <option value="LinkedIn">LinkedIn</option>
+                        <option value="GitHub">GitHub</option>
+                        <option value="Twitter">Twitter</option>
+                        <option value="Facebook">Facebook</option>
+                        <option value="Instagram">Instagram</option>
+                        <option value="Portfolio">Portfolio</option>
+                        <option value="Website">Website</option>
+                        <option value="Other">Other</option>
+                      </select>
+                    </div>
+                    <div className="col-span-12 sm:col-span-7">
+                      <label className="form-label text-xs">URL</label>
+                      <input
+                        type="url"
+                        className="form-control !rounded-md"
+                        placeholder="https://…"
+                        value={row.url}
+                        disabled={!candidate}
+                        onChange={(e) =>
+                          setSocialLinkRows((arr) => arr.map((r, j) => (j === i ? { ...r, url: e.target.value } : r)))
+                        }
+                      />
+                    </div>
+                  </div>
+                ))}
+                {socialLinkRows.length === 0 && (
+                  <p className="text-defaulttextcolor/70 text-sm mb-0">No links yet. Use &quot;Add link&quot; to add LinkedIn, GitHub, portfolio, etc.</p>
+                )}
+              </div>
+            </div>
 
             {/* Documents */}
             <div className="box border border-defaultborder rounded-lg overflow-hidden">
@@ -1149,6 +1440,7 @@ export default function PersonalInformationPage() {
                   type="button"
                   className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
                   onClick={() => setDocumentsList((arr) => [...arr, { id: Date.now(), name: "", customName: "", file: null }])}
+                  disabled={!candidate}
                 >
                   <i className="ri-add-line me-1 align-middle" />
                   Add document
@@ -1183,6 +1475,7 @@ export default function PersonalInformationPage() {
                             type="button"
                             className="ti-btn ti-btn-soft-danger ti-btn-sm !py-1.5 !px-3 !min-w-[5.5rem]"
                             onClick={() => setExistingDocs((arr) => arr.filter((_, j) => j !== i))}
+                            disabled={!candidate}
                           >
                             Remove
                           </button>
@@ -1198,6 +1491,7 @@ export default function PersonalInformationPage() {
                       <select
                         className="form-control !rounded-md"
                         value={doc.name}
+                        disabled={!candidate}
                         onChange={(e) => {
                           const val = e.target.value;
                           setDocumentsList((arr) =>
@@ -1233,6 +1527,7 @@ export default function PersonalInformationPage() {
                           className="form-control !rounded-md"
                           placeholder="Document name"
                           value={doc.customName}
+                          disabled={!candidate}
                           onChange={(e) => setDocumentsList((arr) => arr.map((d, j) => (j === i ? { ...d, customName: e.target.value } : d)))}
                         />
                       </div>
@@ -1243,6 +1538,7 @@ export default function PersonalInformationPage() {
                         type="file"
                         accept=".jpg,.jpeg,.png,.pdf"
                         className="form-control !rounded-md"
+                        disabled={!candidate}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setDocumentsList((arr) => arr.map((d, j) => (j === i ? { ...d, file } : d)));
@@ -1269,7 +1565,7 @@ export default function PersonalInformationPage() {
                     <button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={saveLoading || !user}
+                      disabled={saveLoading || !user || !candidate}
                       className="ti-btn ti-btn-primary ti-btn-sm !py-2 !px-4 whitespace-nowrap shrink-0 inline-flex items-center justify-center !min-w-max"
                     >
                       {saveLoading ? "Uploading…" : "Upload documents"}
@@ -1287,6 +1583,7 @@ export default function PersonalInformationPage() {
                   type="button"
                   className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
                   onClick={() => setSalarySlips((arr) => [...arr, { id: Date.now(), month: "", year: "", file: null }])}
+                  disabled={!candidate}
                 >
                   <i className="ri-add-line me-1 align-middle" />
                   Add salary slip
@@ -1323,6 +1620,7 @@ export default function PersonalInformationPage() {
                             type="button"
                             className="ti-btn ti-btn-soft-danger ti-btn-sm !py-1.5 !px-3 !min-w-[5.5rem]"
                             onClick={() => setExistingSalarySlips((arr) => arr.filter((_, j) => j !== i))}
+                            disabled={!candidate}
                           >
                             Remove
                           </button>
@@ -1338,6 +1636,7 @@ export default function PersonalInformationPage() {
                       <select
                         className="form-control !rounded-md"
                         value={slip.month}
+                        disabled={!candidate}
                         onChange={(e) => setSalarySlips((arr) => arr.map((s, j) => (j === i ? { ...s, month: e.target.value } : s)))}
                       >
                         <option value="">Select</option>
@@ -1351,6 +1650,7 @@ export default function PersonalInformationPage() {
                       <select
                         className="form-control !rounded-md"
                         value={slip.year}
+                        disabled={!candidate}
                         onChange={(e) => setSalarySlips((arr) => arr.map((s, j) => (j === i ? { ...s, year: e.target.value } : s)))}
                       >
                         <option value="">Select</option>
@@ -1365,6 +1665,7 @@ export default function PersonalInformationPage() {
                         type="file"
                         accept=".jpg,.jpeg,.png,.pdf"
                         className="form-control !rounded-md"
+                        disabled={!candidate}
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setSalarySlips((arr) => arr.map((s, j) => (j === i ? { ...s, file } : s)));
@@ -1391,7 +1692,7 @@ export default function PersonalInformationPage() {
                     <button
                       type="button"
                       onClick={handleSaveProfile}
-                      disabled={saveLoading || !user}
+                      disabled={saveLoading || !user || !candidate}
                       className="ti-btn ti-btn-primary ti-btn-sm !py-2 !px-4 whitespace-nowrap shrink-0 inline-flex items-center justify-center !min-w-max"
                     >
                       {saveLoading ? "Uploading…" : "Upload salary slips"}
@@ -1403,45 +1704,207 @@ export default function PersonalInformationPage() {
           </div>
         )}
 
-        <h6 className="font-semibold mb-4 text-[1rem]">Notification preferences</h6>
-        <p className="text-[0.875rem] text-defaulttextcolor/80 mb-4">Choose which email notifications you want to receive. In-app notifications are always enabled.</p>
-        <div className="box border border-defaultborder rounded-lg overflow-hidden mb-6">
-          <div className="box-body px-4 py-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                { key: "leaveUpdates" as const, label: "Leave & attendance updates" },
-                { key: "taskAssignments" as const, label: "Task assignments" },
-                { key: "applicationUpdates" as const, label: "Job application updates" },
-                { key: "offerUpdates" as const, label: "Offer updates" },
-                { key: "meetingInvitations" as const, label: "Meeting invitations" },
-                { key: "meetingReminders" as const, label: "Meeting reminders" },
-                { key: "certificates" as const, label: "Certificates" },
-                { key: "courseUpdates" as const, label: "Course / training updates" },
-                { key: "recruiterUpdates" as const, label: "Recruiter assignments" },
-              ].map(({ key, label }) => (
-                <label key={key} className="form-check flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    checked={notificationPrefs[key] !== false}
-                    onChange={(e) => setNotificationPrefs((p) => ({ ...p, [key]: e.target.checked }))}
-                  />
-                  <span className="text-[0.9375rem] text-defaulttextcolor">{label}</span>
-                </label>
-              ))}
+        <div className="mb-6 overflow-hidden rounded-xl border border-defaultborder bg-gradient-to-br from-gray-50/90 via-white to-primary/5 shadow-sm dark:from-gray-900/40 dark:via-gray-900/20 dark:to-primary/10">
+          <button
+            type="button"
+            aria-expanded={notificationSectionOpen}
+            aria-controls={notificationPanelId}
+            onClick={() => setNotificationSectionOpen((o) => !o)}
+            className={`flex w-full items-start gap-3 bg-white/60 px-4 py-4 text-start transition-colors hover:bg-white/90 dark:bg-gray-900/40 dark:hover:bg-gray-900/55 sm:gap-4 sm:px-5 sm:py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/35 ${
+              notificationSectionOpen ? "border-b border-defaultborder/80" : ""
+            }`}
+          >
+            <span
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary shadow-sm dark:bg-primary/20"
+              aria-hidden
+            >
+              <i className="ri-notification-3-line text-[1.35rem] leading-none" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-center gap-2 gap-y-1">
+                <span className="font-semibold text-[1.05rem] text-defaulttextcolor">Notification preferences</span>
+                <span className="inline-flex items-center rounded-md border border-defaultborder bg-white/90 px-2 py-0.5 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/70 dark:bg-gray-800/80">
+                  Email
+                </span>
+              </span>
+              <span className="mt-1.5 block text-[0.8125rem] leading-snug text-defaulttextcolor/65">
+                <span className="tabular-nums font-medium text-defaulttextcolor/75">
+                  {enabledNotificationEmailCount}/{ALL_NOTIFICATION_PREF_KEYS.length}
+                </span>
+                {" · "}
+                {notificationSectionOpen ? "Hide details" : "Expand to manage email types"}
+              </span>
+            </span>
+            <span className="flex shrink-0 flex-col items-center gap-1 pt-1 sm:pt-0.5">
+              <span className="rounded-full border border-defaultborder/80 bg-white/80 px-2.5 py-0.5 text-[0.75rem] font-medium tabular-nums text-defaulttextcolor/80 dark:bg-gray-800/60">
+                {enabledNotificationEmailCount}/{ALL_NOTIFICATION_PREF_KEYS.length}
+              </span>
+              <i
+                className={`ri-arrow-down-s-line text-2xl leading-none text-defaulttextcolor/45 transition-transform duration-300 ease-out ${notificationSectionOpen ? "rotate-180" : ""}`}
+                aria-hidden
+              />
+            </span>
+          </button>
+
+          <div
+            id={notificationPanelId}
+            role="region"
+            aria-label="Email notification preferences"
+            className={`grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${notificationSectionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+          >
+            <div className="min-h-0">
+              <div className="border-b border-defaultborder/70 bg-white/40 px-4 py-4 dark:border-defaultborder/50 dark:bg-gray-900/25 sm:px-5 sm:py-4">
+                <p className="text-[0.875rem] text-defaulttextcolor/75 mb-4 max-w-2xl leading-relaxed">
+                  Choose which <strong className="font-medium text-defaulttextcolor">email</strong> updates you want. In-app notifications stay on—we only adjust what goes to your inbox.
+                </p>
+                <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-3">
+                  <span className="text-[0.8125rem] text-defaulttextcolor/60 tabular-nums shrink-0">
+                    {enabledNotificationEmailCount}/{ALL_NOTIFICATION_PREF_KEYS.length} enabled
+                  </span>
+                  <div
+                    role="group"
+                    aria-label="Bulk email notification actions"
+                    className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end"
+                  >
+                    <button
+                      type="button"
+                      onClick={enableAllNotificationPrefs}
+                      className="ti-btn ti-btn-outline-primary inline-flex !h-auto min-h-[2.5rem] w-full items-center justify-center gap-2 !px-4 !py-2.5 text-[0.875rem] font-medium sm:w-auto sm:min-w-[10.5rem]"
+                    >
+                      <i className="ri-mail-check-line shrink-0 text-[1.125rem] leading-none" aria-hidden />
+                      <span>Enable all</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={disableAllNotificationPrefs}
+                      className="ti-btn ti-btn-light inline-flex !h-auto min-h-[2.5rem] w-full items-center justify-center gap-2 !px-4 !py-2.5 text-[0.875rem] font-medium sm:w-auto sm:min-w-[10.5rem]"
+                    >
+                      <i className="ri-mail-forbid-line shrink-0 text-[1.125rem] leading-none" aria-hidden />
+                      <span>Disable all</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+          <div className="px-3 py-4 sm:px-5 sm:py-5 space-y-4">
+            {NOTIFICATION_PREF_GROUPS.map((group) => {
+              const groupKeys = group.items.map((i) => i.key);
+              const groupOn = groupKeys.every((k) => notificationPrefs[k] !== false);
+              const groupPartial = !groupOn && groupKeys.some((k) => notificationPrefs[k] !== false);
+
+              return (
+                <section
+                  key={group.id}
+                  className="rounded-lg border border-defaultborder/90 bg-white/70 dark:bg-gray-800/30 overflow-hidden transition-shadow hover:shadow-sm"
+                  aria-labelledby={`notif-group-${group.id}`}
+                >
+                  <div className="flex flex-col gap-3 border-b border-defaultborder/60 bg-gray-50/80 dark:bg-gray-800/50 px-4 py-3 sm:px-4">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span
+                        className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20"
+                        aria-hidden
+                      >
+                        <i className={`${group.icon} text-lg leading-none`} />
+                      </span>
+                      <div className="min-w-0 flex-1 pr-1">
+                        <h3 id={`notif-group-${group.id}`} className="text-[0.9375rem] font-semibold text-defaulttextcolor mb-0 break-words">
+                          {group.title}
+                        </h3>
+                        <p className="text-[0.75rem] text-defaulttextcolor/65 mb-0 mt-0.5 break-words">{group.summary}</p>
+                      </div>
+                    </div>
+                    <div className="flex w-full min-w-0 flex-col gap-2.5 ps-0 sm:ps-12 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+                      {groupPartial ? (
+                        <span className="inline-flex w-fit max-w-full items-center rounded border border-amber-200/80 bg-amber-50/90 px-2 py-1 text-[0.6875rem] font-medium uppercase tracking-wide text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                          Partial
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setNotificationGroupPrefs(groupKeys, !groupOn)}
+                        className={`ti-btn ti-btn-outline-primary inline-flex !h-auto min-h-[2.5rem] w-full max-w-full items-center justify-center gap-2 !px-4 !py-2.5 text-[0.875rem] font-medium lg:w-auto lg:shrink-0 lg:min-w-[12rem] ${!groupPartial ? "lg:ms-auto" : ""}`}
+                      >
+                        <span className="lg:hidden">{groupOn ? "Disable section" : "Enable section"}</span>
+                        <span className="hidden lg:inline">{groupOn ? "Turn off entire section" : "Turn on entire section"}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <ul className="list-none m-0 p-0 divide-y divide-defaultborder/50">
+                    {group.items.map(({ key, label, description }) => {
+                      const on = notificationPrefs[key] !== false;
+                      return (
+                        <li key={key}>
+                          <label className="flex cursor-pointer flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3.5 transition-colors hover:bg-gray-50/90 dark:hover:bg-white/5 rounded-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary/30 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-white dark:has-[:focus-visible]:ring-offset-gray-900">
+                            <span className="min-w-0 flex-1 pr-0 sm:pr-2">
+                              <span className="block text-[0.9375rem] font-medium text-defaulttextcolor break-words">{label}</span>
+                              {description ? (
+                                <span className="mt-0.5 block text-[0.8125rem] leading-snug text-defaulttextcolor/60 break-words">{description}</span>
+                              ) : null}
+                            </span>
+                            <div className="flex shrink-0 items-center justify-end sm:justify-center">
+                              <input
+                                type="checkbox"
+                                className="sr-only"
+                                checked={on}
+                                onChange={(e) => setNotificationPrefs((p) => ({ ...p, [key]: e.target.checked }))}
+                              />
+                              <span
+                                className={`relative inline-flex h-7 w-[2.75rem] cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                  on ? "bg-primary" : "bg-gray-200 dark:bg-gray-600"
+                                }`}
+                                aria-hidden
+                              >
+                                <span
+                                  className={`block h-6 w-6 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-transform duration-200 ease-out dark:ring-white/10 ${
+                                    on ? "translate-x-[1.15rem]" : "translate-x-0"
+                                  }`}
+                                />
+                              </span>
+                            </div>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-defaultborder/80 bg-gray-50/50 px-4 py-3 dark:bg-gray-900/30 sm:px-5">
+            <p className="text-[0.8125rem] text-defaulttextcolor/65 mb-0 flex flex-wrap items-center gap-2">
+              <i className="ri-information-line text-base text-primary/80 shrink-0" aria-hidden />
+              <span>
+                Preferences are stored with your profile. Use <strong className="font-medium text-defaulttextcolor/80">Save</strong> below to apply changes.
+              </span>
+            </p>
+          </div>
             </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex flex-wrap items-center gap-2 mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between mb-6 rounded-lg border border-defaultborder bg-white dark:bg-gray-800/20 px-4 py-3 sm:px-5">
+          <p className="text-[0.8125rem] text-defaulttextcolor/65 mb-0 max-w-xl order-2 sm:order-1">
+            Saves name, contact details, attachments, and notification choices together.
+          </p>
           <button
             type="button"
             onClick={handleSaveProfile}
-            className="ti-btn ti-btn-primary disabled:opacity-70 disabled:cursor-not-allowed"
+            className="ti-btn ti-btn-primary ti-btn-lg order-1 sm:order-2 min-w-[9rem] disabled:opacity-70 disabled:cursor-not-allowed"
             disabled={saveLoading || !user}
           >
-            {saveLoading ? "Saving…" : "Save"}
+            {saveLoading ? (
+              <>
+                <span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-0.125em] me-2" />
+                Saving…
+              </>
+            ) : (
+              <>
+                <i className="ri-save-3-line me-2 align-middle" />
+                Save profile
+              </>
+            )}
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2 mb-6">

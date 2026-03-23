@@ -1,5 +1,5 @@
 "use client"
-import React from 'react'
+import React, { startTransition } from 'react'
 import { Range, getTrackBackground } from "react-range"
 
 interface FilterState {
@@ -13,6 +13,9 @@ interface FilterState {
 }
 
 interface JobsFilterPanelProps {
+  onClosePanel?: () => void
+  listJobOrigin: '' | 'internal' | 'external'
+  setListJobOrigin: React.Dispatch<React.SetStateAction<'' | 'internal' | 'external'>>
   filters: FilterState
   setFilters: React.Dispatch<React.SetStateAction<FilterState>>
   searchJobTitle: string
@@ -37,6 +40,9 @@ interface JobsFilterPanelProps {
 }
 
 const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
+  onClosePanel,
+  listJobOrigin,
+  setListJobOrigin,
   filters,
   setFilters,
   searchJobTitle,
@@ -78,6 +84,32 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
         </div>
         <div className="ti-offcanvas-body !p-4">
           <div className="space-y-5">
+            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
+              <label
+                className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2"
+                htmlFor="jobs-listing-origin"
+              >
+                <i className="ri-links-line text-primary text-base" aria-hidden />
+                Listing type
+              </label>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Filters which jobs are loaded from the server (internal ATS postings vs external mirrors).
+              </p>
+              <select
+                id="jobs-listing-origin"
+                className="form-select !text-sm"
+                value={listJobOrigin}
+                onChange={(e) => {
+                  const v = (e.target.value || '') as '' | 'internal' | 'external'
+                  startTransition(() => setListJobOrigin(v))
+                }}
+                aria-label="Filter jobs by listing type"
+              >
+                <option value="">All listings</option>
+                <option value="internal">Internal jobs only</option>
+                <option value="external">External jobs only</option>
+              </select>
+            </div>
             {/* Job Title Filter */}
             <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
@@ -485,7 +517,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
               <button
                 type="button"
                 className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                data-hs-overlay="#jobs-filter-panel"
+                onClick={() => onClosePanel?.()}
               >
                 <i className="ri-close-line me-1.5"></i>Close
               </button>

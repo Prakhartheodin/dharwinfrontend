@@ -32,6 +32,8 @@ export interface CandidateListItem {
   studentId?: string | null;
   /** Candidate owner User id (for user-based attendance when no Student). */
   ownerId?: string | null;
+  documents?: CandidateDocument[];
+  socialLinks?: Array<{ platform?: string; url?: string }>;
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
@@ -222,8 +224,23 @@ export async function exportCandidateProfile(candidateId: string, email: string)
   await apiClient.post(`/candidates/${candidateId}/export`, { email });
 }
 
-export async function resendVerificationEmail(candidateId: string): Promise<void> {
-  await apiClient.post(`/candidates/${candidateId}/resend-verification-email`);
+export interface ResendCandidateVerificationResponse {
+  success?: boolean;
+  message?: string;
+  sentToEmail?: string;
+  candidateEmail?: string;
+  candidateId?: string;
+  candidateName?: string;
+}
+
+/** Recruiter resend — mail goes to the candidate User’s login email (see `sentToEmail` in response). */
+export async function resendVerificationEmail(
+  candidateId: string
+): Promise<ResendCandidateVerificationResponse> {
+  const { data } = await apiClient.post<ResendCandidateVerificationResponse>(
+    `/candidates/${candidateId}/resend-verification-email`
+  );
+  return data ?? {};
 }
 
 export async function addNoteToCandidate(candidateId: string, note: string): Promise<void> {
@@ -409,7 +426,7 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
     education,
     experience: experienceYears,
     bio: c.shortBio ?? "",
-    isEmailVerified: (c as any).isEmailVerified ?? true,
+    isEmailVerified: (c as any).isEmailVerified === true,
     isProfileCompleted: (c as any).isProfileCompleted ?? 0,
     isCompleted: (c as any).isCompleted ?? false,
     studentId: (c as CandidateListItem).studentId ?? null,

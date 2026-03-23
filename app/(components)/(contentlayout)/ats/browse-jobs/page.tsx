@@ -4,7 +4,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
-import { browseJobs as browseJobsApi, type Job } from "@/shared/lib/api/jobs";
+import { browseJobs as browseJobsApi, isExternalJob, type Job } from "@/shared/lib/api/jobs";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Freelance"];
@@ -22,6 +22,7 @@ export default function BrowseJobsPage() {
   const [location, setLocation] = useState("");
   const [experienceLevel, setExperienceLevel] = useState<string>("");
   const [sortBy, setSortBy] = useState("createdAt:desc");
+  const [jobOrigin, setJobOrigin] = useState<string>("");
 
   useEffect(() => {
     setLoading(true);
@@ -33,6 +34,8 @@ export default function BrowseJobsPage() {
       location: location || undefined,
       experienceLevel: experienceLevel || undefined,
       sortBy,
+      jobOrigin:
+        jobOrigin === "internal" || jobOrigin === "external" ? (jobOrigin as "internal" | "external") : undefined,
     })
       .then((res) => {
         setJobs(res.results ?? []);
@@ -45,7 +48,7 @@ export default function BrowseJobsPage() {
         setTotalResults(0);
       })
       .finally(() => setLoading(false));
-  }, [page, search, jobType, location, experienceLevel, sortBy]);
+  }, [page, search, jobType, location, experienceLevel, sortBy, jobOrigin]);
 
   return (
     <Fragment>
@@ -132,6 +135,21 @@ export default function BrowseJobsPage() {
                   <option value="title:desc">Title Z–A</option>
                 </select>
               </div>
+              <div className="lg:col-span-1 col-span-12">
+                <label className="form-label">Listing</label>
+                <select
+                  className="form-select"
+                  value={jobOrigin}
+                  onChange={(e) => {
+                    setJobOrigin(e.target.value);
+                    setPage(1);
+                  }}
+                >
+                  <option value="">All</option>
+                  <option value="internal">Internal</option>
+                  <option value="external">External</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -196,9 +214,20 @@ export default function BrowseJobsPage() {
                       {companyInitial}
                     </div>
                     <div className="min-w-0 flex-1 space-y-1">
-                      <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors">
-                        {job.title}
-                      </h5>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h5 className="font-semibold text-[1rem] text-defaulttextcolor dark:text-white group-hover:text-primary transition-colors mb-0">
+                          {job.title}
+                        </h5>
+                        {isExternalJob(job) ? (
+                          <span className="badge bg-info/15 text-info border border-info/30 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0">
+                            External
+                          </span>
+                        ) : (
+                          <span className="badge bg-secondary/15 text-secondary border border-secondary/30 !rounded-md !px-2 !py-0.5 text-[0.65rem] font-semibold shrink-0">
+                            Internal
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[0.8125rem] text-defaulttextcolor/70 dark:text-white/60">
                         {job.organisation?.name}
                       </p>

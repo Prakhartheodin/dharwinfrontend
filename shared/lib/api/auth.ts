@@ -116,6 +116,8 @@ export interface CandidateWithProfile {
   experiences?: Array<{ company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean; description?: string }>;
   documents?: Array<{ type?: string; label?: string; url?: string; key?: string; originalName?: string }>;
   salarySlips?: Array<{ month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string }>;
+  /** Same shape as candidate wizard / PATCH candidates — kept in sync via me/with-candidate and candidate edit. */
+  socialLinks?: Array<{ platform?: string; url?: string }>;
   [key: string]: unknown;
 }
 
@@ -247,6 +249,14 @@ export async function resetPassword(payload: ResetPasswordPayload): Promise<void
     `${AUTH_ENDPOINTS.resetPassword}?token=${encodeURIComponent(token)}`,
     { password }
   );
+}
+
+/**
+ * Confirm email (POST /v1/auth/verify-email?token=...). No auth required.
+ * Used by the verification link from registration / ATS resend.
+ */
+export async function verifyEmail(token: string): Promise<void> {
+  await apiClient.post(`${AUTH_ENDPOINTS.verifyEmail}?token=${encodeURIComponent(token)}`);
 }
 
 /** Single candidate invitation: email + full onboarding URL (frontend builds URL with token/expiry). */

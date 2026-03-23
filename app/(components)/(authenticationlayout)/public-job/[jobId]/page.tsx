@@ -13,16 +13,12 @@ import {
 } from "@/shared/lib/api/jobs";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCountries";
+import {
+  formatJobDescriptionForDisplay,
+  JOB_DESCRIPTION_PROSE_CLASS,
+} from "@/shared/lib/ats/jobDescriptionHtml";
 
 const PASSWORD_MIN_LENGTH = 8;
-
-/** Decode HTML entities (e.g. &lt; → <). Backend xss-clean stores jobDescription entity-encoded. */
-function decodeHtmlEntities(html: string): string {
-  if (!html || typeof html !== "string") return "";
-  const txt = document.createElement("textarea");
-  txt.innerHTML = html;
-  return txt.value;
-}
 
 export default function PublicJobDetailsPage() {
   const params = useParams();
@@ -314,8 +310,10 @@ export default function PublicJobDetailsPage() {
             <div className="mb-6">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Job Description</h3>
               <div
-                className="prose dark:prose-invert max-w-none text-gray-700 dark:text-gray-300"
-                dangerouslySetInnerHTML={{ __html: decodeHtmlEntities(job.jobDescription ?? "") }}
+                className={JOB_DESCRIPTION_PROSE_CLASS}
+                dangerouslySetInnerHTML={{
+                  __html: formatJobDescriptionForDisplay(job.jobDescription ?? ""),
+                }}
               />
             </div>
 

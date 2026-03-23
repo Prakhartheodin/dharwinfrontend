@@ -1,7 +1,7 @@
 "use client"
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import JobsFilterPanel from './_components/JobsFilterPanel'
@@ -13,6 +13,10 @@ import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
 import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
+import {
+  formatJobDescriptionForDisplay,
+  JOB_DESCRIPTION_PROSE_CLASS,
+} from '@/shared/lib/ats/jobDescriptionHtml'
 
 // Default ranges for filters when no data
 const DEFAULT_SALARY_RANGE = { min: 0, max: 200000 }
@@ -48,15 +52,47 @@ interface BookmarkNote {
 const Jobs = () => {
   const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
   const [jobsData, setJobsData] = useState<DisplayJob[]>([])
-  const [jobsLoading, setJobsLoading] = useState(true)
+  /** In-flight GET /jobs (listing type, etc.). */
+  const [jobsListFetching, setJobsListFetching] = useState(true)
+  /** After first successful/failed fetch; avoids full-page unmount on refetch so Preline offcanvas backdrops are not orphaned. */
+  const jobsEverLoadedRef = useRef(false)
+  const [listJobOrigin, setListJobOrigin] = useState<'' | 'internal' | 'external'>('')
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
 
+  const listJobsParams = useMemo(
+    () => ({
+      limit: 500 as const,
+      jobOrigin:
+        listJobOrigin === 'internal' || listJobOrigin === 'external'
+          ? listJobOrigin
+          : undefined,
+    }),
+    [listJobOrigin]
+  )
+
   useEffect(() => {
-    listJobs({ limit: 500 })
-      .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
-      .catch(() => setJobsData([]))
-      .finally(() => setJobsLoading(false))
-  }, [])
+    const ac = new AbortController()
+    setJobsListFetching(true)
+    listJobs(listJobsParams, { signal: ac.signal })
+      .then((res) => {
+        if (ac.signal.aborted) return
+        setJobsData((res.results ?? []).map(mapJobToDisplay))
+      })
+      .catch((err: unknown) => {
+        const aborted =
+          ac.signal.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError"
+        if (aborted) return
+        setJobsData([])
+      })
+      .finally(() => {
+        if (ac.signal.aborted) return
+        jobsEverLoadedRef.current = true
+        setJobsListFetching(false)
+      })
+    return () => ac.abort()
+  }, [listJobsParams])
 
   const [bookmarkedJobs, setBookmarkedJobs] = useState<Set<string>>(new Set())
   const [previewJob, setPreviewJob] = useState<any>(null)
@@ -171,7 +207,7 @@ const Jobs = () => {
   }
 
   const refreshJobs = () => {
-    listJobs({ limit: 500 })
+    listJobs(listJobsParams)
       .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
       .catch(() => {})
   }
@@ -484,6 +520,29 @@ const Jobs = () => {
       {
         Header: 'Location',
         accessor: 'location',
+        Cell: ({ value }: { value?: string | null }) => {
+          if (value == null || String(value).trim() === '') {
+            return <span className="text-gray-400 dark:text-gray-500">—</span>
+          }
+          const text = String(value).trim()
+          const segments = text.split(/\s*;\s*/).filter(Boolean)
+          const showTitle = text.length > 64
+          return (
+            <span
+              className="inline-block min-w-0 max-w-[13rem] whitespace-normal break-words text-start text-gray-800 [overflow-wrap:anywhere] dark:text-white sm:max-w-[16rem] leading-snug"
+              title={showTitle ? text : undefined}
+            >
+              {segments.length > 1
+                ? segments.map((seg, idx) => (
+                    <Fragment key={idx}>
+                      {idx > 0 ? <br /> : null}
+                      {seg.trim()}
+                    </Fragment>
+                  ))
+                : text}
+            </span>
+          )
+        },
       },
       {
         Header: 'Experience',
@@ -504,8 +563,18 @@ const Jobs = () => {
         },
       },
       {
-        Header: 'Posted By',
-        accessor: 'postedBy',
+        Header: 'Origin',
+        accessor: 'jobOrigin',
+        Cell: ({ row }: any) => {
+          const ext = row.original.jobOrigin === 'external'
+          return (
+            <span
+              className={`badge ${ext ? 'bg-info/15 text-info border border-info/30' : 'bg-secondary/15 text-secondary border border-secondary/30'} !rounded-md !px-2 !py-1 text-xs font-medium`}
+            >
+              {ext ? 'External' : 'Internal'}
+            </span>
+          )
+        },
       },
       {
         Header: 'Actions',
@@ -513,7 +582,7 @@ const Jobs = () => {
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <div className="flex items-center justify-center gap-2">
-            {canEdit && (
+            {canEdit && row.original.jobOrigin !== 'external' && (
               <div className="hs-tooltip ti-main-tooltip">
                 <Link
                   href={`/ats/jobs/edit/${row.original.id}`}
@@ -542,25 +611,27 @@ const Jobs = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip">
-              <button
-                type="button"
-                onClick={() => handleInitiateCall(row.original)}
-                disabled={!getOrganisationPhone(row.original) || callingJobId === row.original.id}
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <i className="ri-phone-line"></i>
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  {!getOrganisationPhone(row.original)
-                    ? 'Organisation phone required'
-                    : callingJobId === row.original.id
-                      ? 'Calling...'
-                      : 'Initiate Call'}
-                </span>
-              </button>
-            </div>
+            {row.original.jobOrigin !== 'external' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  onClick={() => handleInitiateCall(row.original)}
+                  disabled={!getOrganisationPhone(row.original) || callingJobId === row.original.id}
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <i className="ri-phone-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    {!getOrganisationPhone(row.original)
+                      ? 'Organisation phone required'
+                      : callingJobId === row.original.id
+                        ? 'Calling...'
+                        : 'Initiate Call'}
+                  </span>
+                </button>
+              </div>
+            )}
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
@@ -709,6 +780,7 @@ const Jobs = () => {
   }
 
   const handleResetFilters = () => {
+    setListJobOrigin('')
     setFilters({
       jobTitle: [],
       company: [],
@@ -721,6 +793,7 @@ const Jobs = () => {
   }
 
   const hasActiveFilters = 
+    listJobOrigin !== '' ||
     filters.jobTitle.length > 0 ||
     filters.company.length > 0 ||
     filters.experience[0] !== experienceRangesConst.min ||
@@ -732,6 +805,7 @@ const Jobs = () => {
     filters.postingDate !== ''
 
   const activeFilterCount = 
+    (listJobOrigin !== '' ? 1 : 0) +
     filters.jobTitle.length +
     filters.company.length +
     (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0) +
@@ -834,6 +908,67 @@ const Jobs = () => {
   const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
   const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
 
+  /** Preline only binds toggles that exist during autoInit; toolbar mounts after jobs load, so re-init then. */
+  useEffect(() => {
+    if (permissionsLoading || !canView) return
+    if (jobsListFetching || !jobsEverLoadedRef.current) return
+    const run = () => {
+      try {
+        ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
+      } catch {
+        /* ignore */
+      }
+    }
+    const stableRun = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(run)
+      })
+    }
+    if (typeof window !== 'undefined' && (window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit) {
+      stableRun()
+      return
+    }
+    void import('preline/preline').then(stableRun)
+  }, [permissionsLoading, jobsListFetching, canView])
+
+  /** Open filter panel without relying on data-hs-overlay (same pattern as ATS Candidates). */
+  const openJobsFilterPanel = useCallback(() => {
+    const el = document.querySelector('#jobs-filter-panel')
+    if (!el) return
+    const run = () => {
+      try {
+        ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
+      } catch {
+        /* ignore */
+      }
+      requestAnimationFrame(() => {
+        ;(window as unknown as { HSOverlay?: { open: (n: Element | string) => void } }).HSOverlay?.open(el)
+      })
+    }
+    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
+      run()
+      return
+    }
+    void import('preline/preline').then(run)
+  }, [])
+
+  const closeJobsFilterPanel = useCallback(() => {
+    const el = document.querySelector('#jobs-filter-panel')
+    if (!el) return
+    const run = () => {
+      try {
+        ;(window as unknown as { HSOverlay?: { close: (n: Element | string) => void } }).HSOverlay?.close(el)
+      } catch {
+        /* ignore */
+      }
+    }
+    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
+      run()
+      return
+    }
+    void import('preline/preline').then(run)
+  }, [])
+
   if (!permissionsLoading && !canView) {
     return (
       <Fragment>
@@ -850,7 +985,8 @@ const Jobs = () => {
     )
   }
 
-  if (jobsLoading) {
+  /** Full-page spinner only before the first load; refetches keep layout mounted (fixes stuck Preline overlay when changing listing type in the filter panel). */
+  if (jobsListFetching && !jobsEverLoadedRef.current) {
     return (
       <Fragment>
         <Seo title="Jobs" />
@@ -879,7 +1015,7 @@ const Jobs = () => {
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 items-center">
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
@@ -1075,7 +1211,7 @@ const Jobs = () => {
                 <button
                   type="button"
                   className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#jobs-filter-panel"
+                  onClick={openJobsFilterPanel}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
                   {hasActiveFilters && (
@@ -1104,9 +1240,21 @@ const Jobs = () => {
                 />
               </div>
             </div>
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden relative">
+              {jobsListFetching && jobsEverLoadedRef.current ? (
+                <div
+                  className="absolute inset-0 z-[100] flex items-center justify-center bg-white/70 dark:bg-black/50 pointer-events-none"
+                  aria-busy
+                  aria-label="Loading jobs"
+                >
+                  <div className="animate-spin rounded-full h-9 w-9 border-2 border-primary border-t-transparent" />
+                </div>
+              ) : null}
               <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
+                <table
+                  {...getTableProps()}
+                  className="table w-full max-w-full whitespace-nowrap table-striped table-hover table-bordered border-gray-300 dark:border-gray-600"
+                >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
                       <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
@@ -1114,7 +1262,9 @@ const Jobs = () => {
                           <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
+                            className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 ${
+                              column.id === 'location' ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]' : ''
+                            }`}
                             key={column.id || `col-${i}`}
                             style={{ 
                               position: 'sticky', 
@@ -1160,8 +1310,18 @@ const Jobs = () => {
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
+                            const isLocation = cell.column.id === 'location'
+                            const cellProps = cell.getCellProps()
                             return (
-                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
+                              <td
+                                {...cellProps}
+                                className={`${cellProps.className ?? ''} ${
+                                  isLocation
+                                    ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]'
+                                    : ''
+                                }`.trim()}
+                                key={cell.column.id || `cell-${i}`}
+                              >
                                 {cell.render('Cell')}
                               </td>
                             )
@@ -1287,6 +1447,9 @@ const Jobs = () => {
       </div>
 
       <JobsFilterPanel
+        onClosePanel={closeJobsFilterPanel}
+        listJobOrigin={listJobOrigin}
+        setListJobOrigin={setListJobOrigin}
         filters={filters}
         setFilters={setFilters}
         searchJobTitle={searchJobTitle}
@@ -1372,9 +1535,14 @@ const Jobs = () => {
                         <i className="ri-file-text-line text-primary"></i>
                         About Company
                       </h6>
-                      <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                        {companyModal.companyInfo.description}
-                      </p>
+                      <div
+                        className={`${JOB_DESCRIPTION_PROSE_CLASS} text-sm`}
+                        dangerouslySetInnerHTML={{
+                          __html: formatJobDescriptionForDisplay(
+                            String(companyModal.companyInfo.description)
+                          ),
+                        }}
+                      />
                     </div>
                   )}
 
