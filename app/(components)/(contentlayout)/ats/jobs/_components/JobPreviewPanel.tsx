@@ -81,6 +81,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
     }
   }
 
+  /** Applicant verification → POST /bolna/candidate-call → BOLNA_CANDIDATE_AGENT_ID (not job-post agent). */
   const handleInitiateCandidateCall = async () => {
     if (selectedCandidates.size === 0) {
       alert('Please select at least one candidate to call')
@@ -124,7 +125,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
         }
       }
 
-      alert(`Initiated calls for ${candidatesToCall.length} candidate(s)`)
+      alert(`Applicant verification call(s) started for ${candidatesToCall.length} candidate(s).`)
       setSelectedCandidates(new Set())
     } catch (error) {
       console.error('Error initiating calls:', error)
@@ -446,6 +447,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           className="ti-btn ti-btn-success flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                           onClick={handleInitiateCandidateCall}
                           disabled={selectedCandidates.size === 0 || callingCandidates.size > 0}
+                          title="Applicant verification: uses candidate Bolna agent (not job-post verification)"
+                          aria-label="Call selected applicants for application verification"
                         >
                           {callingCandidates.size > 0 ? 'Calling Candidates...' : `Call Selected (${selectedCandidates.size})`}
                         </button>
@@ -455,6 +458,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           className="ti-btn ti-btn-primary flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                           onClick={() => previewJob && handleInitiateCall(previewJob)}
                           disabled={!getOrganisationPhone(previewJob) || callingJobId === previewJob.id}
+                          title="Job posting verification: call organisation (recruiter Bolna agent)"
+                          aria-label="Initiate job posting verification call to organisation"
                         >
                           {callingJobId === previewJob.id ? 'Calling...' : 'Initiate Call'}
                         </button>

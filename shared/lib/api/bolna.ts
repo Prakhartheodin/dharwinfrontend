@@ -122,7 +122,7 @@ export async function initiateCandidateVerificationCall(
 export async function getBolnaCallStatus(
   executionId: string
 ): Promise<GetCallStatusResponse> {
-  const { data} = await apiClient.get<GetCallStatusResponse>(`/bolna/call-status/${executionId}`);
+  const { data } = await apiClient.get<GetCallStatusResponse>(`/bolna/call-status/${executionId}`);
   return data;
 }
 
@@ -144,6 +144,27 @@ export async function syncBolnaCallRecords(
 
 export async function deleteBolnaCallRecord(id: string): Promise<{ success: boolean; message?: string }> {
   const { data } = await apiClient.delete<{ success: boolean; message?: string }>(`/bolna/call-records/${id}`);
+  return data;
+}
+
+export type BolnaCandidateAgentSettings = {
+  success: boolean;
+  extraSystemInstructions: string;
+  greetingOverride: string;
+  updatedAt?: string;
+  updatedBy?: string | null;
+};
+
+export async function getBolnaCandidateAgentSettings(): Promise<BolnaCandidateAgentSettings> {
+  const { data } = await apiClient.get<BolnaCandidateAgentSettings>("/bolna/candidate-agent-settings");
+  return data;
+}
+
+export async function patchBolnaCandidateAgentSettings(body: {
+  extraSystemInstructions?: string;
+  greetingOverride?: string;
+}): Promise<BolnaCandidateAgentSettings> {
+  const { data } = await apiClient.patch<BolnaCandidateAgentSettings>("/bolna/candidate-agent-settings", body);
   return data;
 }
 

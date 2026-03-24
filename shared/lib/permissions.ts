@@ -1,16 +1,28 @@
 /**
- * Raw permission strings from GET /auth/my-permissions (domain format).
- * Mirrors backend deriveApiPermissions for the roles resource.
+ * Raw domain permissions from GET /auth/my-permissions (e.g. settings.users:view,create,edit,delete).
+ * Aligns with backend requirePermissions('users.manage'), which is granted by settings.users create/edit/delete.
+ */
+export function hasSettingsUsersManage(rawPermissions: string[]): boolean {
+  return rawPermissions.some((p) => {
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "settings.users" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return actions.some((x) => x === "create" || x === "edit" || x === "delete");
+  });
+}
+
+/**
+ * True when the user may call GET /roles (backend: roles.read).
+ * Derived from raw `settings.roles:view` or any create/edit/delete on settings.roles.
  */
 export function userCanListRoles(rawPermissions: string[]): boolean {
-  for (const raw of rawPermissions) {
-    const [key, actionsPart] = raw.split(":");
-    if (!key || !actionsPart) continue;
-    const dot = key.indexOf(".");
-    const resource = dot >= 0 ? key.slice(dot + 1).trim() : key.trim();
-    if (resource !== "roles") continue;
-    const actions = actionsPart.split(",").map((a) => a.trim().toLowerCase());
-    if (actions.includes("view")) return true;
-  }
-  return false;
+  return rawPermissions.some((p) => {
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "settings.roles" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return (
+      actions.includes("view") ||
+      actions.some((x) => x === "create" || x === "edit" || x === "delete")
+    );
+  });
 }

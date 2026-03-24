@@ -157,6 +157,7 @@ const Jobs = () => {
     return typeof maybePhone === 'string' ? maybePhone.trim() : ''
   }
 
+  /** Recruiter / job-post verification → POST /bolna/call → BOLNA_AGENT_ID (not applicant agent). */
   const handleInitiateCall = async (job: any) => {
     const phone = getOrganisationPhone(job)
     if (!phone) {
@@ -171,7 +172,7 @@ const Jobs = () => {
         phone,
         candidateName: job.company || job.jobTitle || 'Organisation',
       })
-      alert(`Call initiated successfully. Execution ID: ${res.executionId}`)
+      alert(`Job posting verification call started. Execution ID: ${res.executionId}`)
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || 'Failed to initiate call')
     } finally {
@@ -618,6 +619,7 @@ const Jobs = () => {
                   onClick={() => handleInitiateCall(row.original)}
                   disabled={!getOrganisationPhone(row.original) || callingJobId === row.original.id}
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Verify job posting: call organisation (recruiter Bolna agent)"
                 >
                   <i className="ri-phone-line"></i>
                   <span
@@ -627,7 +629,7 @@ const Jobs = () => {
                       ? 'Organisation phone required'
                       : callingJobId === row.original.id
                         ? 'Calling...'
-                        : 'Initiate Call'}
+                        : 'Verify job post (recruiter call)'}
                   </span>
                 </button>
               </div>

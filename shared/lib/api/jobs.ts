@@ -1,6 +1,7 @@
 "use client";
 
-import { apiClient } from "@/shared/lib/api/client";
+import axios from "axios";
+import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 
 export interface JobOrganisation {
   name: string;
@@ -212,15 +213,10 @@ export async function importJobsFromExcel(file: File): Promise<{
 // PUBLIC JOB APIS (No Authentication Required)
 // ============================================
 
-// Create a separate axios instance for public endpoints (no auth interceptors)
-import axios from "axios";
-
-const baseURL =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined" ? "/api/v1" : "");
-
+/** No auth interceptors; same base URL + credentials as apiClient for cookie-based login after apply. */
 const publicApiClient = axios.create({
-  baseURL,
+  baseURL: normalizeApiBase(),
+  withCredentials: true,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -327,7 +323,7 @@ export async function publicApplyToJob(
     `/public/jobs/${jobId}/apply`,
     formData,
     {
-      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120_000,
     }
   );
   

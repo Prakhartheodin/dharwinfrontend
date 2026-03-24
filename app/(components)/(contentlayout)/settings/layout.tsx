@@ -4,17 +4,30 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
+import { hasSettingsUsersManage } from "@/shared/lib/permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 
 function getActiveTab(
   pathname: string
-): "roles" | "users" | "attendance" | "agents" | "personal-information" | null {
+):
+  | "roles"
+  | "users"
+  | "attendance"
+  | "agents"
+  | "personal-information"
+  | "email-templates"
+  | "email-templates-admin"
+  | "bolna-voice-agent"
+  | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
   if (pathname.startsWith("/settings/users")) return "users";
   if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/agents")) return "agents";
+  if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
+  if (pathname.startsWith("/settings/email-templates")) return "email-templates";
+  if (pathname.startsWith("/settings/bolna-voice-agent")) return "bolna-voice-agent";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
   return null;
 }
@@ -26,7 +39,8 @@ export default function SettingsLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, roleNames, isAdministrator, permissions, permissionsLoaded } = useAuth();
+  const hasUsersManage = isAdministrator || hasSettingsUsersManage(permissions);
   const activeTab = getActiveTab(pathname ?? "");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [hasUsersAccess, setHasUsersAccess] = useState<boolean | null>(null);
@@ -89,10 +103,37 @@ export default function SettingsLayout({
       if (!hasAttendanceAccess) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "agents") {
       if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "email-templates") {
+      if (!roleNames.includes("Agent")) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "email-templates-admin") {
+      if (!isAdministrator) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "bolna-voice-agent") {
+      if (!permissionsLoaded) return;
+      if (!hasUsersManage) router.replace(ROUTES.settingsPersonalInfo);
     }
-  }, [isAdmin, hasUsersAccess, hasAttendanceAccess, activeTab, router]);
+  }, [
+    isAdmin,
+    hasUsersAccess,
+    hasAttendanceAccess,
+    activeTab,
+    router,
+    roleNames,
+    isAdministrator,
+    permissionsLoaded,
+    hasUsersManage,
+  ]);
 
-  const tabClass = (tab: "roles" | "users" | "attendance" | "agents" | "personal-information") =>
+  const tabClass = (
+    tab:
+      | "roles"
+      | "users"
+      | "attendance"
+      | "agents"
+      | "personal-information"
+      | "email-templates"
+      | "email-templates-admin"
+      | "bolna-voice-agent"
+  ) =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
         ? "bg-primary/10 text-primary"
@@ -144,6 +185,33 @@ export default function SettingsLayout({
                     aria-current={activeTab === "agents" ? "page" : undefined}
                   >
                     Agents
+                  </Link>
+                )}
+                {roleNames.includes("Agent") && (
+                  <Link
+                    href={ROUTES.settingsEmailTemplates}
+                    className={tabClass("email-templates")}
+                    aria-current={activeTab === "email-templates" ? "page" : undefined}
+                  >
+                    Email templates
+                  </Link>
+                )}
+                {isAdministrator && (
+                  <Link
+                    href={ROUTES.settingsEmailTemplatesAdmin}
+                    className={tabClass("email-templates-admin")}
+                    aria-current={activeTab === "email-templates-admin" ? "page" : undefined}
+                  >
+                    Email templates (agents)
+                  </Link>
+                )}
+                {hasUsersManage && (
+                  <Link
+                    href={ROUTES.settingsBolnaVoiceAgent}
+                    className={tabClass("bolna-voice-agent")}
+                    aria-current={activeTab === "bolna-voice-agent" ? "page" : undefined}
+                  >
+                    Voice agent (Bolna)
                   </Link>
                 )}
                 <Link
