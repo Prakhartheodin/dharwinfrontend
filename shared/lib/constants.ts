@@ -67,8 +67,6 @@ export const ROUTES = {
   settingsEmailTemplates: "/settings/email-templates/",
   /** Administrator — manage any Agent's templates & signatures */
   settingsEmailTemplatesAdmin: "/settings/email-templates-admin/",
-  /** users.manage — Bolna candidate verification agent prompt overrides */
-  settingsBolnaVoiceAgent: "/settings/bolna-voice-agent/",
   // Settings > Attendance
   settingsAttendance: "/settings/attendance/",
   settingsAttendanceWeekOff: "/settings/attendance/week-off/",
