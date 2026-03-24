@@ -285,7 +285,13 @@ export async function updateTrainingModule(
   if (payload.shortDescription != null)
     formData.append("shortDescription", payload.shortDescription);
   if (payload.status != null) formData.append("status", payload.status);
-  appendIdArray(formData, "categories", payload.categories);
+  if (payload.categories !== undefined) {
+    if (payload.categories.length === 0) {
+      formData.append("categories", "[]");
+    } else {
+      appendIdArray(formData, "categories", payload.categories);
+    }
+  }
   appendIdArray(formData, "students", payload.students);
   appendIdArray(formData, "mentorsAssigned", payload.mentorsAssigned);
 
@@ -308,6 +314,14 @@ export async function updateTrainingModule(
     { headers: { "Content-Type": "multipart/form-data" } }
   );
   return data;
+}
+
+/** Update only folder assignments (training categories). Empty array = uncategorized. */
+export async function setTrainingModuleFolders(
+  moduleId: string,
+  categoryIds: string[]
+): Promise<TrainingModule> {
+  return updateTrainingModule(moduleId, { categories: categoryIds });
 }
 
 /**

@@ -4,7 +4,7 @@ import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
 
 /** Strip trailing slashes so paths join cleanly with axios `baseURL`. */
-function normalizeApiBase(): string {
+export function normalizeApiBase(): string {
   const raw = (process.env.NEXT_PUBLIC_API_URL ?? "").trim().replace(/\/+$/, "");
   if (raw) return raw;
   if (typeof window !== "undefined") return "/api/v1";

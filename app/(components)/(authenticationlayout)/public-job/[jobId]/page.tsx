@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { isAxiosError } from "axios";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import {
@@ -19,6 +20,31 @@ import {
 } from "@/shared/lib/ats/jobDescriptionHtml";
 
 const PASSWORD_MIN_LENGTH = 8;
+
+function getApplySubmissionErrorMessage(error: unknown): string {
+  if (isAxiosError(error) && !error.response) {
+    if (process.env.NODE_ENV === "development") {
+      console.warn("[publicApplyToJob]", error.code, error.message);
+    }
+    if (error.code === "ECONNABORTED") {
+      return "The upload took too long. Try using Wi‑Fi, a smaller resume file, or fewer attachments, then submit again.";
+    }
+    return "We could not reach the server. Check your internet connection, try another network if possible, and submit again.";
+  }
+  if (isAxiosError(error) && error.response?.data) {
+    const data = error.response.data as { message?: string };
+    if (typeof data.message === "string" && data.message.trim()) {
+      return data.message;
+    }
+  }
+  if (error instanceof Error && error.message.trim()) {
+    if (error.message === "Network Error" || error.message.includes("Network Error")) {
+      return "We could not reach the server. Check your internet connection, try another network if possible, and submit again.";
+    }
+    return error.message;
+  }
+  return "Failed to submit application. Please try again.";
+}
 
 export default function PublicJobDetailsPage() {
   const params = useParams();
@@ -198,9 +224,8 @@ export default function PublicJobDetailsPage() {
 
       // Redirect to profile page
       router.push("/ats/my-profile");
-    } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.message || error.message || "Failed to submit application. Please try again.";
+    } catch (error: unknown) {
+      const errorMessage = getApplySubmissionErrorMessage(error);
 
       if (errorMessage.includes("already exists")) {
         // Special handling for duplicate account - show with login button

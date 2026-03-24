@@ -12,8 +12,167 @@ import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import * as categoriesApi from '@/shared/lib/api/categories'
 import type { TrainingModule as ApiTrainingModule, PlaylistItem } from '@/shared/lib/api/training-modules'
 import type { Category as ApiCategory } from '@/shared/lib/api/categories'
+import type { MultiValue } from 'react-select'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
+
+const UNCATEGORIZED_FOLDER_ID = '__uncategorized__'
+
+type CategorySelectOption = { value: string; label: string }
+
+function AssignFoldersModal({
+  open,
+  module,
+  categoryOptions,
+  onClose,
+  onSave,
+}: {
+  open: boolean
+  module: ApiTrainingModule | null
+  categoryOptions: CategorySelectOption[]
+  onClose: () => void
+  onSave: (categoryIds: string[]) => Promise<void>
+}) {
+  const [selected, setSelected] = useState<MultiValue<CategorySelectOption>>([])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open || !module) return
+    const ids = new Set((module.categories ?? []).map((c) => c.id))
+    setSelected(categoryOptions.filter((o) => ids.has(o.value)))
+  }, [open, module, categoryOptions])
+
+  if (!open) return null
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave(selected.map((o) => o.value))
+      onClose()
+    } catch {
+      /* parent shows error */
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-full max-w-md flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+          <h5 className="font-semibold mb-0 text-[1rem]">Move to folder(s)</h5>
+          <button type="button" className="ti-btn ti-btn-light !py-1 !px-2" onClick={onClose} aria-label="Close">
+            <i className="ri-close-line text-lg" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-0">
+            Choose one or more folders for <span className="text-defaulttextcolor font-medium">{module?.moduleName}</span>.
+            Clear all to leave the module uncategorized.
+          </p>
+          <Select
+            isMulti
+            options={categoryOptions}
+            value={selected}
+            onChange={(opts) => setSelected((opts as MultiValue<CategorySelectOption>) ?? [])}
+            classNamePrefix="Select2"
+            placeholder="Select folders…"
+            menuPlacement="auto"
+            isDisabled={!categoryOptions.length}
+          />
+          {!categoryOptions.length ? (
+            <p className="text-[0.8125rem] text-warning mb-0">Create a folder first, then assign modules to it.</p>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
+          <button type="button" className="ti-btn ti-btn-light !mb-0" onClick={onClose} disabled={saving}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="ti-btn ti-btn-primary !mb-0"
+            onClick={handleSave}
+            disabled={saving || !module}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function NewFolderModal({
+  open,
+  folderName,
+  onFolderNameChange,
+  creating,
+  onClose,
+  onSubmit,
+}: {
+  open: boolean
+  folderName: string
+  onFolderNameChange: (v: string) => void
+  creating: boolean
+  onClose: () => void
+  onSubmit: () => void
+}) {
+  if (!open) return null
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-full max-w-md flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+          <h5 className="font-semibold mb-0 text-[1rem]">New folder</h5>
+          <button type="button" className="ti-btn ti-btn-light !py-1 !px-2" onClick={onClose} aria-label="Close">
+            <i className="ri-close-line text-lg" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <label className="form-label" htmlFor="new-training-folder-name">
+            Folder name
+          </label>
+          <input
+            id="new-training-folder-name"
+            type="text"
+            className="form-control"
+            placeholder="e.g. Java Developer"
+            value={folderName}
+            onChange={(e) => onFolderNameChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                onSubmit()
+              }
+            }}
+          />
+          <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
+            Folders are shared with Training → Curriculum → Categories. You can assign any module to one or more folders.
+          </p>
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
+          <button type="button" className="ti-btn ti-btn-light !mb-0" onClick={onClose} disabled={creating}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="ti-btn ti-btn-primary !mb-0"
+            onClick={onSubmit}
+            disabled={creating || !folderName.trim()}
+          >
+            {creating ? 'Creating…' : 'Create folder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const SORT_OPTIONS = [
   { value: 'moduleName:asc', label: 'Name (A - Z)' },
@@ -99,6 +258,7 @@ interface TrainingModuleCardProps {
   onDelete: (moduleId: string) => void
   onView: (moduleId: string) => void
   onClone: (moduleId: string) => void
+  onAssignFolders: (moduleId: string) => void
 }
 
 interface ModuleDetailModalProps {
@@ -405,7 +565,7 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
   )
 }
 
-function TrainingModuleCard({ module: m, onDelete, onView, onClone }: TrainingModuleCardProps) {
+function TrainingModuleCard({ module: m, onDelete, onView, onClone, onAssignFolders }: TrainingModuleCardProps) {
   const summary = calculateSummary(m.playlist || [])
   const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -575,6 +735,18 @@ function TrainingModuleCard({ module: m, onDelete, onView, onClone }: TrainingMo
               <button
                 type="button"
                 className="ti-dropdown-item w-full text-left"
+                onClick={() => {
+                  closeDropdown()
+                  onAssignFolders(m.id)
+                }}
+              >
+                <i className="ri-folder-transfer-line me-1 align-middle inline-flex" /> Move to folder(s)
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="ti-dropdown-item w-full text-left"
                 onClick={handleDelete}
               >
                 <i className="ri-delete-bin-line me-1 align-middle inline-flex" /> Delete
@@ -611,8 +783,11 @@ function TrainingModuleCard({ module: m, onDelete, onView, onClone }: TrainingMo
   )
 }
 
-interface CategoryWithModules extends ApiCategory {
+interface TrainingFolderRow {
+  id: string
+  name: string
   modules: ApiTrainingModule[]
+  isUncategorized?: boolean
 }
 
 const TrainingModules = () => {
@@ -629,6 +804,10 @@ const TrainingModules = () => {
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [selectedModuleDetail, setSelectedModuleDetail] = useState<ApiTrainingModule | null>(null)
+  const [newFolderOpen, setNewFolderOpen] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [creatingFolder, setCreatingFolder] = useState(false)
+  const [assignFoldersModuleId, setAssignFoldersModuleId] = useState<string | null>(null)
 
   const fetchModules = useCallback(async () => {
     setLoading(true)
@@ -763,39 +942,17 @@ const TrainingModules = () => {
     })
   }
 
-  // Group modules by category
-  const categoriesWithModules = useMemo(() => {
-    const categoryMap = new Map<string, CategoryWithModules>()
-    
-    // Initialize all categories
-    categories.forEach((cat) => {
-      categoryMap.set(cat.id, { ...cat, modules: [] })
-    })
+  const categorySelectOptions = useMemo<CategorySelectOption[]>(
+    () => categories.map((c) => ({ value: c.id, label: c.name })),
+    [categories]
+  )
 
-    // Assign modules to categories
-    modules.forEach((module) => {
-      module.categories?.forEach((cat) => {
-        const category = categoryMap.get(cat.id)
-        if (category) {
-          category.modules.push(module)
-        } else {
-          // If category not found, create it
-          categoryMap.set(cat.id, {
-            id: cat.id,
-            name: cat.name,
-            createdAt: '',
-            updatedAt: '',
-            modules: [module],
-          })
-        }
-      })
-    })
+  const assignFoldersModule =
+    assignFoldersModuleId != null ? modules.find((m) => m.id === assignFoldersModuleId) ?? null : null
 
-    return Array.from(categoryMap.values()).filter((cat) => cat.modules.length > 0)
-  }, [modules, categories])
-
-  const sortedCategories = useMemo(() => {
-    const sortFn = (a: ApiTrainingModule, b: ApiTrainingModule) => {
+  // One row per folder (category), plus optional "Uncategorized" for modules with no folder
+  const folderRows = useMemo((): TrainingFolderRow[] => {
+    const sortModules = (a: ApiTrainingModule, b: ApiTrainingModule) => {
       switch (sortValue?.value) {
         case 'moduleName:desc':
           return b.moduleName.localeCompare(a.moduleName)
@@ -809,11 +966,96 @@ const TrainingModules = () => {
           return 0
       }
     }
-    return categoriesWithModules.map((cat) => ({
-      ...cat,
-      modules: [...cat.modules].sort(sortFn),
+    const sortedCats = [...categories].sort((a, b) => a.name.localeCompare(b.name))
+    const rows: TrainingFolderRow[] = sortedCats.map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      modules: modules
+        .filter((m) => m.categories?.some((c) => c.id === cat.id))
+        .sort(sortModules),
     }))
-  }, [categoriesWithModules, sortValue])
+    const uncategorized = modules.filter((m) => !m.categories?.length).sort(sortModules)
+    if (uncategorized.length > 0) {
+      rows.push({
+        id: UNCATEGORIZED_FOLDER_ID,
+        name: 'Uncategorized',
+        modules: uncategorized,
+        isUncategorized: true,
+      })
+    }
+    return rows
+  }, [modules, categories, sortValue])
+
+  const handleCreateFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name) return
+    setCreatingFolder(true)
+    try {
+      await categoriesApi.createCategory({ name })
+      setNewFolderName('')
+      setNewFolderOpen(false)
+      await fetchCategories()
+      await Swal.fire({
+        icon: 'success',
+        title: 'Folder created',
+        text: `You can assign modules to "${name}" from the menu on each card or when editing a module.`,
+        toast: true,
+        position: 'top-end',
+        timer: 3500,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to create folder.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Could not create folder',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+      })
+    } finally {
+      setCreatingFolder(false)
+    }
+  }
+
+  const handleSaveFolderAssignment = async (categoryIds: string[]) => {
+    const mod = assignFoldersModule
+    if (!mod) return
+    try {
+      await trainingModulesApi.setTrainingModuleFolders(mod.id, categoryIds)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Folders updated',
+        toast: true,
+        position: 'top-end',
+        timer: 2500,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+      fetchModules()
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : 'Failed to update folders.'
+      await Swal.fire({
+        icon: 'error',
+        title: 'Update failed',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+      })
+      throw err
+    }
+  }
 
   useEffect(() => {
     if (!detailModalOpen) return
@@ -851,6 +1093,24 @@ const TrainingModules = () => {
                     <i className="ri-magic-line me-1 font-semibold align-middle" />
                     Create with AI
                   </Link>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light me-2 !mb-0"
+                    onClick={() => {
+                      setNewFolderName('')
+                      setNewFolderOpen(true)
+                    }}
+                  >
+                    <i className="ri-folder-add-line me-1 font-semibold align-middle" />
+                    New folder
+                  </button>
+                  <Link
+                    href="/training/curriculum/categories"
+                    className="ti-btn ti-btn-light me-2 !mb-0"
+                  >
+                    <i className="ri-settings-3-line me-1 font-semibold align-middle" />
+                    Manage folders
+                  </Link>
                   <Select
                     value={sortValue}
                     onChange={(v) => {
@@ -887,14 +1147,24 @@ const TrainingModules = () => {
         <div className="box custom-box text-center py-12">
           <p className="text-[#8c9097] dark:text-white/50 mb-0">Loading modules...</p>
         </div>
-      ) : sortedCategories.length > 0 ? (
-        sortedCategories.map((category) => {
-          const isCollapsed = collapsedCategoryIds.has(category.id)
+      ) : search.trim() && modules.length === 0 ? (
+        <div className="box custom-box text-center py-12">
+          <p className="text-[#8c9097] dark:text-white/50 mb-0">No modules match your search.</p>
+        </div>
+      ) : !search.trim() && modules.length === 0 && categories.length === 0 ? (
+        <div className="box custom-box text-center py-12">
+          <p className="text-[#8c9097] dark:text-white/50 mb-0">
+            No modules yet. Create a folder (optional) and add your first module to get started.
+          </p>
+        </div>
+      ) : (
+        folderRows.map((folder) => {
+          const isCollapsed = collapsedCategoryIds.has(folder.id)
           return (
-            <div key={category.id} className="mb-6">
+            <div key={folder.id} className="mb-6">
               <button
                 type="button"
-                onClick={() => toggleCategory(category.id)}
+                onClick={() => toggleCategory(folder.id)}
                 className="flex items-center gap-2 w-full text-left py-2 px-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
                 aria-expanded={!isCollapsed}
               >
@@ -902,34 +1172,46 @@ const TrainingModules = () => {
                   className={`text-defaulttextcolor text-lg ${isCollapsed ? 'ri-add-line' : 'ri-subtract-line'}`}
                   aria-hidden
                 />
-                <h2 className="text-lg font-semibold text-defaulttextcolor">
-                  {category.name}
-                </h2>
+                <i
+                  className={`text-lg ${folder.isUncategorized ? 'ri-inbox-line text-[#8c9097]' : 'ri-folder-2-line text-primary'}`}
+                  aria-hidden
+                />
+                <h2 className="text-lg font-semibold text-defaulttextcolor">{folder.name}</h2>
                 <span className="text-[#8c9097] dark:text-white/50 text-sm ml-1">
-                  ({category.modules.length} module{category.modules.length !== 1 ? 's' : ''})
+                  ({folder.modules.length} module{folder.modules.length !== 1 ? 's' : ''})
                 </span>
               </button>
               {!isCollapsed && (
-                <div className="grid grid-cols-12 gap-x-6 gap-y-6 mt-2">
-                  {category.modules.map((m) => (
-                    <div
-                      key={m.id}
-                      className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
-                    >
-                      <TrainingModuleCard module={m} onDelete={handleDelete} onView={handleView} onClone={handleClone} />
+                <>
+                  {folder.modules.length === 0 ? (
+                    <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-2 ms-8 mb-0">
+                      {folder.isUncategorized
+                        ? 'All modules are assigned to a folder.'
+                        : 'No modules in this folder yet. Use “Move to folder(s)” on a module or assign folders when editing.'}
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-12 gap-x-6 gap-y-6 mt-2">
+                      {folder.modules.map((m) => (
+                        <div
+                          key={m.id}
+                          className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
+                        >
+                          <TrainingModuleCard
+                            module={m}
+                            onDelete={handleDelete}
+                            onView={handleView}
+                            onClone={handleClone}
+                            onAssignFolders={(id) => setAssignFoldersModuleId(id)}
+                          />
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </div>
           )
         })
-      ) : (
-        <div className="box custom-box text-center py-12">
-          <p className="text-[#8c9097] dark:text-white/50 mb-0">
-            {search.trim() ? 'No modules match your search.' : 'No modules found. Create your first module to get started.'}
-          </p>
-        </div>
       )}
 
       {totalPages > 1 && (
@@ -973,6 +1255,28 @@ const TrainingModules = () => {
         loading={detailLoading}
         error={detailError}
         onClose={closeDetailModal}
+      />
+
+      <NewFolderModal
+        open={newFolderOpen}
+        folderName={newFolderName}
+        onFolderNameChange={setNewFolderName}
+        creating={creatingFolder}
+        onClose={() => {
+          if (!creatingFolder) {
+            setNewFolderOpen(false)
+            setNewFolderName('')
+          }
+        }}
+        onSubmit={handleCreateFolder}
+      />
+
+      <AssignFoldersModal
+        open={assignFoldersModuleId !== null && assignFoldersModule !== null}
+        module={assignFoldersModule}
+        categoryOptions={categorySelectOptions}
+        onClose={() => setAssignFoldersModuleId(null)}
+        onSave={handleSaveFolderAssignment}
       />
     </Fragment>
   )

@@ -136,6 +136,24 @@ function getUnifiedStatus(u: UnifiedCall): string {
   return (u.data as ChatCall).status || "–";
 }
 
+/** Compact page list with gaps for ellipsis (1-based page indices). */
+function visiblePageIndices(current: number, total: number): (number | "gap")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const set = new Set<number>([1, total]);
+  for (let i = current - 1; i <= current + 1; i++) {
+    if (i >= 1 && i <= total) set.add(i);
+  }
+  const sorted = [...set].sort((a, b) => a - b);
+  const out: (number | "gap")[] = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (prev > 0 && p - prev > 1) out.push("gap");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 const Calling = () => {
   const { user } = useAuth();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -283,6 +301,12 @@ const Calling = () => {
 
   const totalMerged = mergedCalls.length;
   const totalPagesMerged = Math.ceil(totalMerged / pageSize) || 1;
+  const rangeStart = totalMerged === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = Math.min(page * pageSize, totalMerged);
+  const pageItems = useMemo(
+    () => visiblePageIndices(page, totalPagesMerged),
+    [page, totalPagesMerged]
+  );
 
   const formatDate = (iso?: string) => {
     if (!iso) return "–";
@@ -619,30 +643,126 @@ const Calling = () => {
                 </div>
               )}
 
-              {totalPagesMerged > 1 && (
-                <div className="flex items-center justify-between pt-4">
-                  <span className="text-[0.8125rem] text-defaulttextcolor/70">
-                    Page {page} of {totalPagesMerged}
-                  </span>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-sm ti-btn-outline-primary"
-                      disabled={page <= 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    >
-                      Prev
-                    </button>
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-sm ti-btn-outline-primary"
-                      disabled={page >= totalPagesMerged}
-                      onClick={() => setPage((p) => Math.min(totalPagesMerged, p + 1))}
-                    >
-                      Next
-                    </button>
+              {totalMerged > 0 && (
+                <nav
+                  className="mt-6 rounded-xl border border-defaultborder/60 bg-gradient-to-b from-slate-50/90 to-white dark:from-white/[0.04] dark:to-black/20 px-4 py-4 sm:px-5"
+                  aria-label="Call records pagination"
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-4">
+                      <p className="flex items-start gap-2.5 text-sm text-defaulttextcolor/80">
+                        <span
+                          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+                          aria-hidden
+                        >
+                          <i className="ri-stack-line text-lg leading-none" />
+                        </span>
+                        <span className="leading-snug pt-0.5">
+                          <span className="font-medium text-defaulttextcolor">Showing </span>
+                          <span className="tabular-nums font-semibold text-defaulttextcolor">{rangeStart}</span>
+                          <span className="text-defaulttextcolor/60">–</span>
+                          <span className="tabular-nums font-semibold text-defaulttextcolor">{rangeEnd}</span>
+                          <span className="font-medium text-defaulttextcolor"> of </span>
+                          <span className="tabular-nums font-semibold text-defaulttextcolor">{totalMerged}</span>
+                          <span className="font-medium text-defaulttextcolor"> calls</span>
+                        </span>
+                      </p>
+                      {totalPagesMerged > 1 && (
+                        <p className="text-xs text-defaulttextcolor/55 sm:border-s sm:border-defaultborder/50 sm:ps-4 tabular-nums">
+                          Page {page} / {totalPagesMerged}
+                        </p>
+                      )}
+                    </div>
+
+                    {totalPagesMerged > 1 && (
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                        <div
+                          className="inline-flex w-full max-w-full overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm dark:border-white/10 dark:bg-black/30 sm:w-auto"
+                          role="group"
+                          aria-label="Page navigation"
+                        >
+                          <button
+                            type="button"
+                            className="min-h-[2.5rem] flex-1 sm:flex-none px-3 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/15 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40 dark:hover:bg-white/5"
+                            disabled={loading || page <= 1}
+                            onClick={() => setPage(1)}
+                            aria-label="First page"
+                          >
+                            <span className="hidden sm:inline">First</span>
+                            <span className="sm:hidden">
+                              <i className="ri-skip-back-mini-line text-lg" aria-hidden />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="min-h-[2.5rem] flex-1 sm:flex-none border-s border-defaultborder/60 px-3 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/15 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+                            disabled={loading || page <= 1}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            aria-label="Previous page"
+                          >
+                            <span className="inline-flex items-center justify-center gap-1">
+                              <i className="ri-arrow-left-s-line text-base" aria-hidden />
+                              <span className="hidden sm:inline">Prev</span>
+                            </span>
+                          </button>
+                          <div className="flex min-h-[2.5rem] max-w-[11rem] flex-shrink-0 items-stretch overflow-x-auto border-s border-defaultborder/60 sm:max-w-none dark:border-white/10">
+                            {pageItems.map((item, idx) =>
+                              item === "gap" ? (
+                                <span
+                                  key={`gap-${idx}`}
+                                  className="flex min-w-[2.25rem] items-center justify-center border-e border-defaultborder/60 px-1 text-xs text-defaulttextcolor/45 dark:border-white/10"
+                                  aria-hidden
+                                >
+                                  …
+                                </span>
+                              ) : (
+                                <button
+                                  key={item}
+                                  type="button"
+                                  className={`min-w-[2.5rem] border-e border-defaultborder/60 px-2.5 text-sm font-semibold tabular-nums transition-colors last:border-e-0 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset dark:border-white/10 ${
+                                    page === item
+                                      ? "bg-primary text-white hover:bg-primary"
+                                      : "text-defaulttextcolor hover:bg-defaultborder/15 dark:hover:bg-white/5"
+                                  }`}
+                                  disabled={loading}
+                                  onClick={() => setPage(item)}
+                                  aria-label={`Page ${item}`}
+                                  aria-current={page === item ? "page" : undefined}
+                                >
+                                  {item}
+                                </button>
+                              )
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            className="min-h-[2.5rem] flex-1 sm:flex-none border-s border-defaultborder/60 px-3 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/15 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+                            disabled={loading || page >= totalPagesMerged}
+                            onClick={() => setPage((p) => Math.min(totalPagesMerged, p + 1))}
+                            aria-label="Next page"
+                          >
+                            <span className="inline-flex items-center justify-center gap-1">
+                              <span className="hidden sm:inline">Next</span>
+                              <i className="ri-arrow-right-s-line text-base" aria-hidden />
+                            </span>
+                          </button>
+                          <button
+                            type="button"
+                            className="min-h-[2.5rem] flex-1 sm:flex-none border-s border-defaultborder/60 px-3 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-defaultborder/15 focus:z-10 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5"
+                            disabled={loading || page >= totalPagesMerged}
+                            onClick={() => setPage(totalPagesMerged)}
+                            aria-label="Last page"
+                          >
+                            <span className="hidden sm:inline">Last</span>
+                            <span className="sm:hidden">
+                              <i className="ri-skip-forward-mini-line text-lg" aria-hidden />
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                </nav>
               )}
             </div>
           </div>

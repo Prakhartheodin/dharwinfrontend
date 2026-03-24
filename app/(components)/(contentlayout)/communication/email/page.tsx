@@ -10,9 +10,13 @@ import type {
   EmailLabel,
   EmailMessage,
   EmailThreadListItem,
+  AgentEmailTemplate,
+  AgentEmailTemplateShared,
 } from "@/shared/lib/api/email";
+import { useAuth } from "@/shared/contexts/auth-context";
 import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
@@ -118,6 +122,65 @@ function fileToBase64(file: File): Promise<string> {
 
 const Mailapp = () => {
   const searchParams = useSearchParams();
+  const { roleNames, permissionsLoaded } = useAuth();
+  const isAgent = roleNames.includes("Agent");
+  const isAgentRef = useRef(isAgent);
+  useEffect(() => {
+    isAgentRef.current = isAgent;
+  }, [isAgent]);
+
+  const [agentTemplatesOwn, setAgentTemplatesOwn] = useState<AgentEmailTemplate[]>([]);
+  const [agentTemplatesShared, setAgentTemplatesShared] = useState<AgentEmailTemplateShared[]>([]);
+  const [agentSignature, setAgentSignature] = useState<emailApi.AgentEmailSignature | null>(null);
+  const agentSignatureRef = useRef<{ html: string; enabled: boolean } | null>(null);
+  const [showComposeTemplatesMenu, setShowComposeTemplatesMenu] = useState(false);
+  const composeTemplatesMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!agentSignature) {
+      agentSignatureRef.current = null;
+      return;
+    }
+    agentSignatureRef.current = {
+      html: agentSignature.html || "",
+      enabled: Boolean(agentSignature.enabled),
+    };
+  }, [agentSignature]);
+
+  useEffect(() => {
+    if (!permissionsLoaded || !isAgent) {
+      setAgentTemplatesOwn([]);
+      setAgentTemplatesShared([]);
+      setAgentSignature(null);
+      return;
+    }
+    (async () => {
+      try {
+        const [tpl, sig] = await Promise.all([
+          emailApi.listAgentEmailTemplates(),
+          emailApi.getAgentEmailSignature(),
+        ]);
+        setAgentTemplatesOwn(tpl.own);
+        setAgentTemplatesShared(tpl.shared);
+        setAgentSignature(sig);
+      } catch {
+        setAgentTemplatesOwn([]);
+        setAgentTemplatesShared([]);
+      }
+    })();
+  }, [permissionsLoaded, isAgent]);
+
+  useEffect(() => {
+    if (!showComposeTemplatesMenu) return;
+    const onDown = (e: MouseEvent) => {
+      const el = composeTemplatesMenuRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setShowComposeTemplatesMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [showComposeTemplatesMenu]);
   const [accounts, setAccounts] = useState<EmailAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [labels, setLabels] = useState<EmailLabel[]>([]);
@@ -623,16 +686,43 @@ const Mailapp = () => {
     mailProvider,
   ]);
 
+  const insertComposeTemplate = useCallback((t: AgentEmailTemplate | AgentEmailTemplateShared) => {
+    setComposeHtml((prev) => {
+      const trimmed = (prev || "").trim();
+      const base = trimmed.length ? prev : "";
+      const sep =
+        trimmed.length && !trimmed.match(/<p>\s*<\/p>\s*$/i) && !trimmed.endsWith("</p>")
+          ? "<p><br></p>"
+          : trimmed.length
+            ? ""
+            : "";
+      return `${base}${sep}${t.bodyHtml || ""}`;
+    });
+    setComposeSubject((sub) => {
+      const s = sub.trim();
+      if (s) return sub;
+      const d = (t.subject || "").trim();
+      return d || sub;
+    });
+    setShowComposeTemplatesMenu(false);
+  }, []);
+
   const openCompose = useCallback((mode: ComposeMode, msg?: EmailMessage) => {
     console.log("[Email] openCompose:", { mode, msgId: msg?.id });
     composeMessageRef.current = msg ?? null;
     setComposeMode(mode);
+    setShowComposeTemplatesMenu(false);
     if (mode === "new") {
       setComposeTo("");
       setComposeCc("");
       setComposeBcc("");
       setComposeSubject("");
-      setComposeHtml("");
+      const sig = agentSignatureRef.current;
+      if (isAgentRef.current && sig?.enabled && sig.html?.trim()) {
+        setComposeHtml(`<p></p><div data-email-signature="true">${sig.html}</div>`);
+      } else {
+        setComposeHtml("");
+      }
     } else if (msg) {
       const subject = msg.subject || "(No subject)";
       if (mode === "reply") {
@@ -2451,6 +2541,71 @@ const Mailapp = () => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
+                        {isAgent ? (
+                          <div className="relative" ref={composeTemplatesMenuRef}>
+                            <button
+                              type="button"
+                              onClick={() => setShowComposeTemplatesMenu((v) => !v)}
+                              className="ti-btn ti-btn-light !mb-0 text-[0.8125rem]"
+                              title="Insert a saved template"
+                            >
+                              <i className="ri-layout-line me-1" />
+                              Templates
+                            </button>
+                            {showComposeTemplatesMenu ? (
+                              <div className="absolute left-0 bottom-full mb-1 z-[200] min-w-[240px] max-w-[min(100vw-2rem,360px)] max-h-72 overflow-y-auto rounded-md border border-defaultborder bg-bodybg shadow-lg py-1">
+                                {agentTemplatesOwn.length === 0 && agentTemplatesShared.length === 0 ? (
+                                  <div className="px-3 py-2 text-[0.8125rem] text-[#8c9097]">
+                                    No templates yet. Add them under{" "}
+                                    <Link href="/settings/email-templates/" className="text-primary underline">
+                                      Settings → Email templates
+                                    </Link>
+                                    .
+                                  </div>
+                                ) : null}
+                                {agentTemplatesOwn.length > 0 ? (
+                                  <>
+                                    <div className="px-3 py-1 text-[0.65rem] font-semibold text-[#8c9097] uppercase tracking-wide">
+                                      My templates
+                                    </div>
+                                    {agentTemplatesOwn.map((t) => (
+                                      <button
+                                        key={t.id}
+                                        type="button"
+                                        className="w-full text-left px-3 py-2 text-[0.8125rem] hover:bg-black/5 dark:hover:bg-white/10"
+                                        onClick={() => insertComposeTemplate(t)}
+                                      >
+                                        {t.title}
+                                      </button>
+                                    ))}
+                                  </>
+                                ) : null}
+                                {agentTemplatesShared.length > 0 ? (
+                                  <>
+                                    <div className="px-3 py-1 text-[0.65rem] font-semibold text-[#8c9097] uppercase tracking-wide border-t border-defaultborder mt-1 pt-2">
+                                      Shared
+                                    </div>
+                                    {agentTemplatesShared.map((t) => (
+                                      <button
+                                        key={t.id}
+                                        type="button"
+                                        className="w-full text-left px-3 py-2 text-[0.8125rem] hover:bg-black/5 dark:hover:bg-white/10"
+                                        onClick={() => insertComposeTemplate(t)}
+                                      >
+                                        {t.title}
+                                        {t.owner?.name ? (
+                                          <span className="block text-[0.7rem] text-[#8c9097]">
+                                            {t.owner.name}
+                                          </span>
+                                        ) : null}
+                                      </button>
+                                    ))}
+                                  </>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                         <button
                           type="button"
                           onClick={handleAddAttachment}

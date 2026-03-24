@@ -13,6 +13,8 @@ interface TiptapEditorProps {
   onChange?: (html: string) => void
   editable?: boolean
   className?: string
+  toolbarClassName?: string
+  contentClassName?: string
   /** Enable browser spellcheck (red underlines for typos in real time). Default true. */
   spellCheck?: boolean
 }
@@ -23,6 +25,8 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
   onChange,
   editable = true,
   className = '',
+  toolbarClassName = '',
+  contentClassName = '',
   spellCheck = true,
 }) => {
   const editor = useEditor({
@@ -75,7 +79,9 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
 
   return (
     <div className={`tiptap-editor ${className}`}>
-      <div className="tiptap-toolbar border-b dark:border-defaultborder/10 p-2 flex flex-wrap gap-1">
+      <div
+        className={['tiptap-toolbar border-b dark:border-defaultborder/10 p-2 flex flex-wrap gap-1', toolbarClassName].filter(Boolean).join(' ')}
+      >
         <button
           type="button"
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -200,7 +206,14 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
           <i className="ri-arrow-go-forward-line"></i>
         </button>
       </div>
-      <div className="tiptap-content border dark:border-defaultborder/10 rounded-b-md p-4 min-h-[200px] prose dark:prose-invert max-w-none">
+      <div
+        className={[
+          'tiptap-content border dark:border-defaultborder/10 rounded-b-md p-4 min-h-[200px] prose dark:prose-invert max-w-none',
+          contentClassName,
+        ]
+          .filter(Boolean)
+          .join(' ')}
+      >
         <EditorContent editor={editor} />
       </div>
       <style jsx global>{`

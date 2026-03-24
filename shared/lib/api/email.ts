@@ -300,3 +300,115 @@ export function providerForAccount(
   const a = accounts.find((x) => x.id === accountId);
   return a?.provider === "outlook" ? "outlook" : "gmail";
 }
+
+// --- Agent email templates & signatures (always `/email`, not provider-specific) ---
+
+export interface AgentEmailTemplate {
+  id: string;
+  title: string;
+  subject?: string;
+  bodyHtml: string;
+  isShared?: boolean;
+  user?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AgentEmailTemplateShared extends AgentEmailTemplate {
+  owner?: { id: string; name?: string; email?: string };
+}
+
+export interface AgentEmailSignature {
+  id: string;
+  user: string;
+  html: string;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export async function listAgentEmailTemplates(): Promise<{
+  own: AgentEmailTemplate[];
+  shared: AgentEmailTemplateShared[];
+}> {
+  const { data } = await apiClient.get(`${EMAIL_BASE}/templates`);
+  return data;
+}
+
+export async function createAgentEmailTemplate(body: {
+  title: string;
+  subject?: string;
+  bodyHtml: string;
+  isShared?: boolean;
+}): Promise<AgentEmailTemplate> {
+  const { data } = await apiClient.post(`${EMAIL_BASE}/templates`, body);
+  return data;
+}
+
+export async function updateAgentEmailTemplate(
+  templateId: string,
+  body: Partial<{ title: string; subject: string; bodyHtml: string; isShared: boolean }>
+): Promise<AgentEmailTemplate> {
+  const { data } = await apiClient.patch(`${EMAIL_BASE}/templates/${templateId}`, body);
+  return data;
+}
+
+export async function deleteAgentEmailTemplate(templateId: string): Promise<void> {
+  await apiClient.delete(`${EMAIL_BASE}/templates/${templateId}`);
+}
+
+export async function getAgentEmailSignature(): Promise<AgentEmailSignature> {
+  const { data } = await apiClient.get(`${EMAIL_BASE}/signature`);
+  return data;
+}
+
+export async function patchAgentEmailSignature(body: {
+  html?: string;
+  enabled?: boolean;
+}): Promise<AgentEmailSignature> {
+  const { data } = await apiClient.patch(`${EMAIL_BASE}/signature`, body);
+  return data;
+}
+
+/** Admin: list templates for an Agent user */
+export async function adminListAgentEmailTemplates(userId: string): Promise<{ results: AgentEmailTemplate[] }> {
+  const { data } = await apiClient.get(`${EMAIL_BASE}/admin/templates`, { params: { userId } });
+  return data;
+}
+
+export async function adminCreateAgentEmailTemplate(body: {
+  userId: string;
+  title: string;
+  subject?: string;
+  bodyHtml: string;
+  isShared?: boolean;
+}): Promise<AgentEmailTemplate> {
+  const { data } = await apiClient.post(`${EMAIL_BASE}/admin/templates`, body);
+  return data;
+}
+
+export async function adminGetAgentEmailSignature(userId: string): Promise<AgentEmailSignature> {
+  const { data } = await apiClient.get(`${EMAIL_BASE}/admin/signature`, { params: { userId } });
+  return data;
+}
+
+export async function adminUpdateAgentEmailTemplate(
+  templateId: string,
+  body: Partial<{ title: string; subject: string; bodyHtml: string; isShared: boolean }>
+): Promise<AgentEmailTemplate> {
+  const { data } = await apiClient.patch(`${EMAIL_BASE}/admin/templates/${templateId}`, body);
+  return data;
+}
+
+export async function adminDeleteAgentEmailTemplate(templateId: string): Promise<void> {
+  await apiClient.delete(`${EMAIL_BASE}/admin/templates/${templateId}`);
+}
+
+export async function adminPatchAgentEmailSignature(body: {
+  userId: string;
+  html?: string;
+  enabled?: boolean;
+}): Promise<AgentEmailSignature> {
+  const { data } = await apiClient.patch(`${EMAIL_BASE}/admin/signature`, body);
+  return data;
+}
