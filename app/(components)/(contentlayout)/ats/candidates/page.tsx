@@ -344,6 +344,7 @@ const Candidates = () => {
     const params: Record<string, unknown> = {
       limit: pageSize,
       sortBy: 'createdAt:desc',
+      includeOpenSopCount: '1',
     }
     if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
     else if (filters.name?.length) params.fullName = filters.name[0]
@@ -1140,6 +1141,14 @@ const Candidates = () => {
                   >
                     {candidate.name}
                   </div>
+                  {typeof candidate.openSopCount === "number" && candidate.openSopCount > 0 ? (
+                    <span
+                      className="inline-flex min-h-[1.25rem] min-w-[1.25rem] items-center justify-center rounded-full bg-primary/15 px-1.5 text-[10px] font-bold text-primary"
+                      title={`${candidate.openSopCount} open setup task(s)`}
+                    >
+                      {candidate.openSopCount}
+                    </span>
+                  ) : null}
                   {resigned && (
                     <span
                       className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white shadow-sm"

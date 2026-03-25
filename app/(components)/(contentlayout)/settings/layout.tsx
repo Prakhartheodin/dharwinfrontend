@@ -15,6 +15,7 @@ function getActiveTab(
   | "users"
   | "attendance"
   | "agents"
+  | "candidate-sop"
   | "personal-information"
   | "email-templates"
   | "email-templates-admin"
@@ -23,6 +24,7 @@ function getActiveTab(
   if (pathname.startsWith("/settings/users")) return "users";
   if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/agents")) return "agents";
+  if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
@@ -36,20 +38,29 @@ export default function SettingsLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, roleNames, isAdministrator } = useAuth();
+  const { user, roleNames, isAdministrator, isPlatformSuperUser } = useAuth();
   const activeTab = getActiveTab(pathname ?? "");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [hasUsersAccess, setHasUsersAccess] = useState<boolean | null>(null);
   const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
+  const [hasCandidateSopAccess, setHasCandidateSopAccess] = useState<boolean | null>(null);
 
   // Determine admin (Roles only), users access (Admin or Agent), and attendance access
   useEffect(() => {
     const check = async () => {
       try {
+        if (isPlatformSuperUser) {
+          setIsAdmin(true);
+          setHasUsersAccess(true);
+          setHasAttendanceAccess(true);
+          setHasCandidateSopAccess(true);
+          return;
+        }
         if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
           setIsAdmin(false);
           setHasUsersAccess(false);
           setHasAttendanceAccess(false);
+          setHasCandidateSopAccess(false);
           return;
         }
         const res = await rolesApi.listRoles({ limit: 100 });
@@ -79,18 +90,31 @@ export default function SettingsLayout({
         );
         const hasRelevantPermissions = admin || hasStudentsManage || hasAttendanceManage;
         setHasAttendanceAccess(hasAgentOrAdminRole && hasRelevantPermissions);
+        const hasAtsCandidatesManage = Array.from(perms).some(
+          (p) =>
+            p.includes("ats.candidates") &&
+            (p.includes("create") || p.includes("edit") || p.includes("delete"))
+        );
+        setHasCandidateSopAccess(admin || hasAtsCandidatesManage);
       } catch {
         setIsAdmin(false);
         setHasUsersAccess(false);
         setHasAttendanceAccess(false);
+        setHasCandidateSopAccess(false);
       }
     };
     check();
-  }, [user]);
+  }, [user, isPlatformSuperUser]);
 
   // Redirect: roles = admin only; users = admin or agent; attendance = hasAttendanceAccess
   useEffect(() => {
-    if (isAdmin === null || hasUsersAccess === null || hasAttendanceAccess === null) return;
+    if (
+      isAdmin === null ||
+      hasUsersAccess === null ||
+      hasAttendanceAccess === null ||
+      hasCandidateSopAccess === null
+    )
+      return;
     if (activeTab === "roles") {
       if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "users") {
@@ -99,6 +123,8 @@ export default function SettingsLayout({
       if (!hasAttendanceAccess) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "agents") {
       if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "candidate-sop") {
+      if (!hasCandidateSopAccess) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates") {
       if (!roleNames.includes("Agent")) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
@@ -108,6 +134,7 @@ export default function SettingsLayout({
     isAdmin,
     hasUsersAccess,
     hasAttendanceAccess,
+    hasCandidateSopAccess,
     activeTab,
     router,
     roleNames,
@@ -120,6 +147,7 @@ export default function SettingsLayout({
       | "users"
       | "attendance"
       | "agents"
+      | "candidate-sop"
       | "personal-information"
       | "email-templates"
       | "email-templates-admin"
@@ -175,6 +203,15 @@ export default function SettingsLayout({
                     aria-current={activeTab === "agents" ? "page" : undefined}
                   >
                     Agents
+                  </Link>
+                )}
+                {hasCandidateSopAccess && (
+                  <Link
+                    href={ROUTES.settingsCandidateSop}
+                    className={tabClass("candidate-sop")}
+                    aria-current={activeTab === "candidate-sop" ? "page" : undefined}
+                  >
+                    Candidate SOP
                   </Link>
                 )}
                 {roleNames.includes("Agent") && (

@@ -37,3 +37,29 @@ export function canEditCandidateResignDate(
   if (isAdministrator) return true;
   return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.resignDate"));
 }
+
+/** POST /candidates/:id/assign-agent requires `candidates.manage` on the backend. */
+export function canAssignCandidateAgent(rawPermissions: string[], isPlatformSuperUser: boolean): boolean {
+  if (isPlatformSuperUser) return true;
+  return rawPermissions.some((p) => {
+    const lower = p.toLowerCase();
+    return (
+      lower === "candidates.manage" ||
+      lower.includes("ats.candidates:view,create,edit,delete")
+    );
+  });
+}
+
+/** PATCH /training/modules/:id (add student to module) requires modules.manage on the backend. */
+export function canAssignTrainingCourseFromSop(rawPermissions: string[], isPlatformSuperUser: boolean): boolean {
+  if (isPlatformSuperUser) return true;
+  return rawPermissions.some((p) => {
+    const lower = p.toLowerCase();
+    return (
+      lower === "modules.manage" ||
+      lower === "training.modules.manage" ||
+      lower.includes("training.modules:view,create,edit,delete") ||
+      lower.includes("training.modules:create,edit,delete")
+    );
+  });
+}

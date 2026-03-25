@@ -32,7 +32,7 @@ function getErrorMessage(err: any): string {
 
 export default function SettingsUsersAddPage() {
   const router = useRouter();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAdministrator: authIsAdministrator, isPlatformSuperUser } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -61,11 +61,12 @@ export default function SettingsUsersAddPage() {
     return (currentUser.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Agent");
   }, [currentUser?.roleIds, roles]);
 
-  const isAdministrator = useMemo(() => {
+  const isAdministratorFromRoles = useMemo(() => {
     if (!currentUser?.roleIds?.length || !roles.length) return false;
     const roleMap = new Map(roles.map((r) => [r.id, r]));
     return (currentUser.roleIds as string[]).some((id) => roleMap.get(id)?.name === "Administrator");
   }, [currentUser?.roleIds, roles]);
+  const isAdministrator = isPlatformSuperUser || authIsAdministrator || isAdministratorFromRoles;
 
   const assignableRoles = useMemo(() => {
     if (isAdministrator) return roles;

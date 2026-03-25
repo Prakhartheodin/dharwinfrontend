@@ -134,9 +134,46 @@ export async function getTrainingModule(moduleId: string): Promise<TrainingModul
   return data;
 }
 
+function studentIdsFromModule(mod: TrainingModule): string[] {
+  const ids: string[] = [];
+  for (const s of mod.students ?? []) {
+    const id = String(s.id ?? (s as { _id?: string })._id ?? "").trim();
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+/** Add a training student to a module's roster (same as Curriculum module assign-students). Idempotent. */
+export async function addStudentToTrainingModule(moduleId: string, studentId: string): Promise<TrainingModule> {
+  const sid = studentId.trim();
+  if (!sid) throw new Error("studentId is required");
+  const mod = await getTrainingModule(moduleId);
+  const set = new Set(studentIdsFromModule(mod));
+  if (set.has(sid)) return mod;
+  set.add(sid);
+  return updateTrainingModule(moduleId, { students: Array.from(set) });
+}
+
 function appendIdArray(formData: FormData, field: string, values?: string[]): void {
   if (!values?.length) return;
   values.forEach((value) => formData.append(`${field}[]`, value));
+}
+
+/**
+ * Multipart PATCH: empty roster must send JSON "[]" or the backend never receives `students` / `mentorsAssigned`
+ * and keeps the previous list. Omit the field entirely when `values` is undefined (partial update).
+ */
+function appendIdArrayField(
+  formData: FormData,
+  field: "students" | "mentorsAssigned",
+  values: string[] | undefined
+): void {
+  if (values === undefined) return;
+  if (values.length === 0) {
+    formData.append(field, "[]");
+    return;
+  }
+  appendIdArray(formData, field, values);
 }
 
 function appendFileUploadMeta(
@@ -250,8 +287,8 @@ export async function createTrainingModule(
   formData.append("shortDescription", payload.shortDescription);
   formData.append("status", payload.status ?? "draft");
   appendIdArray(formData, "categories", payload.categories);
-  appendIdArray(formData, "students", payload.students);
-  appendIdArray(formData, "mentorsAssigned", payload.mentorsAssigned);
+  appendIdArrayField(formData, "students", payload.students);
+  appendIdArrayField(formData, "mentorsAssigned", payload.mentorsAssigned);
 
   if (payload.coverImage) {
     formData.append("coverImage", payload.coverImage);
@@ -292,8 +329,8 @@ export async function updateTrainingModule(
       appendIdArray(formData, "categories", payload.categories);
     }
   }
-  appendIdArray(formData, "students", payload.students);
-  appendIdArray(formData, "mentorsAssigned", payload.mentorsAssigned);
+  appendIdArrayField(formData, "students", payload.students);
+  appendIdArrayField(formData, "mentorsAssigned", payload.mentorsAssigned);
 
   if (payload.coverImage) {
     formData.append("coverImage", payload.coverImage);

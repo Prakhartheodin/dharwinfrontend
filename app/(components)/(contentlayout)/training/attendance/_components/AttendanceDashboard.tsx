@@ -3,6 +3,7 @@
 import React from "react"
 import dynamic from "next/dynamic"
 import type { AttendanceTrackHistoryItem } from "@/shared/lib/api/attendance"
+import { MAX_ATTENDANCE_MS_PER_CALENDAR_DAY } from "@/shared/lib/attendance-display"
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false })
 
@@ -49,14 +50,13 @@ export default function AttendanceDashboard({
   const hoursByDate: Record<string, number> = {}
   const sessionsByStudent: Record<string, { name: string; count: number; totalMs: number }> = {}
   const punchInByHour: number[] = Array.from({ length: 24 }, () => 0)
-  let totalHoursAll = 0
   let totalSessions = 0
+  const maxHrsPerDay = MAX_ATTENDANCE_MS_PER_CALENDAR_DAY / (1000 * 60 * 60)
 
   list.forEach((row) => {
     const dateKey = new Date(row.date).toISOString().slice(0, 10)
     const hrs = (row.durationMs ?? 0) / (1000 * 60 * 60)
     hoursByDate[dateKey] = (hoursByDate[dateKey] || 0) + hrs
-    totalHoursAll += hrs
     totalSessions += 1
 
     const sid = row.studentId
@@ -81,6 +81,12 @@ export default function AttendanceDashboard({
       }
     }
   })
+
+  let totalHoursAll = 0
+  for (const k of Object.keys(hoursByDate)) {
+    hoursByDate[k] = Math.min(hoursByDate[k] ?? 0, maxHrsPerDay)
+    totalHoursAll += hoursByDate[k]
+  }
 
   const uniqueStudents = Object.keys(sessionsByStudent).length
   const uniqueDays = Object.keys(hoursByDate).length

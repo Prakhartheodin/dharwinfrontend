@@ -48,6 +48,7 @@ const TYPE_LABELS: Record<NotificationType | 'all', string> = {
   account: 'Account',
   recruiter: 'Recruiter',
   assignment: 'Assignment',
+  sop: 'Onboarding SOP',
   general: 'General',
 };
 
@@ -64,6 +65,7 @@ const TYPE_CHIPS: { value: NotificationType | 'all'; label: string }[] = [
   { value: 'project', label: TYPE_LABELS.project },
   { value: 'account', label: TYPE_LABELS.account },
   { value: 'recruiter', label: TYPE_LABELS.recruiter },
+  { value: 'sop', label: TYPE_LABELS.sop },
   { value: 'general', label: TYPE_LABELS.general },
 ];
 
@@ -81,6 +83,7 @@ const getTypeBadgeClass = (type: NotificationType): string => {
     account: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400',
     recruiter: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-400',
     assignment: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400',
+    sop: 'bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-400',
     general: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
   };
   return map[type] ?? map.general;
@@ -221,7 +224,7 @@ const Notifications = () => {
                                   </span>
                                 </div>
                                 <p className="mb-0 text-[.875rem] font-semibold">{n.title}</p>
-                                <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.8125rem]">{n.message}</p>
+                                <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.8125rem] whitespace-pre-line">{n.message}</p>
                                 <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
                                   {formatTimeAgo(n.createdAt)}
                                 </span>

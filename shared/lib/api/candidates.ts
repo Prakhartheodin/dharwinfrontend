@@ -32,6 +32,10 @@ export interface CandidateListItem {
   studentId?: string | null;
   /** Candidate owner User id (for user-based attendance when no Student). */
   ownerId?: string | null;
+  /** Present when list is requested with includeOpenSopCount. */
+  openSopCount?: number;
+  /** Present on GET /candidates/:id and related detail responses. */
+  assignedAgent?: { id: string; name: string; email?: string } | null;
   documents?: CandidateDocument[];
   socialLinks?: Array<{ platform?: string; url?: string }>;
 }
@@ -82,6 +86,8 @@ export interface ListCandidatesParams {
   country?: string;
   degree?: string;
   visaType?: string;
+  /** When "true" or "1", each row may include openSopCount (extra server work). */
+  includeOpenSopCount?: "true" | "false" | "1" | "0" | boolean;
 }
 
 export async function listCandidates(params?: ListCandidatesParams): Promise<CandidatesListResponse> {
@@ -438,6 +444,7 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
       if (typeof o === "string") return o;
       return o.id ?? o._id?.toString?.() ?? null;
     })(),
+    openSopCount: typeof (c as CandidateListItem).openSopCount === "number" ? (c as CandidateListItem).openSopCount : undefined,
     _raw: c,
   };
 }

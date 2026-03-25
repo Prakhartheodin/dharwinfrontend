@@ -124,8 +124,22 @@ function validateNewPassword(password: string): string | null {
 }
 
 export default function PersonalInformationPage() {
-  const { user, logout, sessions, checkAuth, refreshUser, isAdministrator, roleNames, permissionsLoaded } = useAuth();
+  const {
+    user,
+    logout,
+    sessions,
+    checkAuth,
+    refreshUser,
+    isAdministrator,
+    isPlatformSuperUser,
+    roleNames,
+    permissionsLoaded,
+  } = useAuth();
+  /** Same UI and PATCH /users privileges as Administrator (includes platform super). */
+  const hasAdminPrivileges = isAdministrator || isPlatformSuperUser;
   const { hasCandidateRole, hasCandidateProfile, isLoading: candidateRoleLoading } = useHasCandidateRole();
+  /** Username is only persisted on the staff (no linked candidate profile) save path. */
+  const canEditUsernameOnPage = hasAdminPrivileges && !hasCandidateProfile;
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
 
   const [firstName, setFirstName] = useState("");
@@ -254,7 +268,7 @@ export default function PersonalInformationPage() {
 
     const load = async () => {
       try {
-        if (isAdministrator) {
+        if (hasAdminPrivileges) {
           if (!hasCandidateProfile) {
             if (!cancelled) setCandidate(null);
             return;
@@ -288,7 +302,7 @@ export default function PersonalInformationPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, isAdministrator, hasCandidateProfile]);
+  }, [user, hasAdminPrivileges, hasCandidateProfile]);
 
   useEffect(() => {
     if (!candidate) return;
@@ -368,7 +382,7 @@ export default function PersonalInformationPage() {
       setSaveError("First name is required.");
       return;
     }
-    if (isAdministrator && !trimmedEmail) {
+    if (hasAdminPrivileges && !trimmedEmail) {
       setSaveError("Email is required.");
       return;
     }
@@ -395,14 +409,24 @@ export default function PersonalInformationPage() {
 
     const pendingDocUploads = documentsList.some((d) => d.file && d.name);
     const pendingSlipUploads = salarySlips.some((s) => s.file && s.month && s.year);
-    if (!isAdministrator && !candidate && (pendingDocUploads || pendingSlipUploads)) {
+    if (!hasAdminPrivileges && !candidate && (pendingDocUploads || pendingSlipUploads)) {
       setSaveError("No candidate profile is linked to your account. Document and salary slip uploads require a candidate record.");
       return;
     }
 
+    let staffUsernameForSave: string | undefined;
+    if (hasAdminPrivileges && !hasCandidateProfile) {
+      const tu = userName.trim().toLowerCase();
+      if (!tu) {
+        setSaveError("Username is required.");
+        return;
+      }
+      staffUsernameForSave = tu;
+    }
+
     setSaveLoading(true);
     try {
-      const useCandidateApi = Boolean(candidate && (hasCandidateProfile || !isAdministrator));
+      const useCandidateApi = Boolean(candidate && (hasCandidateProfile || !hasAdminPrivileges));
 
       if (useCandidateApi && candidate) {
         const DOCUMENT_TYPES = ["Aadhar", "PAN", "Bank", "Passport", "CV/Resume", "Marksheet", "Degree Certificate", "Experience Letter", "Other"] as const;
@@ -553,10 +577,11 @@ export default function PersonalInformationPage() {
           education: staffEducation.trim() || undefined,
           domain: domainArr,
         };
-        if (isAdministrator) {
+        if (hasAdminPrivileges) {
           await usersApi.updateUser(user.id, {
             ...staffPayload,
             email: trimmedEmail || undefined,
+            username: staffUsernameForSave,
           });
         } else {
           await authApi.updateMyProfile(staffPayload);
@@ -598,7 +623,7 @@ export default function PersonalInformationPage() {
     try {
       const result = await uploadDocument(file);
       const profilePicture = { url: result.url, key: result.key, originalName: result.originalName, size: result.size, mimeType: result.mimeType };
-      if (candidate && (hasCandidateProfile || !isAdministrator)) {
+      if (candidate && (hasCandidateProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture });
         setCandidate(res.candidate);
       } else {
@@ -620,7 +645,7 @@ export default function PersonalInformationPage() {
     setSaveError("");
     setAvatarRemoveLoading(true);
     try {
-      if (candidate && (hasCandidateProfile || !isAdministrator)) {
+      if (candidate && (hasCandidateProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture: null });
         setCandidate(res.candidate);
       } else {
@@ -870,14 +895,21 @@ export default function PersonalInformationPage() {
             <label className="form-label">Username</label>
             <input
               type="text"
-              className="form-control w-full !rounded-md !bg-gray-100 dark:!bg-black/20"
-              id="username-readonly"
+              className={`form-control w-full !rounded-md ${canEditUsernameOnPage ? "" : "!bg-gray-100 dark:!bg-black/20"}`}
+              id={canEditUsernameOnPage ? "username" : "username-readonly"}
               value={userName}
-              readOnly
-              title="Only an administrator can change your username (via Settings → Users → Edit)"
+              readOnly={!canEditUsernameOnPage}
+              onChange={canEditUsernameOnPage ? (e) => setUserName(e.target.value) : undefined}
+              title={
+                canEditUsernameOnPage
+                  ? undefined
+                  : "Only an administrator can change your username (via Settings → Users → Edit)"
+              }
             />
             <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-              Username is used for sign-in. Only an administrator can change it.
+              {canEditUsernameOnPage
+                ? "Username is used for sign-in. You can update it here; it must stay unique."
+                : "Username is used for sign-in. Only an administrator can change it (Settings → Users → Edit)."}
             </p>
           </div>
         </div>
@@ -895,8 +927,8 @@ export default function PersonalInformationPage() {
               placeholder="xyz@gmail.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              readOnly={!isAdministrator}
-              title={!isAdministrator ? "Only an administrator can change your email address" : undefined}
+              readOnly={!hasAdminPrivileges}
+              title={!hasAdminPrivileges ? "Only an administrator can change your email address" : undefined}
             />
           </div>
         </div>
@@ -1352,7 +1384,7 @@ export default function PersonalInformationPage() {
         )}
 
         {/* Social links, documents & salary slips: all non-administrators (staff with linked candidate included); hidden for Administrator */}
-        {!isAdministrator && !candidateRoleLoading && (
+        {!hasAdminPrivileges && !candidateRoleLoading && (
           <div className="space-y-6 mb-6">
             <h6 className="font-semibold text-[1rem]">Profile attachments</h6>
             {!candidate && (

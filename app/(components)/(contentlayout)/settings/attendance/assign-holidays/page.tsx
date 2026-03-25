@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { listStudents, type Student } from "@/shared/lib/api/students";
+import { useSearchParams } from "next/navigation";
+import { listCandidates } from "@/shared/lib/api/candidates";
+import { listStudents } from "@/shared/lib/api/students";
+import {
+  buildMergedAssignPeopleOptions,
+  resolveStudentIdsForHolidayAssign,
+  type AssignPersonRow,
+} from "@/shared/lib/attendance-assign-people-options";
 import { getAllHolidays, type Holiday } from "@/shared/lib/api/holidays";
 import {
   assignHolidaysToStudents,
@@ -19,21 +26,23 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
+import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
+import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
-
-type StudentOption = { value: string; label: string; student: Student };
 
 const SELECT_ALL_STUDENTS_VALUE = "__all_students__";
 
 type AssignmentMode = "individual" | "group";
 
 export default function SettingsAttendanceAssignHolidaysPage() {
+  const searchParams = useSearchParams();
+  const sopQueryString = searchParams.toString();
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("individual");
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
+  const [people, setPeople] = useState<AssignPersonRow[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [holidays, setHolidays] = useState<Holiday[]>([]);
@@ -90,22 +99,17 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     checkAdmin();
   }, [user]);
 
-  const fetchStudents = useCallback(async () => {
+  const fetchPeople = useCallback(async () => {
     if (!isAdmin) return;
     setLoadingStudents(true);
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
-      const list = res.results ?? [];
-      const options: StudentOption[] = list
-        .map((s) => ({
-          value: s.id,
-          label: `${s.user?.name ?? "Unknown"} (${s.user?.email ?? "No email"})`,
-          student: s,
-        }))
-        .filter((o) => o.value);
-      setStudents(options);
+      const [stuRes, candRes] = await Promise.all([
+        listStudents({ limit: 1000, sortBy: "user.name:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+      ]);
+      setPeople(buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? []));
     } catch (err: unknown) {
-      setError((err as { message?: string })?.message ?? "Failed to fetch students");
+      setError((err as { message?: string })?.message ?? "Failed to load people");
     } finally {
       setLoadingStudents(false);
     }
@@ -147,22 +151,29 @@ export default function SettingsAttendanceAssignHolidaysPage() {
   useEffect(() => {
     if (isAdmin) {
       setLoading(true);
-      Promise.all([fetchStudents(), fetchHolidays()]).finally(() => setLoading(false));
+      Promise.all([fetchPeople(), fetchHolidays()]).finally(() => setLoading(false));
     }
-  }, [isAdmin, fetchStudents, fetchHolidays]);
+  }, [isAdmin, fetchPeople, fetchHolidays]);
 
   useEffect(() => {
     if (isAdmin && assignmentMode === "group") fetchGroups();
   }, [isAdmin, assignmentMode, fetchGroups]);
 
-  // Auto-select holidays already assigned to selected students
+  const mergeSopPerson = useCallback((row: AssignPersonRow) => {
+    setPeople((prev) => (prev.some((s) => s.value === row.value) ? prev : [row, ...prev]));
+  }, []);
+
+  useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
+
+  // Auto-select holidays already assigned to selected training profiles
   useEffect(() => {
-    if (selectedStudents.length === 0 || holidays.length === 0) {
+    if (selectedPeople.length === 0 || holidays.length === 0) {
       setSelectedHolidays([]);
       return;
     }
     const studentHolidayIds = new Set<string>();
-    selectedStudents.forEach((opt) => {
+    selectedPeople.forEach((opt) => {
+      if (opt.kind !== "student") return;
       (opt.student?.holidays ?? []).forEach((id) => {
         if (id) studentHolidayIds.add(String(id));
       });
@@ -188,14 +199,14 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       ...autoSelected.filter((o) => !existingIds.has(o.value)),
     ];
     setSelectedHolidays(merged);
-  }, [selectedStudents, holidays]);
+  }, [selectedPeople, holidays]);
 
   const handleAssign = async () => {
-    if (selectedStudents.length === 0) {
+    if (selectedPeople.length === 0) {
       await Swal.fire({
         icon: "warning",
-        title: "No Students Selected",
-        text: "Please select at least one student",
+        title: "No one selected",
+        text: "Select at least one training profile or candidate",
         confirmButtonText: "OK",
       });
       return;
@@ -214,7 +225,20 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     setAssignmentResult(null);
     setRemovalResult(null);
     try {
-      const studentIds = selectedStudents.map((s) => s.value);
+      let studentIds: string[];
+      try {
+        studentIds = await resolveStudentIdsForHolidayAssign(selectedPeople);
+      } catch (resolveErr: unknown) {
+        const msg =
+          (resolveErr as { response?: { data?: { message?: string } }; message?: string })?.response?.data
+            ?.message ??
+          (resolveErr as { message?: string })?.message ??
+          "Could not resolve training profiles. Candidates need the Student role and permission to create a training profile.";
+        setError(msg);
+        await Swal.fire({ icon: "error", title: "Cannot assign holidays", text: msg, confirmButtonText: "OK" });
+        setAssigning(false);
+        return;
+      }
       const holidayIds = selectedHolidays.map((h) => h.value);
       const response = await assignHolidaysToStudents(studentIds, holidayIds);
       setAssignmentResult(response.data ?? null);
@@ -231,7 +255,8 @@ export default function SettingsAttendanceAssignHolidaysPage() {
         `,
         confirmButtonText: "OK",
       });
-      await fetchStudents();
+      dispatchSopStripRefresh();
+      await fetchPeople();
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data
@@ -244,11 +269,11 @@ export default function SettingsAttendanceAssignHolidaysPage() {
   };
 
   const handleRemove = async () => {
-    if (selectedStudents.length === 0) {
+    if (selectedPeople.length === 0) {
       await Swal.fire({
         icon: "warning",
-        title: "No Students Selected",
-        text: "Please select at least one student",
+        title: "No one selected",
+        text: "Select at least one training profile or candidate",
         confirmButtonText: "OK",
       });
       return;
@@ -266,7 +291,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       icon: "warning",
       title: "Remove Holidays?",
       html: `
-        <p class="mb-3">Are you sure you want to remove the selected holidays from ${selectedStudents.length} student(s)?</p>
+        <p class="mb-3">Are you sure you want to remove the selected holidays from ${selectedPeople.length} selected person(s)?</p>
         <p class="text-sm text-gray-600">This will remove holiday IDs from each student and delete attendance records with status "Holiday" for those dates.</p>
       `,
       showCancelButton: true,
@@ -280,7 +305,20 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     setAssignmentResult(null);
     setRemovalResult(null);
     try {
-      const studentIds = selectedStudents.map((s) => s.value);
+      let studentIds: string[];
+      try {
+        studentIds = await resolveStudentIdsForHolidayAssign(selectedPeople);
+      } catch (resolveErr: unknown) {
+        const msg =
+          (resolveErr as { response?: { data?: { message?: string } }; message?: string })?.response?.data
+            ?.message ??
+          (resolveErr as { message?: string })?.message ??
+          "Could not resolve training profiles.";
+        setError(msg);
+        await Swal.fire({ icon: "error", title: "Cannot remove holidays", text: msg, confirmButtonText: "OK" });
+        setRemoving(false);
+        return;
+      }
       const holidayIds = selectedHolidays.map((h) => h.value);
       const response = await removeHolidaysFromStudents(studentIds, holidayIds);
       setRemovalResult(response.data ?? null);
@@ -297,7 +335,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
         `,
         confirmButtonText: "OK",
       });
-      await fetchStudents();
+      await fetchPeople();
       setSelectedHolidays([]);
     } catch (err: unknown) {
       const msg =
@@ -311,7 +349,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
   };
 
   const clearSelections = () => {
-    setSelectedStudents([]);
+    setSelectedPeople([]);
     setSelectedGroupId(null);
     setSelectedHolidays([]);
     setAssignmentResult(null);
@@ -421,13 +459,13 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     }
   }
 
-  const studentOptionsWithSelectAll =
-    students.length > 0
+  const personOptionsWithSelectAll =
+    people.length > 0
       ? [
-          { value: SELECT_ALL_STUDENTS_VALUE, label: "Select All Students" },
-          ...students,
+          { value: SELECT_ALL_STUDENTS_VALUE, label: "Select all (training + candidates)" } as AssignPersonRow,
+          ...people,
         ]
-      : students;
+      : people;
 
   if (isAdmin === null) {
     return (
@@ -490,6 +528,8 @@ export default function SettingsAttendanceAssignHolidaysPage() {
               </div>
             )}
 
+            <SopAssignChecklistNotice />
+
             <div className="inline-flex rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 p-1">
               <button
                 type="button"
@@ -524,36 +564,41 @@ export default function SettingsAttendanceAssignHolidaysPage() {
           {assignmentMode === "individual" && (
             <>
               <div>
-                <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">Select Students <span className="text-danger">*</span></label>
+                <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">
+                  Select people <span className="text-danger">*</span>
+                </label>
                 {loadingStudents ? (
                   <div className="flex items-center gap-2 text-defaulttextcolor/70">
                     <i className="ri-loader-4-line animate-spin" />
-                    <span>Loading students…</span>
+                    <span>Loading training profiles and candidates…</span>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
                     <Select
                       isMulti
-                      options={studentOptionsWithSelectAll}
-                      value={selectedStudents}
-                      onChange={(selected: (StudentOption | { value: string; label: string })[] | null) => {
+                      options={personOptionsWithSelectAll}
+                      value={selectedPeople}
+                      getOptionValue={(o) => (o as AssignPersonRow).value}
+                      getOptionLabel={(o) => (o as AssignPersonRow).label}
+                      onChange={(sel: unknown) => {
+                        const selected = sel as (AssignPersonRow | { value: string; label: string })[] | null;
                         if (!selected || selected.length === 0) {
-                          setSelectedStudents([]);
+                          setSelectedPeople([]);
                           return;
                         }
                         const hasSelectAll = selected.some((o) => o.value === SELECT_ALL_STUDENTS_VALUE);
                         if (hasSelectAll) {
                           const withoutAll = selected.filter((o) => o.value !== SELECT_ALL_STUDENTS_VALUE);
-                          if (withoutAll.length >= students.length) {
-                            setSelectedStudents([]);
+                          if (withoutAll.length >= people.length) {
+                            setSelectedPeople([]);
                           } else {
-                            setSelectedStudents(students);
+                            setSelectedPeople(people);
                           }
                         } else {
-                          setSelectedStudents(selected as StudentOption[]);
+                          setSelectedPeople(selected as AssignPersonRow[]);
                         }
                       }}
-                      placeholder="Select one or more students…"
+                      placeholder="Training profiles and candidates…"
                       closeMenuOnSelect={false}
                       hideSelectedOptions={false}
                       className="react-select-container assign-holidays-select"
@@ -566,8 +611,8 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                     />
                   </div>
                 )}
-                {selectedStudents.length > 0 && (
-                  <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} student(s) selected</p>
+                {selectedPeople.length > 0 && (
+                  <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedPeople.length} selected</p>
                 )}
               </div>
 
@@ -676,7 +721,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                 <button
                   type="button"
                   onClick={handleAssign}
-                  disabled={assigning || removing || selectedHolidays.length === 0 || selectedStudents.length === 0}
+                  disabled={assigning || removing || selectedHolidays.length === 0 || selectedPeople.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
                 >
                   {assigning ? <><i className="ri-loader-4-line animate-spin text-lg" /> Assigning…</> : <><i className="ri-calendar-check-line text-lg" /> Assign Holidays</>}
@@ -684,7 +729,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                 <button
                   type="button"
                   onClick={handleRemove}
-                  disabled={assigning || removing || selectedHolidays.length === 0 || selectedStudents.length === 0}
+                  disabled={assigning || removing || selectedHolidays.length === 0 || selectedPeople.length === 0}
                   className="inline-flex items-center gap-2 rounded-xl border border-danger/60 bg-danger/10 px-5 py-2.5 text-sm font-medium text-danger hover:bg-danger/20 dark:bg-danger/15 transition-all disabled:opacity-60 disabled:pointer-events-none"
                 >
                   {removing ? <><i className="ri-loader-4-line animate-spin text-lg" /> Removing…</> : <><i className="ri-calendar-close-line text-lg" /> Remove Holidays</>}

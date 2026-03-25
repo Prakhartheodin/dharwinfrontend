@@ -12,6 +12,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { downloadCsv } from "@/shared/lib/csv-export";
 import AdminTrackView from "./_components/AdminTrackView";
 import AttendanceDashboard from "./_components/AttendanceDashboard";
+import { capDayTotalMs, countsTowardWorkedMs, sessionDurationMsForDisplay } from "@/shared/lib/attendance-display";
 import Swal from "sweetalert2";
 
 const POLL_INTERVAL_MS = 30000;
@@ -120,7 +121,7 @@ const CALENDAR_YEAR_START = 2020;
 const CALENDAR_YEAR_END = 2150;
 
 export default function AttendanceTracking() {
-  const { user } = useAuth();
+  const { user, isPlatformSuperUser } = useAuth();
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
   const [isUserBased, setIsUserBased] = useState(false);
   const [myWeekOff, setMyWeekOff] = useState<string[]>([]);
@@ -483,7 +484,16 @@ export default function AttendanceTracking() {
 
   /* Admin data: canTrackAll = only for Administrator or students.manage (not for agents with attendance.manage) */
   useEffect(() => {
-    if (!user?.roleIds?.length || myStudentId !== null) {
+    if (myStudentId !== null) {
+      setCanTrackAll(false);
+      return;
+    }
+    if (isPlatformSuperUser) {
+      setCanTrackAll(true);
+      setCanPunchOutOthers(true);
+      return;
+    }
+    if (!user?.roleIds?.length) {
       setCanTrackAll(false);
       return;
     }
@@ -507,7 +517,7 @@ export default function AttendanceTracking() {
       }
     }).catch(() => { if (!cancelled) { setCanTrackAll(false); setCanPunchOutOthers(false); } });
     return () => { cancelled = true; };
-  }, [user?.roleIds, myStudentId]);
+  }, [user?.roleIds, myStudentId, isPlatformSuperUser]);
 
   useEffect(() => {
     if (myStudentId !== null || !canTrackAll) return;
@@ -622,13 +632,13 @@ export default function AttendanceTracking() {
     const byDate: Record<string, { present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; totalMs: number; holidayName: string }> = {};
     attendanceList.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? ""); if (!dateKey) return;
-      const hasOut = !!r.punchOut; const ms = (r.duration ?? 0) || 0;
+      const hasOut = !!r.punchOut; const ms = sessionDurationMsForDisplay(r);
       const recStatus = r.status;
       if (!byDate[dateKey]) byDate[dateKey] = { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       if (recStatus === "Holiday") { byDate[dateKey].holiday = true; byDate[dateKey].holidayName = getHolidayNameFromNotes(r.notes) || "Holiday"; }
       else if (recStatus === "Leave") { byDate[dateKey].leave = true; byDate[dateKey].leaveType = getLeaveTypeFromRecord(r); }
       else if (recStatus === "Absent") { byDate[dateKey].absent = true; }
-      else if (hasOut) { byDate[dateKey].present = true; byDate[dateKey].totalMs += ms; }
+      else if (hasOut && countsTowardWorkedMs(recStatus)) { byDate[dateKey].present = true; byDate[dateKey].totalMs += ms; }
       else { byDate[dateKey].incomplete = true; }
     });
     const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
@@ -639,7 +649,8 @@ export default function AttendanceTracking() {
       const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       const dayName = DAY_NAME_MAP[date.getDay()];
       const isWeekOff = weekOffSet.has(dayName) && !info.present && !info.holiday && !info.leave && !info.incomplete;
-      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((info.totalMs / 3600000) * 100) / 100, holidayName: info.holidayName });
+      const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
+      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((displayMs / 3600000) * 100) / 100, holidayName: info.holidayName });
     }
     return cells;
   }, [attendanceList, myCalendarYear, myCalendarMonth, myWeekOff]);

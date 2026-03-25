@@ -30,7 +30,13 @@ const STATUS_OPTIONS = [
 ] as const;
 
 export default function SettingsUsersPage() {
-  const { user: currentUser, startImpersonation, isLoading: authLoading } = useAuth();
+  const {
+    user: currentUser,
+    startImpersonation,
+    isLoading: authLoading,
+    isAdministrator: authIsAdministrator,
+    isPlatformSuperUser,
+  } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [page, setPage] = useState(1);
@@ -51,12 +57,13 @@ export default function SettingsUsersPage() {
     return map;
   }, [roles]);
 
-  /** Current user has Administrator role (by role name in roleIds). */
-  const isAdministrator = useMemo(() => {
+  /** Administrator from API / platform super; also matches role name once roles are loaded. */
+  const isAdministratorFromRoles = useMemo(() => {
     if (!currentUser) return false;
     const ids = currentUser.roleIds ?? [];
     return ids.some((id) => rolesById.get(id)?.name === "Administrator");
   }, [currentUser, rolesById]);
+  const isAdministrator = isPlatformSuperUser || authIsAdministrator || isAdministratorFromRoles;
 
   /** Current user has Agent role (by role name in roleIds). */
   const isAgent = useMemo(() => {

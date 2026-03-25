@@ -12,8 +12,6 @@ import {
 } from "@/shared/lib/api/bolna";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
 
 type SourceFilter = "all" | "telephony" | "in_app";
 type PurposeFilter = "all" | "job_recruiter" | "student_candidate";
@@ -155,13 +153,8 @@ function visiblePageIndices(current: number, total: number): (number | "gap")[] 
 }
 
 const Calling = () => {
-  const { user } = useAuth();
-  const [roles, setRoles] = useState<Role[]>([]);
-  const isAdministrator = useMemo(() => {
-    if (!user?.roleIds?.length) return false;
-    const rolesById = new Map(roles.map((r) => [r.id, r]));
-    return (user.roleIds as string[]).some((id) => rolesById.get(id)?.name === "Administrator");
-  }, [user?.roleIds, roles]);
+  const { isAdministrator: authIsAdministrator, isPlatformSuperUser } = useAuth();
+  const isAdministrator = isPlatformSuperUser || authIsAdministrator;
 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("all");
@@ -250,18 +243,6 @@ const Calling = () => {
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await rolesApi.listRoles({ limit: 100 });
-        setRoles(res.results ?? []);
-      } catch {
-        setRoles([]);
-      }
-    };
-    load();
-  }, []);
 
   const mergedCalls = useMemo((): UnifiedCall[] => {
     const list: UnifiedCall[] = [];
