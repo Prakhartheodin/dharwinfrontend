@@ -123,6 +123,8 @@ type PlaylistItem = {
   sectionIndex?: number
 }
 
+type ModuleFormStatus = 'draft' | 'published' | 'archived'
+
 type ModuleFormData = {
   categoryIds: string[]
   name: string
@@ -131,6 +133,7 @@ type ModuleFormData = {
   studentIds: string[]
   mentorIds: string[]
   playlist: PlaylistItem[]
+  status: ModuleFormStatus
 }
 
 type PersonOption = {
@@ -458,6 +461,7 @@ const CreateModule = () => {
     studentIds: [],
     mentorIds: [],
     playlist: [],
+    status: 'draft',
   })
 
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null)
@@ -475,6 +479,8 @@ const CreateModule = () => {
   const [loading, setLoading] = useState(false)
   const [fetchingData, setFetchingData] = useState(true)
   const [fetchingModule, setFetchingModule] = useState(false)
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false)
+  const saveSplitRef = useRef<HTMLDivElement>(null)
 
   const convertApiPlaylistToForm = useCallback((apiItem: trainingModulesApi.PlaylistItem): PlaylistItem => {
     const backendId = (apiItem as { _id?: string; id?: string })._id ?? apiItem.id
@@ -555,14 +561,25 @@ const CreateModule = () => {
       setFetchingModule(true)
       try {
         const module = await trainingModulesApi.getTrainingModule(moduleId)
+        const normalizedStatus: ModuleFormStatus =
+          module.status === 'published' || module.status === 'archived' || module.status === 'draft'
+            ? module.status
+            : 'draft'
+        const studentIdsFromApi = (module.students ?? [])
+          .map((s: { id?: string; _id?: string }) => String(s.id ?? s._id ?? '').trim())
+          .filter(Boolean)
+        const mentorIdsFromApi = (module.mentorsAssigned ?? [])
+          .map((m: { id?: string; _id?: string }) => String(m.id ?? m._id ?? '').trim())
+          .filter(Boolean)
         setFormData({
           categoryIds: module.categories?.map((c: { id: string }) => c.id) ?? [],
           name: module.moduleName,
           coverImage: module.coverImage?.url ?? '',
           shortDescription: module.shortDescription,
-          studentIds: module.students?.map((s: { id: string }) => s.id) ?? [],
-          mentorIds: module.mentorsAssigned?.map((m: { id: string }) => m.id) ?? [],
+          studentIds: studentIdsFromApi,
+          mentorIds: mentorIdsFromApi,
           playlist: (module.playlist ?? []).filter((p) => (p as { contentType?: string }).contentType !== 'test').map(convertApiPlaylistToForm),
+          status: normalizedStatus,
         })
 
         if (module.coverImage?.url) {
@@ -652,6 +669,17 @@ const CreateModule = () => {
       [field]: value,
     }))
   }
+
+  useEffect(() => {
+    if (!saveMenuOpen) return
+    const close = (e: MouseEvent) => {
+      if (saveSplitRef.current && !saveSplitRef.current.contains(e.target as Node)) {
+        setSaveMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [saveMenuOpen])
 
   const processCoverImageFile = (file: File | null) => {
     if (!file || !file.type.startsWith('image/')) return
@@ -1551,9 +1579,9 @@ const CreateModule = () => {
     reader.readAsText(file)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const submitModule = async (status: ModuleFormStatus) => {
     setLoading(true)
+    setSaveMenuOpen(false)
 
     try {
       // Validate required fields
@@ -1676,7 +1704,7 @@ const CreateModule = () => {
         categories: formData.categoryIds,
         students: formData.studentIds,
         mentorsAssigned: formData.mentorIds,
-        status: 'draft',
+        status,
         coverImage: coverImageFile ?? undefined,
         playlist: playlistItems,
         playlistVideoFiles,
@@ -1689,12 +1717,14 @@ const CreateModule = () => {
         await trainingModulesApi.createTrainingModule(payload as trainingModulesApi.CreateTrainingModulePayload)
       }
 
+      const statusLabel =
+        status === 'published' ? 'published' : status === 'archived' ? 'archived' : 'draft'
       await Swal.fire({
         icon: 'success',
         title: isEditMode ? 'Module updated' : 'Module created',
         text: isEditMode
-          ? 'The training module has been updated successfully.'
-          : 'The training module has been created successfully.',
+          ? `Saved as ${statusLabel}.`
+          : `Created as ${statusLabel}.`,
         toast: true,
         position: 'top-end',
         timer: 3000,
@@ -1725,6 +1755,11 @@ const CreateModule = () => {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    void submitModule(formData.status)
   }
 
   return (
@@ -1824,6 +1859,28 @@ const CreateModule = () => {
                           onChange={(e) => handleInputChange('name', e.target.value)}
                           required
                         />
+                      </div>
+
+                      {/* Visibility / publish state */}
+                      <div className="xl:col-span-6 col-span-12">
+                        <label htmlFor="module-status" className="form-label">
+                          Module status
+                        </label>
+                        <select
+                          id="module-status"
+                          className="form-control"
+                          value={formData.status}
+                          onChange={(e) =>
+                            handleInputChange('status', e.target.value as ModuleFormStatus)
+                          }
+                        >
+                          <option value="draft">Draft (not shown in published-only lists)</option>
+                          <option value="published">Published (assignable / visible as published)</option>
+                          <option value="archived">Archived (hidden from normal use)</option>
+                        </select>
+                        <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-1 mb-0">
+                          Set to Published when the module is ready to assign. Save the form to apply.
+                        </p>
                       </div>
 
                       {/* Cover Image – Drag & Drop Preview */}
@@ -2683,20 +2740,91 @@ const CreateModule = () => {
                 coverImageFile={coverImageFile}
                 existingCoverImageUrl={existingCoverImageUrl}
               />
-              <div className="box-footer flex justify-end gap-2 pt-4 border-t border-defaultborder">
+              <div className="box-footer flex flex-col items-end gap-2 pt-4 border-t border-defaultborder">
+                <div className="flex justify-end gap-2 flex-wrap w-full">
                 <Link
                   href="/training/curriculum/modules"
                   className="ti-btn ti-btn-light"
                 >
                   Cancel
                 </Link>
-                <button
-                  type="submit"
-                  className="ti-btn ti-btn-primary-full"
-                  disabled={loading || fetchingData || fetchingModule}
-                >
-                  {loading ? (isEditMode ? 'Updating...' : 'Creating...') : (isEditMode ? 'Update Module' : 'Create Module')}
-                </button>
+                <div className="relative inline-flex rounded-md" ref={saveSplitRef}>
+                  <button
+                    type="submit"
+                    className="ti-btn ti-btn-primary-full !mb-0 rounded-e-none border-e border-white/25"
+                    disabled={loading || fetchingData || fetchingModule}
+                  >
+                    {loading
+                      ? isEditMode
+                        ? 'Saving...'
+                        : 'Creating...'
+                      : isEditMode
+                        ? 'Update module'
+                        : 'Create module'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full !mb-0 rounded-s-none !px-3 min-w-[2.5rem]"
+                    disabled={loading || fetchingData || fetchingModule}
+                    aria-expanded={saveMenuOpen}
+                    aria-haspopup="menu"
+                    aria-label="More save options"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setSaveMenuOpen((o) => !o)
+                    }}
+                  >
+                    <i className={`ri-arrow-${saveMenuOpen ? 'up' : 'down'}-s-line text-lg`} aria-hidden />
+                  </button>
+                  {saveMenuOpen ? (
+                    <ul
+                      className="absolute end-0 bottom-full mb-1 z-[80] min-w-[200px] py-1 rounded-md border border-defaultborder bg-bodybg shadow-lg"
+                      role="menu"
+                    >
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="ti-dropdown-item w-full text-start whitespace-nowrap"
+                          onClick={() => void submitModule('draft')}
+                        >
+                          <i className="ri-file-edit-line me-2 align-middle inline-flex" aria-hidden />
+                          {isEditMode ? 'Save as draft' : 'Create as draft'}
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="ti-dropdown-item w-full text-start whitespace-nowrap"
+                          onClick={() => void submitModule('published')}
+                        >
+                          <i className="ri-send-plane-2-line me-2 align-middle inline-flex" aria-hidden />
+                          {isEditMode ? 'Save & publish' : 'Create & publish'}
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="ti-dropdown-item w-full text-start whitespace-nowrap"
+                          onClick={() => void submitModule('archived')}
+                        >
+                          <i className="ri-archive-2-line me-2 align-middle inline-flex" aria-hidden />
+                          {isEditMode ? 'Save as archived' : 'Create as archived'}
+                        </button>
+                      </li>
+                    </ul>
+                  ) : null}
+                </div>
+                </div>
+                <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-0 max-w-xl text-end">
+                  The main button saves using Module info status (
+                  <span className="text-defaulttextcolor font-medium">{formData.status}</span>). The{' '}
+                  <i className="ri-arrow-down-s-line align-middle" aria-hidden /> menu picks draft, publish, or archive
+                  for this save.
+                </p>
               </div>
             </form>
             )}

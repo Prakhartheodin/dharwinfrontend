@@ -126,8 +126,24 @@ export async function getUsersWithoutStudentProfile(): Promise<UsersWithoutStude
   return data;
 }
 
-export async function createStudentFromUser(userId: string): Promise<Student> {
-  const { data } = await apiClient.post<Student>("/training/students/from-user", { userId });
+export type CreateStudentFromUserOptions = {
+  /**
+   * When true, backend adds the Student role to the user if they own a Candidate but lack Student
+   * (requires `students.manage`). Use for SOP / attendance flows so candidate-only people get a profile.
+   */
+  ensureStudentRoleForCandidateOwner?: boolean;
+};
+
+export async function createStudentFromUser(
+  userId: string,
+  options?: CreateStudentFromUserOptions
+): Promise<Student> {
+  const { data } = await apiClient.post<Student>("/training/students/from-user", {
+    userId,
+    ...(options?.ensureStudentRoleForCandidateOwner
+      ? { ensureStudentRoleForCandidateOwner: true }
+      : {}),
+  });
   return data;
 }
 

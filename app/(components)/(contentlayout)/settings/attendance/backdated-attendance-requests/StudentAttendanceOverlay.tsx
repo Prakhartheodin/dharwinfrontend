@@ -9,6 +9,11 @@ import {
 } from "@/shared/lib/api/attendance";
 import { getCandidate, getCandidateWeekOff, listCandidates } from "@/shared/lib/api/candidates";
 import { getStudent, getStudentWeekOff } from "@/shared/lib/api/students";
+import {
+  capDayTotalMs,
+  countsTowardWorkedMs,
+  sessionDurationMsForDisplay,
+} from "@/shared/lib/attendance-display";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -328,7 +333,7 @@ export default function StudentAttendanceOverlay({
       const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
       const hasOut = !!r.punchOut;
-      const ms = (r.duration ?? 0) || 0;
+      const ms = sessionDurationMsForDisplay(r);
       const recStatus = r.status;
       if (!byDate[dateKey]) {
         byDate[dateKey] = {
@@ -350,10 +355,10 @@ export default function StudentAttendanceOverlay({
         byDate[dateKey].leaveType = getLeaveTypeFromRecord(r);
       } else if (recStatus === "Absent") {
         byDate[dateKey].absent = true;
-      } else if (hasOut) {
+      } else if (hasOut && countsTowardWorkedMs(recStatus)) {
         byDate[dateKey].present = true;
         byDate[dateKey].totalMs += ms;
-      } else {
+      } else if (recStatus !== "Holiday" && recStatus !== "Leave") {
         byDate[dateKey].incomplete = true;
       }
     });
@@ -440,6 +445,7 @@ export default function StudentAttendanceOverlay({
         !info.incomplete;
       const cellAbsent =
         !inactiveEmployment && !isScheduledWeekOff && (info.absent || inferredAbsent);
+      const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
       cells.push({
         day,
         date,
@@ -452,7 +458,7 @@ export default function StudentAttendanceOverlay({
         weekOff: isScheduledWeekOff,
         beforeJoining,
         afterResign,
-        totalHours: Math.round((info.totalMs / 3600000) * 100) / 100,
+        totalHours: Math.round((displayMs / 3600000) * 100) / 100,
         holidayName: info.holidayName,
       });
     }
@@ -481,10 +487,6 @@ export default function StudentAttendanceOverlay({
       else if (cell.incomplete) incompleteDays++;
       else if (cell.absent) absentDays++;
     }
-    const recordedHours = records.reduce((acc, r) => {
-      if (r.punchOut && r.duration != null && r.duration > 0) return acc + r.duration / 3600000;
-      return acc;
-    }, 0);
     return {
       presentDays,
       leaveDays,
@@ -492,9 +494,9 @@ export default function StudentAttendanceOverlay({
       absentDays,
       incompleteDays,
       weekOffDays,
-      totalHours: Math.round(recordedHours * 100) / 100,
+      totalHours: Math.round(totalHours * 100) / 100,
     };
-  }, [calendarCells, records]);
+  }, [calendarCells]);
 
   const goPrevMonth = () => {
     if (month === 0) {

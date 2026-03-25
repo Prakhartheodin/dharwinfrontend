@@ -13,6 +13,11 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
 import Swal from "sweetalert2";
+import {
+  capDayTotalMs,
+  countsTowardWorkedMs,
+  sessionDurationMsForDisplay,
+} from "@/shared/lib/attendance-display";
 
 const POLL_INTERVAL_MS = 30000;
 const POLL_INTERVAL_PUNCHED_IN_MS = 15000;
@@ -87,17 +92,6 @@ function getLocalDateKey(isoDateStr: string): string {
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-/** Get YYYY-MM-DD in UTC for an ISO date string. Use for calendar key so Leave/Holiday show on the correct day (backend stores attendance date as UTC midnight). */
-function getUtcDateKey(isoDateStr: string): string {
-  if (!isoDateStr) return "";
-  const d = new Date(isoDateStr);
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getUTCFullYear();
-  const m = d.getUTCMonth();
-  const day = d.getUTCDate();
-  return `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
 /** joiningDate / resignDate (ISO) → local calendar day (same as attendance overlays). */
 function parseCalendarDayLocal(raw: string | null | undefined): Date | null {
   if (raw == null || String(raw).trim() === "") return null;
@@ -162,7 +156,7 @@ export default function StudentAttendancePage() {
   const [addingLeave, setAddingLeave] = useState(false);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
-  const { user } = useAuth();
+  const { user, isPlatformSuperUser, isAdministrator: authIsAdministrator } = useAuth();
 
   const fetchStatus = useCallback(async () => {
     if (!studentId) return;
@@ -248,6 +242,10 @@ export default function StudentAttendancePage() {
   }, []);
 
   useEffect(() => {
+    if (isPlatformSuperUser || authIsAdministrator) {
+      setCanRegularize(true);
+      return;
+    }
     if (!user?.roleIds?.length) {
       setCanRegularize(false);
       return;
@@ -266,7 +264,7 @@ export default function StudentAttendancePage() {
       if (!cancelled) setCanRegularize(false);
     });
     return () => { cancelled = true; };
-  }, [user?.roleIds]);
+  }, [user?.roleIds, isPlatformSuperUser, authIsAdministrator]);
 
   useEffect(() => {
     if (!studentId) return;
@@ -827,16 +825,23 @@ export default function StudentAttendancePage() {
     const lastDay = new Date(year, month + 1, 0);
     const daysInMonth = lastDay.getDate();
 
-    const byDate: Record<string, { present: boolean; totalMs: number; status?: string }> = {};
+    const byDate: Record<
+      string,
+      { present: boolean; totalMs: number; status?: string; hasHolidayRecord: boolean; hasLeaveRecord: boolean }
+    > = {};
     attendanceList.forEach((r) => {
-      const dateKey = getUtcDateKey(r.date ?? "");
+      const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
       const hasOut = !!r.punchOut;
-      const ms = (r.duration ?? 0) || 0;
+      const ms = sessionDurationMsForDisplay(r);
       const status = (r as { status?: string }).status;
-      if (!byDate[dateKey]) byDate[dateKey] = { present: false, totalMs: 0 };
+      if (!byDate[dateKey]) {
+        byDate[dateKey] = { present: false, totalMs: 0, hasHolidayRecord: false, hasLeaveRecord: false };
+      }
+      if (status === "Holiday") byDate[dateKey].hasHolidayRecord = true;
+      if (status === "Leave") byDate[dateKey].hasLeaveRecord = true;
       if (status) byDate[dateKey].status = status;
-      if (hasOut) {
+      if (hasOut && countsTowardWorkedMs(status)) {
         byDate[dateKey].present = true;
         byDate[dateKey].totalMs += ms;
       }
@@ -857,15 +862,18 @@ export default function StudentAttendancePage() {
       const info = byDate[dateKey];
       const isPresent = !!info?.present;
       const isWeekOff = isWeekOffDay(date);
-      const isHoliday = info?.status === "Holiday";
-      const isLeave = info?.status === "Leave";
+      const isHoliday = !!info?.hasHolidayRecord || info?.status === "Holiday";
+      const isLeave = !!info?.hasLeaveRecord || info?.status === "Leave";
 
       if (!isWeekOff && !isHoliday) {
         workingDays += 1;
         if (isPresent) presentDays += 1;
         if (isLeave) leaveDays += 1;
       }
-      if (info?.totalMs) totalDuration += info.totalMs;
+      if (info) {
+        const displayMs = isHoliday || isLeave ? 0 : capDayTotalMs(info.totalMs);
+        totalDuration += displayMs;
+      }
     }
 
     const totalHours = formatDurationHours(totalDuration);
@@ -911,23 +919,39 @@ export default function StudentAttendancePage() {
 
     const byDate: Record<
       string,
-      { present: boolean; incomplete: boolean; totalMs: number; status?: string; holidayName?: string }
+      {
+        present: boolean;
+        incomplete: boolean;
+        totalMs: number;
+        status?: string;
+        holidayName?: string;
+        hasHolidayRecord: boolean;
+        hasLeaveRecord: boolean;
+      }
     > = {};
     attendanceList.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
       const hasOut = !!r.punchOut;
-      const ms = (r.duration ?? 0) || 0;
+      const ms = sessionDurationMsForDisplay(r);
       const status = (r as { status?: string }).status;
       if (!byDate[dateKey]) {
-        byDate[dateKey] = { present: false, incomplete: false, totalMs: 0 };
+        byDate[dateKey] = {
+          present: false,
+          incomplete: false,
+          totalMs: 0,
+          hasHolidayRecord: false,
+          hasLeaveRecord: false,
+        };
       }
+      if (status === "Holiday") byDate[dateKey].hasHolidayRecord = true;
+      if (status === "Leave") byDate[dateKey].hasLeaveRecord = true;
       if (status) byDate[dateKey].status = status;
       if (status === "Holiday" && r.notes) {
         const name = getHolidayNameFromNotes(r.notes);
         if (name) byDate[dateKey].holidayName = name;
       }
-      if (hasOut) {
+      if (hasOut && countsTowardWorkedMs(status)) {
         byDate[dateKey].present = true;
         byDate[dateKey].totalMs += ms;
       } else if (status !== "Holiday" && status !== "Leave") {
@@ -952,15 +976,20 @@ export default function StudentAttendancePage() {
         present: false,
         incomplete: false,
         totalMs: 0,
+        hasHolidayRecord: false,
+        hasLeaveRecord: false,
       };
-      const totalHours = formatDurationHours(info.totalMs);
+      const resolvedStatus = info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : info.status;
+      const displayMs =
+        info.hasHolidayRecord || info.hasLeaveRecord ? 0 : capDayTotalMs(info.totalMs);
+      const totalHours = formatDurationHours(displayMs);
       cells.push({
         day,
         date,
         present: info.present,
         incomplete: info.incomplete && !info.present,
         totalHours,
-        status: info.status,
+        status: resolvedStatus,
         holidayName: info.holidayName,
       });
     }

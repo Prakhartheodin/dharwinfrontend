@@ -1,20 +1,28 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { getCandidateWeekOff, listCandidates, updateWeekOff } from "@/shared/lib/api/candidates";
 import {
   listStudents,
   updateWeekOffCalendar,
   getStudentWeekOff,
   importWeekOffBulk,
   WEEK_OFF_DAYS,
-  type Student,
   type ImportWeekOffEntry,
 } from "@/shared/lib/api/students";
+import {
+  buildMergedAssignPeopleOptions,
+  partitionAssignPersonRows,
+  type AssignPersonRow,
+} from "@/shared/lib/attendance-assign-people-options";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
+import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -34,8 +42,6 @@ type WeekOffData = {
   weekOff: string[];
 };
 
-type StudentOption = { value: string; label: string; student: Student };
-
 function hasWeekOffAccess(permissions: string[], isAdministrator: boolean): boolean {
   if (isAdministrator) return true;
   const hasStudentsManage = permissions.some(
@@ -48,10 +54,12 @@ function hasWeekOffAccess(permissions: string[], isAdministrator: boolean): bool
 }
 
 export default function SettingsAttendanceWeekOffPage() {
+  const searchParams = useSearchParams();
+  const sopQueryString = searchParams.toString();
   const { permissions, permissionsLoaded, isAdministrator } = useAuth();
   const canAccess = hasWeekOffAccess(permissions, isAdministrator);
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
+  const [people, setPeople] = useState<AssignPersonRow[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -62,7 +70,7 @@ export default function SettingsAttendanceWeekOffPage() {
   const [importingExcel, setImportingExcel] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
 
-  const fetchStudents = useCallback(async () => {
+  const fetchPeople = useCallback(async () => {
     if (!canAccess) {
       setLoading(false);
       return;
@@ -70,18 +78,13 @@ export default function SettingsAttendanceWeekOffPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
-      const list = res.results ?? [];
-      const options = list
-        .map((s) => ({
-          value: s.id,
-          label: `${s.user?.name ?? "Unknown"} (${s.user?.email ?? "No email"})`,
-          student: s,
-        }))
-        .filter((o) => o.value);
-      setStudents(options);
+      const [stuRes, candRes] = await Promise.all([
+        listStudents({ limit: 1000, sortBy: "user.name:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+      ]);
+      setPeople(buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? []));
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message ?? "Failed to fetch students";
+      const msg = (err as { message?: string })?.message ?? "Failed to load people";
       setError(msg);
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
@@ -90,11 +93,17 @@ export default function SettingsAttendanceWeekOffPage() {
   }, [canAccess]);
 
   useEffect(() => {
-    if (canAccess) fetchStudents();
-  }, [canAccess, fetchStudents]);
+    if (canAccess) fetchPeople();
+  }, [canAccess, fetchPeople]);
+
+  const mergeSopPerson = useCallback((row: AssignPersonRow) => {
+    setPeople((prev) => (prev.some((s) => s.value === row.value) ? prev : [row, ...prev]));
+  }, []);
+
+  useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
 
   const fetchStudentWeekOffs = useCallback(async () => {
-    if (selectedStudents.length === 0) {
+    if (selectedPeople.length === 0) {
       setStudentWeekOffs({});
       return;
     }
@@ -102,7 +111,32 @@ export default function SettingsAttendanceWeekOffPage() {
     const weekOffMap: Record<string, WeekOffData> = {};
     try {
       await Promise.all(
-        selectedStudents.map(async (selected) => {
+        selectedPeople.map(async (selected) => {
+          const rowKey = selected.value;
+          if (selected.kind === "candidate_only") {
+            try {
+              const response = await getCandidateWeekOff(selected.candidateId);
+              const r = response as {
+                weekOff?: string[];
+                candidateName?: string;
+                candidateEmail?: string;
+              };
+              weekOffMap[rowKey] = {
+                studentId: rowKey,
+                studentName: r.candidateName ?? selected.fullName,
+                studentEmail: r.candidateEmail ?? selected.email,
+                weekOff: r.weekOff ?? [],
+              };
+            } catch {
+              weekOffMap[rowKey] = {
+                studentId: rowKey,
+                studentName: selected.fullName,
+                studentEmail: selected.email,
+                weekOff: [],
+              };
+            }
+            return;
+          }
           const studentId = selected.value;
           try {
             const response = await getStudentWeekOff(studentId);
@@ -127,26 +161,26 @@ export default function SettingsAttendanceWeekOffPage() {
     } finally {
       setLoadingWeekOff(false);
     }
-  }, [selectedStudents]);
+  }, [selectedPeople]);
 
   useEffect(() => {
     fetchStudentWeekOffs();
   }, [fetchStudentWeekOffs]);
 
-  const handleStudentChange = (selected: StudentOption[] | null) => {
-    setSelectedStudents(selected ?? []);
+  const handleStudentChange = (selected: AssignPersonRow[] | null) => {
+    setSelectedPeople(selected ?? []);
     setSelectedDays([]);
     setHasUserSelectedDays(false);
   };
 
   const selectAllStudents = () => {
-    setSelectedStudents([...students]);
+    setSelectedPeople([...people]);
     setSelectedDays([]);
     setHasUserSelectedDays(false);
   };
 
   const clearAllStudents = () => {
-    setSelectedStudents([]);
+    setSelectedPeople([]);
     setSelectedDays([]);
     setHasUserSelectedDays(false);
   };
@@ -169,11 +203,11 @@ export default function SettingsAttendanceWeekOffPage() {
   };
 
   const handleUpdateWeekOff = async () => {
-    if (selectedStudents.length === 0) {
+    if (selectedPeople.length === 0) {
       await Swal.fire({
         icon: "warning",
-        title: "No Students Selected",
-        text: "Please select at least one student",
+        title: "No one selected",
+        text: "Select at least one training profile or candidate",
         confirmButtonText: "OK",
       });
       return;
@@ -181,14 +215,34 @@ export default function SettingsAttendanceWeekOffPage() {
     setUpdating(true);
     setError(null);
     try {
-      const studentIds = selectedStudents.map((s) => s.value);
-      const response = await updateWeekOffCalendar(studentIds, selectedDays);
+      const { studentRows, candidateRows } = partitionAssignPersonRows(selectedPeople);
+      if (studentRows.length === 0 && candidateRows.length === 0) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Nothing to update",
+          text: "Select at least one training profile or candidate",
+          confirmButtonText: "OK",
+        });
+        setUpdating(false);
+        return;
+      }
+      const tasks: Promise<unknown>[] = [];
+      if (studentRows.length) {
+        tasks.push(updateWeekOffCalendar(studentRows.map((r) => r.value), selectedDays));
+      }
+      if (candidateRows.length) {
+        tasks.push(updateWeekOff(candidateRows.map((r) => r.candidateId), selectedDays));
+      }
+      await Promise.all(tasks);
       await Swal.fire({
         icon: "success",
         title: "Success",
-        text: response?.message ?? `Week-off updated for ${studentIds.length} student(s)`,
+        text: `Week-off updated for ${studentRows.length} training profile(s)${
+          candidateRows.length ? ` and ${candidateRows.length} candidate(s)` : ""
+        }`,
         confirmButtonText: "OK",
       });
+      dispatchSopStripRefresh();
       await fetchStudentWeekOffs();
     } catch (err: unknown) {
       const msg =
@@ -269,7 +323,7 @@ export default function SettingsAttendanceWeekOffPage() {
         if (result.data.skipped.length > 3) msg += "...";
       }
       await Swal.fire({ icon: "success", title: "Import complete", text: msg, confirmButtonText: "OK" });
-      fetchStudents();
+      fetchPeople();
     } catch (err: unknown) {
       await Swal.fire({
         icon: "error",
@@ -284,24 +338,24 @@ export default function SettingsAttendanceWeekOffPage() {
   };
 
   const getCommonWeekOffDays = useCallback((): string[] => {
-    if (selectedStudents.length === 0) return [];
-    const allWeekOffs = selectedStudents
+    if (selectedPeople.length === 0) return [];
+    const allWeekOffs = selectedPeople
       .map((s) => studentWeekOffs[s.value]?.weekOff ?? [])
       .filter((wo) => wo.length > 0);
     if (allWeekOffs.length === 0) return [];
     return allWeekOffs.reduce((common, weekOff) => common.filter((d) => weekOff.includes(d)), allWeekOffs[0] ?? []);
-  }, [selectedStudents, studentWeekOffs]);
+  }, [selectedPeople, studentWeekOffs]);
 
   useEffect(() => {
     if (
-      selectedStudents.length > 0 &&
+      selectedPeople.length > 0 &&
       Object.keys(studentWeekOffs).length > 0 &&
       !hasUserSelectedDays
     ) {
       const common = getCommonWeekOffDays();
       if (common.length > 0) setSelectedDays(common);
     }
-  }, [studentWeekOffs, selectedStudents, getCommonWeekOffDays, hasUserSelectedDays]);
+  }, [studentWeekOffs, selectedPeople, getCommonWeekOffDays, hasUserSelectedDays]);
 
   if (!permissionsLoaded) {
     return (
@@ -416,6 +470,8 @@ export default function SettingsAttendanceWeekOffPage() {
               </div>
             )}
 
+            <SopAssignChecklistNotice />
+
             <div className="rounded-xl border border-primary/20 bg-primary/5 dark:bg-primary/10 dark:border-primary/30 p-5">
               <h4 className="mb-2 text-sm font-semibold text-defaulttextcolor dark:text-white">Import Week-Offs from Excel</h4>
               <p className="mb-3 text-sm text-defaulttextcolor/80">
@@ -429,9 +485,9 @@ export default function SettingsAttendanceWeekOffPage() {
             <div>
               <div className="mb-2 flex items-center justify-between gap-4">
                 <label className="block text-sm font-semibold text-defaulttextcolor">
-                  Select Candidates <span className="text-danger">*</span>
+                  Select people <span className="text-danger">*</span>
                 </label>
-                {!loading && students.length > 0 && (
+                {!loading && people.length > 0 && (
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -454,16 +510,18 @@ export default function SettingsAttendanceWeekOffPage() {
               {loading ? (
                 <div className="flex items-center gap-2 text-defaulttextcolor/70">
                   <i className="ri-loader-4-line animate-spin" />
-                  <span>Loading students…</span>
+                  <span>Loading training profiles and candidates…</span>
                 </div>
               ) : (
                 <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
                   <Select
                     isMulti
-                    options={students}
-                    value={selectedStudents}
-                    onChange={(v) => handleStudentChange(v as StudentOption[] | null)}
-                    placeholder="Select one or more candidates…"
+                    options={people}
+                    value={selectedPeople}
+                    getOptionValue={(o) => (o as AssignPersonRow).value}
+                    getOptionLabel={(o) => (o as AssignPersonRow).label}
+                    onChange={(v) => handleStudentChange(v as AssignPersonRow[] | null)}
+                    placeholder="Training profiles and candidates…"
                     classNamePrefix="react-select"
                     isClearable
                     isSearchable
@@ -474,8 +532,8 @@ export default function SettingsAttendanceWeekOffPage() {
                   />
                 </div>
               )}
-              {selectedStudents.length > 0 && (
-                <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} candidate(s) selected</p>
+              {selectedPeople.length > 0 && (
+                <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedPeople.length} selected</p>
               )}
             </div>
 
@@ -533,7 +591,7 @@ export default function SettingsAttendanceWeekOffPage() {
               <button
                 type="button"
                 onClick={handleUpdateWeekOff}
-                disabled={updating || selectedStudents.length === 0}
+                disabled={updating || selectedPeople.length === 0}
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
               >
                 {updating ? (
@@ -544,13 +602,13 @@ export default function SettingsAttendanceWeekOffPage() {
                 ) : (
                   <>
                     <i className="ri-calendar-check-line text-lg" />
-                    Update Week-Off for {selectedStudents.length} Candidate(s)
+                    Update week-off for {selectedPeople.length} selected
                   </>
                 )}
               </button>
             </div>
 
-            {selectedStudents.length > 0 && (
+            {selectedPeople.length > 0 && (
               <div className="border-t border-defaultborder/50 pt-6">
                 <h3 className="mb-4 flex items-center gap-2 text-base font-semibold text-defaulttextcolor dark:text-white">
                   Current Week-Off Status
@@ -565,7 +623,7 @@ export default function SettingsAttendanceWeekOffPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {selectedStudents.map((selected) => {
+                    {selectedPeople.map((selected) => {
                       const studentId = selected.value;
                       const data = studentWeekOffs[studentId];
                       const weekOff = data?.weekOff ?? [];

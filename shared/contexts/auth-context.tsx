@@ -15,6 +15,8 @@ interface AuthContextValue {
   permissions: string[];
   roleNames: string[];
   isAdministrator: boolean;
+  /** Server-derived; enables full nav when true (enforcement remains on the API). */
+  isPlatformSuperUser: boolean;
   permissionsLoaded: boolean;
   isLoading: boolean;
   /** Shown during impersonation start/stop (e.g. "Logging in as John", "Logging out from John"). */
@@ -39,7 +41,12 @@ function clearAuthFromLocalStorage() {
   AUTH_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
 }
 
-const EMPTY_PERMISSIONS = { permissions: [] as string[], roleNames: [] as string[], isAdministrator: false };
+const EMPTY_PERMISSIONS = {
+  permissions: [] as string[],
+  roleNames: [] as string[],
+  isAdministrator: false,
+  isPlatformSuperUser: false,
+};
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -48,6 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<string[]>([]);
   const [roleNames, setRoleNames] = useState<string[]>([]);
   const [isAdministrator, setIsAdministrator] = useState(false);
+  const [isPlatformSuperUser, setIsPlatformSuperUser] = useState(false);
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
@@ -61,15 +69,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissions(perm.permissions ?? []);
         setRoleNames(perm.roleNames ?? []);
         setIsAdministrator(perm.isAdministrator ?? false);
+        setIsPlatformSuperUser(perm.isPlatformSuperUser ?? false);
       } else {
         setPermissions(EMPTY_PERMISSIONS.permissions);
         setRoleNames(EMPTY_PERMISSIONS.roleNames);
         setIsAdministrator(false);
+        setIsPlatformSuperUser(false);
       }
     } catch {
       setPermissions(EMPTY_PERMISSIONS.permissions);
       setRoleNames(EMPTY_PERMISSIONS.roleNames);
       setIsAdministrator(false);
+      setIsPlatformSuperUser(false);
     } finally {
       setPermissionsLoaded(true);
     }
@@ -84,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPermissions(EMPTY_PERMISSIONS.permissions);
     setRoleNames(EMPTY_PERMISSIONS.roleNames);
     setIsAdministrator(false);
+    setIsPlatformSuperUser(false);
     setPermissionsLoaded(true);
 
     // Don't force-redirect away from public auth pages (sign-in, register,
@@ -139,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissions(EMPTY_PERMISSIONS.permissions);
         setRoleNames(EMPTY_PERMISSIONS.roleNames);
         setIsAdministrator(false);
+        setIsPlatformSuperUser(false);
         setPermissionsLoaded(true);
       }
     } catch {
@@ -148,6 +161,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPermissions(EMPTY_PERMISSIONS.permissions);
       setRoleNames(EMPTY_PERMISSIONS.roleNames);
       setIsAdministrator(false);
+      setIsPlatformSuperUser(false);
       setPermissionsLoaded(true);
     }
   }, [fetchAndSetPermissions]);
@@ -180,10 +194,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setPermissions(perm.permissions ?? []);
             setRoleNames(perm.roleNames ?? []);
             setIsAdministrator(perm.isAdministrator ?? false);
+            setIsPlatformSuperUser(perm.isPlatformSuperUser ?? false);
           } else if (!cancelled) {
             setPermissions(EMPTY_PERMISSIONS.permissions);
             setRoleNames(EMPTY_PERMISSIONS.roleNames);
             setIsAdministrator(false);
+            setIsPlatformSuperUser(false);
           }
         } else if (!cancelled) {
           setUser(null);
@@ -192,6 +208,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
+          setIsPlatformSuperUser(false);
         }
       } catch {
         if (!cancelled) {
@@ -201,6 +218,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
+          setIsPlatformSuperUser(false);
         }
       } finally {
         if (!cancelled) {
@@ -226,10 +244,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setPermissions(perm.permissions ?? []);
           setRoleNames(perm.roleNames ?? []);
           setIsAdministrator(perm.isAdministrator ?? false);
+          setIsPlatformSuperUser(perm.isPlatformSuperUser ?? false);
         } else {
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
+          setIsPlatformSuperUser(false);
         }
         setPermissionsLoaded(true);
         // Candidates (role 'user' from share-candidate-form) go to their profile on first login
@@ -253,6 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPermissions(EMPTY_PERMISSIONS.permissions);
       setRoleNames(EMPTY_PERMISSIONS.roleNames);
       setIsAdministrator(false);
+      setIsPlatformSuperUser(false);
       setPermissionsLoaded(true);
       clearAuthFromLocalStorage();
       setIsLoading(false);
@@ -275,10 +296,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setPermissions(perm.permissions ?? []);
           setRoleNames(perm.roleNames ?? []);
           setIsAdministrator(perm.isAdministrator ?? false);
+          setIsPlatformSuperUser(perm.isPlatformSuperUser ?? false);
         } else {
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
+          setIsPlatformSuperUser(false);
         }
         setPermissionsLoaded(true);
         router.push(ROUTES.defaultAfterLogin);
@@ -304,10 +327,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setPermissions(perm.permissions ?? []);
         setRoleNames(perm.roleNames ?? []);
         setIsAdministrator(perm.isAdministrator ?? false);
+        setIsPlatformSuperUser(perm.isPlatformSuperUser ?? false);
       } else {
         setPermissions(EMPTY_PERMISSIONS.permissions);
         setRoleNames(EMPTY_PERMISSIONS.roleNames);
         setIsAdministrator(false);
+        setIsPlatformSuperUser(false);
       }
       setPermissionsLoaded(true);
       router.refresh();
@@ -325,6 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       permissions,
       roleNames,
       isAdministrator,
+      isPlatformSuperUser,
       permissionsLoaded,
       isLoading,
       loadingMessage,
@@ -343,6 +369,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       permissions,
       roleNames,
       isAdministrator,
+      isPlatformSuperUser,
       permissionsLoaded,
       isLoading,
       loadingMessage,

@@ -17,6 +17,7 @@ export type NotificationType =
   | "account"
   | "recruiter"
   | "assignment"
+  | "sop"
   | "general";
 
 export interface Notification {

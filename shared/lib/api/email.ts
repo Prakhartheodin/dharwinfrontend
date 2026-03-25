@@ -141,7 +141,8 @@ export async function getThread(
   threadId: string,
   provider: MailProvider = "gmail"
 ): Promise<{ id: string; messages: EmailMessage[] }> {
-  const { data } = await apiClient.get(`${mailBase(provider)}/threads/${threadId}`, {
+  const encodedId = encodeURIComponent(threadId);
+  const { data } = await apiClient.get(`${mailBase(provider)}/threads/${encodedId}`, {
     params: { accountId },
   });
   return data;

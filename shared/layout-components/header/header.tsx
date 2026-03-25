@@ -85,6 +85,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     certificate: 'certificate', job_application: 'briefcase', project: 'folder', account: 'user-check',
     recruiter: 'user',
     assignment: 'user-plus',
+    sop: 'checklist',
     general: 'bell',
   };
   const typeToColor: Record<string, string> = {
@@ -92,6 +93,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     certificate: 'warning', job_application: 'secondary', project: 'primary', account: 'success',
     recruiter: 'pinkmain',
     assignment: 'primary',
+    sop: 'primary',
     general: 'secondary',
   };
   const mapNotificationToItem = (n: Notification) => ({
@@ -505,18 +507,30 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   </span>
                   )}
                 </button>
-                <div className="main-header-dropdown !-mt-3 !p-0 hs-dropdown-menu ti-dropdown-menu bg-white !w-[22rem] border-0 border-defaultborder hidden !m-0"
-                  aria-labelledby="dropdown-notification">
+                <div
+                  className="main-header-dropdown !-mt-3 !p-0 hs-dropdown-menu ti-dropdown-menu bg-white !w-[22rem] border-0 border-defaultborder hidden !m-0 flex max-h-[min(32rem,85vh)] flex-col overflow-hidden dark:bg-bgdark"
+                  aria-labelledby="dropdown-notification"
+                >
 
-                  <div className="ti-dropdown-header !m-0 !p-4 !bg-transparent flex justify-between items-center">
+                  <div className="ti-dropdown-header !m-0 !p-4 !bg-transparent flex shrink-0 justify-between items-center">
                     <p className="mb-0 text-[1.0625rem] text-defaulttextcolor font-semibold ">Notifications</p>
                     <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-secondary/10 text-secondary"
                       id="notifiation-data">{`${unreadCount} Unread`}</span>
                   </div>
-                  <div className="dropdown-divider"></div>
-                  <ul className="list-none !m-0 !p-0 end-0" id="header-notification-scroll">
+                  <div className="dropdown-divider shrink-0"></div>
+                  <ul
+                    className={
+                      notifications.length > 0
+                        ? "list-none !m-0 !p-0 end-0 min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+                        : "list-none !m-0 !p-0 end-0 shrink-0"
+                    }
+                    id="header-notification-scroll"
+                  >
                   {notifications.map((idx, index) => (
-                      <li className="ti-dropdown-item dropdown-item" key={idx.id}>
+                      <li
+                        className="ti-dropdown-item dropdown-item bg-white dark:bg-bgdark"
+                        key={idx.id}
+                      >
                         <div className="flex items-start">
                           <div className="pe-2">
                             <span
@@ -527,7 +541,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                             <div>
                               <p className="mb-0 text-defaulttextcolor dark:text-white text-[0.8125rem] font-semibold"><Link
                                 href="/pages/notifications/">{idx.class} {idx.class2}</Link></p>
-                              <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text">{idx.data}</span>
+                              <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text whitespace-pre-line">{idx.data}</span>
                             </div>
                             <div>
                               <Link aria-label="anchor" href="#!" scroll={false} className="min-w-fit text-[#8c9097] dark:text-white/50 me-1 dropdown-item-close1" onClick={(event) => handleNotificationClose(index, event)}><i
@@ -539,12 +553,12 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     ))}
                   </ul>
 
-                  <div className={`p-4 empty-header-item1 border-t mt-2 ${notifications.length > 0 ? 'block' : 'hidden'}`}>
+                  <div className={`empty-header-item1 mt-2 shrink-0 border-t p-4 ${notifications.length > 0 ? 'block' : 'hidden'}`}>
                     <div className="grid">
                       <Link href="/pages/notifications/" className="ti-btn ti-btn-primary-full !m-0 w-full p-2">View All</Link>
                     </div>
                   </div>
-                  <div className={`p-[3rem] empty-item1 ${notifications.length === 0 ? 'block' : 'hidden'}`}>
+                  <div className={`empty-item1 shrink-0 p-[3rem] ${notifications.length === 0 ? 'block' : 'hidden'}`}>
                     <div className="text-center">
                       <span className="!h-[4rem]  !w-[4rem] avatar !leading-[4rem] !rounded-full !bg-secondary/10 !text-secondary">
                         <i className="ri-notification-off-line text-[2rem]  "></i>

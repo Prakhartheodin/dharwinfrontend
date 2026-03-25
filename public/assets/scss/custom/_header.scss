@@ -228,9 +228,14 @@
 
 /* Start:header dropdowns scroll */
 #header-shortcut-scroll,
-#header-notification-scroll,
 #header-cart-items-scroll {
-  @apply max-h-80;
+  /* max-height without overflow-y still paints overflow: visible → must scroll */
+  @apply max-h-80 overflow-y-auto overflow-x-hidden overscroll-y-contain;
+}
+
+/* Notification list: flex-1 + min-h-0 on <ul> in header.tsx; height comes from dropdown max-h */
+#header-notification-scroll {
+  @apply min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain;
 }
 
 /* End:header dropdowns scroll */

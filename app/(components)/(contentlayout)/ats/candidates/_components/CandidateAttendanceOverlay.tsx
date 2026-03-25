@@ -3,6 +3,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { listAttendanceByCandidate, type AttendanceRecord } from "@/shared/lib/api/attendance";
 import { getCandidate, getCandidateWeekOff } from "@/shared/lib/api/candidates";
+import {
+  capDayTotalMs,
+  countsTowardWorkedMs,
+  sessionDurationMsForDisplay,
+} from "@/shared/lib/attendance-display";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -190,7 +195,7 @@ export default function CandidateAttendanceOverlay({
       const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
       const hasOut = !!r.punchOut;
-      const ms = (r.duration ?? 0) || 0;
+      const ms = sessionDurationMsForDisplay(r);
       const recStatus = r.status;
       if (!byDate[dateKey]) {
         byDate[dateKey] = {
@@ -301,6 +306,7 @@ export default function CandidateAttendanceOverlay({
         !info.incomplete;
       const cellAbsent =
         !inactiveEmployment && !isScheduledWeekOff && (info.absent || inferredAbsent);
+      const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
       cells.push({
         day,
         date,
@@ -313,7 +319,7 @@ export default function CandidateAttendanceOverlay({
         weekOff: isScheduledWeekOff,
         beforeJoining,
         afterResign,
-        totalHours: Math.round((info.totalMs / 3600000) * 100) / 100,
+        totalHours: Math.round((displayMs / 3600000) * 100) / 100,
         holidayName: info.holidayName,
       });
     }
@@ -343,11 +349,6 @@ export default function CandidateAttendanceOverlay({
       else if (cell.absent) absentDays++;
     }
 
-    const recordedHours = records.reduce((acc, r) => {
-      if (r.punchOut && r.duration != null && r.duration > 0) return acc + r.duration / 3600000;
-      return acc;
-    }, 0);
-
     return {
       presentDays,
       leaveDays,
@@ -355,9 +356,9 @@ export default function CandidateAttendanceOverlay({
       absentDays,
       incompleteDays,
       weekOffDays,
-      totalHours: Math.round(recordedHours * 100) / 100,
+      totalHours: Math.round(totalHours * 100) / 100,
     };
-  }, [calendarCells, records]);
+  }, [calendarCells]);
 
   const goPrevMonth = () => {
     if (month === 0) {

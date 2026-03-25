@@ -253,12 +253,16 @@ function SummaryBadges({ summary }: { summary: ModuleSummary }) {
   )
 }
 
+type ModuleLifecycleStatus = 'draft' | 'published' | 'archived'
+
 interface TrainingModuleCardProps {
   module: ApiTrainingModule
   onDelete: (moduleId: string) => void
   onView: (moduleId: string) => void
   onClone: (moduleId: string) => void
   onAssignFolders: (moduleId: string) => void
+  onSetStatus: (moduleId: string, status: ModuleLifecycleStatus) => void
+  statusUpdatingId: string | null
 }
 
 interface ModuleDetailModalProps {
@@ -565,7 +569,15 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
   )
 }
 
-function TrainingModuleCard({ module: m, onDelete, onView, onClone, onAssignFolders }: TrainingModuleCardProps) {
+function TrainingModuleCard({
+  module: m,
+  onDelete,
+  onView,
+  onClone,
+  onAssignFolders,
+  onSetStatus,
+  statusUpdatingId,
+}: TrainingModuleCardProps) {
   const summary = calculateSummary(m.playlist || [])
   const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -640,6 +652,17 @@ function TrainingModuleCard({ module: m, onDelete, onView, onClone, onAssignFold
   const handleView = () => {
     closeDropdown()
     onView(m.id)
+  }
+
+  const statusBusy = statusUpdatingId === m.id
+  const currentStatus = (['draft', 'published', 'archived'] as const).includes(m.status as ModuleLifecycleStatus)
+    ? (m.status as ModuleLifecycleStatus)
+    : 'draft'
+
+  const handleSetStatus = (next: ModuleLifecycleStatus) => {
+    if (statusBusy) return
+    closeDropdown()
+    onSetStatus(m.id, next)
   }
 
   // Close dropdown when clicking outside
@@ -734,6 +757,36 @@ function TrainingModuleCard({ module: m, onDelete, onView, onClone, onAssignFold
             <li>
               <button
                 type="button"
+                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
+                disabled={statusBusy || currentStatus === 'published'}
+                onClick={() => handleSetStatus('published')}
+              >
+                <i className="ri-send-plane-2-line me-1 align-middle inline-flex" /> Publish
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
+                disabled={statusBusy || currentStatus === 'draft'}
+                onClick={() => handleSetStatus('draft')}
+              >
+                <i className="ri-file-edit-line me-1 align-middle inline-flex" /> Draft
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
+                disabled={statusBusy || currentStatus === 'archived'}
+                onClick={() => handleSetStatus('archived')}
+              >
+                <i className="ri-archive-2-line me-1 align-middle inline-flex" /> Archive
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
                 className="ti-dropdown-item w-full text-left"
                 onClick={() => {
                   closeDropdown()
@@ -808,6 +861,7 @@ const TrainingModules = () => {
   const [newFolderName, setNewFolderName] = useState('')
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [assignFoldersModuleId, setAssignFoldersModuleId] = useState<string | null>(null)
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
 
   const fetchModules = useCallback(async () => {
     setLoading(true)
@@ -873,6 +927,47 @@ const TrainingModules = () => {
       await Swal.fire({ icon: 'error', title: 'Clone failed', text: msg, toast: true, position: 'top-end', timer: 4000, showConfirmButton: false })
     }
   }
+
+  const handleSetModuleStatus = useCallback(
+    async (moduleId: string, status: ModuleLifecycleStatus) => {
+      setStatusUpdatingId(moduleId)
+      try {
+        const updated = await trainingModulesApi.updateTrainingModule(moduleId, { status })
+        setSelectedModuleDetail((prev) =>
+          prev?.id === moduleId ? { ...prev, status: updated.status } : prev,
+        )
+        await Swal.fire({
+          icon: 'success',
+          title: 'Status updated',
+          text: `Module is now ${status}.`,
+          toast: true,
+          position: 'top-end',
+          timer: 2500,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+        fetchModules()
+      } catch (err) {
+        const msg =
+          err instanceof AxiosError && err.response?.data?.message
+            ? String(err.response.data.message)
+            : 'Failed to update module status.'
+        await Swal.fire({
+          icon: 'error',
+          title: 'Update failed',
+          text: msg,
+          toast: true,
+          position: 'top-end',
+          timer: 4000,
+          showConfirmButton: false,
+          timerProgressBar: true,
+        })
+      } finally {
+        setStatusUpdatingId(null)
+      }
+    },
+    [fetchModules],
+  )
 
   const handleDelete = async (moduleId: string) => {
     try {
@@ -1202,6 +1297,8 @@ const TrainingModules = () => {
                             onView={handleView}
                             onClone={handleClone}
                             onAssignFolders={(id) => setAssignFoldersModuleId(id)}
+                            onSetStatus={handleSetModuleStatus}
+                            statusUpdatingId={statusUpdatingId}
                           />
                         </div>
                       ))}

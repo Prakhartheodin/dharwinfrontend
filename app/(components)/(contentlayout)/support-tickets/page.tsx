@@ -37,7 +37,7 @@ const PRIORITY_CONFIG: Record<string, { badge: string; icon: string }> = {
 };
 
 const SupportTicketsPage = () => {
-  const { user } = useAuth();
+  const { user, roleNames } = useAuth();
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("support.tickets");
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -92,6 +92,9 @@ const SupportTicketsPage = () => {
   const [updatingTicket, setUpdatingTicket] = useState(false);
 
   const isAdmin = user?.role === "admin";
+  const isAgent = roleNames.some((r) => String(r).toLowerCase() === "agent");
+  /** Admins see all candidates; agents see only candidates where they are assignedAgent (API filter). */
+  const canCreateTicketOnBehalf = isAdmin || isAgent;
   const userSubRole = (user as { subRole?: string })?.subRole;
 
   /* ─── data fetching ─── */
@@ -160,10 +163,15 @@ const SupportTicketsPage = () => {
   }, [user?.role, user?.id, user?.email]);
 
   const fetchCandidates = useCallback(async () => {
-    if (!isAdmin) return;
+    if (!canCreateTicketOnBehalf) return;
     setLoadingCandidates(true);
     try {
-      const res = await listCandidates({ page: 1, limit: 1000, sortBy: "fullName:asc" });
+      const res = await listCandidates({
+        page: 1,
+        limit: 1000,
+        sortBy: "fullName:asc",
+        ...(!isAdmin && isAgent && user?.id ? { agentIds: String(user.id) } : {}),
+      });
       const list = res?.results ?? [];
       setCandidatesList(list.map((c) => ({ id: c.id ?? c._id ?? "", fullName: c.fullName ?? "", email: c.email })));
     } catch {
@@ -171,7 +179,7 @@ const SupportTicketsPage = () => {
     } finally {
       setLoadingCandidates(false);
     }
-  }, [isAdmin]);
+  }, [canCreateTicketOnBehalf, isAdmin, isAgent, user?.id]);
 
   const fetchAdminUsers = useCallback(async () => {
     if (!isAdmin) return;
@@ -205,7 +213,7 @@ const SupportTicketsPage = () => {
     setAttachments([]);
     setAttachmentErrors([]);
     setShowCreateModal(true);
-    if (isAdmin) fetchCandidates();
+    if (canCreateTicketOnBehalf) fetchCandidates();
   };
 
   const closeCreateModal = () => {
@@ -291,7 +299,7 @@ const SupportTicketsPage = () => {
         priority: createForm.priority,
         category: createForm.category.trim() || "General",
         attachments: attachments.length ? attachments : undefined,
-        ...(isAdmin && createForm.candidateId ? { candidateId: createForm.candidateId } : {}),
+        ...(canCreateTicketOnBehalf && createForm.candidateId ? { candidateId: createForm.candidateId } : {}),
       });
       await Swal.fire({ icon: "success", title: "Ticket Created", timer: 2000, showConfirmButton: false });
       closeCreateModal();
@@ -743,24 +751,40 @@ const SupportTicketsPage = () => {
                 ))}
               </div>
             ) : tickets.length === 0 ? (
-              /* Empty State */
+              /* Empty State — primary CTA without ti-btn-wave (ripple could misalign and look like a stray box on the label) */
               <div className="py-16 text-center">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/5">
-                  <i className="ri-inbox-2-line text-[2rem] text-primary/40" />
+                <div
+                  className="mx-auto mb-5 flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-2xl bg-gradient-to-br from-primary/[0.12] to-primary/[0.04] ring-1 ring-primary/10 dark:from-primary/20 dark:to-primary/5 dark:ring-primary/20"
+                  aria-hidden
+                >
+                  <i className="ri-customer-service-2-line text-[2.125rem] text-primary" />
                 </div>
-                <h3 className="text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">No tickets found</h3>
-                <p className="mt-1 text-[0.8125rem] text-[#8c9097] dark:text-white/50">
+                <h3 className="text-base font-semibold tracking-tight text-defaulttextcolor dark:text-white">
+                  No tickets found
+                </h3>
+                <p className="mx-auto mt-1.5 max-w-[20rem] text-[0.8125rem] leading-relaxed text-[#8c9097] dark:text-white/50">
                   {hasActiveFilters ? "Try adjusting your search or filters." : "Create a support ticket to get started."}
                 </p>
                 {!hasActiveFilters && showCreateBtn && (
-                  <button
-                    type="button"
-                    onClick={openCreateModal}
-                    className="ti-btn ti-btn-primary ti-btn-sm ti-btn-wave inline-flex items-center gap-1.5 whitespace-nowrap mt-4 !text-[0.8125rem]"
-                  >
-                    <i className="ri-add-line" />
-                    <span>Create Your First Ticket</span>
-                  </button>
+                  <div className="mt-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={openCreateModal}
+                      className={
+                        "group inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-[0.8125rem] font-semibold " +
+                        "bg-primary text-white shadow-md shadow-primary/25 " +
+                        "transition-[transform,box-shadow,background-color] duration-200 ease-out " +
+                        "hover:bg-primary/92 hover:shadow-lg hover:shadow-primary/30 active:scale-[0.98] " +
+                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 " +
+                        "dark:focus-visible:ring-offset-bodybg"
+                      }
+                    >
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white/15 text-base leading-none transition-colors group-hover:bg-white/25">
+                        <i className="ri-add-line" aria-hidden />
+                      </span>
+                      <span className="whitespace-nowrap">Create your first ticket</span>
+                    </button>
+                  </div>
                 )}
               </div>
             ) : (
@@ -1039,12 +1063,17 @@ const SupportTicketsPage = () => {
                 </div>
               </div>
 
-              {isAdmin && (
+              {canCreateTicketOnBehalf && (
                 <div>
                   <label className="form-label mb-2 font-semibold text-[0.8125rem] text-defaulttextcolor dark:text-white">
-                    Create on behalf of Candidate
+                    {isAgent && !isAdmin ? "Create for assigned candidate" : "Create on behalf of candidate"}
                     <span className="ms-1 text-[0.6875rem] font-normal text-[#8c9097]">(optional)</span>
                   </label>
+                  {isAdmin && (
+                    <p className="mb-2 text-[0.6875rem] text-[#8c9097] dark:text-white/45">
+                      Choose any candidate to file on their behalf, or leave empty for a ticket for yourself (staff).
+                    </p>
+                  )}
                   {loadingCandidates ? (
                     <div className="flex items-center gap-2 rounded-md border border-defaultborder px-3 py-2 text-[0.8125rem] text-[#8c9097]">
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -1054,7 +1083,7 @@ const SupportTicketsPage = () => {
                     <Select
                       isClearable
                       isSearchable
-                      placeholder="Select candidate..."
+                      placeholder={isAdmin ? "Optional — select candidate or leave empty for yourself" : "Select candidate..."}
                       value={
                         createForm.candidateId
                           ? {

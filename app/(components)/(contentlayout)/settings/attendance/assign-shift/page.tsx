@@ -1,7 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { listStudents, assignShiftToStudents, type Student } from "@/shared/lib/api/students";
+import { useSearchParams } from "next/navigation";
+import { assignShiftToCandidates, listCandidates } from "@/shared/lib/api/candidates";
+import { assignShiftToStudents, listStudents } from "@/shared/lib/api/students";
+import {
+  buildMergedAssignPeopleOptions,
+  partitionAssignPersonRows,
+  type AssignPersonRow,
+} from "@/shared/lib/attendance-assign-people-options";
 import { getAllShifts, type Shift } from "@/shared/lib/api/shifts";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
@@ -9,18 +16,21 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
+import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
+import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
-type StudentOption = { value: string; label: string; student: Student };
 const SELECT_ALL = "__all_students__";
 
 export default function SettingsAttendanceAssignShiftPage() {
+  const searchParams = useSearchParams();
+  const sopQueryString = searchParams.toString();
   const { user } = useAuth();
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
-  const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [selectedShiftId, setSelectedShiftId] = useState("");
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
@@ -49,19 +59,17 @@ export default function SettingsAttendanceAssignShiftPage() {
     check();
   }, [user]);
 
-  const fetchStudents = useCallback(async () => {
+  const fetchPeople = useCallback(async () => {
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
-      const list = res.results ?? [];
-      setStudents(
-        list.map((s) => ({
-          value: s.id,
-          label: `${s.user?.name ?? "Unknown"} (${s.user?.email ?? ""})`,
-          student: s,
-        })).filter((o) => o.value)
+      const [stuRes, candRes] = await Promise.all([
+        listStudents({ limit: 1000, sortBy: "user.name:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+      ]);
+      setPeople(
+        buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? [])
       );
     } catch {
-      setStudents([]);
+      setPeople([]);
     }
   }, []);
 
@@ -78,17 +86,28 @@ export default function SettingsAttendanceAssignShiftPage() {
   useEffect(() => {
     if (isAdmin) {
       setLoading(true);
-      Promise.all([fetchStudents(), fetchShifts()]).finally(() => setLoading(false));
+      Promise.all([fetchPeople(), fetchShifts()]).finally(() => setLoading(false));
     }
-  }, [isAdmin, fetchStudents, fetchShifts]);
+  }, [isAdmin, fetchPeople, fetchShifts]);
 
-  const studentOptions = students.length
-    ? [{ value: SELECT_ALL, label: "Select All Students" }, ...students]
-    : students;
+  const mergeSopPerson = useCallback((row: AssignPersonRow) => {
+    setPeople((prev) => (prev.some((s) => s.value === row.value) ? prev : [row, ...prev]));
+  }, []);
+
+  useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
+
+  const personOptions = people.length
+    ? [{ value: SELECT_ALL, label: "Select all (training + candidates)" } as AssignPersonRow, ...people]
+    : people;
 
   const handleAssign = async () => {
-    if (selectedStudents.length === 0) {
-      await Swal.fire({ icon: "warning", title: "No students selected", text: "Select at least one student", confirmButtonText: "OK" });
+    if (selectedPeople.length === 0) {
+      await Swal.fire({
+        icon: "warning",
+        title: "No one selected",
+        text: "Select at least one training profile or candidate",
+        confirmButtonText: "OK",
+      });
       return;
     }
     if (!selectedShiftId) {
@@ -98,17 +117,43 @@ export default function SettingsAttendanceAssignShiftPage() {
     setAssigning(true);
     setError(null);
     try {
-      const ids = selectedStudents.some((s) => s.value === SELECT_ALL)
-        ? students.map((s) => s.value).filter(Boolean)
-        : selectedStudents.map((s) => s.value).filter((id) => id !== SELECT_ALL);
-      if (ids.length === 0) {
-        await Swal.fire({ icon: "warning", title: "No students", text: "Select at least one student", confirmButtonText: "OK" });
+      const chosen = selectedPeople.some((s) => s.value === SELECT_ALL)
+        ? people
+        : selectedPeople.filter((s) => s.value !== SELECT_ALL);
+      const { studentRows, candidateRows } = partitionAssignPersonRows(chosen);
+      if (studentRows.length === 0 && candidateRows.length === 0) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Nothing to assign",
+          text: "Select at least one training profile or candidate",
+          confirmButtonText: "OK",
+        });
         setAssigning(false);
         return;
       }
-      await assignShiftToStudents(ids, selectedShiftId);
-      await Swal.fire({ icon: "success", title: "Success", text: "Shift assigned to selected students", confirmButtonText: "OK" });
-      fetchStudents();
+      const parts: string[] = [];
+      if (studentRows.length) {
+        await assignShiftToStudents(
+          studentRows.map((r) => r.value),
+          selectedShiftId
+        );
+        parts.push(`${studentRows.length} training profile(s)`);
+      }
+      if (candidateRows.length) {
+        await assignShiftToCandidates(
+          candidateRows.map((r) => r.candidateId),
+          selectedShiftId
+        );
+        parts.push(`${candidateRows.length} candidate(s)`);
+      }
+      await Swal.fire({
+        icon: "success",
+        title: "Success",
+        text: `Shift assigned: ${parts.join(" · ")}`,
+        confirmButtonText: "OK",
+      });
+      dispatchSopStripRefresh();
+      fetchPeople();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to assign shift";
       setError(msg);
@@ -169,7 +214,9 @@ export default function SettingsAttendanceAssignShiftPage() {
             </span>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Shift</h2>
-              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign a shift to one or more students</p>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                Training profiles use the training roster; candidates without a profile use the candidate record (both stay in sync with attendance where linked).
+              </p>
             </div>
           </div>
           <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
@@ -179,37 +226,43 @@ export default function SettingsAttendanceAssignShiftPage() {
               </div>
             )}
 
+            <SopAssignChecklistNotice />
+
             {loading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/10">
                   <i className="ri-loader-4-line animate-spin text-3xl" />
                 </div>
-                <p className="text-sm font-medium text-defaulttextcolor/80">Loading students and shifts…</p>
+                <p className="text-sm font-medium text-defaulttextcolor/80">Loading people and shifts…</p>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select Students <span className="text-danger">*</span></label>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">
+                    Select people <span className="text-danger">*</span>
+                  </label>
                   <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
                     <Select
                       isMulti
-                      options={studentOptions}
-                      value={selectedStudents}
+                      options={personOptions}
+                      value={selectedPeople}
+                      getOptionValue={(o) => (o as AssignPersonRow).value}
+                      getOptionLabel={(o) => (o as AssignPersonRow).label}
                       onChange={(sel: unknown) => {
-                        const value = (sel as StudentOption[] | null) ?? [];
+                        const value = (sel as AssignPersonRow[] | null) ?? [];
                         if (!value.length) {
-                          setSelectedStudents([]);
+                          setSelectedPeople([]);
                           return;
                         }
                         const hasAll = value.some((o) => o.value === SELECT_ALL);
                         if (hasAll) {
-                          if (selectedStudents.length === students.length) setSelectedStudents([]);
-                          else setSelectedStudents(students);
+                          if (selectedPeople.length === people.length) setSelectedPeople([]);
+                          else setSelectedPeople(people);
                         } else {
-                          setSelectedStudents(value);
+                          setSelectedPeople(value);
                         }
                       }}
-                      placeholder="Select students..."
+                      placeholder="Training profiles and candidates…"
                       closeMenuOnSelect={false}
                       className="react-select-container assign-shift-select"
                       classNamePrefix="react-select"
@@ -219,8 +272,8 @@ export default function SettingsAttendanceAssignShiftPage() {
                       menuPosition="fixed"
                     />
                   </div>
-                  {selectedStudents.length > 0 && (
-                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} student(s) selected</p>
+                  {selectedPeople.length > 0 && (
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedPeople.length} selected</p>
                   )}
                 </div>
 
@@ -247,7 +300,7 @@ export default function SettingsAttendanceAssignShiftPage() {
                   <button
                     type="button"
                     onClick={handleAssign}
-                    disabled={assigning || selectedStudents.length === 0 || !selectedShiftId}
+                    disabled={assigning || selectedPeople.length === 0 || !selectedShiftId}
                     className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
                   >
                     {assigning ? (

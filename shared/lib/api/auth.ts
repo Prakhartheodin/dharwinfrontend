@@ -37,6 +37,7 @@ export interface MyPermissionsResponse {
   permissions: string[];
   roleNames: string[];
   isAdministrator: boolean;
+  isPlatformSuperUser?: boolean;
 }
 
 /**

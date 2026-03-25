@@ -5,7 +5,8 @@ import Header from "@/shared/layout-components/header/header"
 import Sidebar from "@/shared/layout-components/sidebar/sidebar"
 import { ThemeChanger } from "@/shared/redux/action"
 import store from "@/shared/redux/store"
-import { Fragment, useState } from "react"
+import { Fragment, Suspense, useState } from "react"
+import CandidateSopSetupBannerHost from "@/shared/components/candidate-sop-setup-banner-host"
 import { connect } from "react-redux"
 import { usePathname } from "next/navigation"
 import { ProtectedRoute } from "@/shared/components/protected-route"
@@ -70,6 +71,9 @@ const Layout = ({ children }: any) => {
                 <Sidebar/>
                 <div className='content'>
                   <div className='main-content' onClick={Bodyclickk}>
+                    <Suspense fallback={null}>
+                      <CandidateSopSetupBannerHost />
+                    </Suspense>
                     {content}
                   </div>
                 </div>

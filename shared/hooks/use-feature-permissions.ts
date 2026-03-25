@@ -19,12 +19,14 @@ export interface UseFeaturePermissionsResult {
  * Reads permissions from auth context (resolved via GET /auth/my-permissions).
  */
 export function useFeaturePermissions(prefix: string): UseFeaturePermissionsResult {
-  const { permissions: userPermissions, permissionsLoaded } = useAuth();
+  const { permissions: userPermissions, permissionsLoaded, isPlatformSuperUser } = useAuth();
 
-  const flags = useMemo(
-    () => getFeaturePermissions(userPermissions, prefix),
-    [userPermissions, prefix]
-  );
+  const flags = useMemo(() => {
+    if (isPlatformSuperUser) {
+      return { view: true, create: true, edit: true, delete: true };
+    }
+    return getFeaturePermissions(userPermissions, prefix);
+  }, [userPermissions, prefix, isPlatformSuperUser]);
 
   return {
     canView: flags.view,
