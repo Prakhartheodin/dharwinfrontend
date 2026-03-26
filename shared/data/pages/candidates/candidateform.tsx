@@ -1785,9 +1785,14 @@ export const Basicwizard = ({
             console.warn('Unexpected upload response format:', uploadResponse);
             throw new Error('Invalid response format from upload API');
           }
-        } catch (uploadError) {
+        } catch (uploadError: unknown) {
           console.error('Document upload failed:', uploadError);
-          throw new Error('Failed to upload documents');
+          const ax = uploadError as { response?: { data?: { message?: string } }; message?: string };
+          const msg =
+            ax?.response?.data?.message ||
+            ax?.message ||
+            'Failed to upload documents (check S3 / network).';
+          throw new Error(msg);
         }
       }
 
@@ -1991,7 +1996,7 @@ export const Basicwizard = ({
       await Swal.fire({
         icon: 'error',
         title: 'Creation Failed',
-        text: err?.response?.data?.message || 'An error occurred while adding candidate.',
+        text: err?.response?.data?.message || err?.message || 'An error occurred while adding candidate.',
         confirmButtonText: 'OK'
       });
     } finally {

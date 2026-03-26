@@ -1534,30 +1534,6 @@ const Candidates = () => {
     <Fragment>
       <Seo title="Candidates" />
       <div className="container-fluid pt-6 pb-8">
-      {candidatesLoading && (
-        <div
-          className="mb-6 rounded-2xl border border-defaultborder/70 bg-white/70 p-8 shadow-sm ring-1 ring-black/[0.03] dark:bg-bodybg/80 dark:ring-white/10"
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-        >
-          <div className="mx-auto max-w-2xl space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 shrink-0 animate-pulse rounded-xl bg-primary/15" />
-              <div className="flex-1 space-y-2">
-                <div className="h-5 w-40 animate-pulse rounded-md bg-gray-200/90 dark:bg-white/10" />
-                <div className="h-3 w-56 animate-pulse rounded bg-gray-100 dark:bg-white/5" />
-              </div>
-            </div>
-            <div className="space-y-2.5">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div key={i} className="h-11 animate-pulse rounded-lg bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 dark:from-white/[0.04] dark:via-white/[0.07] dark:to-white/[0.04]" />
-              ))}
-            </div>
-            <p className="text-center text-xs font-medium text-textmuted dark:text-white/45">Loading candidates…</p>
-          </div>
-        </div>
-      )}
       {!candidatesLoading && candidatesError && (
         <div
           className="mb-6 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger/[0.07] p-4 text-danger shadow-sm"
@@ -1614,10 +1590,20 @@ const Candidates = () => {
                       Candidates
                     </h1>
                     <span
-                      className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
-                      title="Total matching your filters"
+                      className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
+                      title={candidatesLoading ? 'Loading list…' : 'Total matching your filters'}
                     >
-                      {totalResults} total
+                      {candidatesLoading ? (
+                        <>
+                          <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
+                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/35 opacity-60" />
+                            <span className="relative inline-flex h-2 w-2 rounded-full bg-primary/80" />
+                          </span>
+                          <span className="text-primary/90">Syncing…</span>
+                        </>
+                      ) : (
+                        <>{totalResults} total</>
+                      )}
                     </span>
                   </div>
                   <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
@@ -1813,6 +1799,16 @@ const Candidates = () => {
               </div>
             </div>
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+              {candidatesLoading && (
+                <div
+                  className="relative h-1 w-full shrink-0 overflow-hidden bg-primary/[0.08] dark:bg-primary/[0.12]"
+                  role="progressbar"
+                  aria-valuetext="Loading candidates"
+                  aria-busy="true"
+                >
+                  <div className="absolute inset-y-0 left-0 w-[28%] rounded-e-full bg-gradient-to-r from-primary/30 via-primary to-primary/30 ring-1 ring-primary/25 motion-safe:animate-candidates-load-bar" />
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:px-5">
                 <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
                   <i className="ri-checkbox-blank-circle-fill text-[0.5rem] text-emerald-500" aria-hidden />
@@ -1831,6 +1827,7 @@ const Candidates = () => {
                   {...getTableProps()}
                   className="table min-w-full table-fixed border-separate border-spacing-0 whitespace-nowrap border-0 text-sm"
                   style={{ tableLayout: 'fixed' }}
+                  aria-busy={candidatesLoading}
                 >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
@@ -1890,7 +1887,47 @@ const Candidates = () => {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any, i: number) => {
+                    {candidatesLoading &&
+                      Array.from({ length: 8 }).map((_, skelRow) => {
+                        const colCount = headerGroups[0]?.headers?.length ?? 5
+                        return (
+                          <tr
+                            key={`candidates-skel-${skelRow}`}
+                            className="border-b border-defaultborder/50 dark:border-white/[0.06]"
+                            style={{ opacity: 1 - skelRow * 0.055 }}
+                          >
+                            {Array.from({ length: colCount }).map((__, colIdx) => {
+                              const isCheckbox = headerGroups[0]?.headers?.[colIdx]?.id === 'checkbox'
+                              const wPct = isCheckbox ? 16 : [78, 52, 48, 40, 36, 32][colIdx % 6]
+                              return (
+                                <td
+                                  key={`candidates-skel-${skelRow}-${colIdx}`}
+                                  className="px-3 py-3.5 align-middle"
+                                  style={
+                                    isCheckbox
+                                      ? { width: 52, minWidth: 52, maxWidth: 52 }
+                                      : undefined
+                                  }
+                                >
+                                  {isCheckbox ? (
+                                    <div className="mx-auto h-4 w-4 rounded border border-defaultborder/50 bg-white/50 dark:border-white/10 dark:bg-white/[0.04]" />
+                                  ) : (
+                                    <div
+                                      className="h-3.5 max-w-full rounded-md bg-gradient-to-r from-slate-200/90 via-slate-100/95 to-slate-200/90 dark:from-white/[0.07] dark:via-white/[0.11] dark:to-white/[0.07] motion-safe:animate-pulse"
+                                      style={{
+                                        width: `${wPct}%`,
+                                        animationDelay: `${skelRow * 45 + colIdx * 30}ms`,
+                                      }}
+                                    />
+                                  )}
+                                </td>
+                              )
+                            })}
+                          </tr>
+                        )
+                      })}
+                    {!candidatesLoading &&
+                      page.map((row: any, i: number) => {
                       prepareRow(row)
                       const rowCandidate = row.original as CandidateDisplay
                       const resigned = isCandidateResigned(rowCandidate)
@@ -1930,7 +1967,7 @@ const Candidates = () => {
                         </tr>
                       )
                     })}
-                    {page.length === 0 && (
+                    {!candidatesLoading && page.length === 0 && (
                       <tr>
                         <td colSpan={headerGroups[0]?.headers?.length ?? 4} className="!border-0 !p-0 align-top">
                           <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">

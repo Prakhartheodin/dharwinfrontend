@@ -341,12 +341,18 @@ export async function uploadDocument(
   const formData = new FormData();
   formData.append("file", file);
   if (label) formData.append("label", label);
+  // Do not set Content-Type — apiClient defaults to JSON; FormData needs boundary from the browser.
   const { data } = await apiClient.post<{
     success: boolean;
     data: { url: string; key: string; originalName: string; size: number; mimeType: string };
   }>("/upload/single", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+    transformRequest: [
+      (data: unknown, headers: Record<string, string>) => {
+        delete headers["Content-Type"];
+        return data;
+      },
+    ],
+  } as any);
   if (!data?.success || !data?.data) throw new Error("Upload failed");
   return data.data;
 }
@@ -390,13 +396,14 @@ export async function importCandidatesFromExcel(file: File): Promise<ImportExcel
   const formData = new FormData();
   formData.append("file", file);
   
-  const { data } = await apiClient.post<ImportExcelResult>(
-    "/candidates/import/excel",
-    formData,
-    {
-      headers: { "Content-Type": "multipart/form-data" },
-    }
-  );
+  const { data } = await apiClient.post<ImportExcelResult>("/candidates/import/excel", formData, {
+    transformRequest: [
+      (data: unknown, headers: Record<string, string>) => {
+        delete headers["Content-Type"];
+        return data;
+      },
+    ],
+  } as any);
   
   return data;
 }
