@@ -643,14 +643,29 @@ export default function AttendanceTracking() {
     });
     const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
     for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, weekOff: false, totalHours: 0, holidayName: "" });
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
     for (let day = 1; day <= daysInMonth; day++) {
       const date = new Date(year, month, day);
+      date.setHours(0, 0, 0, 0);
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       const dayName = DAY_NAME_MAP[date.getDay()];
       const isWeekOff = weekOffSet.has(dayName) && !info.present && !info.holiday && !info.leave && !info.incomplete;
+      const isPast = date < todayStart;
+      const isTodayCell = date.getTime() === todayStart.getTime();
+      /** Past scheduled workdays with no punch / leave / holiday row: treat as absent (same idea as StudentAttendanceOverlay). */
+      const inferredAbsent =
+        isPast &&
+        !isTodayCell &&
+        !isWeekOff &&
+        !info.holiday &&
+        !info.leave &&
+        !info.present &&
+        !info.incomplete;
+      const cellAbsent = info.absent || inferredAbsent;
       const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
-      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: info.absent, weekOff: isWeekOff, totalHours: Math.round((displayMs / 3600000) * 100) / 100, holidayName: info.holidayName });
+      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: cellAbsent, weekOff: isWeekOff, totalHours: Math.round((displayMs / 3600000) * 100) / 100, holidayName: info.holidayName });
     }
     return cells;
   }, [attendanceList, myCalendarYear, myCalendarMonth, myWeekOff]);

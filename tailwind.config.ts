@@ -154,6 +154,7 @@ module.exports = {
       'animate-wase': 'wase 4s linear infinite',
       'external-jobs-shimmer': 'externalJobsShimmer 1.2s ease-in-out infinite',
       'external-jobs-orbit': 'externalJobsOrbit 2.75s linear infinite',
+      'candidates-load-bar': 'candidatesLoadBar 1.15s ease-in-out infinite',
     },
     keyframes: {
       particles: {
@@ -236,6 +237,11 @@ module.exports = {
         "0%": { transform: "rotate(0deg)", opacity: "0.5" },
         "50%": { opacity: "0.9" },
         "100%": { transform: "rotate(360deg)", opacity: "0.5" },
+      },
+      candidatesLoadBar: {
+        "0%": { transform: "translateX(-100%)", opacity: "0.85" },
+        "55%": { opacity: "1" },
+        "100%": { transform: "translateX(360%)", opacity: "0.85" },
       },
     },
   },
