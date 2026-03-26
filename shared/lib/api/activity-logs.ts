@@ -10,6 +10,8 @@ export interface ListActivityLogsParams {
   entityId?: string;
   startDate?: string;
   endDate?: string;
+  /** When true, include noisy attendance.* actions (default on API excludes them). */
+  includeAttendance?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -17,7 +19,7 @@ export interface ListActivityLogsParams {
 
 /**
  * List activity logs (GET /v1/activity-logs).
- * Backend enforces that only Administrators (by roleIds) can access this endpoint.
+ * Backend requires activityLogs.read or activity.read (or platform super user).
  */
 export async function listActivityLogs(
   params?: ListActivityLogsParams

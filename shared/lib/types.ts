@@ -86,6 +86,13 @@ export interface ActivityLogActor {
   name?: string | null;
 }
 
+/** Geo subdocument from activity log (e.g. Cloudflare country). */
+export interface ActivityLogGeo {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+}
+
 /** Activity log entry from /v1/activity-logs. */
 export interface ActivityLog {
   id: string;
@@ -96,6 +103,9 @@ export interface ActivityLog {
   metadata?: Record<string, unknown> | null;
   ip?: string | null;
   userAgent?: string | null;
+  httpMethod?: string | null;
+  httpPath?: string | null;
+  geo?: ActivityLogGeo | null;
   createdAt: string;
 }
 
