@@ -39,6 +39,7 @@ const TeamsIcon = <i className="bx bx-group side-menu__icon"></i>;
 
 // Logs Icons
 const LogsIcon = <i className="bx bx-clipboard side-menu__icon"></i>;
+const PlatformAuditIcon = <i className="bx bx-shield-quarter side-menu__icon"></i>;
 
 const badge = (
   <span className="badge !bg-warning/10 !text-warning !py-[0.25rem] !px-[0.45rem] !text-[0.75em] ms-1">
@@ -427,6 +428,16 @@ export const MenuItems: any = [
     title: "Logs Activity",
     type: "link",
     path: "/logs/logs-activity",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+
+  {
+    icon: PlatformAuditIcon,
+    title: "Platform audit",
+    type: "link",
+    path: "/logs/logs-activity/platform",
     active: false,
     selected: false,
     dirchange: false,

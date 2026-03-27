@@ -23,6 +23,10 @@ function getSocketUrl(): string {
 }
 
 export interface IncomingCallData {
+  /** Chat (default) vs designated superadmin support camera invite */
+  callSource?: "chat" | "support_camera";
+  /** Present when callSource is support_camera — join path uses this token */
+  supportInviteToken?: string;
   conversationId: string;
   callId: string;
   roomName: string;
@@ -54,6 +58,10 @@ interface ChatSocketContextValue {
   onMessagesRead: (callback: (data: { conversationId: string; userId: string; readAt: string }) => void) => () => void;
   emitTyping: (conversationId: string) => void;
   emitMessageRead: (conversationId: string) => void;
+  /** Stops ringtone, clears incoming UI — same as modal Accept/Decline. Registered by GlobalIncomingCall. */
+  dismissIncomingCall: () => void;
+  /** @internal Registered by GlobalIncomingCall; do not use elsewhere. */
+  registerIncomingCallDismiss: (fn: (() => void) | null) => void;
 }
 
 const ChatSocketContext = createContext<ChatSocketContextValue | null>(null);
@@ -82,6 +90,15 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const messageReactedListeners = useRef<Set<(data: { conversationId: string; message: unknown }) => void>>(new Set());
   const typingListeners = useRef<Set<(data: { conversationId: string; userId: string; userName: string }) => void>>(new Set());
   const readListeners = useRef<Set<(data: { conversationId: string; userId: string; readAt: string }) => void>>(new Set());
+  const dismissIncomingCallFnRef = useRef<(() => void) | null>(null);
+
+  const registerIncomingCallDismiss = useCallback((fn: (() => void) | null) => {
+    dismissIncomingCallFnRef.current = fn;
+  }, []);
+
+  const dismissIncomingCall = useCallback(() => {
+    dismissIncomingCallFnRef.current?.();
+  }, []);
 
   const onNewMessage = useCallback((cb: (msg: unknown) => void) => {
     newMsgListeners.current.add(cb);
@@ -279,6 +296,8 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     onMessagesRead,
     emitTyping,
     emitMessageRead,
+    dismissIncomingCall,
+    registerIncomingCallDismiss,
   };
 
   return (

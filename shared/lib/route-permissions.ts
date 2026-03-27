@@ -5,6 +5,7 @@
  */
 
 export const PATH_PERMISSION_PREFIX: Record<string, string> = {
+  "/logs/logs-activity": "logs.activity:",
   // ATS
   "/ats/jobs": "ats.jobs:",
   "/ats/candidates": "ats.candidates:",
@@ -17,6 +18,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/ats/pre-boarding": "ats.pre-boarding:",
   "/ats/onboarding": "ats.onboarding:",
   "/ats/analytics": "ats.analytics:",
+  "/ats/external-jobs": "ats.external-jobs:",
   // Communication
   "/pages/email/mail-app": "communication.emails:",
   "/pages/chat": "communication.chats:",
@@ -27,6 +29,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/training/attendance": "training.attendance:",
   "/training/mentors": "training.mentors:",
   "/training/students": "training.students:",
+  "/training/positions": "training.positions:",
   "/training/evaluation": "training.evaluation:",
   "/training/analytics": "training.analytics:",
   // Project Management (sidebar uses /apps/... and /task/...; app routes also use /project-management/...)
@@ -67,6 +70,13 @@ const PATH_PREFIXES = Object.keys(PATH_PERMISSION_PREFIX).sort(
  */
 export function getRequiredPermissionForPath(pathname: string): string | null {
   const normalized = pathname.replace(/\/$/, "") || "/";
+  // Designated-only audit console; PermissionGuard handles access (not role permissions).
+  if (
+    normalized === "/logs/logs-activity/platform" ||
+    normalized.startsWith("/logs/logs-activity/platform/")
+  ) {
+    return null;
+  }
   for (const path of PATH_PREFIXES) {
     if (normalized === path || normalized.startsWith(path + "/")) {
       return PATH_PERMISSION_PREFIX[path];

@@ -2,12 +2,14 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket, type IncomingCallData } from "@/shared/contexts/ChatSocketContext";
 import { updateCall } from "@/shared/lib/api/chat";
 
 const RING_TIMEOUT_MS = 45 * 1000;
-const TITLE_FLASH = "Incoming call – Dharwin";
+const TITLE_FLASH_CHAT = "Incoming call – Dharwin";
+const TITLE_FLASH_SUPPORT_CAM = "Support camera – Dharwin";
 /** Served from `public/sounds/ringtone.wav` (generated asset). */
 const RINGTONE_SRC = "/sounds/ringtone.wav";
 /** OS notifications often truncate; keep body short. */
@@ -20,7 +22,11 @@ function clipNotificationText(text: string, max = NOTIFICATION_BODY_MAX): string
 }
 
 function isGroupIncomingCall(data: IncomingCallData): boolean {
-  return data.conversationType === "group" && Boolean(data.groupName?.trim());
+  return data.callSource !== "support_camera" && data.conversationType === "group" && Boolean(data.groupName?.trim());
+}
+
+function isSupportCameraIncoming(data: IncomingCallData): boolean {
+  return data.callSource === "support_camera" && Boolean(data.supportInviteToken?.trim());
 }
 
 type SyntheticRingRefs = {
@@ -40,8 +46,15 @@ function stopSyntheticRing(refs: React.MutableRefObject<SyntheticRingRefs>) {
   }
 }
 
-/** Classic dual-tone burst; repeats on interval until stopped. Requires user gesture for first resume in strict browsers. */
-async function startSyntheticRing(refs: React.MutableRefObject<SyntheticRingRefs>): Promise<boolean> {
+/**
+ * Classic dual-tone burst; repeats on interval until stopped.
+ * `playId` / `playIdRef` drop any in-flight work after accept/decline (async gap before setInterval).
+ */
+async function startSyntheticRing(
+  refs: React.MutableRefObject<SyntheticRingRefs>,
+  playId: number,
+  playIdRef: React.MutableRefObject<number>
+): Promise<boolean> {
   if (typeof window === "undefined") return false;
   const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AC) return false;
@@ -68,8 +81,18 @@ async function startSyntheticRing(refs: React.MutableRefObject<SyntheticRingRefs
   };
 
   await ctx.resume();
+  if (playIdRef.current !== playId) {
+    await ctx.close().catch(() => {});
+    refs.current.ctx = null;
+    return false;
+  }
   playBurst();
   refs.current.intervalId = setInterval(() => {
+    if (playIdRef.current !== playId) {
+      if (refs.current.intervalId != null) clearInterval(refs.current.intervalId);
+      refs.current.intervalId = null;
+      return;
+    }
     if (ctx.state === "suspended") void ctx.resume();
     playBurst();
   }, 2800);
@@ -78,7 +101,8 @@ async function startSyntheticRing(refs: React.MutableRefObject<SyntheticRingRefs
 
 function GlobalIncomingCallInner() {
   const { user } = useAuth();
-  const { onIncomingCall, onCallEnded, incomingCall, setIncomingCall } = useChatSocket();
+  const pathname = usePathname();
+  const { onIncomingCall, onCallEnded, incomingCall, setIncomingCall, registerIncomingCallDismiss } = useChatSocket();
   const [soundUnavailable, setSoundUnavailable] = useState(false);
   const [ringtoneErrorMessage, setRingtoneErrorMessage] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(
@@ -88,6 +112,8 @@ function GlobalIncomingCallInner() {
   /** Skip HTMLAudio when src failed to load (e.g. 404) so user gesture goes straight to Web Audio. */
   const audioSrcBrokenRef = useRef(false);
   const syntheticRingRef = useRef<SyntheticRingRefs>({ ctx: null, intervalId: null });
+  /** Bumped on each incoming event and on dismiss; invalidates async tryPlayRingtone / synthetic ring. */
+  const ringtonePlayIdRef = useRef(0);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const originalTitleRef = useRef<string>("");
   const notificationRef = useRef<Notification | null>(null);
@@ -102,8 +128,12 @@ function GlobalIncomingCallInner() {
     stopSyntheticRing(syntheticRingRef);
     if (audioRef.current) {
       try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+        const a = audioRef.current;
+        a.loop = false;
+        a.pause();
+        a.currentTime = 0;
+        a.pause();
+        a.load();
       } catch {
         // ignore
       }
@@ -126,14 +156,27 @@ function GlobalIncomingCallInner() {
   }, []);
 
   const clearIncomingCall = useCallback(() => {
+    ringtonePlayIdRef.current += 1;
+    stopRingtone();
+    queueMicrotask(() => {
+      stopRingtone();
+    });
+    setTimeout(() => {
+      stopRingtone();
+    }, 0);
     setIncomingCall(null);
     setSoundUnavailable(false);
     setRingtoneErrorMessage(null);
     audioSrcBrokenRef.current = false;
-    stopRingtone();
   }, [setIncomingCall, stopRingtone]);
 
+  useLayoutEffect(() => {
+    registerIncomingCallDismiss(clearIncomingCall);
+    return () => registerIncomingCallDismiss(null);
+  }, [clearIncomingCall, registerIncomingCallDismiss]);
+
   const tryPlayRingtone = useCallback(async () => {
+    const playId = ringtonePlayIdRef.current;
     stopSyntheticRing(syntheticRingRef);
     setRingtoneErrorMessage(null);
     const audio = audioRef.current;
@@ -141,8 +184,20 @@ function GlobalIncomingCallInner() {
     if (audio && !audioSrcBrokenRef.current) {
       try {
         if (audio.error) audio.load();
+        audio.loop = true;
         audio.currentTime = 0;
         await audio.play();
+        if (ringtonePlayIdRef.current !== playId) {
+          try {
+            audio.loop = false;
+            audio.pause();
+            audio.currentTime = 0;
+            audio.pause();
+          } catch {
+            // ignore
+          }
+          return;
+        }
         setSoundUnavailable(false);
         return;
       } catch (err: unknown) {
@@ -152,15 +207,19 @@ function GlobalIncomingCallInner() {
       }
     }
 
+    if (ringtonePlayIdRef.current !== playId) return;
+
     try {
-      const ok = await startSyntheticRing(syntheticRingRef);
-      if (ok) {
+      const ok = await startSyntheticRing(syntheticRingRef, playId, ringtonePlayIdRef);
+      if (ok && ringtonePlayIdRef.current === playId) {
         setSoundUnavailable(false);
         return;
       }
     } catch {
       // fall through to error message
     }
+
+    if (ringtonePlayIdRef.current !== playId) return;
 
     setSoundUnavailable(true);
     setRingtoneErrorMessage(
@@ -170,6 +229,12 @@ function GlobalIncomingCallInner() {
 
   const acceptCall = useCallback(() => {
     if (!incomingCall) return;
+    if (isSupportCameraIncoming(incomingCall)) {
+      const t = incomingCall.supportInviteToken!.trim();
+      clearIncomingCall();
+      window.open(`/support/camera/join/${encodeURIComponent(t)}`, "_blank", "noopener");
+      return;
+    }
     const convId = incomingCall.conversationId;
     const callType = incomingCall.callType || "video";
     const params = new URLSearchParams();
@@ -179,13 +244,14 @@ function GlobalIncomingCallInner() {
     if (callType === "audio") params.set("video", "0");
     else params.set("video", "1");
     const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
-    window.open(url, "_blank", "noopener");
     clearIncomingCall();
+    window.open(url, "_blank", "noopener");
   }, [incomingCall, clearIncomingCall]);
 
   const declineCall = useCallback(() => {
     const call = incomingCall;
     clearIncomingCall();
+    if (call?.callSource === "support_camera") return;
     if (call?.callId) {
       updateCall(call.callId, { status: "declined" }).catch(() => {
         // Call may already be ended; ignore
@@ -202,13 +268,16 @@ function GlobalIncomingCallInner() {
       const myIdNorm = myId;
       // Only skip showing the popup when we are definitely the caller (same user who started the call)
       if (callerId && myIdNorm && callerId === myIdNorm) return;
+      ringtonePlayIdRef.current += 1;
       setIncomingCall(data);
       setSoundUnavailable(false);
       setRingtoneErrorMessage(null);
       audioSrcBrokenRef.current = false;
 
       originalTitleRef.current = typeof document !== "undefined" ? document.title : "";
-      if (typeof document !== "undefined") document.title = TITLE_FLASH;
+      if (typeof document !== "undefined") {
+        document.title = isSupportCameraIncoming(data) ? TITLE_FLASH_SUPPORT_CAM : TITLE_FLASH_CHAT;
+      }
 
       // Ringtone starts in useLayoutEffect after portal mounts so audioRef is attached.
 
@@ -231,13 +300,19 @@ function GlobalIncomingCallInner() {
             // ignore
           }
         };
-        const title = data.callType === "audio" ? "Incoming voice call" : "Incoming video call";
+        const supportCam = isSupportCameraIncoming(data);
+        const title = supportCam
+          ? "Support camera request"
+          : data.callType === "audio"
+            ? "Incoming voice call"
+            : "Incoming video call";
         const callerNm = data.caller?.name ?? "Someone";
-        const body =
-          isGroupIncomingCall(data) && data.groupName
+        const body = supportCam
+          ? clipNotificationText(`${callerNm} is asking you to join a support camera session`)
+          : isGroupIncomingCall(data) && data.groupName
             ? clipNotificationText(`${callerNm} is calling you in ${data.groupName}`)
             : clipNotificationText(`${callerNm} is calling you`);
-        const tag = `incoming-call-${data.callId}`;
+        const tag = supportCam ? `support-cam-${data.supportInviteToken}` : `incoming-call-${data.callId}`;
         if (Notification.permission === "granted") {
           showNotification(title, body, tag);
         } else if (Notification.permission === "default") {
@@ -294,20 +369,49 @@ function GlobalIncomingCallInner() {
     if (!incomingCall) stopRingtone();
   }, [incomingCall, stopRingtone]);
 
+  /** Same-tab navigation to support camera (e.g. pasted link) leaves incomingCall set — stop ring + UI. */
+  useEffect(() => {
+    if (!user || !pathname) return;
+    const onSupportCameraRoute =
+      pathname.startsWith("/support/camera/join") || pathname === "/support/camera/host";
+    if (onSupportCameraRoute) {
+      clearIncomingCall();
+    }
+  }, [user, pathname, clearIncomingCall]);
+
   const requestNotificationPermission = useCallback(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
     Notification.requestPermission().then((p) => setNotificationPermission(p));
   }, []);
 
   if (!user) return null;
-  if (!incomingCall) return null;
 
-  const callLabel =
-    incomingCall.callType === "audio"
+  const ringtoneAudio = (
+    <audio
+      ref={audioRef}
+      loop
+      playsInline
+      preload="auto"
+      src={RINGTONE_SRC}
+      hidden
+      aria-hidden
+      onError={() => {
+        audioSrcBrokenRef.current = true;
+        setSoundUnavailable(true);
+      }}
+    />
+  );
+
+  if (!incomingCall) return <>{ringtoneAudio}</>;
+
+  const supportCam = isSupportCameraIncoming(incomingCall);
+  const callLabel = supportCam
+    ? "Support camera request"
+    : incomingCall.callType === "audio"
       ? "Incoming voice call"
       : "Incoming video call";
-  const isVideo = incomingCall.callType === "video";
-  const callKindShort = isVideo ? "Video" : "Voice";
+  const isVideo = supportCam || incomingCall.callType === "video";
+  const callKindShort = supportCam ? "Camera" : isVideo ? "Video" : "Voice";
   const showGroupContext = isGroupIncomingCall(incomingCall);
   const groupDisplayName = incomingCall.groupName?.trim() || "Group";
   const modalDescribedBy = showGroupContext
@@ -379,6 +483,7 @@ function GlobalIncomingCallInner() {
         <p id="incoming-call-announce" className="sr-only" aria-live="assertive">
           {callLabel} from {incomingCall.caller?.name ?? "Unknown"}
           {showGroupContext ? `, group ${groupDisplayName}` : ""}
+          {supportCam ? ". Open the session to share your camera with support." : ""}
         </p>
 
         <div className="relative px-6 pb-2 pt-8 text-center">
@@ -409,7 +514,11 @@ function GlobalIncomingCallInner() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500/40 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
-              {showGroupContext ? `Incoming group · ${callKindShort}` : `Incoming · ${callKindShort}`}
+              {supportCam
+                ? "Support session · Camera"
+                : showGroupContext
+                  ? `Incoming group · ${callKindShort}`
+                  : `Incoming · ${callKindShort}`}
             </span>
           </p>
 
@@ -429,9 +538,11 @@ function GlobalIncomingCallInner() {
             </p>
           )}
           <p className="ic-stagger-c mx-auto max-w-[16rem] text-sm leading-relaxed text-[#64748b] dark:text-white/50">
-            {isVideo
-              ? "Video call — answer to join with camera and mic."
-              : "Voice call — answer to connect with audio only."}
+            {supportCam
+              ? "Platform support is requesting a consent-based camera session. Accept to open the join page."
+              : isVideo
+                ? "Video call — answer to join with camera and mic."
+                : "Voice call — answer to connect with audio only."}
           </p>
         </div>
 
@@ -456,7 +567,7 @@ function GlobalIncomingCallInner() {
                 className="ic-btn-accept flex h-[4.25rem] w-[4.25rem] items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-900/25 ring-2 ring-emerald-300/50 ring-offset-2 ring-offset-white dark:from-emerald-500 dark:to-emerald-700 dark:ring-emerald-400/30 dark:ring-offset-[#14151a]"
                 onClick={acceptCall}
                 title="Accept"
-                aria-label={isVideo ? "Accept video call" : "Accept voice call"}
+                aria-label={supportCam ? "Accept support camera session" : isVideo ? "Accept video call" : "Accept voice call"}
               >
                 <i
                   className={`text-[1.75rem] leading-none ${isVideo ? "ri-vidicon-fill" : "ri-phone-fill"}`}
@@ -513,24 +624,13 @@ function GlobalIncomingCallInner() {
           </div>
         )}
       </div>
-      <audio
-        ref={audioRef}
-        loop
-        playsInline
-        preload="auto"
-        src={RINGTONE_SRC}
-        onError={() => {
-          audioSrcBrokenRef.current = true;
-          setSoundUnavailable(true);
-        }}
-      />
     </div>
   );
 
   return (
     <>
-      {typeof document !== "undefined" &&
-        createPortal(modal, document.body)}
+      {ringtoneAudio}
+      {typeof document !== "undefined" && createPortal(modal, document.body)}
     </>
   );
 }
@@ -542,7 +642,7 @@ export function GlobalIncomingCall() {
 
 /** Top “signal strip” when there is an incoming call (every page). Syncs countdown with modal ring timeout. */
 function IncomingCallBarInner() {
-  const { incomingCall, setIncomingCall } = useChatSocket();
+  const { incomingCall, dismissIncomingCall } = useChatSocket();
   const [remainingMs, setRemainingMs] = useState(RING_TIMEOUT_MS);
 
   useEffect(() => {
@@ -557,6 +657,12 @@ function IncomingCallBarInner() {
 
   const acceptFromBar = useCallback(() => {
     if (!incomingCall) return;
+    if (isSupportCameraIncoming(incomingCall)) {
+      const t = incomingCall.supportInviteToken!.trim();
+      dismissIncomingCall();
+      window.open(`/support/camera/join/${encodeURIComponent(t)}`, "_blank", "noopener");
+      return;
+    }
     const convId = incomingCall.conversationId;
     const callType = incomingCall.callType || "video";
     const params = new URLSearchParams();
@@ -566,19 +672,21 @@ function IncomingCallBarInner() {
     if (callType === "audio") params.set("video", "0");
     else params.set("video", "1");
     const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
+    dismissIncomingCall();
     window.open(url, "_blank", "noopener");
-    setIncomingCall(null);
-  }, [incomingCall, setIncomingCall]);
+  }, [incomingCall, dismissIncomingCall]);
   const declineFromBar = useCallback(() => {
     const call = incomingCall;
-    setIncomingCall(null);
+    dismissIncomingCall();
+    if (call?.callSource === "support_camera") return;
     if (call?.callId) updateCall(call.callId, { status: "declined" }).catch(() => {});
-  }, [incomingCall, setIncomingCall]);
+  }, [incomingCall, dismissIncomingCall]);
 
   if (!incomingCall) return null;
 
-  const isVideo = incomingCall.callType === "video";
-  const label = isVideo ? "Video" : "Voice";
+  const supportBar = isSupportCameraIncoming(incomingCall);
+  const isVideo = supportBar || incomingCall.callType === "video";
+  const label = supportBar ? "Support camera" : isVideo ? "Video" : "Voice";
   const progressPct = Math.min(100, Math.max(0, (remainingMs / RING_TIMEOUT_MS) * 100));
   const secsLeft = Math.ceil(remainingMs / 1000);
   const urgent = remainingMs > 0 && remainingMs <= 12_000;
@@ -586,9 +694,11 @@ function IncomingCallBarInner() {
   const showGroupBar = isGroupIncomingCall(incomingCall);
   const groupBarName = incomingCall.groupName?.trim() || "Group";
   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(callerName)}&size=64&background=f1f5f9&color=334155`;
-  const barAriaLabel = `Incoming ${label.toLowerCase()} call from ${callerName}${
-    showGroupBar ? `, group ${groupBarName}` : ""
-  }`;
+  const barAriaLabel = supportBar
+    ? `Support camera request from ${callerName}`
+    : `Incoming ${label.toLowerCase()} call from ${callerName}${
+        showGroupBar ? `, group ${groupBarName}` : ""
+      }`;
 
   const bar = (
     <>
@@ -662,7 +772,7 @@ function IncomingCallBarInner() {
           <div className="min-w-0 flex-1">
             <div className="mb-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="text-[0.625rem] font-bold uppercase tracking-[0.22em] text-slate-500 dark:text-white/45">
-                Live · {showGroupBar ? `Group ${label}` : label}
+                Live · {supportBar ? "Support camera" : showGroupBar ? `Group ${label}` : label}
               </span>
               <span className="hidden h-1 w-1 rounded-full bg-slate-300 sm:inline dark:bg-white/25" aria-hidden />
               <span
@@ -683,7 +793,11 @@ function IncomingCallBarInner() {
               </p>
             )}
             <p className="truncate text-[0.6875rem] text-slate-500 dark:text-white/40">
-              {isVideo ? "Video meeting opens in a new tab" : "Voice only — opens in a new tab"}
+              {supportBar
+                ? "Support session opens in a new tab"
+                : isVideo
+                  ? "Video meeting opens in a new tab"
+                  : "Voice only — opens in a new tab"}
             </p>
           </div>
 
@@ -702,7 +816,7 @@ function IncomingCallBarInner() {
                 type="button"
                 className="inline-flex h-9 min-w-[2.25rem] items-center justify-center gap-1 rounded-full bg-gradient-to-br from-emerald-500 to-teal-600 px-2.5 text-xs font-semibold text-white shadow-md shadow-emerald-900/15 transition hover:from-emerald-400 hover:to-teal-500 sm:px-3.5 dark:shadow-emerald-950/40"
                 onClick={acceptFromBar}
-                aria-label={isVideo ? "Accept video call" : "Accept voice call"}
+                aria-label={supportBar ? "Accept support camera session" : isVideo ? "Accept video call" : "Accept voice call"}
               >
                 <i
                   className={`text-base sm:text-sm ${isVideo ? "ri-vidicon-fill" : "ri-phone-fill"}`}

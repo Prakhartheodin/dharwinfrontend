@@ -8,6 +8,8 @@ import Modalsearch from '../modal-search/modalsearch';
 import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
 import { ROUTES } from '@/shared/lib/constants';
+import { isPublicLayoutPath } from '@/shared/lib/public-layout-paths';
+import { usePathname } from 'next/navigation';
 import {
   getNotifications,
   getUnreadCount,
@@ -18,6 +20,8 @@ import {
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
+  const pathname = usePathname();
+  const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -493,6 +497,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 </button>
               </div>
        
+              {!guestPublicLayout && (
               <div className="header-element py-[1rem] md:px-[0.65rem] px-2 notifications-dropdown header-notification hs-dropdown ti-dropdown !hidden md:!block [--placement:bottom-right]">
                 <button id="dropdown-notification" type="button"
                   className="hs-dropdown-toggle relative ti-dropdown-toggle !p-0 !border-0 flex-shrink-0  !rounded-full !shadow-none align-middle text-xs">
@@ -568,7 +573,9 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   </div>
                 </div>
               </div>
+              )}
              
+              {!guestPublicLayout && (
               <div className="header-element header-fullscreen py-[1rem] md:px-[0.65rem] px-2">
               <button
                   aria-label="anchor"
@@ -582,6 +589,17 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   )}
                 </button>
               </div>
+              )}
+              {guestPublicLayout ? (
+              <div className="header-element flex items-center gap-2 py-[1rem] md:px-[0.65rem] px-2">
+                <Link href={ROUTES.signIn} className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem]">
+                  Sign in
+                </Link>
+                <Link href={ROUTES.register} className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem]">
+                  Register
+                </Link>
+              </div>
+              ) : (
               <div className="header-element md:!px-[0.65rem] px-2 hs-dropdown !items-center ti-dropdown [--placement:bottom-left]">
 
                 <button id="dropdown-profile" type="button"
@@ -640,6 +658,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   </ul>
                 </div>
               </div>
+              )}
             </div>
           </div>
         </nav>

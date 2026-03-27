@@ -59,9 +59,12 @@
 | /project-management/analytics | project.analytics: |
 | /support-tickets | support.tickets: |
 
-## 6. Admin-Only Paths (not permission-based)
+## 6. Paths outside the permission-prefix map (or hybrid)
 
-- `/logs/logs-activity`, `/ats/external-jobs` – visible only when `isAdministrator === true`
+- `/logs/logs-activity` – **PermissionGuard** allows **`isDesignatedSuperadmin`**, **Administrator**, **platform super user**, or **`logs.activity:`**; the prefix map still documents the role permission for consistency.
+- `/logs/logs-activity/platform` – **PermissionGuard** + sidebar: **`isDesignatedSuperadmin`** only (matches `DESIGNATED_SUPERADMIN_EMAILS` on the API for export and advanced use).
+- `/support/camera/host` – **`isDesignatedSuperadmin`** in **PermissionGuard**.
+- `/ats/external-jobs` – visible only when `isAdministrator === true`
 
 ## 7. Known Alias (training)
 

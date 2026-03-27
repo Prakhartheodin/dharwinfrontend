@@ -9,6 +9,8 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as rolesApi from "@/shared/lib/api/roles";
 import {
   PERMISSION_SECTIONS,
+  getUnmappedPermissionStrings,
+  mergePermissionsForRoleSave,
   permissionsFromApi,
   permissionsToApi,
   type RolePermissionsState,
@@ -32,6 +34,8 @@ export default function RolesEditPage() {
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState("");
+  /** Raw strings from API; unmapped ones are merged back on save so nothing is dropped implicitly. */
+  const [originalPermissionStrings, setOriginalPermissionStrings] = useState<string[]>([]);
 
   useEffect(() => {
     if (!roleId) {
@@ -47,7 +51,9 @@ export default function RolesEditPage() {
         if (cancelled) return;
         setName(role.name);
         setStatus((role.status as "active" | "inactive") ?? "active");
-        setPermissions(permissionsFromApi(role.permissions ?? []));
+        const raw = Array.isArray(role.permissions) ? role.permissions.filter((x): x is string => typeof x === "string") : [];
+        setOriginalPermissionStrings(raw);
+        setPermissions(permissionsFromApi(raw));
       } catch (err) {
         if (cancelled) return;
         const msg =
@@ -129,7 +135,7 @@ export default function RolesEditPage() {
     }
     setLoading(true);
     try {
-      const permissionStrings = permissionsToApi(permissions);
+      const permissionStrings = mergePermissionsForRoleSave(permissionsToApi(permissions), originalPermissionStrings);
       await rolesApi.updateRole(roleId, {
         name: trimmedName,
         permissions: permissionStrings,
@@ -248,6 +254,21 @@ export default function RolesEditPage() {
                       <option value="inactive">Inactive</option>
                     </select>
                   </div>
+                  {getUnmappedPermissionStrings(originalPermissionStrings).length > 0 && (
+                    <div className="mb-6 p-4 rounded-md border border-defaultborder bg-gray-50 dark:bg-gray-800/40">
+                      <p className="text-sm font-medium text-defaulttextcolor mb-2">
+                        Additional permissions (not in matrix)
+                      </p>
+                      <p className="text-xs text-defaulttextcolor/70 mb-2">
+                        These strings stay on the role when you save. Add matching rows to the permission matrix to manage them with checkboxes.
+                      </p>
+                      <ul className="text-xs font-mono space-y-1 list-disc list-inside text-defaulttextcolor/90">
+                        {getUnmappedPermissionStrings(originalPermissionStrings).map((s) => (
+                          <li key={s}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   <div className="hs-accordion-group space-y-2">
                     {PERMISSION_SECTIONS.map((section) => {
                       const isExpanded = expandedSections.has(section.id);

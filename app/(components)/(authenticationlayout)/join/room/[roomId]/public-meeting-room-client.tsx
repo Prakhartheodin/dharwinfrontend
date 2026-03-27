@@ -14,12 +14,196 @@ import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { endMeetingPublic } from "@/shared/lib/api/meetings";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 3000;  // Longer initial delay to let network stabilize
 const MAX_RECONNECT_DELAY = 20000;
+
+const LOBBY_AUDIO_BAR_COUNT = 5;
+
+/** Live camera preview + mic level meters for the public join waiting room */
+function LobbyDevicePreview({
+  enabled,
+  showVideo,
+  showAudio,
+}: {
+  enabled: boolean;
+  showVideo: boolean;
+  showAudio: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const barRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const rafRef = useRef<number>(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const freqDataRef = useRef<Uint8Array | null>(null);
+
+  const stopAll = useCallback(() => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    }
+    sourceRef.current?.disconnect();
+    sourceRef.current = null;
+    analyserRef.current = null;
+    freqDataRef.current = null;
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    const v = videoRef.current;
+    if (v) {
+      v.srcObject = null;
+    }
+    for (let i = 0; i < LOBBY_AUDIO_BAR_COUNT; i++) {
+      const el = barRefs.current[i];
+      if (el) el.style.transform = "scaleY(0.12)";
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      stopAll();
+      return;
+    }
+    if (!showVideo && !showAudio) {
+      stopAll();
+      return;
+    }
+
+    let cancelled = false;
+
+    const runBars = () => {
+      const analyser = analyserRef.current;
+      const data = freqDataRef.current;
+      if (!analyser || !data) return;
+      analyser.getByteFrequencyData(data);
+      const step = Math.max(1, Math.floor(data.length / LOBBY_AUDIO_BAR_COUNT));
+      for (let i = 0; i < LOBBY_AUDIO_BAR_COUNT; i++) {
+        let sum = 0;
+        for (let j = 0; j < step; j++) sum += data[i * step + j] ?? 0;
+        const avg = sum / step / 255;
+        const scale = 0.12 + avg * 0.88;
+        const el = barRefs.current[i];
+        if (el) el.style.transform = `scaleY(${Math.min(1, scale)})`;
+      }
+      rafRef.current = requestAnimationFrame(runBars);
+    };
+
+    (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: showVideo ? { facingMode: "user" } : false,
+          audio: showAudio || false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stopAll();
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+
+        const v = videoRef.current;
+        if (showVideo && v) {
+          v.srcObject = stream;
+          v.muted = true;
+          await v.play().catch(() => {});
+        } else if (v) {
+          v.srcObject = null;
+        }
+
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          stopAll();
+          return;
+        }
+
+        if (showAudio && stream.getAudioTracks().length > 0) {
+          const ctx = new AudioContext();
+          await ctx.resume().catch(() => {});
+          audioCtxRef.current = ctx;
+          const analyser = ctx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.65;
+          const src = ctx.createMediaStreamSource(stream);
+          src.connect(analyser);
+          sourceRef.current = src;
+          analyserRef.current = analyser;
+          freqDataRef.current = new Uint8Array(analyser.frequencyBinCount);
+          rafRef.current = requestAnimationFrame(runBars);
+        }
+      } catch {
+        stopAll();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      stopAll();
+    };
+  }, [enabled, showVideo, showAudio, stopAll]);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">Preview</p>
+      <div
+        className="relative w-full overflow-hidden rounded-xl border border-gray-600 bg-black aspect-video"
+        aria-label="Camera preview"
+      >
+        <video
+          ref={videoRef}
+          className={`h-full w-full object-cover ${showVideo ? "block" : "hidden"} [transform:scaleX(-1)]`}
+          playsInline
+          muted
+          autoPlay
+        />
+        {!showVideo && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-gray-500">
+            <i className="ri-camera-off-line text-4xl" aria-hidden />
+            <span className="text-sm">Camera off</span>
+          </div>
+        )}
+        {showVideo && enabled && (
+          <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-black/55 px-2 py-0.5 text-[0.65rem] text-gray-300">
+            Mirror preview
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="mb-2 text-xs text-gray-500">Microphone level</p>
+        <div
+          className="flex h-10 items-end justify-center gap-1.5 rounded-lg border border-gray-600 bg-gray-900/80 px-3 py-2"
+          aria-label="Microphone level preview"
+        >
+          {Array.from({ length: LOBBY_AUDIO_BAR_COUNT }, (_, i) => (
+            <div
+              key={i}
+              ref={(el) => {
+                barRefs.current[i] = el;
+              }}
+              className="w-2 origin-bottom rounded-full bg-primary/90 transition-[transform] duration-75"
+              style={{ height: "100%", transform: "scaleY(0.12)" }}
+            />
+          ))}
+        </div>
+        {!showAudio && (
+          <p className="mt-1.5 text-xs text-gray-600">Turn the microphone on to see level activity.</p>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function PublicRoomContent({
   onLeave,
@@ -601,13 +785,43 @@ function PublicRoomContent({
   );
 }
 
+function tokenGrantsPublishAccess(data: { isHost?: boolean; canPublish?: boolean }): boolean {
+  return data.isHost === true || data.canPublish === true;
+}
+
+function displayNameFromUser(user: { name?: string; email?: string } | null): string {
+  if (!user) return "";
+  const n = typeof user.name === "string" ? user.name.trim() : "";
+  if (n) return n;
+  const em = typeof user.email === "string" ? user.email.trim() : "";
+  if (em) {
+    const local = em.split("@")[0]?.trim();
+    if (local) return local;
+  }
+  return "";
+}
+
 export default function PublicMeetingRoomClient() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const roomId = (params?.roomId as string) || searchParams?.get("room") || "";
+  const { user: authUser, isChecked: authChecked } = useAuth();
+  /** Prefer ?room= (invite links / static export); path [roomId] may be placeholder "_" */
+  const roomId = (() => {
+    const q = searchParams?.get("room")?.trim() || "";
+    const p = (params?.roomId as string)?.trim() || "";
+    if (q) return q;
+    if (p && p !== "_") return p;
+    return p || "";
+  })();
   const nameFromQuery = searchParams.get("name")?.trim();
   const emailFromQuery = searchParams.get("email")?.trim();
+  /** If only email is in the link, use local-part as display name so join still works */
+  const nameDerivedFromEmail =
+    !nameFromQuery && emailFromQuery
+      ? emailFromQuery.split("@")[0]?.trim() || ""
+      : "";
+  const emailFromSession = authChecked ? (authUser?.email?.trim() ?? "") : "";
 
   const [showRoom, setShowRoom] = useState(false);
   const [token, setToken] = useState<string>("");
@@ -621,6 +835,7 @@ export default function PublicMeetingRoomClient() {
   const [isHost, setIsHost] = useState(false);
   const [waitingParticipantIdentities, setWaitingParticipantIdentities] = useState<string[]>([]);
   const admissionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const participantIdentityRef = useRef<string | null>(null);
 
   // Pre-join form state (when no name in URL)
   const [preJoinName, setPreJoinName] = useState("");
@@ -632,23 +847,69 @@ export default function PublicMeetingRoomClient() {
   const [audioPermissionGranted, setAudioPermissionGranted] = useState(false);
   const [videoPermissionGranted, setVideoPermissionGranted] = useState(false);
   const permissionRequestedOnLoadRef = useRef(false);
+  /** User must pass the lobby (editable name, read-only email) before we request a LiveKit token */
+  const [preJoinCommitted, setPreJoinCommitted] = useState(false);
 
-  const participantName = useMemo(() => nameFromQuery || "", [nameFromQuery]);
-  const participantEmail = useMemo(() => emailFromQuery || "", [emailFromQuery]);
-  const audioEnabled = useMemo(
-    () => (nameFromQuery ? searchParams.get("audio") !== "0" : preJoinAudio),
-    [nameFromQuery, searchParams, preJoinAudio]
-  );
-  const videoEnabled = useMemo(
-    () => (nameFromQuery ? searchParams.get("video") !== "0" : preJoinVideo),
-    [nameFromQuery, searchParams, preJoinVideo]
-  );
+  const participantName = preJoinCommitted ? preJoinName.trim() : "";
+  const participantEmail = preJoinCommitted ? preJoinEmail.trim() : "";
+
+  useEffect(() => {
+    participantIdentityRef.current = participantIdentity;
+  }, [participantIdentity]);
+
+  // Lobby: prefill name/email from invite link, prefill_* params, or signed-in user (email is not editable in UI)
+  useEffect(() => {
+    if (preJoinCommitted) return;
+    if (!authChecked && !emailFromQuery && !nameFromQuery) return;
+
+    const prefillNameQ =
+      nameFromQuery ||
+      nameDerivedFromEmail ||
+      searchParams.get("prefill_name")?.trim() ||
+      searchParams.get("name")?.trim() ||
+      "";
+    const prefillEmailQ =
+      emailFromQuery ||
+      searchParams.get("prefill_email")?.trim() ||
+      searchParams.get("email")?.trim() ||
+      "";
+
+    const sessionDisplay = displayNameFromUser(authUser);
+    const sessionEmail = authUser?.email?.trim() ?? "";
+    const derivedFromEmail =
+      !prefillNameQ && prefillEmailQ
+        ? prefillEmailQ.split("@")[0]?.trim() || ""
+        : "";
+
+    setPreJoinName((prev) => {
+      if (prev.trim()) return prev;
+      if (prefillNameQ) return prefillNameQ;
+      if (derivedFromEmail) return derivedFromEmail;
+      return sessionDisplay;
+    });
+    setPreJoinEmail((prev) => {
+      if (prev.trim()) return prev;
+      if (prefillEmailQ) return prefillEmailQ;
+      return sessionEmail;
+    });
+  }, [preJoinCommitted, authChecked, authUser, searchParams, emailFromQuery, nameFromQuery, nameDerivedFromEmail]);
+
+  const audioEnabled = useMemo(() => {
+    if (!preJoinCommitted) return preJoinAudio;
+    if (searchParams.get("audio") === "0") return false;
+    return preJoinAudio;
+  }, [preJoinCommitted, preJoinAudio, searchParams]);
+  const videoEnabled = useMemo(() => {
+    if (!preJoinCommitted) return preJoinVideo;
+    if (searchParams.get("video") === "0") return false;
+    return preJoinVideo;
+  }, [preJoinCommitted, preJoinVideo, searchParams]);
 
   const livekitUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
 
-  // Request browser audio/video permission when pre-join page opens (before join), like L5-working
+  // Request browser audio/video permission when lobby opens (before join), like L5-working
   useEffect(() => {
-    if (participantName) return; // Already in room or past pre-join
+    if (preJoinCommitted) return;
     if (permissionRequestedOnLoadRef.current) return;
     permissionRequestedOnLoadRef.current = true;
 
@@ -695,7 +956,7 @@ export default function PublicMeetingRoomClient() {
     };
 
     requestOnLoad();
-  }, [participantName]);
+  }, [preJoinCommitted]);
 
   // When user turns audio ON again after deny: request permission again
   const handleAudioToggle = useCallback(async () => {
@@ -782,16 +1043,9 @@ export default function PublicMeetingRoomClient() {
         return;
       }
       setPreJoinError("");
-      const params = new URLSearchParams();
-      params.set("name", name);
-      if (preJoinEmail.trim()) {
-        params.set("email", preJoinEmail.trim());
-      }
-      params.set("audio", preJoinAudio ? "1" : "0");
-      params.set("video", preJoinVideo ? "1" : "0");
-      router.push(`/join/room?room=${encodeURIComponent(roomId)}&${params.toString()}`);
+      setPreJoinCommitted(true);
     },
-    [roomId, router, preJoinName, preJoinEmail, preJoinAudio, preJoinVideo, audioPermissionGranted, videoPermissionGranted]
+    [preJoinName, preJoinAudio, preJoinVideo, audioPermissionGranted, videoPermissionGranted]
   );
 
   const fetchToken = useCallback(async () => {
@@ -810,9 +1064,11 @@ export default function PublicMeetingRoomClient() {
         participantEmail || undefined
       );
       setToken(data.token);
-      setParticipantIdentity(data.participantIdentity ?? null);
-      setIsHost(data.isHost || false);
-      if (data.isHost) {
+      const pid = data.participantIdentity ?? null;
+      setParticipantIdentity(pid);
+      participantIdentityRef.current = pid;
+      setIsHost(tokenGrantsPublishAccess(data));
+      if (tokenGrantsPublishAccess(data)) {
         setWaitingForAdmission(false);
         setShowRoom(true);
       } else {
@@ -835,20 +1091,21 @@ export default function PublicMeetingRoomClient() {
     }
   }, [participantName, livekitUrl, showRoom, token, fetchToken]);
 
-  // Poll for admission when normal participant is waiting
+  // Poll for admission when normal participant is waiting (must send same participantIdentity or server mints a new guest id)
   useEffect(() => {
-    if (!waitingForAdmission || !participantName || !livekitUrl || !roomId) return;
-    
+    if (!waitingForAdmission || !participantName || !livekitUrl || !roomId || !participantIdentity) return;
+
     const roomName = decodeURIComponent(roomId);
     let pollCount = 0;
-    const maxPolls = 200; // Stop after ~10 minutes (200 * 3 seconds)
-    
+    const maxPolls = 300;
+
     const checkAdmission = async () => {
       pollCount++;
-      
-      // Stop polling after max attempts to prevent infinite loops
+      const identity = participantIdentityRef.current;
+      if (!identity) return;
+
       if (pollCount > maxPolls) {
-        console.warn('Admission polling stopped after max attempts');
+        console.warn("Admission polling stopped after max attempts");
         if (admissionPollRef.current) {
           clearInterval(admissionPollRef.current);
           admissionPollRef.current = null;
@@ -861,35 +1118,35 @@ export default function PublicMeetingRoomClient() {
           roomName,
           participantName,
           participantEmail || undefined,
-          participantIdentity ?? undefined
+          identity
         );
-        
-        if (data.isHost) {
+
+        if (tokenGrantsPublishAccess(data)) {
           if (admissionPollRef.current) {
             clearInterval(admissionPollRef.current);
             admissionPollRef.current = null;
           }
           setToken(data.token);
+          if (data.participantIdentity) {
+            setParticipantIdentity(data.participantIdentity);
+            participantIdentityRef.current = data.participantIdentity;
+          }
+          setIsHost(true);
           setWaitingForAdmission(false);
           setShowRoom(true);
           setReconnectKey((k) => k + 1);
         }
-      } catch (err: any) {
-        // Log error but keep waiting (unless it's a critical error)
-        const errorMsg = err?.message?.toLowerCase() || '';
-        if (errorMsg.includes('network') || errorMsg.includes('failed')) {
-          console.error('Error checking admission status:', err);
-          // Don't stop polling on network errors, but log them
+      } catch (err: unknown) {
+        const errorMsg = String((err as { message?: string })?.message || "").toLowerCase();
+        if (errorMsg.includes("network") || errorMsg.includes("failed")) {
+          console.error("Error checking admission status:", err);
         }
-        // For other errors, silently continue waiting
       }
     };
-    
-    // Start polling (every 5s to reduce load)
-    admissionPollRef.current = setInterval(checkAdmission, 5000);
-    // Also check immediately
+
+    admissionPollRef.current = setInterval(checkAdmission, 1500);
     checkAdmission();
-    
+
     return () => {
       if (admissionPollRef.current) {
         clearInterval(admissionPollRef.current);
@@ -903,6 +1160,12 @@ export default function PublicMeetingRoomClient() {
       const roomName = decodeURIComponent(roomId);
       endMeetingPublic(roomName, participantEmail).catch(() => {});
     }
+    setPreJoinCommitted(false);
+    setToken("");
+    setParticipantIdentity(null);
+    participantIdentityRef.current = null;
+    setShowRoom(false);
+    setWaitingForAdmission(false);
     router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
   }, [router, roomId, isHost, participantEmail]);
 
@@ -914,9 +1177,14 @@ export default function PublicMeetingRoomClient() {
       const data = await livekitApi.getPublicLiveKitToken(
         roomName,
         participantName,
-        participantEmail || undefined
+        participantEmail || undefined,
+        participantIdentityRef.current ?? participantIdentity ?? undefined
       );
       setToken(data.token);
+      if (data.participantIdentity) {
+        setParticipantIdentity(data.participantIdentity);
+        participantIdentityRef.current = data.participantIdentity;
+      }
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
       console.error("Error fetching token during reconnect:", err);
@@ -924,7 +1192,7 @@ export default function PublicMeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail]);
+  }, [roomId, participantName, participantEmail, participantIdentity]);
 
   const handleError = useCallback((error: Error) => {
     const errorMessage = error.message.toLowerCase();
@@ -942,19 +1210,30 @@ export default function PublicMeetingRoomClient() {
     }
   }, []);
 
-  // No name in URL: show pre-join form
-  if (!participantName) {
+  if (!nameFromQuery && !authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
+        <div className="text-center text-gray-300">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent mx-auto mb-3" />
+          <p className="text-sm">Loading…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Waiting room / lobby: always before connecting; name editable, email prefilled and read-only
+  if (!preJoinCommitted) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
         <div className="w-full max-w-md bg-gray-800 rounded-xl p-6 shadow-xl">
-          <h1 className="text-xl font-semibold text-white mb-2">Join Meeting</h1>
+          <h1 className="text-xl font-semibold text-white mb-2">Waiting room</h1>
           <p className="text-gray-400 text-sm mb-6">
-            Enter your name and email (if you're a host). Browser will ask for microphone and camera permission when this page opens. At least one (audio or video) is required to join. In the meeting you can mute/unmute and turn video on/off.
+            Check how you&apos;ll appear in the meeting. You can change your display name. Your email comes from your invite link or account and can&apos;t be changed here. Allow microphone and/or camera — you can mute or turn video off inside the call. At least one is required to join.
           </p>
           <form onSubmit={handlePreJoinSubmit} className="space-y-4">
             <div>
               <label htmlFor="join-name" className="block text-sm font-medium text-gray-300 mb-1">
-                Your name <span className="text-red-400">*</span>
+                Display name <span className="text-red-400">*</span>
               </label>
               <input
                 id="join-name"
@@ -964,24 +1243,31 @@ export default function PublicMeetingRoomClient() {
                 placeholder="e.g. John Doe"
                 className="form-control !py-2 w-full border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-500 focus:ring-2 focus:ring-primary focus:border-primary"
                 required
+                autoComplete="name"
               />
             </div>
             <div>
               <label htmlFor="join-email" className="block text-sm font-medium text-gray-300 mb-1">
-                Your email <span className="text-gray-500 text-xs">(optional, required for hosts)</span>
+                Email <span className="text-gray-500 text-xs font-normal">(from invite / account — read only)</span>
               </label>
               <input
                 id="join-email"
                 type="email"
+                readOnly
+                aria-readonly="true"
                 value={preJoinEmail}
-                onChange={(e) => setPreJoinEmail(e.target.value)}
-                placeholder="e.g. john@example.com"
-                className="form-control !py-2 w-full border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-500 focus:ring-2 focus:ring-primary focus:border-primary"
+                placeholder="—"
+                className="form-control !py-2 w-full border border-gray-600 rounded-lg bg-gray-900/60 text-gray-300 placeholder-gray-600 cursor-not-allowed focus:ring-0 focus:border-gray-600"
               />
               <p className="text-xs text-gray-500 mt-1">
-                If you're a host, enter the email address associated with this meeting to join immediately.
+                Used to recognize hosts. If this is empty, you join as a guest (host may need to admit you).
               </p>
             </div>
+            <LobbyDevicePreview
+              enabled
+              showVideo={preJoinVideo && videoPermissionGranted}
+              showAudio={preJoinAudio && audioPermissionGranted}
+            />
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex items-center justify-end gap-2 sm:justify-between">
                 <i
@@ -1064,7 +1350,7 @@ export default function PublicMeetingRoomClient() {
                 disabled={preJoinRequesting || (!audioPermissionGranted && !videoPermissionGranted)}
                 className="ti-btn ti-btn-primary !py-2 !px-4 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Join
+                Join meeting
               </button>
             </div>
           </form>
@@ -1099,6 +1385,15 @@ export default function PublicMeetingRoomClient() {
               <p className="text-gray-400 text-sm mb-6">
                 Waiting for the host to admit you into the meeting.
               </p>
+              {(participantName || participantEmail) && (
+                <p className="text-gray-500 text-xs text-center -mt-4 mb-4 px-2">
+                  <span className="text-gray-400">Joining as </span>
+                  {participantName || "Guest"}
+                  {participantEmail ? (
+                    <span className="text-gray-500"> · {participantEmail}</span>
+                  ) : null}
+                </p>
+              )}
               <div className="flex flex-col items-center justify-center py-8">
                 <div
                   className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"
@@ -1117,6 +1412,8 @@ export default function PublicMeetingRoomClient() {
                     setWaitingForAdmission(false);
                     setToken("");
                     setParticipantIdentity(null);
+                    participantIdentityRef.current = null;
+                    setPreJoinCommitted(false);
                     router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
                   }}
                   className="ti-btn ti-btn-light !py-2 !px-4 flex-1"

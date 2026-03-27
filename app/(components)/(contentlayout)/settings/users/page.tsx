@@ -6,6 +6,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
+import { createSupportCameraInvite } from "@/shared/lib/api/support-camera-invite";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
@@ -36,6 +37,7 @@ export default function SettingsUsersPage() {
     isLoading: authLoading,
     isAdministrator: authIsAdministrator,
     isPlatformSuperUser,
+    isDesignatedSuperadmin,
   } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -209,6 +211,59 @@ export default function SettingsUsersPage() {
     }
   };
 
+  const handleSupportCameraInvite = async (targetUser: User) => {
+    const nameOrEmail = targetUser.name ?? targetUser.email ?? "this user";
+    const pre = await Swal.fire({
+      title: "Request live camera session?",
+      html: `<p class="text-start text-sm mb-0">This creates a <strong>consent-based</strong> link for <strong>${nameOrEmail}</strong>. They must open the link while signed in and allow camera access in their browser. You cannot turn on their camera remotely.</p>`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonText: "Create invite",
+      cancelButtonText: "Cancel",
+      confirmButtonColor: "#7c3aed",
+      cancelButtonColor: "#6c757d",
+      reverseButtons: true,
+    });
+    if (!pre.isConfirmed) return;
+
+    try {
+      const out = await createSupportCameraInvite(targetUser.id);
+      const hostUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/support/camera/host?t=${encodeURIComponent(out.inviteToken)}`
+          : "";
+      await Swal.fire({
+        title: "Invite ready",
+        html: `<div class="text-start text-sm space-y-3">
+          <p><strong>Send this link</strong> to the user (expires in ~30 min):</p>
+          <textarea readonly class="form-control text-xs font-mono" rows="3">${out.joinUrl}</textarea>
+          <p class="mb-0">Then open the <strong>viewer</strong> in another tab to see their video after they join.</p>
+        </div>`,
+        icon: "success",
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: "Copy user link",
+        denyButtonText: "Open viewer",
+        cancelButtonText: "Close",
+        confirmButtonColor: "#0d9488",
+        denyButtonColor: "#7c3aed",
+      }).then((res) => {
+        if (res.isConfirmed) {
+          void navigator.clipboard.writeText(out.joinUrl).catch(() => {});
+        }
+        if (res.isDenied && hostUrl) {
+          window.open(hostUrl, "_blank", "noopener,noreferrer");
+        }
+      });
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : "Failed to create invite.";
+      await Swal.fire("Could not create invite", msg, "error");
+    }
+  };
+
   const handleImpersonate = async (targetUser: User) => {
     const nameOrEmail = targetUser.name ?? targetUser.email ?? "this user";
     const result = await Swal.fire({
@@ -345,7 +400,7 @@ export default function SettingsUsersPage() {
                 <th className="px-4 py-2.5 text-start font-semibold">Permissions</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Status</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Date Created</th>
-                <th className="px-4 py-2.5 text-center font-semibold w-24">Action</th>
+                <th className="px-4 py-2.5 text-center font-semibold min-w-[11rem] whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -435,6 +490,23 @@ export default function SettingsUsersPage() {
                                   <i className="ri-login-box-line"></i>
                                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
                                     Login as
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+                          {isDesignatedSuperadmin &&
+                            currentUser?.id !== user.id &&
+                            user.status === "active" && (
+                              <div className="hs-tooltip ti-main-tooltip">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSupportCameraInvite(user)}
+                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
+                                  aria-label={`Request live camera session with ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-vidicon-line"></i>
+                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                    Request camera session
                                   </span>
                                 </button>
                               </div>
