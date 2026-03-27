@@ -1,5 +1,7 @@
 "use client"
-import React from 'react'
+import React, { useMemo } from 'react'
+import { useAuth } from '@/shared/contexts/auth-context'
+import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import type { Meeting } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
@@ -36,6 +38,15 @@ export default function CreateInterviewModal({
   emailInvites,
   setEmailInvites,
 }: CreateInterviewModalProps) {
+  const { user } = useAuth()
+  const personalMeetingUrl = useMemo(() => {
+    const base = createdMeeting?.publicMeetingUrl || ''
+    if (!base) return ''
+    const joinName = (user?.name?.trim() || user?.email?.split('@')[0] || '').trim()
+    const joinEmail = user?.email?.trim() || ''
+    return appendJoinIdentityToUrl(base, joinName, joinEmail)
+  }, [createdMeeting?.publicMeetingUrl, user?.name, user?.email])
+
   return (
     <div id="create-interview-modal" className="hs-overlay hidden ti-modal size-lg !z-[105]" tabIndex={-1} aria-labelledby="create-interview-modal-label" aria-hidden="true">
       <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
@@ -71,14 +82,14 @@ export default function CreateInterviewModal({
                     <input
                       type="text"
                       readOnly
-                      value={createdMeeting.publicMeetingUrl || ''}
+                      value={personalMeetingUrl || createdMeeting.publicMeetingUrl || ''}
                       className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 dark:bg-black/20"
                     />
                     <button
                       type="button"
                       className="ti-btn ti-btn-primary !py-2 !px-3 !text-sm"
                       onClick={() => {
-                        const url = createdMeeting.publicMeetingUrl
+                        const url = personalMeetingUrl || createdMeeting.publicMeetingUrl
                         if (url) {
                           navigator.clipboard.writeText(url)
                         }
@@ -115,7 +126,7 @@ export default function CreateInterviewModal({
                   <i className="ri-add-line me-1.5"></i>Create Another Meeting
                 </button>
                 <a
-                  href={createdMeeting.publicMeetingUrl || '#'}
+                  href={personalMeetingUrl || createdMeeting.publicMeetingUrl || '#'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium"
@@ -125,10 +136,16 @@ export default function CreateInterviewModal({
               </div>
             </div>
           ) : (
-            <form className="ti-modal-body !p-0" onSubmit={onSubmit}>
+            <form className="ti-modal-body !p-0" onSubmit={onSubmit} noValidate>
               <div className="px-6 py-5 space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
                 {formError && (
-                  <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{formError}</div>
+                  <div
+                    id="schedule-interview-form-error"
+                    role="alert"
+                    className="p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm"
+                  >
+                    {formError}
+                  </div>
                 )}
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Details</p>
                 <div>
@@ -388,7 +405,17 @@ export default function CreateInterviewModal({
                   />
                 </div>
               </div>
-              <div className="ti-modal-footer flex flex-wrap gap-2 justify-end px-6 py-4 bg-gray-50 dark:bg-black/20 border-t border-defaultborder dark:border-defaultborder/10">
+              <div className="ti-modal-footer flex flex-col gap-3 px-6 py-4 bg-gray-50 dark:bg-black/20 border-t border-defaultborder dark:border-defaultborder/10">
+                {formError && (
+                  <div
+                    id="schedule-interview-footer-error"
+                    role="alert"
+                    className="w-full p-3 rounded-lg bg-danger/10 border border-danger/20 text-danger text-sm"
+                  >
+                    {formError}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2 justify-end w-full">
                 <button
                   type="button"
                   className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium"
@@ -413,6 +440,7 @@ export default function CreateInterviewModal({
                     </>
                   )}
                 </button>
+                </div>
               </div>
             </form>
           )}

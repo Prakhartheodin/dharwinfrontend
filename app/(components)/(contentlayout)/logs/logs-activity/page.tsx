@@ -1,16 +1,19 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import type { ActivityLog } from "@/shared/lib/types";
 import * as activityLogsApi from "@/shared/lib/api/activity-logs";
-import {
-  ACTIVITY_LOG_ACTIONS,
-  ACTIVITY_LOG_ENTITY_TYPES,
-} from "@/shared/lib/activity-log-catalog";
 import { AxiosError } from "axios";
+import {
+  getEntityTypeDisplay,
+  getImpersonationEntitySummary,
+  getRoleActivityEntitySummary,
+  getUserActivityEntitySummary,
+} from "@/shared/lib/activity-log-catalog";
 
 function formatDateTime(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -48,51 +51,6 @@ function toIsoEndOfDay(date: string | null): string | undefined {
   }
 }
 
-function formatLocation(geo: ActivityLog["geo"]): string {
-  if (!geo) return "—";
-  const parts = [geo.city, geo.region, geo.country].filter(Boolean);
-  return parts.length ? parts.join(", ") : "—";
-}
-
-function exportLogsCsv(rows: ActivityLog[]) {
-  const headers = [
-    "id",
-    "createdAt",
-    "actorName",
-    "actorId",
-    "action",
-    "entityType",
-    "entityId",
-    "location",
-    "ip",
-    "userAgent",
-  ];
-  const lines = [headers.join(",")];
-  for (const log of rows) {
-    const loc = formatLocation(log.geo);
-    const cells = [
-      log.id,
-      log.createdAt ?? "",
-      (log.actor?.name ?? "").replaceAll('"', '""'),
-      log.actor?.id ?? "",
-      log.action,
-      log.entityType ?? "",
-      log.entityId ?? "",
-      loc.replaceAll('"', '""'),
-      log.ip ?? "",
-      (log.userAgent ?? "").replaceAll('"', '""'),
-    ];
-    lines.push(cells.map((c) => `"${String(c)}"`).join(","));
-  }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `activity-logs-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 export default function LogsActivityPage() {
   const {
     user: currentUser,
@@ -100,15 +58,23 @@ export default function LogsActivityPage() {
     permissionsLoaded,
     isPlatformSuperUser,
     isAdministrator,
+    isDesignatedSuperadmin,
   } = useAuth();
   const logsActivityFeature = useFeaturePermissions("logs.activity");
 
   const canReadActivityLogs = useMemo(() => {
+    if (isDesignatedSuperadmin) return true;
     if (isPlatformSuperUser) return true;
     if (isAdministrator) return true;
     if (permissions.some((p) => p === "activityLogs.read" || p === "activity.read")) return true;
     return logsActivityFeature.canView;
-  }, [isPlatformSuperUser, isAdministrator, permissions, logsActivityFeature.canView]);
+  }, [
+    isDesignatedSuperadmin,
+    isPlatformSuperUser,
+    isAdministrator,
+    permissions,
+    logsActivityFeature.canView,
+  ]);
 
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [page, setPage] = useState(1);
@@ -119,7 +85,6 @@ export default function LogsActivityPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
   const [forbidden, setForbidden] = useState(false);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const [actorId, setActorId] = useState("");
   const [action, setAction] = useState("");
@@ -127,7 +92,6 @@ export default function LogsActivityPage() {
   const [entityId, setEntityId] = useState("");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
-  const [includeAttendance, setIncludeAttendance] = useState(false);
 
   const hasActiveFilters =
     actorId.trim() ||
@@ -135,10 +99,9 @@ export default function LogsActivityPage() {
     entityType.trim() ||
     entityId.trim() ||
     startDate ||
-    endDate ||
-    includeAttendance;
+    endDate;
 
-  const fetchLogs = useCallback(async () => {
+  const fetchLogs = async () => {
     setLoading(true);
     setError("");
     setForbidden(false);
@@ -150,7 +113,6 @@ export default function LogsActivityPage() {
       entityId: entityId.trim() || undefined,
       startDate: toIsoStartOfDay(startDate) ?? undefined,
       endDate: toIsoEndOfDay(endDate) ?? undefined,
-      includeAttendance: includeAttendance || undefined,
       sortBy: "createdAt:desc",
       page,
       limit,
@@ -165,7 +127,7 @@ export default function LogsActivityPage() {
       if (err instanceof AxiosError && err.response?.status === 403) {
         setForbidden(true);
         setError(
-          "You do not have permission to view activity logs. You need activity log read access (e.g. logs.activity:view or activity.read)."
+          "You do not have permission to view activity logs. Ask an admin to grant logs.activity:view (or equivalent)."
         );
         setLogs([]);
       } else {
@@ -179,14 +141,26 @@ export default function LogsActivityPage() {
     } finally {
       setLoading(false);
     }
-  }, [actorId, action, entityType, entityId, startDate, endDate, includeAttendance, page, limit]);
+  };
 
   useEffect(() => {
     if (!permissionsLoaded || !canReadActivityLogs) {
       return;
     }
     fetchLogs();
-  }, [permissionsLoaded, canReadActivityLogs, fetchLogs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    permissionsLoaded,
+    canReadActivityLogs,
+    page,
+    limit,
+    actorId,
+    action,
+    entityType,
+    entityId,
+    startDate,
+    endDate,
+  ]);
 
   const handleClearFilters = () => {
     setActorId("");
@@ -195,7 +169,6 @@ export default function LogsActivityPage() {
     setEntityId("");
     setStartDate("");
     setEndDate("");
-    setIncludeAttendance(false);
     setPage(1);
   };
 
@@ -215,6 +188,14 @@ export default function LogsActivityPage() {
           </span>
         </h5>
         <div className="flex flex-wrap gap-2 items-center">
+          {isDesignatedSuperadmin && (
+            <Link
+              href="/logs/logs-activity/platform"
+              className="ti-btn ti-btn-soft-primary !py-1 !px-3 !text-[0.75rem]"
+            >
+              Platform audit console
+            </Link>
+          )}
           <select
             className="form-control !w-auto !py-1 !px-4 !text-[0.75rem]"
             value={limit}
@@ -229,16 +210,6 @@ export default function LogsActivityPage() {
               </option>
             ))}
           </select>
-          {currentUser && canReadActivityLogs && !forbidden && (
-            <button
-              type="button"
-              className="ti-btn ti-btn-soft-secondary !py-1 !px-3 !text-[0.75rem]"
-              disabled={loading || logs.length === 0}
-              onClick={() => exportLogsCsv(logs)}
-            >
-              Export CSV (this page)
-            </button>
-          )}
           {currentUser && (
             <span className="text-[0.75rem] text-defaulttextcolor/70">
               Viewing as: <span className="font-medium">{currentUser.name ?? currentUser.email}</span>
@@ -260,9 +231,8 @@ export default function LogsActivityPage() {
           </div>
         ) : !canReadActivityLogs ? (
           <div className="p-4 mb-4 bg-warning/10 border border-warning/30 text-warning rounded-md text-sm">
-            You do not have permission to view activity logs. Ask an administrator to grant{" "}
-            <span className="font-mono text-[0.8rem]">logs.activity:view</span> (or equivalent activity read
-            access).
+            You need the <span className="font-semibold">logs.activity:view</span> permission (or Administrator /
+            platform access) to view activity logs.
           </div>
         ) : (
           !forbidden && (
@@ -288,47 +258,37 @@ export default function LogsActivityPage() {
                     }}
                   />
                 </div>
-                <div className="min-w-[12rem]">
+                <div className="min-w-[10rem]">
                   <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
-                    Action
+                    Action (e.g. role.create)
                   </label>
-                  <select
+                  <input
                     id="logs-action"
+                    type="text"
                     className="form-control !py-1.5 !text-[0.8125rem]"
+                    placeholder="Action..."
                     value={action}
                     onChange={(e) => {
                       setAction(e.target.value);
                       setPage(1);
                     }}
-                  >
-                    <option value="">Any</option>
-                    {ACTIVITY_LOG_ACTIONS.map((a) => (
-                      <option key={a} value={a}>
-                        {a}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
-                <div className="min-w-[11rem]">
+                <div className="min-w-[10rem]">
                   <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
                     Entity type
                   </label>
-                  <select
+                  <input
                     id="logs-entity-type"
+                    type="text"
                     className="form-control !py-1.5 !text-[0.8125rem]"
+                    placeholder="Role, User..."
                     value={entityType}
                     onChange={(e) => {
                       setEntityType(e.target.value);
                       setPage(1);
                     }}
-                  >
-                    <option value="">Any</option>
-                    {ACTIVITY_LOG_ENTITY_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-entity-id" className="form-label !text-[0.75rem] mb-1">
@@ -348,7 +308,7 @@ export default function LogsActivityPage() {
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
-                    Start date (UTC)
+                    Start date
                   </label>
                   <input
                     id="logs-start-date"
@@ -363,7 +323,7 @@ export default function LogsActivityPage() {
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
-                    End date (UTC)
+                    End date
                   </label>
                   <input
                     id="logs-end-date"
@@ -375,21 +335,6 @@ export default function LogsActivityPage() {
                       setPage(1);
                     }}
                   />
-                </div>
-                <div className="flex items-center gap-2 min-w-[12rem]">
-                  <input
-                    id="logs-include-attendance"
-                    type="checkbox"
-                    className="form-checkbox"
-                    checked={includeAttendance}
-                    onChange={(e) => {
-                      setIncludeAttendance(e.target.checked);
-                      setPage(1);
-                    }}
-                  />
-                  <label htmlFor="logs-include-attendance" className="form-label !mb-0 !text-[0.75rem]">
-                    Include attendance events
-                  </label>
                 </div>
                 {hasActiveFilters && (
                   <button
@@ -406,87 +351,86 @@ export default function LogsActivityPage() {
                 <table className="table min-w-full table-bordered border-defaultborder">
                   <thead>
                     <tr className="bg-gray-50 dark:bg-gray-800/50">
-                      <th className="px-2 py-2.5 w-10" aria-label="Expand" />
                       <th className="px-4 py-2.5 text-start font-semibold">Timestamp</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Actor</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Action</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Entity</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">Location</th>
                       <th className="px-4 py-2.5 text-start font-semibold">IP</th>
+                      <th className="px-4 py-2.5 text-start font-semibold">User Agent</th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                        <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
                           Loading activity logs...
                         </td>
                       </tr>
                     ) : logs.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                          {hasActiveFilters
-                            ? "No logs match your filters."
-                            : "No activity logs found yet."}
+                        <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                          {hasActiveFilters ? "No logs match your filters." : "No activity logs found yet."}
                         </td>
                       </tr>
                     ) : (
                       logs.map((log) => {
-                        const open = expandedId === log.id;
+                        const entityDisp = getEntityTypeDisplay(log.entityType);
+                        const entityRich =
+                          getRoleActivityEntitySummary(log) ??
+                          getUserActivityEntitySummary(log) ??
+                          getImpersonationEntitySummary(log);
                         return (
-                          <Fragment key={log.id}>
-                            <tr className="border-b border-defaultborder">
-                              <td className="px-2 py-2 align-middle text-center">
-                                <button
-                                  type="button"
-                                  className="ti-btn ti-btn-sm ti-btn-icon ti-btn-soft-primary !rounded-full"
-                                  aria-expanded={open}
-                                  aria-label={open ? "Collapse details" : "Expand details"}
-                                  onClick={() => setExpandedId(open ? null : log.id)}
-                                >
-                                  <i className={`ri-arrow-${open ? "up" : "down"}-s-line`} />
-                                </button>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                                {formatDateTime(log.createdAt)}
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                                <div className="flex flex-col">
-                                  <span className="font-medium">{log.actor?.name || "—"}</span>
-                                  <span className="text-[0.7rem] text-defaulttextcolor/70">
-                                    {log.actor?.id ?? "—"}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                                <span className="font-mono text-[0.8rem]">{log.action}</span>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                                <div className="flex flex-col">
-                                  <span>{log.entityType ?? "—"}</span>
-                                  <span className="text-[0.7rem] text-defaulttextcolor/70 break-all">
-                                    {log.entityId ?? "—"}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                                {formatLocation(log.geo)}
-                              </td>
-                              <td className="px-4 py-2.5 align-middle text-[0.8125rem] break-all max-w-[8rem]">
-                                {log.ip ?? "—"}
-                              </td>
-                            </tr>
-                            {open && (
-                              <tr className="bg-gray-50/80 dark:bg-gray-900/40 border-b border-defaultborder">
-                                <td colSpan={7} className="px-4 py-3 text-[0.8125rem]">
-                                  <span className="font-semibold text-defaulttextcolor/80">User agent</span>
-                                  <p className="mt-1 text-[0.75rem] text-defaulttextcolor/80 break-all">
-                                    {log.userAgent ?? "—"}
-                                  </p>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
+                        <tr key={log.id} className="border-b border-defaultborder">
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                            {formatDateTime(log.createdAt)}
+                          </td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{log.actor?.name || "—"}</span>
+                              <span className="text-[0.7rem] text-defaulttextcolor/70">{log.actor?.id ?? "—"}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                            <span className="font-mono text-[0.8rem]">{log.action}</span>
+                          </td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                            <div className="flex flex-col gap-0.5">
+                              {entityRich ? (
+                                <>
+                                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+                                    <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                      {entityDisp.title}
+                                    </span>
+                                    <span className="font-semibold text-defaulttextcolor text-[0.8125rem]">
+                                      {entityRich.headline}
+                                    </span>
+                                  </div>
+                                  {entityRich.detailLines.map((line, i) => (
+                                    <span key={i} className="text-[0.7rem] text-defaulttextcolor/75">
+                                      {line}
+                                    </span>
+                                  ))}
+                                </>
+                              ) : (
+                                <span>{log.entityType ?? "—"}</span>
+                              )}
+                              <span
+                                className={
+                                  entityRich
+                                    ? "text-[0.65rem] text-defaulttextcolor/45 font-mono break-all"
+                                    : "text-[0.7rem] text-defaulttextcolor/70 break-all"
+                                }
+                                title={entityRich ? "Database id (reference)" : undefined}
+                              >
+                                {log.entityId ?? "—"}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">{log.ip ?? "—"}</td>
+                          <td className="px-4 py-2.5 align-middle text-[0.75rem] text-defaulttextcolor/80 break-all">
+                            {log.userAgent ?? "—"}
+                          </td>
+                        </tr>
                         );
                       })
                     )}

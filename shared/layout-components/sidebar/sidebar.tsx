@@ -18,24 +18,44 @@ import {
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
-	const { user, permissions: userPermissions, permissionsLoaded, isAdministrator } = useAuth();
+	const {
+		user,
+		permissions: userPermissions,
+		permissionsLoaded,
+		isAdministrator,
+		isPlatformSuperUser,
+		isDesignatedSuperadmin,
+	} = useAuth();
 
 	const path = usePathname()
 
-	// Paths that should only be visible to Administrator role users in the sidebar.
-	const ADMIN_ONLY_PATHS = useMemo(
-		() => ["/logs/logs-activity", "/ats/external-jobs"],
-		[]
-	);
-
 	const isPathAllowed = (menuPath?: string) => {
+		// Signed-out guests on public layout: only job seeker links (avoid a full app menu).
+		if (!user && menuPath) {
+			if (menuPath === "/ats/browse-jobs" || menuPath.startsWith("/ats/browse-jobs/")) return true;
+			if (menuPath === "/ats/my-applications") return true;
+			return false;
+		}
+
 		// Until permissions are loaded, show all items so users with permission see the sidebar.
 		// PermissionGuard will block access to pages they can't visit.
 		if (!permissionsLoaded) return true;
 
-		// Hide admin-only paths for non-administrator users.
-		if (menuPath && ADMIN_ONLY_PATHS.some((p) => menuPath === p || menuPath.startsWith(p + "/"))) {
-			if (!isAdministrator) return false;
+		if (
+			menuPath &&
+			(menuPath === "/logs/logs-activity/platform" || menuPath.startsWith("/logs/logs-activity/platform/"))
+		) {
+			if (!isDesignatedSuperadmin) return false;
+			return true;
+		}
+		if (menuPath === "/logs/logs-activity") {
+			if (!permissionsLoaded) return true;
+			return (
+				isDesignatedSuperadmin ||
+				isAdministrator ||
+				isPlatformSuperUser ||
+				hasPermissionForPath(userPermissions, "logs.activity:")
+			);
 		}
 
 		if (!menuPath) return true;
@@ -72,7 +92,14 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		return result;
-	}, [permissionsLoaded, userPermissions, isAdministrator]);
+	}, [
+		permissionsLoaded,
+		userPermissions,
+		isAdministrator,
+		isPlatformSuperUser,
+		isDesignatedSuperadmin,
+		user,
+	]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {

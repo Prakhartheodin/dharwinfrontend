@@ -38,6 +38,8 @@ export interface MyPermissionsResponse {
   roleNames: string[];
   isAdministrator: boolean;
   isPlatformSuperUser?: boolean;
+  /** Email allowlist on server (DESIGNATED_SUPERADMIN_EMAILS); Activity Logs + support camera. */
+  isDesignatedSuperadmin?: boolean;
 }
 
 /**

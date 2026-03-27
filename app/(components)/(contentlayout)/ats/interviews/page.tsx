@@ -2,6 +2,8 @@
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@/shared/contexts/auth-context'
+import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, moveMeetingToPreboarding, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
@@ -58,6 +60,17 @@ function formatMeetingDate(iso: string): string {
   }
 }
 
+/** Build ISO string for API from date + time inputs (handles HH:mm and HH:mm:ss). */
+function buildScheduledAtFromForm(dateStr: string, timeStr: string): string {
+  const t = timeStr.trim()
+  const parts = t.split(':').filter((p) => p !== '')
+  const h = String(parts[0] ?? '0').padStart(2, '0').slice(-2)
+  const m = String(parts[1] ?? '00').padStart(2, '0').slice(0, 2)
+  const secRaw = String(parts[2] ?? '00').replace(/\D/g, '')
+  const s = secRaw.padStart(2, '0').slice(0, 2)
+  return `${dateStr}T${h}:${m}:${s}.000Z`
+}
+
 function meetingToTableRow(m: Meeting): InterviewTableRow {
   const date = formatMeetingDate(m.scheduledAt)
   const time = formatMeetingTime(m.scheduledAt)
@@ -96,6 +109,15 @@ interface FilterState {
 }
 
 const Interviews = () => {
+  const { user: authUser } = useAuth()
+
+  const defaultScheduleHosts = useMemo(() => {
+    const email = authUser?.email?.trim()
+    if (!email) return [{ nameOrRole: '', email: '' }]
+    const nameOrRole = (authUser?.name ?? '').trim() || email.split('@')[0] || ''
+    return [{ nameOrRole, email }]
+  }, [authUser?.email, authUser?.name])
+
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>('')
   
@@ -181,8 +203,13 @@ const Interviews = () => {
   }, [])
 
   const copyInterviewLink = useCallback(async (row: InterviewTableRow) => {
-    const url = row.publicMeetingUrl || (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(row.meetingId)}` : '')
-    if (!url) return
+    const baseUrl =
+      row.publicMeetingUrl ||
+      (typeof window !== 'undefined' ? `${window.location.origin}/join/room?room=${encodeURIComponent(row.meetingId)}` : '')
+    if (!baseUrl) return
+    const joinName = (authUser?.name?.trim() || authUser?.email?.split('@')[0] || '').trim()
+    const joinEmail = authUser?.email?.trim() || ''
+    const url = appendJoinIdentityToUrl(baseUrl, joinName, joinEmail)
     try {
       await navigator.clipboard.writeText(url)
       setCopiedLinkId(row.id)
@@ -198,7 +225,7 @@ const Interviews = () => {
       setCopiedLinkId(row.id)
       setTimeout(() => setCopiedLinkId(null), 2000)
     }
-  }, [])
+  }, [authUser])
 
   const openEditModal = useCallback((id: string) => {
     setEditMeetingId(id)
@@ -362,23 +389,24 @@ const Interviews = () => {
   useEffect(() => {
     let cancelled = false
     setDropdownsLoading(true)
-    Promise.all([
+    Promise.allSettled([
       listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
       listCandidates({ limit: 100 }).then((r) => r.results),
       listRecruiters({ limit: 100 }).then((r) => r.results),
     ])
-      .then(([jobList, candidateList, recruiterList]) => {
-        if (!cancelled) {
-          setJobs(jobList || [])
-          setCandidates(candidateList || [])
-          setRecruiters(recruiterList || [])
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setJobs([])
-          setCandidates([])
-          setRecruiters([])
+      .then((results) => {
+        if (cancelled) return
+        const jobList = results[0].status === 'fulfilled' ? results[0].value || [] : []
+        const candidateList = results[1].status === 'fulfilled' ? results[1].value || [] : []
+        const recruiterList = results[2].status === 'fulfilled' ? results[2].value || [] : []
+        setJobs(jobList)
+        setCandidates(candidateList)
+        setRecruiters(recruiterList)
+        const failed = results
+          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Candidates', 'Recruiters'][i] : null))
+          .filter(Boolean) as string[]
+        if (failed.length > 0) {
+          console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
         }
       })
       .finally(() => {
@@ -386,6 +414,23 @@ const Interviews = () => {
       })
     return () => { cancelled = true }
   }, [])
+
+  // Default interview host = signed-in (or impersonated) user so "Schedule" isn't blocked by empty host row.
+  useEffect(() => {
+    setHosts((prev) => {
+      if (prev.some((h) => h.email.trim())) return prev
+      return defaultScheduleHosts.map((h) => ({ ...h }))
+    })
+  }, [defaultScheduleHosts])
+
+  useEffect(() => {
+    if (!formError) return
+    requestAnimationFrame(() => {
+      const footer = document.getElementById('schedule-interview-footer-error')
+      const top = document.getElementById('schedule-interview-form-error')
+      ;(footer ?? top)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }, [formError])
 
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
@@ -401,9 +446,9 @@ const Interviews = () => {
   const resetCreateMeetingForm = useCallback(() => {
     setCreatedMeeting(null)
     setFormError(null)
-    setHosts([{ nameOrRole: '', email: '' }])
+    setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([''])
-  }, [])
+  }, [defaultScheduleHosts])
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
@@ -428,6 +473,10 @@ const Interviews = () => {
     const description = getVal('schedule-description')
     const date = getVal('schedule-date')
     const time = getVal('schedule-time')
+    if (!date || !time) {
+      setFormError('Please select both date and time for the interview.')
+      return
+    }
     const durationMinutes = parseInt(getVal('schedule-duration') || '60', 10) || 60
     const maxParticipants = parseInt(getVal('schedule-max-participants') || '10', 10) || 10
     const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? true
@@ -443,7 +492,7 @@ const Interviews = () => {
     const recruiterOption = recruiterSelect?.selectedOptions?.[0]
     const recruiterText = recruiterOption?.text?.trim() ?? ''
     const recruiterMatch = recruiterText.match(/^(.+?)\s*-\s*(.+)$/)
-    const scheduledAt = date && time ? `${date}T${time}:00.000Z` : new Date().toISOString()
+    const scheduledAt = buildScheduledAtFromForm(date, time)
     const payload: CreateMeetingPayload = {
       title,
       description: description || undefined,

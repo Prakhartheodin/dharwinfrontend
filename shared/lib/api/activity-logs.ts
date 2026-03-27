@@ -10,12 +10,21 @@ export interface ListActivityLogsParams {
   entityId?: string;
   startDate?: string;
   endDate?: string;
+  /** Exact or prefix match on stored client IP (IPv4 / IPv6-safe string). */
+  ip?: string;
+  /** Case-insensitive substring on action, entityType, entityId (and IP when q looks IP-like). */
+  q?: string;
   /** When true, include noisy attendance.* actions (default on API excludes them). */
   includeAttendance?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
 }
+
+export type ExportActivityLogsParams = Omit<
+  ListActivityLogsParams,
+  "sortBy" | "limit" | "page"
+>;
 
 /**
  * List activity logs (GET /v1/activity-logs).
@@ -30,3 +39,13 @@ export async function listActivityLogs(
   return data;
 }
 
+/**
+ * Download CSV for all rows matching filters (GET /v1/activity-logs/export), up to server cap.
+ */
+export async function exportActivityLogsCsv(params?: ExportActivityLogsParams): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>("/activity-logs/export", {
+    params,
+    responseType: "blob",
+  });
+  return data;
+}

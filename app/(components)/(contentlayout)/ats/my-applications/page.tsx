@@ -4,6 +4,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import React, { Fragment, useState, useEffect } from "react";
 import { getMyApplications, withdrawMyApplication, type JobApplication, type JobApplicationStatus } from "@/shared/lib/api/jobApplications";
+import { useAuth } from "@/shared/contexts/auth-context";
 import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
 import { ROUTES } from "@/shared/lib/constants";
 
@@ -19,6 +20,7 @@ const STATUS_STYLE: Record<JobApplicationStatus, { bg: string; text: string; bor
 };
 
 export default function MyApplicationsPage() {
+  const { user } = useAuth();
   const { isCandidate, isLoading: candidateLoading } = useIsCandidate();
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +66,26 @@ export default function MyApplicationsPage() {
   const totalItems = applications.length;
   const totalPages = Math.ceil(totalItems / pageSize);
   const pagedData = applications.slice(page * pageSize, (page + 1) * pageSize);
+
+  if (!candidateLoading && !user) {
+    return (
+      <>
+        <Seo title="My Applications" />
+        <div className="container-fluid">
+          <div className="box custom-box">
+            <div className="box-body text-center py-8">
+              <p className="text-defaulttextcolor dark:text-white/70">
+                Sign in to view and manage your job applications.
+              </p>
+              <Link href={ROUTES.signIn} className="ti-btn ti-btn-primary mt-3">
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   if (!candidateLoading && !isCandidate) {
     return (

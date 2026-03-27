@@ -2,10 +2,12 @@
 
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
+import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
+import { isDesignatedSuperadminPath } from "@/shared/lib/designated-superadmin-paths";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, type ReactNode } from "react";
 
@@ -34,17 +36,45 @@ export function PermissionGuard({
 }: PermissionGuardProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const { permissions: userPermissions, permissionsLoaded } = useAuth();
+  const {
+    permissions: userPermissions,
+    permissionsLoaded,
+    isAdministrator,
+    isPlatformSuperUser,
+    isDesignatedSuperadmin,
+  } = useAuth();
 
   const targetRedirect =
     redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
 
   const allowed = useMemo(() => {
     if (!permissionsLoaded) return null;
+    if (isPublicLayoutPath(pathname ?? "")) return true;
+    const n = (pathname ?? "").replace(/\/$/, "") || "/";
+    // Standard activity logs: admins, platform super, role permission, or designated operator email.
+    if (n === "/logs/logs-activity") {
+      return (
+        isDesignatedSuperadmin ||
+        isAdministrator ||
+        isPlatformSuperUser ||
+        hasPermissionForPath(userPermissions, "logs.activity:")
+      );
+    }
+    if (isDesignatedSuperadminPath(pathname ?? "")) {
+      return isDesignatedSuperadmin;
+    }
+    if (isAdministrator || isPlatformSuperUser) return true;
     const required = getRequiredPermissionForPath(pathname ?? "");
     if (required == null) return true;
     return hasPermissionForPath(userPermissions, required);
-  }, [permissionsLoaded, pathname, userPermissions]);
+  }, [
+    permissionsLoaded,
+    pathname,
+    userPermissions,
+    isAdministrator,
+    isPlatformSuperUser,
+    isDesignatedSuperadmin,
+  ]);
 
   // Redirect when not allowed
   useEffect(() => {

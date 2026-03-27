@@ -35,6 +35,9 @@ export const PERMISSION_SECTIONS: {
       { id: "pre-boarding", label: "Pre-boarding" },
       { id: "onboarding", label: "Onboarding" },
       { id: "analytics", label: "Analytics" },
+      { id: "external-jobs", label: "External jobs" },
+      { id: "candidates.joiningDate", label: "Candidate joining date (field)" },
+      { id: "candidates.resignDate", label: "Candidate resign date (field)" },
     ],
   },
   {
@@ -61,6 +64,7 @@ export const PERMISSION_SECTIONS: {
       { id: "attendance", label: "Attendance Tracking" },
       { id: "mentors", label: "Mentors" },
       { id: "students", label: "Students" },
+      { id: "positions", label: "Positions" },
       { id: "evaluation", label: "Evaluation" },
       { id: "analytics", label: "Analytics" },
     ],
@@ -104,13 +108,64 @@ export function getInitialRolePermissions(): RolePermissionsState {
   return state;
 }
 
+/** Split "ats.candidates.joiningDate:view,edit" → module ats, feature candidates.joiningDate */
+function parsePermissionModuleFeature(permission: string): { module: string; feature: string } | null {
+  const trimmed = permission.trim();
+  const colonIdx = trimmed.indexOf(":");
+  if (colonIdx < 0) return null;
+  const moduleFeature = trimmed.slice(0, colonIdx).trim();
+  const dotIdx = moduleFeature.indexOf(".");
+  if (dotIdx < 0) return null;
+  const module = moduleFeature.slice(0, dotIdx);
+  const feature = moduleFeature.slice(dotIdx + 1);
+  if (!module || !feature) return null;
+  return { module, feature };
+}
+
+/** True if this permission string maps to a checkbox row in PERMISSION_SECTIONS. */
+export function isMappedPermissionString(p: string): boolean {
+  const parsed = parsePermissionModuleFeature(p);
+  if (!parsed) return false;
+  const section = PERMISSION_SECTIONS.find((s) => s.id === parsed.module);
+  return !!section?.features.some((f) => f.id === parsed.feature);
+}
+
+/** Permissions not represented in the matrix (kept on save unless advanced editor removes them). */
+export function getUnmappedPermissionStrings(permissions: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of permissions) {
+    if (typeof p !== "string") continue;
+    const t = p.trim();
+    if (!t || seen.has(t)) continue;
+    if (isMappedPermissionString(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/** Checkbox output ∪ unmapped originals (deduped). */
+export function mergePermissionsForRoleSave(mappedFromCheckboxes: string[], originalPermissions: string[]): string[] {
+  const unmapped = getUnmappedPermissionStrings(originalPermissions);
+  return Array.from(new Set([...mappedFromCheckboxes, ...unmapped]));
+}
+
 /** Convert API permission strings to UI state. */
 export function permissionsFromApi(permissions: string[]): RolePermissionsState {
   const state = getInitialRolePermissions();
   permissions.forEach((p) => {
-    const [moduleFeature, actionsStr] = p.split(":");
+    const trimmed = typeof p === "string" ? p.trim() : "";
+    if (!trimmed) return;
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx < 0) return;
+    const actionsStr = trimmed.slice(colonIdx + 1);
     if (!actionsStr) return;
-    const [module, feature] = moduleFeature.split(".");
+    const moduleFeature = trimmed.slice(0, colonIdx);
+    const dotIdx = moduleFeature.indexOf(".");
+    if (dotIdx < 0) return;
+    const module = moduleFeature.slice(0, dotIdx);
+    const feature = moduleFeature.slice(dotIdx + 1);
     if (!module || !feature || !state[module]?.[feature]) return;
     const actions = actionsStr.split(",").map((a) => a.trim().toLowerCase());
     state[module][feature] = {
@@ -123,7 +178,7 @@ export function permissionsFromApi(permissions: string[]): RolePermissionsState 
   return state;
 }
 
-/** Convert UI state to API permission strings (module.feature:view,create,edit,delete). */
+/** Convert UI state to API permission strings (module.feature:view,create,edit,delete). Feature id may contain dots (e.g. candidates.joiningDate). */
 export function permissionsToApi(state: RolePermissionsState): string[] {
   const out: string[] = [];
   PERMISSION_SECTIONS.forEach((section) => {

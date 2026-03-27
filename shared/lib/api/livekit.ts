@@ -8,6 +8,8 @@ export interface LiveKitTokenResponse {
   participantName: string;
   participantIdentity: string;
   isHost?: boolean;
+  /** Same as isHost for public join — true when user may publish (host or admitted from waiting room) */
+  canPublish?: boolean;
 }
 
 export interface StartRecordingResponse {

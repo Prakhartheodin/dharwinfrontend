@@ -2,7 +2,8 @@
 
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
-import { useRouter } from "next/navigation";
+import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
 
 interface ProtectedRouteProps {
@@ -13,13 +14,15 @@ interface ProtectedRouteProps {
 export function ProtectedRoute({ children, redirectTo = ROUTES.signIn }: ProtectedRouteProps) {
   const { user, isChecked } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const isPublic = isPublicLayoutPath(pathname ?? "");
 
   useEffect(() => {
     if (!isChecked) return;
-    if (user == null) {
+    if (user == null && !isPublicLayoutPath(pathname ?? "")) {
       router.replace(redirectTo);
     }
-  }, [isChecked, user, router, redirectTo]);
+  }, [isChecked, user, router, redirectTo, pathname]);
 
   if (!isChecked) {
     return (
@@ -29,7 +32,7 @@ export function ProtectedRoute({ children, redirectTo = ROUTES.signIn }: Protect
     );
   }
 
-  if (user == null) {
+  if (user == null && !isPublic) {
     return null;
   }
 

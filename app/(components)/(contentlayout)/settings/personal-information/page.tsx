@@ -20,6 +20,7 @@ import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import type { CandidateWithProfile, UpdateMeWithCandidatePayload } from "@/shared/lib/api/auth";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
+import { formatUserAgentSummary } from "@/shared/lib/parse-user-agent";
 
 type NotificationPrefKey = keyof NotificationPreferences;
 
@@ -104,15 +105,6 @@ function normalizeRoleIdList(raw: unknown): string[] {
       return "";
     })
     .filter(Boolean);
-}
-
-function parseUserAgent(ua: string | null | undefined): string {
-  if (!ua) return "Unknown device";
-  if (ua.includes("Chrome") && !ua.includes("Edg")) return "Chrome";
-  if (ua.includes("Firefox")) return "Firefox";
-  if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari";
-  if (ua.includes("Edg")) return "Edge";
-  return ua.slice(0, 40) + (ua.length > 40 ? "…" : "");
 }
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -1971,7 +1963,7 @@ export default function PersonalInformationPage() {
                           key={session.id}
                           className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 border-b border-defaultborder/50 last:border-0 last:pb-0 first:pt-0"
                         >
-                          <span className="font-medium text-defaulttextcolor">{parseUserAgent(session.userAgent)}</span>
+                          <span className="font-medium text-defaulttextcolor">{formatUserAgentSummary(session.userAgent)}</span>
                           <span className="text-[0.8125rem] text-defaulttextcolor/70">
                             {session.ip ?? "—"} · {formatDate(session.createdAt)}
                           </span>

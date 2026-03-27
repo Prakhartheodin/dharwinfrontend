@@ -91,8 +91,11 @@ export function WaitingParticipantsPanel({
       } else {
         await livekitApi.admitParticipant(roomName, participant.identity, participant.name);
       }
-      setWaitingParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
-      onWaitingParticipantsChange?.(waitingParticipants.filter((p) => p.identity !== participant.identity).map((p) => p.identity));
+      setWaitingParticipants((prev) => {
+        const next = prev.filter((p) => p.identity !== participant.identity);
+        onWaitingParticipantsChange?.(next.map((p) => p.identity));
+        return next;
+      });
       onParticipantAdmitted?.(participant.identity);
       setTimeout(fetchWaitingParticipants, 500);
     } catch (err: unknown) {
@@ -136,8 +139,11 @@ export function WaitingParticipantsPanel({
       } else {
         await livekitApi.removeParticipant(roomName, participant.identity);
       }
-      setWaitingParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
-      onWaitingParticipantsChange?.(waitingParticipants.filter((p) => p.identity !== participant.identity).map((p) => p.identity));
+      setWaitingParticipants((prev) => {
+        const next = prev.filter((p) => p.identity !== participant.identity);
+        onWaitingParticipantsChange?.(next.map((p) => p.identity));
+        return next;
+      });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setError(e?.response?.data?.message || "Failed to remove participant");
@@ -216,7 +222,11 @@ export function WaitingParticipantsPanel({
               {count > 1 && (
                 <button
                   type="button"
-                  onClick={handleAdmitAll}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void handleAdmitAll();
+                  }}
                   disabled={admittingAll}
                   className="w-full mb-4 py-2.5 rounded-xl bg-primary/20 text-primary font-medium text-sm hover:bg-primary/30 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
@@ -246,7 +256,11 @@ export function WaitingParticipantsPanel({
                     <div className="flex gap-1.5 flex-shrink-0">
                       <button
                         type="button"
-                        onClick={() => handleAdmit(participant)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleAdmit(participant);
+                        }}
                         disabled={admitting === participant.identity || removing === participant.identity}
                         className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-50"
                         title="Admit"
@@ -259,7 +273,11 @@ export function WaitingParticipantsPanel({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleRemove(participant)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleRemove(participant);
+                        }}
                         disabled={admitting === participant.identity || removing === participant.identity}
                         className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 disabled:opacity-50"
                         title="Remove"
