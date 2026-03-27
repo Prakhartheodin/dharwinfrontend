@@ -86,6 +86,18 @@ function formatLocation(geo: ActivityLog["geo"]): string {
   return parts.length ? parts.join(", ") : "—";
 }
 
+function formatClientGeoLine(c: ActivityLog["clientGeo"] | null | undefined): string {
+  if (!c || (c.lat == null && c.lng == null)) return "";
+  const lat = typeof c.lat === "number" ? c.lat.toFixed(5) : "";
+  const lng = typeof c.lng === "number" ? c.lng.toFixed(5) : "";
+  const acc =
+    typeof c.accuracyM === "number" && Number.isFinite(c.accuracyM)
+      ? ` ±${Math.round(c.accuracyM)} m`
+      : "";
+  if (!lat && !lng) return "";
+  return `Device (GPS): ${lat}, ${lng}${acc}`;
+}
+
 function LogClientDeviceBlock({ userAgent }: { userAgent?: string | null }) {
   const parsed = parseUserAgentDetails(userAgent);
   if (!parsed) {
@@ -160,12 +172,14 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
     "entityType",
     "entityId",
     "location",
+    "browserGeo",
     "ip",
     "userAgent",
   ];
   const lines = [headers.join(",")];
   for (const log of rows) {
     const loc = formatLocation(log.geo);
+    const bg = formatClientGeoLine(log.clientGeo).replace(/^Device \(GPS\): /, "");
     const cells = [
       log.id,
       log.createdAt ?? "",
@@ -175,6 +189,7 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
       log.entityType ?? "",
       log.entityId ?? "",
       loc.replaceAll('"', '""'),
+      bg.replaceAll('"', '""'),
       log.ip ?? "",
       (log.userAgent ?? "").replaceAll('"', '""'),
     ];
@@ -852,6 +867,7 @@ export default function PlatformAuditLogsPage() {
                           getRoleActivityEntitySummary(log) ??
                           getUserActivityEntitySummary(log) ??
                           getImpersonationEntitySummary(log);
+                        const clientGeoLine = formatClientGeoLine(log.clientGeo);
                         return (
                           <Fragment key={log.id}>
                             <tr className={`border-b border-defaultborder ${zebra}`}>
@@ -958,7 +974,12 @@ export default function PlatformAuditLogsPage() {
                                 </div>
                               </td>
                               <td className={`px-4 ${cellY} align-middle ${cellText}`}>
-                                {formatLocation(log.geo)}
+                                <div>{formatLocation(log.geo)}</div>
+                                {clientGeoLine ? (
+                                  <div className="mt-0.5 text-[0.7rem] text-defaulttextcolor/65">
+                                    {clientGeoLine}
+                                  </div>
+                                ) : null}
                               </td>
                               <td className={`px-4 ${cellY} align-middle break-all max-w-[8rem] ${cellText}`}>
                                 {log.ip ?? "—"}
@@ -982,6 +1003,16 @@ export default function PlatformAuditLogsPage() {
                                       <span className="font-semibold text-defaulttextcolor/80">Client / device</span>
                                       <LogClientDeviceBlock userAgent={log.userAgent} />
                                     </div>
+                                    {clientGeoLine ? (
+                                      <div>
+                                        <span className="font-semibold text-defaulttextcolor/80">
+                                          Browser-reported position
+                                        </span>
+                                        <p className="mt-1 font-mono text-[0.75rem] text-defaulttextcolor/90">
+                                          {clientGeoLine}
+                                        </p>
+                                      </div>
+                                    ) : null}
                                     <MetadataBlock metadata={log.metadata} />
                                   </div>
                                 </td>

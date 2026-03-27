@@ -2,6 +2,7 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
+import { getActivityLogClientGeoHeaderValue } from "@/shared/lib/activity-log-client-geo";
 
 /** Strip trailing slashes so paths join cleanly with axios `baseURL`. */
 export function normalizeApiBase(): string {
@@ -15,6 +16,15 @@ export const apiClient = axios.create({
   baseURL: normalizeApiBase(),
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
+});
+
+apiClient.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
+  const geo = getActivityLogClientGeoHeaderValue();
+  if (geo) {
+    cfg.headers = cfg.headers ?? {};
+    (cfg.headers as Record<string, string>)["X-Activity-Client-Geo"] = geo;
+  }
+  return cfg;
 });
 
 let onSessionExpired: (() => void) | null = null;
