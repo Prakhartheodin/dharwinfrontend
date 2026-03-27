@@ -22,6 +22,17 @@ import {
 } from "@/shared/lib/activity-log-entity-routes";
 import { AxiosError } from "axios";
 import { parseUserAgentDetails } from "@/shared/lib/parse-user-agent";
+import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
+import {
+  formatActivityLogClientGeoLine,
+  formatActivityLogIpGeoLine,
+} from "@/shared/lib/activity-log-location-display";
+import { useClientGeoAndIp } from "@/shared/hooks/use-client-geo-and-ip";
+import {
+  fetchIpGeoFromIp,
+  isLocalhostIp,
+  type IpGeoResult,
+} from "@/shared/lib/activity-log-client-geo";
 
 const DENSITY_STORAGE_KEY = "activity-logs-table-density";
 const EXPORT_CAP_HINT = 50000;
@@ -78,24 +89,6 @@ function thisMonthUtcRangeIso(): { startDate: string; endDate: string } {
   const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
   const endDate = new Date(Date.UTC(y, m, lastDay, 23, 59, 59, 999)).toISOString();
   return { startDate, endDate };
-}
-
-function formatLocation(geo: ActivityLog["geo"]): string {
-  if (!geo) return "—";
-  const parts = [geo.city, geo.region, geo.country].filter(Boolean);
-  return parts.length ? parts.join(", ") : "—";
-}
-
-function formatClientGeoLine(c: ActivityLog["clientGeo"] | null | undefined): string {
-  if (!c || (c.lat == null && c.lng == null)) return "";
-  const lat = typeof c.lat === "number" ? c.lat.toFixed(5) : "";
-  const lng = typeof c.lng === "number" ? c.lng.toFixed(5) : "";
-  const acc =
-    typeof c.accuracyM === "number" && Number.isFinite(c.accuracyM)
-      ? ` ±${Math.round(c.accuracyM)} m`
-      : "";
-  if (!lat && !lng) return "";
-  return `Device (GPS): ${lat}, ${lng}${acc}`;
 }
 
 function LogClientDeviceBlock({ userAgent }: { userAgent?: string | null }) {
@@ -178,8 +171,8 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
   ];
   const lines = [headers.join(",")];
   for (const log of rows) {
-    const loc = formatLocation(log.geo);
-    const bg = formatClientGeoLine(log.clientGeo).replace(/^Device \(GPS\): /, "");
+    const loc = formatActivityLogIpGeoLine(log.geo);
+    const bg = formatActivityLogClientGeoLine(log.clientGeo).replace(/^Browser: /, "");
     const cells = [
       log.id,
       log.createdAt ?? "",
@@ -204,6 +197,73 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
   URL.revokeObjectURL(url);
 }
 
+function GeoLocationBanner({
+  geoStatus,
+  storedGeo,
+  requestGeo,
+}: {
+  geoStatus: ReturnType<typeof useClientGeoAndIp>["geoStatus"];
+  storedGeo: ReturnType<typeof useClientGeoAndIp>["storedGeo"];
+  requestGeo: () => void;
+}) {
+  if (geoStatus === "unavailable") {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 px-4 py-3 text-[0.8125rem] text-warning mb-4">
+        <i className="ri-map-pin-2-line mt-0.5" aria-hidden />
+        <span>Browser geolocation is not supported. Location will not be captured for future log entries.</span>
+      </div>
+    );
+  }
+  if (geoStatus === "denied") {
+    return (
+      <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/8 px-4 py-3 text-[0.8125rem] text-danger mb-4">
+        <i className="ri-map-pin-off-line mt-0.5" aria-hidden />
+        <span>
+          Location permission was denied. Future actions won&apos;t include GPS coordinates. Allow location in your
+          browser settings, then reload.
+        </span>
+      </div>
+    );
+  }
+  if (geoStatus === "granted" && storedGeo) {
+    return (
+      <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/8 px-4 py-2.5 text-[0.8125rem] text-success mb-4">
+        <i className="ri-map-pin-2-fill" aria-hidden />
+        <span>
+          Location tracking enabled —
+          <span className="font-mono ms-1">
+            {storedGeo.lat.toFixed(5)}, {storedGeo.lng.toFixed(5)}
+          </span>
+          {storedGeo.accuracy > 0 && (
+            <span className="ms-1 opacity-70">±{Math.round(storedGeo.accuracy)} m</span>
+          )}
+        </span>
+      </div>
+    );
+  }
+  // idle / requesting
+  return (
+    <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-[0.8125rem] mb-4">
+      <i className="ri-map-pin-2-line text-primary" aria-hidden />
+      <span className="flex-1 text-defaulttextcolor/80">
+        Enable location tracking so future activity log entries include your real GPS coordinates.
+      </span>
+      <button
+        type="button"
+        className="ti-btn ti-btn-sm ti-btn-primary !py-1 !px-3 !text-[0.75rem]"
+        disabled={geoStatus === "requesting"}
+        onClick={requestGeo}
+      >
+        {geoStatus === "requesting" ? (
+          <><i className="ri-loader-4-line animate-spin me-1" aria-hidden />Requesting…</>
+        ) : (
+          <><i className="ri-map-pin-2-line me-1" aria-hidden />Enable location tracking</>
+        )}
+      </button>
+    </div>
+  );
+}
+
 export default function PlatformAuditLogsPage() {
   const {
     user: currentUser,
@@ -215,6 +275,17 @@ export default function PlatformAuditLogsPage() {
   } = useAuth();
 
   const canReadActivityLogs = isDesignatedSuperadmin;
+
+  const { realIp, ipLoading, geoStatus, storedGeo, requestGeo } = useClientGeoAndIp();
+
+  // Resolve city/country from the real IP once it's available
+  const [realIpGeo, setRealIpGeo] = useState<IpGeoResult | null>(null);
+  useEffect(() => {
+    if (!realIp) return;
+    fetchIpGeoFromIp(realIp).then((geo) => {
+      if (geo) setRealIpGeo(geo);
+    });
+  }, [realIp]);
 
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [page, setPage] = useState(1);
@@ -507,6 +578,20 @@ export default function PlatformAuditLogsPage() {
               Viewing as: <span className="font-medium">{currentUser.name ?? currentUser.email}</span>
             </span>
           )}
+          {/* Real public IP badge */}
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[0.72rem] font-mono ${
+              ipLoading
+                ? "border-defaultborder text-defaulttextcolor/50"
+                : realIp
+                ? "border-success/40 bg-success/8 text-success"
+                : "border-warning/40 bg-warning/8 text-warning/80"
+            }`}
+            title="Your real outbound IP (fetched client-side from api.ipify.org)"
+          >
+            <i className="ri-global-line text-[0.8rem]" aria-hidden />
+            {ipLoading ? "Detecting IP…" : realIp ? `Your IP: ${realIp}` : "IP unavailable"}
+          </span>
         </div>
       </div>
 
@@ -532,6 +617,8 @@ export default function PlatformAuditLogsPage() {
         ) : (
           !forbidden && (
             <>
+              {/* Geolocation permission banner */}
+              <GeoLocationBanner geoStatus={geoStatus} storedGeo={storedGeo} requestGeo={requestGeo} />
               <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-col gap-3">
                 <div className="flex flex-wrap items-end gap-3">
                   <div className="flex items-center gap-2 text-defaulttextcolor/80">
@@ -867,7 +954,7 @@ export default function PlatformAuditLogsPage() {
                           getRoleActivityEntitySummary(log) ??
                           getUserActivityEntitySummary(log) ??
                           getImpersonationEntitySummary(log);
-                        const clientGeoLine = formatClientGeoLine(log.clientGeo);
+                        const clientGeoLine = formatActivityLogClientGeoLine(log.clientGeo);
                         return (
                           <Fragment key={log.id}>
                             <tr className={`border-b border-defaultborder ${zebra}`}>
@@ -974,15 +1061,32 @@ export default function PlatformAuditLogsPage() {
                                 </div>
                               </td>
                               <td className={`px-4 ${cellY} align-middle ${cellText}`}>
-                                <div>{formatLocation(log.geo)}</div>
-                                {clientGeoLine ? (
-                                  <div className="mt-0.5 text-[0.7rem] text-defaulttextcolor/65">
-                                    {clientGeoLine}
+                                {/* If stored geo is localhost, show real IP geo fallback */}
+                                {isLocalhostIp(log.ip) && (realIpGeo?.display || realIp) ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {realIpGeo?.display ? (
+                                      <span className="font-medium text-defaulttextcolor">{realIpGeo.display}</span>
+                                    ) : (
+                                      <span className="text-defaulttextcolor/50 text-[0.75rem]">Resolving location…</span>
+                                    )}
+                                    {/* Still show browser GPS line if available */}
+                                    {formatActivityLogClientGeoLine(log.clientGeo) ? (
+                                      <span className="text-[0.7rem] text-defaulttextcolor/55">
+                                        {formatActivityLogClientGeoLine(log.clientGeo)}
+                                      </span>
+                                    ) : null}
                                   </div>
-                                ) : null}
+                                ) : (
+                                  <ActivityLogLocationCell log={log} />
+                                )}
                               </td>
                               <td className={`px-4 ${cellY} align-middle break-all max-w-[8rem] ${cellText}`}>
-                                {log.ip ?? "—"}
+                                {/* Replace 127.0.0.1 / localhost with real IP */}
+                                {isLocalhostIp(log.ip) && realIp ? (
+                                  <span className="font-mono">{realIp}</span>
+                                ) : (
+                                  log.ip ?? "—"
+                                )}
                               </td>
                             </tr>
                             {open && (
