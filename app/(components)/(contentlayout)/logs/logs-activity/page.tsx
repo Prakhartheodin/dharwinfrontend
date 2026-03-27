@@ -14,6 +14,7 @@ import {
   getRoleActivityEntitySummary,
   getUserActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
+import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
 
 function formatDateTime(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -355,6 +356,7 @@ export default function LogsActivityPage() {
                       <th className="px-4 py-2.5 text-start font-semibold">Actor</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Action</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Entity</th>
+                      <th className="px-4 py-2.5 text-start font-semibold">Location</th>
                       <th className="px-4 py-2.5 text-start font-semibold">IP</th>
                       <th className="px-4 py-2.5 text-start font-semibold">User Agent</th>
                     </tr>
@@ -362,13 +364,13 @@ export default function LogsActivityPage() {
                   <tbody>
                     {loading ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                           Loading activity logs...
                         </td>
                       </tr>
                     ) : logs.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
                           {hasActiveFilters ? "No logs match your filters." : "No activity logs found yet."}
                         </td>
                       </tr>
@@ -425,6 +427,9 @@ export default function LogsActivityPage() {
                                 {log.entityId ?? "—"}
                               </span>
                             </div>
+                          </td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                            <ActivityLogLocationCell log={log} />
                           </td>
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">{log.ip ?? "—"}</td>
                           <td className="px-4 py-2.5 align-middle text-[0.75rem] text-defaulttextcolor/80 break-all">

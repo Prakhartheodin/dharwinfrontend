@@ -4,9 +4,10 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { useRouter } from "next/navigation";
 import { setSessionExpiredHandler } from "@/shared/lib/api/client";
 import {
+  captureGeolocationForAudit,
   requestGeolocationAfterLoginIfNeeded,
   resetActivityLogGeoForSignOut,
-  setActivityLogClientGeoAttachmentEnabled,
+  clearStoredRealIp,
 } from "@/shared/lib/activity-log-client-geo";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
@@ -104,16 +105,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setActivityLogClientGeoAttachmentEnabled(!!user);
-  }, [user]);
-
-  useEffect(() => {
     if (!user?.id) return;
     requestGeolocationAfterLoginIfNeeded();
   }, [user?.id]);
 
   const handleSessionExpired = useCallback(() => {
     resetActivityLogGeoForSignOut();
+    clearStoredRealIp();
     setUser(null);
     setPermissions(EMPTY_PERMISSIONS.permissions);
     setRoleNames(EMPTY_PERMISSIONS.roleNames);
@@ -270,6 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (email: string, password: string) => {
       setIsLoading(true);
       try {
+        await captureGeolocationForAudit(10000);
         const res = await authApi.login({ email, password });
         setUser(res.user);
         setPermissionsLoaded(false);
@@ -314,6 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setPermissionsLoaded(true);
       clearAuthFromLocalStorage();
       resetActivityLogGeoForSignOut();
+      clearStoredRealIp();
       setIsLoading(false);
       router.push(ROUTES.signIn);
     }
