@@ -93,6 +93,15 @@ export interface ActivityLogGeo {
   city?: string | null;
 }
 
+/** Optional browser GPS (privileged users who opted in). */
+export interface ActivityLogClientGeo {
+  lat?: number | null;
+  lng?: number | null;
+  accuracyM?: number | null;
+  capturedAt?: string | null;
+  source?: string | null;
+}
+
 /** Activity log entry from /v1/activity-logs. */
 export interface ActivityLog {
   id: string;
@@ -106,6 +115,7 @@ export interface ActivityLog {
   httpMethod?: string | null;
   httpPath?: string | null;
   geo?: ActivityLogGeo | null;
+  clientGeo?: ActivityLogClientGeo | null;
   createdAt: string;
 }
 

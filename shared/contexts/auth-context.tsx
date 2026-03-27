@@ -3,6 +3,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setSessionExpiredHandler } from "@/shared/lib/api/client";
+import {
+  requestGeolocationAfterLoginIfNeeded,
+  resetActivityLogGeoForSignOut,
+  setActivityLogClientGeoAttachmentEnabled,
+} from "@/shared/lib/activity-log-client-geo";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
@@ -98,7 +103,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAuthFromLocalStorage();
   }, []);
 
+  useEffect(() => {
+    setActivityLogClientGeoAttachmentEnabled(!!user);
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    requestGeolocationAfterLoginIfNeeded();
+  }, [user?.id]);
+
   const handleSessionExpired = useCallback(() => {
+    resetActivityLogGeoForSignOut();
     setUser(null);
     setPermissions(EMPTY_PERMISSIONS.permissions);
     setRoleNames(EMPTY_PERMISSIONS.roleNames);
@@ -298,6 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsDesignatedSuperadmin(false);
       setPermissionsLoaded(true);
       clearAuthFromLocalStorage();
+      resetActivityLogGeoForSignOut();
       setIsLoading(false);
       router.push(ROUTES.signIn);
     }
