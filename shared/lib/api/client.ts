@@ -2,7 +2,11 @@
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
-import { getActivityLogClientGeoHeaderValue, getStoredRealIp, getStoredIpGeo } from "@/shared/lib/activity-log-client-geo";
+import {
+  getActivityLogClientGeoHeaderValue,
+  getStoredRealIp,
+  X_CLIENT_IP_HEADER,
+} from "@/shared/lib/activity-log-client-geo";
 
 /** Strip trailing slashes so paths join cleanly with axios `baseURL`. */
 export function normalizeApiBase(): string {
@@ -25,19 +29,10 @@ apiClient.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
     (cfg.headers as Record<string, string>)["X-Activity-Client-Geo"] = geo;
   }
 
-  const realIp = getStoredRealIp();
-  if (realIp) {
+  const clientIp = getStoredRealIp();
+  if (clientIp) {
     cfg.headers = cfg.headers ?? {};
-    (cfg.headers as Record<string, string>)["X-Activity-Client-Ip"] = realIp;
-  }
-
-  const ipGeo = getStoredIpGeo();
-  if (ipGeo) {
-    cfg.headers = cfg.headers ?? {};
-    const h = cfg.headers as Record<string, string>;
-    if (ipGeo.city) h["X-Activity-Client-City"] = ipGeo.city;
-    if (ipGeo.region) h["X-Activity-Client-Region"] = ipGeo.region;
-    if (ipGeo.country) h["X-Activity-Client-Country"] = ipGeo.country;
+    (cfg.headers as Record<string, string>)[X_CLIENT_IP_HEADER] = clientIp;
   }
 
   return cfg;
