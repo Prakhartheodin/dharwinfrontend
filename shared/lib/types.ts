@@ -93,8 +93,11 @@ export interface ActivityLogGeo {
   city?: string | null;
 }
 
-/** Optional browser GPS (privileged users who opted in). */
+/** Optional device location from browser (coarse place preferred; legacy rows may have lat/lng only). */
 export interface ActivityLogClientGeo {
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
   lat?: number | null;
   lng?: number | null;
   accuracyM?: number | null;
@@ -111,11 +114,17 @@ export interface ActivityLog {
   entityId?: string | null;
   metadata?: Record<string, unknown> | null;
   ip?: string | null;
+  /** Browser-reported public IP (x-client-ip) at log creation; optional. */
+  clientIp?: string | null;
+  /** API convenience: clientIp || ip */
+  displayIp?: string | null;
   userAgent?: string | null;
   httpMethod?: string | null;
   httpPath?: string | null;
   geo?: ActivityLogGeo | null;
   clientGeo?: ActivityLogClientGeo | null;
+  /** API convenience: primary location label (GPS place or IP geo). */
+  displayLocation?: string | null;
   createdAt: string;
 }
 

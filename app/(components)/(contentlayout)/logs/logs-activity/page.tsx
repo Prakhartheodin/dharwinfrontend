@@ -15,6 +15,7 @@ import {
   getUserActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
 import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
+import { getActivityLogDisplayIp } from "@/shared/lib/activity-log-location-display";
 
 function formatDateTime(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -356,7 +357,12 @@ export default function LogsActivityPage() {
                       <th className="px-4 py-2.5 text-start font-semibold">Actor</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Action</th>
                       <th className="px-4 py-2.5 text-start font-semibold">Entity</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">Location</th>
+                      <th
+                        className="px-4 py-2.5 text-start font-semibold"
+                        title="Device place (GPS) when allowed; IP-based location is approximate."
+                      >
+                        Location
+                      </th>
                       <th className="px-4 py-2.5 text-start font-semibold">IP</th>
                       <th className="px-4 py-2.5 text-start font-semibold">User Agent</th>
                     </tr>
@@ -431,7 +437,9 @@ export default function LogsActivityPage() {
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
                             <ActivityLogLocationCell log={log} />
                           </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">{log.ip ?? "—"}</td>
+                          <td className="px-4 py-2.5 align-middle text-[0.8125rem] font-mono text-[0.75rem]">
+                            {getActivityLogDisplayIp(log)}
+                          </td>
                           <td className="px-4 py-2.5 align-middle text-[0.75rem] text-defaulttextcolor/80 break-all">
                             {log.userAgent ?? "—"}
                           </td>

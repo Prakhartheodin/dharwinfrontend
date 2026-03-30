@@ -24,15 +24,12 @@ import { AxiosError } from "axios";
 import { parseUserAgentDetails } from "@/shared/lib/parse-user-agent";
 import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
 import {
-  formatActivityLogClientGeoLine,
+  formatActivityLogClientGeoPlaceLine,
   formatActivityLogIpGeoLine,
+  getActivityLogDisplayIp,
 } from "@/shared/lib/activity-log-location-display";
+import { formatStoredClientGeoLine } from "@/shared/lib/activity-log-client-geo";
 import { useClientGeoAndIp } from "@/shared/hooks/use-client-geo-and-ip";
-import {
-  fetchIpGeoFromIp,
-  isLocalhostIp,
-  type IpGeoResult,
-} from "@/shared/lib/activity-log-client-geo";
 
 const DENSITY_STORAGE_KEY = "activity-logs-table-density";
 const EXPORT_CAP_HINT = 50000;
@@ -172,7 +169,7 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
   const lines = [headers.join(",")];
   for (const log of rows) {
     const loc = formatActivityLogIpGeoLine(log.geo);
-    const bg = formatActivityLogClientGeoLine(log.clientGeo).replace(/^Browser: /, "");
+    const bg = formatActivityLogClientGeoPlaceLine(log.clientGeo);
     const cells = [
       log.id,
       log.createdAt ?? "",
@@ -183,7 +180,7 @@ function exportLogsCsvPage(rows: ActivityLog[]) {
       log.entityId ?? "",
       loc.replaceAll('"', '""'),
       bg.replaceAll('"', '""'),
-      log.ip ?? "",
+      getActivityLogDisplayIp(log),
       (log.userAgent ?? "").replaceAll('"', '""'),
     ];
     lines.push(cells.map((c) => `"${String(c)}"`).join(","));
@@ -210,7 +207,9 @@ function GeoLocationBanner({
     return (
       <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/8 px-4 py-3 text-[0.8125rem] text-warning mb-4">
         <i className="ri-map-pin-2-line mt-0.5" aria-hidden />
-        <span>Browser geolocation is not supported. Location will not be captured for future log entries.</span>
+        <span>
+          Browser geolocation is not supported. Only approximate IP-based location will appear on future log entries.
+        </span>
       </div>
     );
   }
@@ -219,8 +218,8 @@ function GeoLocationBanner({
       <div className="flex items-start gap-3 rounded-lg border border-danger/30 bg-danger/8 px-4 py-3 text-[0.8125rem] text-danger mb-4">
         <i className="ri-map-pin-off-line mt-0.5" aria-hidden />
         <span>
-          Location permission was denied. Future actions won&apos;t include GPS coordinates. Allow location in your
-          browser settings, then reload.
+          Location permission was denied. Future actions won&apos;t include a GPS-based place name (IP-based location
+          still applies). Allow location in your browser settings, then reload.
         </span>
       </div>
     );
@@ -230,10 +229,7 @@ function GeoLocationBanner({
       <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/8 px-4 py-2.5 text-[0.8125rem] text-success mb-4">
         <i className="ri-map-pin-2-fill" aria-hidden />
         <span>
-          Location tracking enabled —
-          <span className="font-mono ms-1">
-            {storedGeo.lat.toFixed(5)}, {storedGeo.lng.toFixed(5)}
-          </span>
+          Location tracking enabled —<span className="ms-1">{formatStoredClientGeoLine(storedGeo)}</span>
           {storedGeo.accuracy > 0 && (
             <span className="ms-1 opacity-70">±{Math.round(storedGeo.accuracy)} m</span>
           )}
@@ -246,7 +242,8 @@ function GeoLocationBanner({
     <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-[0.8125rem] mb-4">
       <i className="ri-map-pin-2-line text-primary" aria-hidden />
       <span className="flex-1 text-defaulttextcolor/80">
-        Enable location tracking so future activity log entries include your real GPS coordinates.
+        Enable location tracking so future log entries include a place name from your device (GPS), with IP-based
+        location as a secondary hint.
       </span>
       <button
         type="button"
@@ -277,15 +274,6 @@ export default function PlatformAuditLogsPage() {
   const canReadActivityLogs = isDesignatedSuperadmin;
 
   const { realIp, ipLoading, geoStatus, storedGeo, requestGeo } = useClientGeoAndIp();
-
-  // Resolve city/country from the real IP once it's available
-  const [realIpGeo, setRealIpGeo] = useState<IpGeoResult | null>(null);
-  useEffect(() => {
-    if (!realIp) return;
-    fetchIpGeoFromIp(realIp).then((geo) => {
-      if (geo) setRealIpGeo(geo);
-    });
-  }, [realIp]);
 
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [page, setPage] = useState(1);
@@ -904,6 +892,7 @@ export default function PlatformAuditLogsPage() {
                       <th
                         className={`px-4 ${cellY} text-start font-semibold bg-gray-50 dark:bg-gray-800/90`}
                         scope="col"
+                        title="Device place (GPS) when allowed; IP-based location is approximate."
                       >
                         Location
                       </th>
@@ -954,7 +943,12 @@ export default function PlatformAuditLogsPage() {
                           getRoleActivityEntitySummary(log) ??
                           getUserActivityEntitySummary(log) ??
                           getImpersonationEntitySummary(log);
-                        const clientGeoLine = formatActivityLogClientGeoLine(log.clientGeo);
+                        const clientGeoPlace = formatActivityLogClientGeoPlaceLine(log.clientGeo);
+                        const clientGeoLegacyCoords =
+                          !clientGeoPlace &&
+                          log.clientGeo != null &&
+                          typeof log.clientGeo.lat === "number" &&
+                          typeof log.clientGeo.lng === "number";
                         return (
                           <Fragment key={log.id}>
                             <tr className={`border-b border-defaultborder ${zebra}`}>
@@ -1061,32 +1055,10 @@ export default function PlatformAuditLogsPage() {
                                 </div>
                               </td>
                               <td className={`px-4 ${cellY} align-middle ${cellText}`}>
-                                {/* If stored geo is localhost, show real IP geo fallback */}
-                                {isLocalhostIp(log.ip) && (realIpGeo?.display || realIp) ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {realIpGeo?.display ? (
-                                      <span className="font-medium text-defaulttextcolor">{realIpGeo.display}</span>
-                                    ) : (
-                                      <span className="text-defaulttextcolor/50 text-[0.75rem]">Resolving location…</span>
-                                    )}
-                                    {/* Still show browser GPS line if available */}
-                                    {formatActivityLogClientGeoLine(log.clientGeo) ? (
-                                      <span className="text-[0.7rem] text-defaulttextcolor/55">
-                                        {formatActivityLogClientGeoLine(log.clientGeo)}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                ) : (
-                                  <ActivityLogLocationCell log={log} />
-                                )}
+                                <ActivityLogLocationCell log={log} />
                               </td>
                               <td className={`px-4 ${cellY} align-middle break-all max-w-[8rem] ${cellText}`}>
-                                {/* Replace 127.0.0.1 / localhost with real IP */}
-                                {isLocalhostIp(log.ip) && realIp ? (
-                                  <span className="font-mono">{realIp}</span>
-                                ) : (
-                                  log.ip ?? "—"
-                                )}
+                                <span className="font-mono">{getActivityLogDisplayIp(log)}</span>
                               </td>
                             </tr>
                             {open && (
@@ -1107,14 +1079,19 @@ export default function PlatformAuditLogsPage() {
                                       <span className="font-semibold text-defaulttextcolor/80">Client / device</span>
                                       <LogClientDeviceBlock userAgent={log.userAgent} />
                                     </div>
-                                    {clientGeoLine ? (
+                                    {clientGeoPlace || clientGeoLegacyCoords ? (
                                       <div>
                                         <span className="font-semibold text-defaulttextcolor/80">
-                                          Browser-reported position
+                                          Device location (GPS)
                                         </span>
-                                        <p className="mt-1 font-mono text-[0.75rem] text-defaulttextcolor/90">
-                                          {clientGeoLine}
-                                        </p>
+                                        {clientGeoPlace ? (
+                                          <p className="mt-1 text-[0.75rem] text-defaulttextcolor/90">{clientGeoPlace}</p>
+                                        ) : (
+                                          <p className="mt-1 text-[0.75rem] text-defaulttextcolor/70">
+                                            Legacy entry: coordinates were stored before place names were shown in the
+                                            UI.
+                                          </p>
+                                        )}
                                       </div>
                                     ) : null}
                                     <MetadataBlock metadata={log.metadata} />

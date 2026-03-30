@@ -101,7 +101,7 @@ export function StudentAttendanceClient() {
   const [listLoading, setListLoading] = useState(false);
   const [elapsedDisplay, setElapsedDisplay] = useState("");
   const [myStudentId, setMyStudentId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "calendar">("list");
+  const [viewMode, setViewMode] = useState<"list" | "calendar">("calendar");
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth());
   const [canRegularize, setCanRegularize] = useState(false);
@@ -770,16 +770,23 @@ export function StudentAttendanceClient() {
           <div className="grid grid-cols-12 gap-6 mb-6">
             <div className="col-span-12 lg:col-span-6">
               <div className="box">
-                <div className="box-header flex items-center justify-between">
-                  <div className="box-title">Punch In / Out</div>
-                  <button
-                    type="button"
-                    onClick={openRequestModal}
-                    className="ti-btn ti-btn-icon ti-btn-outline-primary flex-shrink-0"
-                    title="Backdate Request"
-                  >
-                    <i className="ri-calendar-check-line" />
-                  </button>
+                <div className="box-header !flex-col !items-stretch gap-3 sm:!flex-row sm:items-center sm:justify-between sm:gap-3 min-w-0">
+                  <div className="box-title !me-0 min-w-0 shrink-0 truncate">Punch In / Out</div>
+                  <div className="w-full min-w-0 sm:ms-auto sm:w-auto">
+                    <div className="overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg">
+                      <button
+                        type="button"
+                        onClick={openRequestModal}
+                        className="flex min-h-[2.75rem] w-full min-w-0 items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 dark:hover:bg-primary/10 sm:w-auto sm:pr-5"
+                        title="Request backdated attendance for past dates"
+                      >
+                        <i className="ri-history-line shrink-0 text-[1.15rem] opacity-90" aria-hidden />
+                        <span className="min-w-0 pr-1 leading-snug tracking-tight">
+                          Backdated attendance
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div className="box-body space-y-4">
                   <div className="flex flex-wrap items-center gap-3">

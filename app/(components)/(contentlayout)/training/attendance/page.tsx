@@ -150,7 +150,7 @@ export default function AttendanceTracking() {
   const [autoWarningShown, setAutoWarningShown] = useState(false);
   const prevPunchedInRef = useRef<boolean | null>(null);
   const [summaryStats, setSummaryStats] = useState<attendanceApi.AttendanceStatistics | null>(null);
-  const [myAttendanceViewMode, setMyAttendanceViewMode] = useState<"list" | "calendar">("list");
+  const [myAttendanceViewMode, setMyAttendanceViewMode] = useState<"list" | "calendar">("calendar");
   const [myCalendarYear, setMyCalendarYear] = useState(() => new Date().getFullYear());
   const [myCalendarMonth, setMyCalendarMonth] = useState(() => new Date().getMonth());
   const [trackLiveTick, setTrackLiveTick] = useState(0);
@@ -751,30 +751,48 @@ export default function AttendanceTracking() {
             <div className="grid grid-cols-12 gap-6 mb-6">
               <div className="col-span-12 lg:col-span-7">
                 <div className="box !mb-0">
-                  <div className="box-header flex items-center justify-between">
-                    <div className="box-title flex items-center gap-2">
-                      <i className="ri-fingerprint-line text-primary text-[1.1rem]" />
-                      Time Clock
+                  <div className="box-header !flex-col !items-stretch gap-3 sm:!flex-row sm:items-center sm:justify-between sm:gap-3 min-w-0">
+                    <div className="box-title !me-0 flex min-w-0 items-center gap-2 shrink-0">
+                      <i className="ri-fingerprint-line text-primary text-[1.1rem] shrink-0" aria-hidden />
+                      <span className="truncate">Time Clock</span>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/*
+                      Single toolbar (not separate outlined buttons): avoids ti-btn-sm 28px trap,
+                      adds comfortable padding, one border, primary-toned actions with a divider.
+                    */}
+                    <div
+                      role="toolbar"
+                      aria-label="Attendance requests"
+                      className="flex w-full min-w-0 flex-nowrap overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg sm:ms-auto sm:max-w-full sm:w-auto"
+                    >
                       <button
                         type="button"
                         onClick={openRequestModal}
-                        className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-primary"
-                        title="Request Backdated Attendance"
+                        className="flex min-h-[2.75rem] min-w-0 flex-1 items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/[0.06] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 dark:hover:bg-primary/10"
+                        title="Request backdated attendance for past dates"
                       >
-                        <i className="ri-calendar-check-line" />
+                        <i className="ri-history-line shrink-0 text-[1.15rem] opacity-90" aria-hidden />
+                        <span className="min-w-0 pr-1 leading-snug tracking-tight">
+                          Backdated attendance
+                        </span>
                       </button>
-                      {myStudentId && (
-                        <button
-                          type="button"
-                          onClick={openLeaveRequestModal}
-                          className="ti-btn ti-btn-icon ti-btn-sm ti-btn-outline-secondary"
-                          title="Request Leave"
-                        >
-                          <i className="ri-hotel-bed-line" />
-                        </button>
-                      )}
+                      {myStudentId ? (
+                        <>
+                          <div
+                            className="w-px shrink-0 self-stretch bg-defaultborder/55 dark:bg-white/15"
+                            aria-hidden
+                          />
+                          <button
+                            type="button"
+                            onClick={openLeaveRequestModal}
+                            className="flex min-h-[2.75rem] min-w-0 flex-1 items-center gap-2.5 px-4 py-2.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary/[0.06] focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 dark:hover:bg-primary/10 sm:flex-none sm:whitespace-nowrap"
+                            title="Submit a leave request for approval"
+                          >
+                            <i className="ri-hotel-bed-line shrink-0 text-[1.15rem] opacity-90" aria-hidden />
+                            <span className="min-w-0 pr-1 leading-snug tracking-tight">Leave request</span>
+                          </button>
+                        </>
+                      ) : null}
                     </div>
                   </div>
                   <div className="box-body">
