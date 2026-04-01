@@ -63,6 +63,8 @@ export const ROUTES = {
   settingsPersonalInfo: "/settings/personal-information/",
   /** Administrator only — assign training students to Agent users */
   settingsAgents: "/settings/agents/",
+  /** Voice agent (Bolna) + per-agent knowledge base — users.manage / Administrator */
+  settingsBolnaVoiceAgent: "/settings/bolna-voice-agent/",
   /** Administrator — candidate onboarding checklist (SOP) template */
   settingsCandidateSop: "/settings/candidates/sop/",
   /** Agent only — email templates & signatures for Communication → Email */

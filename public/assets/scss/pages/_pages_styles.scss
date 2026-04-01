@@ -636,12 +636,20 @@ label {
 }
 .mail-navigation,
 .total-mails,
-.mails-information,
 .mail-recepients {
   @apply bg-white dark:bg-bodybg h-[calc(100vh-8rem)] overflow-hidden rounded-md;
 }
+/* Reading column: flex column so message body scrolls instead of clipping below global max-h */
+.mails-information {
+  @apply bg-white dark:bg-bodybg h-[calc(100vh-8rem)] overflow-hidden rounded-md flex flex-col min-h-0 min-w-0 flex-1 w-full;
+}
 .mail-info-body {
-  @apply max-h-[calc(100vh-16.8rem)];
+  @apply flex-1 min-h-0 overflow-y-auto overflow-x-hidden;
+  max-height: none;
+}
+.mails-information .mail-info-header,
+.mails-information .mail-info-footer {
+  flex-shrink: 0;
 }
 @media (min-width: 1400px) {
   .total-mails {
@@ -773,7 +781,6 @@ label {
   }
 }
 .mails-information {
-  @apply w-full;
   .mail-info-header {
     @apply p-3 border-b border-defaultborder dark:border-defaultborder/10;
   }

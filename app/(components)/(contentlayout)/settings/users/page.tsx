@@ -1,12 +1,14 @@
 "use client";
 
-import React, { Fragment, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
 import { createSupportCameraInvite } from "@/shared/lib/api/support-camera-invite";
+import { fetchHrmWebRtcSignalingToken } from "@/shared/lib/api/hrm-webrtc";
+import { HrmWebRtcClient } from "@/shared/lib/hrm-webrtc-client";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
@@ -20,6 +22,16 @@ function formatDate(isoString: string | undefined): string {
   } catch {
     return "—";
   }
+}
+
+function resolveHrmBackendUrl(apiUrl: string | null | undefined): string {
+  const fromApi = (apiUrl ?? "").trim().replace(/\/+$/, "");
+  if (fromApi) return fromApi;
+  const raw = typeof process !== "undefined" ? process.env.NEXT_PUBLIC_HRM_WEBRTC_BACKEND_URL : "";
+  const fromEnv = String(raw ?? "")
+    .trim()
+    .replace(/\/+$/, "");
+  return fromEnv;
 }
 
 const STATUS_OPTIONS = [
@@ -47,6 +59,20 @@ export default function SettingsUsersPage() {
   const [error, setError] = useState("");
   const [viewUser, setViewUser] = useState<User | null>(null);
   const [impersonatingUserId, setImpersonatingUserId] = useState<string | null>(null);
+
+  /** Platform super or designated superadmin — matches HRM signaling token API. */
+  const canHrmWebRtcFeed = Boolean(isPlatformSuperUser || isDesignatedSuperadmin);
+
+  const [feedModalUser, setFeedModalUser] = useState<User | null>(null);
+  const [feedDeviceId, setFeedDeviceId] = useState("");
+  const [feedStatus, setFeedStatus] = useState("");
+  const [feedError, setFeedError] = useState("");
+  const [feedConnecting, setFeedConnecting] = useState(false);
+  const [feedClosing, setFeedClosing] = useState(false);
+  const [feedLoadingDevices, setFeedLoadingDevices] = useState(false);
+  const [onlineDevices, setOnlineDevices] = useState<string[]>([]);
+  const hrmClientRef = useRef<HrmWebRtcClient | null>(null);
+  const hrmVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Client-side filters (no API calls when these change)
   const [searchQuery, setSearchQuery] = useState("");
@@ -294,6 +320,134 @@ export default function SettingsUsersPage() {
     }
   };
 
+  useEffect(() => {
+    if (!feedModalUser) return;
+    const mapped = (feedModalUser.hrmDeviceId ?? "").trim();
+    setFeedDeviceId(mapped);
+    setFeedStatus("");
+    setFeedError("");
+    setOnlineDevices([]);
+  }, [feedModalUser]);
+
+  const closeHrmFeedModal = async () => {
+    setFeedClosing(true);
+    try {
+      await hrmClientRef.current?.disconnect();
+    } catch {
+      /* ignore */
+    }
+    hrmClientRef.current = null;
+    if (hrmVideoRef.current) {
+      hrmVideoRef.current.srcObject = null;
+    }
+    setFeedModalUser(null);
+    setFeedClosing(false);
+  };
+
+  const handleHrmListDevices = async () => {
+    setFeedLoadingDevices(true);
+    setFeedError("");
+    try {
+      await hrmClientRef.current?.disconnect();
+      hrmClientRef.current = null;
+      const { token, backendUrl } = await fetchHrmWebRtcSignalingToken();
+      const base = resolveHrmBackendUrl(backendUrl);
+      if (!base) {
+        throw new Error(
+          "HRM backend URL is not set. Configure HRM_WEBRTC_SIGNALING_BASE_URL on the API or NEXT_PUBLIC_HRM_WEBRTC_BACKEND_URL on the frontend."
+        );
+      }
+      const client = new HrmWebRtcClient({
+        backendUrl: base,
+        bearerToken: token,
+        onStream: (stream) => {
+          if (hrmVideoRef.current) {
+            hrmVideoRef.current.srcObject = stream;
+            void hrmVideoRef.current.play().catch(() => {});
+          }
+        },
+        onStatusChange: (s) => setFeedStatus(s),
+      });
+      hrmClientRef.current = client;
+      await client.connect();
+      const list = await client.getOnlineDevices();
+      setOnlineDevices(Array.isArray(list) ? list : []);
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+            ? err.message
+            : "Could not list devices.";
+      setFeedError(msg);
+      await hrmClientRef.current?.disconnect();
+      hrmClientRef.current = null;
+    } finally {
+      setFeedLoadingDevices(false);
+    }
+  };
+
+  const handleHrmConnectFeed = async () => {
+    const id = feedDeviceId.trim();
+    if (!id) {
+      setFeedError("Enter the HRM agent device ID (usually the Windows computer name).");
+      return;
+    }
+    setFeedError("");
+    setFeedConnecting(true);
+    try {
+      await hrmClientRef.current?.disconnect();
+      hrmClientRef.current = null;
+      if (hrmVideoRef.current) {
+        hrmVideoRef.current.srcObject = null;
+      }
+      const { token, backendUrl } = await fetchHrmWebRtcSignalingToken();
+      const base = resolveHrmBackendUrl(backendUrl);
+      if (!base) {
+        throw new Error(
+          "HRM backend URL is not set. Configure HRM_WEBRTC_SIGNALING_BASE_URL on the API or NEXT_PUBLIC_HRM_WEBRTC_BACKEND_URL on the frontend."
+        );
+      }
+      const client = new HrmWebRtcClient({
+        backendUrl: base,
+        bearerToken: token,
+        onStream: (stream) => {
+          if (hrmVideoRef.current) {
+            hrmVideoRef.current.srcObject = stream;
+            void hrmVideoRef.current.play().catch(() => {});
+          }
+        },
+        onStatusChange: (s) => setFeedStatus(s),
+      });
+      hrmClientRef.current = client;
+      await client.connect();
+      await client.watchDevice(id);
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+            ? err.message
+            : "Failed to connect.";
+      setFeedError(msg);
+      await hrmClientRef.current?.disconnect();
+      hrmClientRef.current = null;
+    } finally {
+      setFeedConnecting(false);
+    }
+  };
+
+  const handleHrmStopStream = async () => {
+    try {
+      await hrmClientRef.current?.stopStream();
+      if (hrmVideoRef.current) {
+        hrmVideoRef.current.srcObject = null;
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   const start = totalResults === 0 ? 0 : (page - 1) * limit + 1;
   const end = Math.min(page * limit, totalResults);
 
@@ -511,6 +665,23 @@ export default function SettingsUsersPage() {
                                 </button>
                               </div>
                             )}
+                          {canHrmWebRtcFeed &&
+                            currentUser?.id !== user.id &&
+                            user.status === "active" && (
+                              <div className="hs-tooltip ti-main-tooltip">
+                                <button
+                                  type="button"
+                                  onClick={() => setFeedModalUser(user)}
+                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-secondary"
+                                  aria-label={`HRM feed in for ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-live-line"></i>
+                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                    Feed in (HRM agent)
+                                  </span>
+                                </button>
+                              </div>
+                            )}
                           {!isPrimaryAdmin && (
                             <>
                               {(!isAgent || !userHasRestrictedRole(user)) && (
@@ -695,6 +866,121 @@ export default function SettingsUsersPage() {
                     Edit User
                   </Link>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {feedModalUser && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="hrm-feed-title"
+          onClick={() => void closeHrmFeedModal()}
+        >
+          <div
+            className="ti-modal-box w-full max-w-2xl bg-white dark:bg-gray-900 rounded-lg shadow-xl border border-defaultborder max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="ti-modal-content flex flex-col max-h-[90vh]">
+              <div className="ti-modal-header flex items-center justify-between px-4 py-3 border-b border-defaultborder shrink-0">
+                <h6 id="hrm-feed-title" className="modal-title text-[1rem] font-semibold mb-0">
+                  HRM feed in — {feedModalUser.name ?? feedModalUser.email ?? "User"}
+                </h6>
+                <button
+                  type="button"
+                  onClick={() => void closeHrmFeedModal()}
+                  disabled={feedClosing}
+                  className="!text-[1.25rem] !font-semibold text-defaulttextcolor hover:text-default"
+                  aria-label="Close"
+                >
+                  <i className="ri-close-line"></i>
+                </button>
+              </div>
+              <div className="ti-modal-body px-4 py-4 overflow-y-auto space-y-4">
+                <p className="text-[0.8125rem] text-defaulttextcolor/80 mb-0">
+                  When the agent is online, you get desktop video with a webcam picture-in-picture (if enabled), plus microphone and system audio. The device ID must match the agent&apos;s{" "}
+                  <strong>RegisterDevice</strong> id (default: PC machine name). If this user has an{" "}
+                  <strong>HRM device ID</strong> saved on their profile (Edit user), it is pre-filled here.
+                </p>
+                <div>
+                  <label htmlFor="hrm-device-id" className="form-label !text-[0.75rem] mb-1">
+                    Device ID
+                  </label>
+                  <input
+                    id="hrm-device-id"
+                    type="text"
+                    className="form-control !py-1.5 !text-[0.8125rem]"
+                    placeholder="e.g. DESKTOP-ABC123"
+                    value={feedDeviceId}
+                    onChange={(e) => setFeedDeviceId(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                {onlineDevices.length > 0 && (
+                  <div>
+                    <p className="text-[0.75rem] font-medium text-defaulttextcolor/70 mb-1">Online now</p>
+                    <div className="flex flex-wrap gap-1">
+                      {onlineDevices.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full text-xs font-medium hover:bg-primary/20"
+                          onClick={() => setFeedDeviceId(d)}
+                        >
+                          {d}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {feedError && (
+                  <div className="p-3 rounded-md bg-danger/10 border border-danger/30 text-danger text-[0.8125rem]">{feedError}</div>
+                )}
+                {feedStatus && (
+                  <p className="text-[0.75rem] text-defaulttextcolor/70 mb-0">
+                    Status: <span className="font-mono">{feedStatus}</span>
+                  </p>
+                )}
+                <div className="rounded-lg overflow-hidden bg-black aspect-video max-h-[320px] flex items-center justify-center">
+                  <video ref={hrmVideoRef} className="w-full h-full object-contain" playsInline muted autoPlay />
+                </div>
+              </div>
+              <div className="ti-modal-footer flex flex-wrap items-center justify-end gap-2 px-4 py-3 border-t border-defaultborder shrink-0">
+                <button
+                  type="button"
+                  onClick={() => void handleHrmListDevices()}
+                  disabled={feedLoadingDevices || feedConnecting || feedClosing}
+                  className="ti-btn ti-btn-light !text-[0.8125rem]"
+                >
+                  {feedLoadingDevices ? "Loading…" : "List online devices"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleHrmStopStream()}
+                  disabled={feedClosing}
+                  className="ti-btn ti-btn-warning !text-[0.8125rem]"
+                >
+                  Stop stream
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleHrmConnectFeed()}
+                  disabled={feedConnecting || feedClosing}
+                  className="ti-btn ti-btn-primary !text-[0.8125rem]"
+                >
+                  {feedConnecting ? "Connecting…" : "Connect"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void closeHrmFeedModal()}
+                  disabled={feedClosing}
+                  className="ti-btn ti-btn-light !text-[0.8125rem]"
+                >
+                  {feedClosing ? "Closing…" : "Close"}
+                </button>
               </div>
             </div>
           </div>

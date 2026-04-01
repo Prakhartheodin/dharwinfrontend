@@ -125,6 +125,19 @@ function StatCard({
 // ---------------------------------------------------------------------------
 // Drill-Down Modal
 // ---------------------------------------------------------------------------
+
+const DRILL_MODAL_TITLE: Record<string, string> = {
+  applicationFunnel: 'Funnel',
+  applicationStatus: 'Application status',
+  jobStatus: 'Job status',
+  jobType: 'Job type',
+}
+
+function drillModalHeading(drillType: string, drillValue: string) {
+  const label = DRILL_MODAL_TITLE[drillType] ?? drillType.replace(/([A-Z])/g, ' $1').trim()
+  return `${label}: ${drillValue}`
+}
+
 function DrillDownModal({
   open, onClose, drillType, drillValue,
 }: {
@@ -173,11 +186,11 @@ function DrillDownModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white dark:bg-bodybg rounded-lg shadow-xl w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-defaultborder">
-          <h5 className="text-[1rem] font-semibold">
-            {drillType === 'applicationFunnel' ? 'Funnel' : drillType.replace(/([A-Z])/g, ' $1').trim()}: {drillValue}
-            <span className="text-defaulttextcolor/60 text-[0.8125rem] ms-2">({totalResults} records)</span>
+      <div className="bg-white dark:bg-bodybg rounded-xl shadow-xl w-full max-w-3xl mx-4 max-h-[80vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-defaultborder shrink-0">
+          <h5 className="text-[1rem] font-semibold text-defaulttextcolor m-0 pe-2">
+            {drillModalHeading(drillType, drillValue)}
+            <span className="text-defaulttextcolor/60 text-[0.8125rem] font-normal ms-2">({totalResults} records)</span>
           </h5>
           <button className="ti-btn ti-btn-icon ti-btn-sm ti-btn-ghost-dark" onClick={onClose}>
             <i className="ri-close-line" />
@@ -240,24 +253,37 @@ function DrillDownModal({
           )}
         </div>
         {totalPages > 1 && (
-          <div className="flex items-center justify-between px-6 py-3 border-t border-defaultborder">
-            <span className="text-[0.8125rem] text-defaulttextcolor/70">
-              Page {page} of {totalPages}
-            </span>
-            <div className="flex gap-2">
+          <div
+            className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-6 py-4 border-t border-defaultborder/90 bg-slate-50/90 dark:bg-white/[0.03] shrink-0"
+            role="navigation"
+            aria-label="Drill-down results pagination"
+          >
+            <p className="text-sm text-defaulttextcolor/75 tabular-nums m-0 text-center sm:text-start">
+              Page{' '}
+              <span className="font-semibold text-defaulttextcolor">{page}</span>
+              {' of '}
+              <span className="font-semibold text-defaulttextcolor">{totalPages}</span>
+            </p>
+            <div className="flex items-center justify-center sm:justify-end gap-3">
               <button
-                className="ti-btn ti-btn-sm ti-btn-outline-primary"
+                type="button"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[7.5rem] shrink-0 rounded-xl border border-defaultborder bg-white px-4 py-2.5 text-sm font-medium text-defaulttextcolor shadow-sm transition-colors hover:bg-slate-50 hover:border-defaultborder focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-45 dark:bg-bodybg dark:border-white/15 dark:hover:bg-white/5"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
+                aria-label={`Previous page, page ${page - 1} of ${totalPages}`}
               >
+                <i className="ri-arrow-left-s-line text-[1.125rem] leading-none" aria-hidden />
                 Previous
               </button>
               <button
-                className="ti-btn ti-btn-sm ti-btn-outline-primary"
+                type="button"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[7.5rem] shrink-0 rounded-xl border border-defaultborder bg-white px-4 py-2.5 text-sm font-medium text-defaulttextcolor shadow-sm transition-colors hover:bg-slate-50 hover:border-defaultborder focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-45 dark:bg-bodybg dark:border-white/15 dark:hover:bg-white/5"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
+                aria-label={`Next page, page ${page + 1} of ${totalPages}`}
               >
                 Next
+                <i className="ri-arrow-right-s-line text-[1.125rem] leading-none" aria-hidden />
               </button>
             </div>
           </div>

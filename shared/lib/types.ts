@@ -19,6 +19,8 @@ export interface User {
   profilePicture?: ProfilePicture | null;
   createdAt?: string;
   lastLoginAt?: string;
+  /** HRM WebRTC agent device id (e.g. Windows machine name), set by administrators. */
+  hrmDeviceId?: string | null;
   [key: string]: unknown;
 }
 
