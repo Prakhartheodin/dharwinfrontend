@@ -63,7 +63,8 @@
       @apply absolute;
     }
     .mail-info-body {
-      @apply max-h-[calc(100vh-19.3rem)];
+      @apply flex-1 min-h-0 overflow-y-auto overflow-x-hidden;
+      max-height: none !important;
     }
     #product-quantity {
       @apply w-8;

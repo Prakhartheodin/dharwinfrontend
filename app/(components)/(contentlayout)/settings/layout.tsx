@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
+import { hasSettingsUsersManage } from "@/shared/lib/permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -19,11 +20,13 @@ function getActiveTab(
   | "personal-information"
   | "email-templates"
   | "email-templates-admin"
+  | "bolna-voice-agent"
   | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
   if (pathname.startsWith("/settings/users")) return "users";
   if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/agents")) return "agents";
+  if (pathname.startsWith("/settings/bolna-voice-agent")) return "bolna-voice-agent";
   if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
@@ -38,7 +41,7 @@ export default function SettingsLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, roleNames, isAdministrator, isPlatformSuperUser } = useAuth();
+  const { user, roleNames, isAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
   const activeTab = getActiveTab(pathname ?? "");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [hasUsersAccess, setHasUsersAccess] = useState<boolean | null>(null);
@@ -129,6 +132,12 @@ export default function SettingsLayout({
       if (!roleNames.includes("Agent")) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
       if (!isAdministrator) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "bolna-voice-agent") {
+      const can =
+        isPlatformSuperUser ||
+        isAdministrator ||
+        (permissionsLoaded && hasSettingsUsersManage(permissions));
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [
     isAdmin,
@@ -139,6 +148,9 @@ export default function SettingsLayout({
     router,
     roleNames,
     isAdministrator,
+    isPlatformSuperUser,
+    permissions,
+    permissionsLoaded,
   ]);
 
   const tabClass = (
@@ -151,6 +163,7 @@ export default function SettingsLayout({
       | "personal-information"
       | "email-templates"
       | "email-templates-admin"
+      | "bolna-voice-agent"
   ) =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab

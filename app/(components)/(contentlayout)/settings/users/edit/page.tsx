@@ -27,6 +27,7 @@ export default function SettingsUsersEditPage() {
   const [email, setEmail] = useState("");
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>("active");
+  const [hrmDeviceId, setHrmDeviceId] = useState("");
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
@@ -70,6 +71,7 @@ export default function SettingsUsersEditPage() {
         setRoleIds(userRes.roleIds ?? []);
         const rawStatus = (userRes.status ?? "active").toString().toLowerCase();
         setStatus(["active", "pending", "disabled", "deleted"].includes(rawStatus) ? rawStatus : "active");
+        setHrmDeviceId((userRes.hrmDeviceId ?? "").trim());
         setRoles(rolesRes.results ?? []);
       } catch (err) {
         if (cancelled) return;
@@ -113,7 +115,14 @@ export default function SettingsUsersEditPage() {
     try {
       const assignableIds = new Set(assignableRoles.map((r) => r.id));
       const roleIdsToSend = isAgent ? roleIds.filter((id) => assignableIds.has(id)) : roleIds;
-      const payload: { name: string; username?: string; email: string; roleIds: string[]; status: string } = {
+      const payload: {
+        name: string;
+        username?: string;
+        email: string;
+        roleIds: string[];
+        status: string;
+        hrmDeviceId?: string;
+      } = {
         name: trimmedName,
         email: trimmedEmail,
         roleIds: roleIdsToSend,
@@ -121,6 +130,7 @@ export default function SettingsUsersEditPage() {
       };
       if (isAdministrator) {
         payload.username = username.trim().toLowerCase() || undefined;
+        payload.hrmDeviceId = hrmDeviceId.trim();
       }
       await usersApi.updateUser(userId, payload);
       await Swal.fire({
@@ -269,6 +279,27 @@ export default function SettingsUsersEditPage() {
                       <option value="deleted">Deleted</option>
                     </select>
                   </div>
+                  {isAdministrator && (
+                    <div className="mb-6">
+                      <label htmlFor="edit-user-hrm-device" className="form-label">
+                        HRM monitoring device ID
+                      </label>
+                      <input
+                        id="edit-user-hrm-device"
+                        type="text"
+                        className="form-control"
+                        placeholder="e.g. DESKTOP-ABC123 (Windows machine name from the HRM agent)"
+                        value={hrmDeviceId}
+                        onChange={(e) => setHrmDeviceId(e.target.value)}
+                        autoComplete="off"
+                      />
+                      <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
+                        Use the provisioning id from the PC&apos;s install script (<code className="text-xs">install-agent-windows.ps1</code>) or{" "}
+                        <code className="text-xs">HRM-AGENT-DEVICE-ID.txt</code> next to the agent — it must match{" "}
+                        <code className="text-xs">Agent:DeviceId</code> in appsettings.json.
+                      </p>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="submit"

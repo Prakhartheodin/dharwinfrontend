@@ -160,6 +160,133 @@
   padding-left: 2px;
 }
 
+.threadListDate {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* —— Reading pane: grouped toolbar (nav | organize | destructive | compose) —— */
+.readingToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.125rem;
+  max-width: 100%;
+}
+
+.mailToolbarGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 1.35rem;
+  margin: 0 0.35rem;
+  align-self: center;
+  flex-shrink: 0;
+  background: rgba(28, 25, 23, 0.1);
+  border-radius: 1px;
+}
+
+:global(.dark) .toolbarDivider {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Visible focus for icon-only controls (aligns with accessible mail UI guidance) */
+.readingToolbar :global(button:focus-visible) {
+  outline: 2px solid var(--mail-accent);
+  outline-offset: 2px;
+}
+
+/* —— Conversation view: vertical rail + card per message —— */
+.threadConversation {
+  position: relative;
+  padding-inline-start: 0.75rem;
+  margin-inline-start: 0.125rem;
+  border-inline-start: 2px solid rgba(194, 65, 12, 0.22);
+}
+
+:global(.dark) .threadConversation {
+  border-inline-start-color: rgba(251, 146, 60, 0.28);
+}
+
+.threadMessageCard {
+  position: relative;
+  padding: 1rem 1.125rem 1.125rem;
+  margin-bottom: 1rem;
+  border-radius: calc(var(--mail-radius-sm) + 2px);
+  background: var(--mail-paper-elevated);
+  border: 1px solid rgba(28, 25, 23, 0.07);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px rgba(28, 25, 23, 0.04);
+  scroll-margin-top: 1rem;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.threadMessageCard:hover {
+  border-color: rgba(194, 65, 12, 0.12);
+  box-shadow: 0 2px 6px rgba(28, 25, 23, 0.06), 0 12px 32px rgba(28, 25, 23, 0.05);
+}
+
+:global(.dark) .threadMessageCard {
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+:global(.dark) .threadMessageCard:hover {
+  border-color: rgba(251, 146, 60, 0.15);
+}
+
+.threadMessageCard:last-child {
+  margin-bottom: 0;
+}
+
+.threadCountBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: var(--mail-accent-mist);
+  color: var(--mail-accent);
+  border: 1px solid rgba(194, 65, 12, 0.15);
+}
+
+:global(.dark) .threadCountBadge {
+  border-color: rgba(251, 146, 60, 0.25);
+}
+
+/* Empty reading pane */
+.emptyReading {
+  padding: 3rem 1.5rem;
+}
+
+.emptyReadingIcon {
+  width: 4.75rem;
+  height: 4.75rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(145deg, var(--mail-accent-mist) 0%, rgba(194, 65, 12, 0.06) 100%);
+  border: 1px solid rgba(194, 65, 12, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+:global(.dark) .emptyReadingIcon {
+  background: linear-gradient(145deg, rgba(251, 146, 60, 0.12) 0%, rgba(251, 146, 60, 0.04) 100%);
+  border-color: rgba(251, 146, 60, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
 .searchWrap {
   border-radius: 999px;
   overflow: hidden;
@@ -179,6 +306,30 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+/* Reading pane: fill column height and scroll message body (fixes global .mail-info-body max-h clipping) */
+.readingPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  flex: 1 1 0%;
+}
+
+.readingPaneScroll {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  max-height: none !important;
+}
+
+.readingPaneHeader,
+.readingPaneFooter {
+  flex-shrink: 0;
+}
+
 .readingHeader {
   background: linear-gradient(180deg, var(--mail-paper-elevated) 0%, var(--mail-paper) 100%);
   border-bottom: 1px solid rgba(28, 25, 23, 0.06);
@@ -193,6 +344,32 @@
   line-height: 1.25;
   letter-spacing: -0.02em;
   color: var(--mail-ink);
+}
+
+/* Quoted / threaded history inside HTML bodies (Gmail + Outlook) */
+:global(.mail-html-body .mail-quoted) {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(120, 113, 108, 0.12);
+}
+
+:global(.dark .mail-html-body .mail-quoted) {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(.mail-html-body .mail-quoted blockquote),
+:global(.mail-html-body blockquote) {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0 0.5rem 0.875rem;
+  border-left: 3px solid rgba(194, 65, 12, 0.45);
+  background: rgba(120, 113, 108, 0.05);
+  border-radius: 0 6px 6px 0;
+}
+
+:global(.dark .mail-html-body .mail-quoted blockquote),
+:global(.dark .mail-html-body blockquote) {
+  border-left-color: rgba(251, 146, 60, 0.5);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .replyZone {

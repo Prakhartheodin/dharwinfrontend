@@ -23,6 +23,7 @@
     "@livekit/components-react": "^2.9.19",
     "@livekit/components-styles": "^1.2.0",
     "@material/slider": "^14.0.0",
+    "@microsoft/signalr": "^8.0.17",
     "@mui/icons-material": "^5.15.15",
     "@mui/material": "^5.15.15",
     "@reduxjs/toolkit": "^1.9.7",

@@ -147,24 +147,3 @@ export async function deleteBolnaCallRecord(id: string): Promise<{ success: bool
   return data;
 }
 
-export type BolnaCandidateAgentSettings = {
-  success: boolean;
-  extraSystemInstructions: string;
-  greetingOverride: string;
-  updatedAt?: string;
-  updatedBy?: string | null;
-};
-
-export async function getBolnaCandidateAgentSettings(): Promise<BolnaCandidateAgentSettings> {
-  const { data } = await apiClient.get<BolnaCandidateAgentSettings>("/bolna/candidate-agent-settings");
-  return data;
-}
-
-export async function patchBolnaCandidateAgentSettings(body: {
-  extraSystemInstructions?: string;
-  greetingOverride?: string;
-}): Promise<BolnaCandidateAgentSettings> {
-  const { data } = await apiClient.patch<BolnaCandidateAgentSettings>("/bolna/candidate-agent-settings", body);
-  return data;
-}
-

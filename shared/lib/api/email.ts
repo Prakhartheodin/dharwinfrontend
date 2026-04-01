@@ -44,6 +44,10 @@ export interface EmailMessage {
 export interface EmailThreadListItem {
   id: string;
   threadId: string;
+  /** Newest message in thread (reply/reply-all anchor when full thread fetch is empty) */
+  lastMessageId?: string;
+  /** Oldest message (typical forward anchor) */
+  firstMessageId?: string;
   snippet: string;
   from: string;
   to: string;
@@ -196,6 +200,19 @@ export async function replyMessage(
   provider: MailProvider = "gmail"
 ): Promise<{ id: string; threadId?: string }> {
   const { data } = await apiClient.post(`${mailBase(provider)}/messages/${messageId}/reply`, body);
+  return data;
+}
+
+export async function replyAllMessage(
+  messageId: string,
+  body: {
+    accountId: string;
+    html: string;
+    attachments?: { filename: string; content: string | ArrayBuffer; mimeType?: string }[];
+  },
+  provider: MailProvider = "gmail"
+): Promise<{ id: string; threadId?: string }> {
+  const { data } = await apiClient.post(`${mailBase(provider)}/messages/${messageId}/reply-all`, body);
   return data;
 }
 

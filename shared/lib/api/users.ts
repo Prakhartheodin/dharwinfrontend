@@ -183,6 +183,8 @@ export interface UpdateUserPayload {
   profileSummary?: string;
   profilePicture?: ProfilePicturePayload | null;
   notificationPreferences?: NotificationPreferences;
+  /** HRM monitoring: must match Agent:DeviceId / machine name. Administrators only. */
+  hrmDeviceId?: string | null;
 }
 
 export async function updateUser(userId: string, payload: UpdateUserPayload): Promise<User> {
