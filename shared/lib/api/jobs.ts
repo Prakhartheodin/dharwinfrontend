@@ -222,9 +222,13 @@ const publicApiClient = axios.create({
 
 export interface PublicJobsListParams {
   title?: string;
+  /** Full-text style search (same as browse jobs) */
+  search?: string;
   location?: string;
   jobType?: string;
   experienceLevel?: string;
+  jobOrigin?: "internal" | "external";
+  sortBy?: string;
   limit?: number;
   page?: number;
 }
@@ -240,6 +244,9 @@ export interface PublicJob {
   salaryRange?: JobSalaryRange;
   experienceLevel?: string;
   createdAt?: string;
+  status?: string;
+  jobOrigin?: "internal" | "external";
+  externalPlatformUrl?: string;
 }
 
 export interface PublicJobsListResponse {

@@ -209,6 +209,38 @@ function PersonalInfoDateField({
 }
 
 /** Avatar: S3 image if available, else initials. Matches my profile / personal-information behavior. */
+function positionLabelFromRaw(raw: CandidateDisplay['_raw']): string {
+  const pos = raw?.position;
+  if (pos == null) return 'Not assigned';
+  if (typeof pos === 'object' && pos !== null && 'name' in pos && String((pos as { name?: string }).name || '').trim()) {
+    return String((pos as { name: string }).name);
+  }
+  if (typeof pos === 'string' && pos.trim()) {
+    if (/^[a-f0-9]{24}$/i.test(pos.trim())) return 'Not assigned';
+    return pos;
+  }
+  return 'Not assigned';
+}
+
+function trainingProgramsLabel(items: { name?: string }[] | undefined): string {
+  if (!items?.length) return 'Not assigned';
+  return items.map((x) => x.name).filter(Boolean).join(', ') || 'Not assigned'
+}
+
+function projectsAssignedLabel(items: { name?: string; status?: string }[] | undefined): string {
+  if (!items?.length) return 'Not assigned'
+  return (
+    items
+      .map((p) => {
+        const n = p.name?.trim()
+        if (!n) return ''
+        return p.status ? `${n} (${p.status})` : n
+      })
+      .filter(Boolean)
+      .join(', ') || 'Not assigned'
+  )
+}
+
 function CandidateAvatar({ candidate, className = 'w-10 h-10 rounded-full' }: { candidate: CandidateDisplay; className?: string }) {
   const imgUrl = candidate.displayPicture ?? (candidate as any)._raw?.profilePicture?.url
   const [imgFailed, setImgFailed] = useState(false)
@@ -2277,6 +2309,22 @@ const Candidates = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Experience (years)</label>
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.experience ?? '-'}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">{positionLabelFromRaw(previewCandidate._raw)}</p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Training programs</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                            {trainingProgramsLabel(previewCandidate._raw?.assignedTrainingPrograms)}
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Projects</label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                            {projectsAssignedLabel(previewCandidate._raw?.assignedProjects)}
+                          </p>
                         </div>
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Short Bio</label>
