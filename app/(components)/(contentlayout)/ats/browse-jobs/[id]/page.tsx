@@ -4,8 +4,10 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
-import { browseJobById, browseApplyToJob, isExternalJob, type Job } from "@/shared/lib/api/jobs";
+import { getPublicJobById, browseApplyToJob, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
 import { getMyApplications, withdrawMyApplication, type JobApplication } from "@/shared/lib/api/jobApplications";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { PublicJobApplyModal } from "@/shared/components/ats/PublicJobApplyModal";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
 import {
   formatJobDescriptionForDisplay,
@@ -36,8 +38,9 @@ function GlanceRow({ icon, label, children }: { icon: string; label: string; chi
 export default function BrowseJobDetailsPage() {
   const params = useParams();
   const jobId = typeof params?.id === "string" ? params.id : "";
+  const { user } = useAuth();
 
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<PublicJob | null>(null);
   const [jobLoading, setJobLoading] = useState(true);
   const [jobError, setJobError] = useState<string | null>(null);
   const [existingApplication, setExistingApplication] = useState<JobApplication | null>(null);
@@ -46,6 +49,7 @@ export default function BrowseJobDetailsPage() {
   const [withdrawSubmitting, setWithdrawSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [applyModalOpen, setApplyModalOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setShowScrollTop(typeof window !== "undefined" && window.scrollY > 380);
@@ -62,14 +66,15 @@ export default function BrowseJobDetailsPage() {
     }
     setJobLoading(true);
     setJobError(null);
-    browseJobById(jobId)
+    getPublicJobById(jobId)
       .then(setJob)
       .catch(() => setJobError("Job not found"))
       .finally(() => setJobLoading(false));
   }, [jobId]);
 
   useEffect(() => {
-    if (!jobId) {
+    if (!jobId || !user) {
+      setExistingApplication(null);
       setApplicationsLoading(false);
       return;
     }
@@ -84,10 +89,10 @@ export default function BrowseJobDetailsPage() {
       })
       .catch(() => setExistingApplication(null))
       .finally(() => setApplicationsLoading(false));
-  }, [jobId]);
+  }, [jobId, user]);
 
-  const handleApply = async () => {
-    if (!jobId) return;
+  const handleApplyLoggedIn = async () => {
+    if (!jobId || !user) return;
     setApplySubmitting(true);
     setMessage(null);
     try {
@@ -132,6 +137,7 @@ export default function BrowseJobDetailsPage() {
   };
 
   const canApply = job?.status === "Active" && !existingApplication;
+  const isLoggedIn = Boolean(user);
   const canWithdraw =
     existingApplication && WITHDRAWABLE_STATUSES.includes(existingApplication.status);
 
@@ -183,7 +189,7 @@ export default function BrowseJobDetailsPage() {
 
   const actionsBlock = (
     <div className="flex flex-col gap-3">
-      {applicationsLoading ? (
+      {isLoggedIn && applicationsLoading ? (
         <div className="flex items-center gap-2 rounded-xl border border-stone-200/80 bg-stone-50/80 px-4 py-3 text-sm text-stone-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-stone-400">
           <i className="ri-loader-4-line animate-spin text-lg" aria-hidden />
           Checking your application…
@@ -216,7 +222,13 @@ export default function BrowseJobDetailsPage() {
         <button
           type="button"
           disabled={applySubmitting}
-          onClick={handleApply}
+          onClick={() => {
+            if (isLoggedIn) {
+              void handleApplyLoggedIn();
+            } else {
+              setApplyModalOpen(true);
+            }
+          }}
           className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-stone-900 px-4 py-3.5 text-sm font-bold uppercase tracking-wide text-white shadow-lg shadow-stone-900/20 transition hover:bg-stone-800 disabled:opacity-50 dark:bg-teal-600 dark:shadow-teal-900/30 dark:hover:bg-teal-500"
         >
           <span className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/10 to-white/0 opacity-0 transition group-hover:opacity-100 dark:from-white/0 dark:via-white/5 dark:to-white/0" />
@@ -225,7 +237,11 @@ export default function BrowseJobDetailsPage() {
           ) : (
             <i className="ri-send-plane-fill text-xl" aria-hidden />
           )}
-          {applySubmitting ? "Submitting…" : "Apply for this role"}
+          {applySubmitting
+            ? "Submitting…"
+            : isLoggedIn
+              ? "Apply for this role"
+              : "Apply — create your account"}
         </button>
       ) : job.status !== "Active" ? (
         <div className="rounded-xl border border-stone-200 bg-stone-100/80 px-4 py-3 text-sm text-stone-600 dark:border-white/10 dark:bg-white/[0.05] dark:text-stone-400">
@@ -458,6 +474,15 @@ export default function BrowseJobDetailsPage() {
         >
           <i className="ri-arrow-up-line text-xl" aria-hidden />
         </button>
+
+        {job && jobId ? (
+          <PublicJobApplyModal
+            open={applyModalOpen}
+            onClose={() => setApplyModalOpen(false)}
+            jobId={jobId}
+            jobTitle={job.title}
+          />
+        ) : null}
       </div>
     </Fragment>
   );

@@ -36,6 +36,10 @@ export interface CandidateListItem {
   openSopCount?: number;
   /** Present on GET /candidates/:id and related detail responses. */
   assignedAgent?: { id: string; name: string; email?: string } | null;
+  /** Training modules this candidate’s owner is enrolled in (via Student). GET /candidates/:id only. */
+  assignedTrainingPrograms?: { id: string; name: string }[];
+  /** Projects where the candidate owner user is in assignedTo. GET /candidates/:id only. */
+  assignedProjects?: { id: string; name: string; status?: string }[];
   documents?: CandidateDocument[];
   socialLinks?: Array<{ platform?: string; url?: string }>;
 }

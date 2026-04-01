@@ -4,7 +4,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
-import { browseJobs as browseJobsApi, isExternalJob, type Job } from "@/shared/lib/api/jobs";
+import { getPublicJobs, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
 
 const JOB_TYPES = ["Full-time", "Part-time", "Contract", "Temporary", "Internship", "Freelance"];
@@ -12,7 +12,7 @@ const EXPERIENCE_LEVELS = ["Entry Level", "Mid Level", "Senior Level", "Executiv
 
 export default function BrowseJobsPage() {
   const router = useRouter();
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobs, setJobs] = useState<PublicJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -26,7 +26,7 @@ export default function BrowseJobsPage() {
 
   useEffect(() => {
     setLoading(true);
-    browseJobsApi({
+    getPublicJobs({
       limit: 12,
       page,
       search: search || undefined,
