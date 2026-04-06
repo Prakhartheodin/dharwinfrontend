@@ -113,12 +113,23 @@ export default function CreateModuleWithAIPage() {
     )
   }
 
+  const prevContentTypesRef = React.useRef(titleOnlyContentTypes)
   useEffect(() => {
-    if (!titleOnlyContentTypes.includes("blog") && numBlogs !== 0) setNumBlogs(0)
-    if (!titleOnlyContentTypes.includes("video") && numVideos !== 0) setNumVideos(0)
-    if (!titleOnlyContentTypes.includes("quiz") && numQuizzes !== 0) setNumQuizzes(0)
-    if (!titleOnlyContentTypes.includes("essay") && numEssays !== 0) setNumEssays(0)
-  }, [titleOnlyContentTypes, numBlogs, numVideos, numQuizzes, numEssays])
+    const prev = prevContentTypesRef.current
+    prevContentTypesRef.current = titleOnlyContentTypes
+
+    if (!titleOnlyContentTypes.includes("blog")) { if (numBlogs !== 0) setNumBlogs(0) }
+    else if (!prev.includes("blog") && numBlogs === 0) setNumBlogs(2)
+
+    if (!titleOnlyContentTypes.includes("video")) { if (numVideos !== 0) setNumVideos(0) }
+    else if (!prev.includes("video") && numVideos === 0) setNumVideos(2)
+
+    if (!titleOnlyContentTypes.includes("quiz")) { if (numQuizzes !== 0) setNumQuizzes(0) }
+    else if (!prev.includes("quiz") && numQuizzes === 0) setNumQuizzes(1)
+
+    if (!titleOnlyContentTypes.includes("essay")) { if (numEssays !== 0) setNumEssays(0) }
+    else if (!prev.includes("essay") && numEssays === 0) setNumEssays(1)
+  }, [titleOnlyContentTypes])
 
   const downloadTemplate = (file: string) => {
     const a = document.createElement("a")
@@ -273,11 +284,18 @@ export default function CreateModuleWithAIPage() {
     setOutlineError(null)
     setOutlineLoading(true)
     try {
+      const types = titleOnlyContentTypes.length ? titleOnlyContentTypes : ["blog", "quiz", "essay"]
       const result = await trainingModulesApi.getPlaylistOutlineFromTitle(
         titleOnlyName.trim(),
         numModules,
         titleOnlyLevel,
-        titleOnlyContentTypes.length ? titleOnlyContentTypes : ["blog", "quiz", "essay"]
+        types,
+        {
+          numBlogs: types.includes("blog") ? numBlogs : 0,
+          numVideos: types.includes("video") ? numVideos : 0,
+          numQuizzes: types.includes("quiz") ? numQuizzes : 0,
+          numEssays: types.includes("essay") ? numEssays : 0,
+        }
       )
       setOutlinePreview(result)
     } catch (err) {
@@ -712,6 +730,108 @@ export default function CreateModuleWithAIPage() {
                     </div>
                   )}
 
+                  {titleOnlyContentTypes.length > 0 && (
+                  <div>
+                    <label className="form-label mb-3 block">
+                      How many of each per module?
+                    </label>
+                    <div className="grid grid-cols-12 gap-4">
+                      {titleOnlyContentTypes.includes("blog") && (
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">Blogs</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          className="form-control"
+                          value={numBlogs}
+                          onChange={(e) => setNumBlogs(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      )}
+                      {titleOnlyContentTypes.includes("video") && (
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">YouTube Videos</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          className="form-control"
+                          value={numVideos}
+                          onChange={(e) => setNumVideos(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      )}
+                      {titleOnlyContentTypes.includes("quiz") && (
+                      <>
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">Quizzes</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          className="form-control"
+                          value={numQuizzes}
+                          onChange={(e) => setNumQuizzes(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">Questions per quiz</label>
+                        <input
+                          type="number"
+                          min={2}
+                          max={10}
+                          className="form-control"
+                          value={questionsPerQuiz}
+                          onChange={(e) =>
+                            setQuestionsPerQuiz(
+                              Math.min(10, Math.max(2, parseInt(e.target.value, 10) || 4))
+                            )
+                          }
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      </>
+                      )}
+                      {titleOnlyContentTypes.includes("essay") && (
+                      <>
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">Q&A sections</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10}
+                          className="form-control"
+                          value={numEssays}
+                          onChange={(e) => setNumEssays(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      <div className="col-span-6 sm:col-span-4">
+                        <label className="form-label text-[0.8125rem]">Questions per Q&A</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={8}
+                          className="form-control"
+                          value={questionsPerEssay}
+                          onChange={(e) =>
+                            setQuestionsPerEssay(
+                              Math.min(8, Math.max(1, parseInt(e.target.value, 10) || 3))
+                            )
+                          }
+                          disabled={outlineLoading || generatingFromTitle}
+                        />
+                      </div>
+                      </>
+                      )}
+                    </div>
+                  </div>
+                  )}
+
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -782,94 +902,6 @@ export default function CreateModuleWithAIPage() {
                               </ul>
                             </div>
                           ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="form-label mb-3 block">
-                          How many of each per module? (blogs, videos, quizzes, Q&A)
-                        </label>
-                        <div className="grid grid-cols-12 gap-4">
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Blogs</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={20}
-                              className="form-control"
-                              value={numBlogs}
-                              onChange={(e) => setNumBlogs(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">YouTube Videos (per module)</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={20}
-                              className="form-control"
-                              value={numVideos}
-                              onChange={(e) => setNumVideos(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Quizzes</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={10}
-                              className="form-control"
-                              value={numQuizzes}
-                              onChange={(e) => setNumQuizzes(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Questions per quiz</label>
-                            <input
-                              type="number"
-                              min={2}
-                              max={10}
-                              className="form-control"
-                              value={questionsPerQuiz}
-                              onChange={(e) =>
-                                setQuestionsPerQuiz(
-                                  Math.min(10, Math.max(2, parseInt(e.target.value, 10) || 4))
-                                )
-                              }
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Q&A sections</label>
-                            <input
-                              type="number"
-                              min={0}
-                              max={10}
-                              className="form-control"
-                              value={numEssays}
-                              onChange={(e) => setNumEssays(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
-                          <div className="col-span-6 sm:col-span-4">
-                            <label className="form-label text-[0.8125rem]">Questions per Q&A</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={8}
-                              className="form-control"
-                              value={questionsPerEssay}
-                              onChange={(e) =>
-                                setQuestionsPerEssay(
-                                  Math.min(8, Math.max(1, parseInt(e.target.value, 10) || 3))
-                                )
-                              }
-                              disabled={generatingFromTitle}
-                            />
-                          </div>
                         </div>
                       </div>
 

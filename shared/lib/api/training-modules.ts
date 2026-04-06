@@ -544,7 +544,8 @@ export async function getPlaylistOutlineFromTitle(
   moduleTitle: string,
   numModules?: number,
   level?: string,
-  contentTypes?: string[]
+  contentTypes?: string[],
+  counts?: { numBlogs?: number; numVideos?: number; numQuizzes?: number; numEssays?: number }
 ): Promise<PlaylistOutlineFromTitleResponse> {
   const { data } = await apiClient.post<PlaylistOutlineFromTitleResponse>(
     "/training/modules/playlist-outline-from-title",
@@ -553,6 +554,7 @@ export async function getPlaylistOutlineFromTitle(
       numModules: numModules ?? 3,
       level: level ?? "intermediate",
       contentTypes: contentTypes ?? ["blog", "quiz", "essay"],
+      ...(counts ?? {}),
     }
   );
   return data;

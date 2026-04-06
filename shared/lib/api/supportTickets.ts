@@ -24,6 +24,7 @@ export interface TicketFilters {
   status?: "Open" | "In Progress" | "Resolved" | "Closed";
   priority?: "Low" | "Medium" | "High" | "Urgent";
   category?: string;
+  search?: string;
   page?: number;
   limit?: number;
   sortBy?: string;
@@ -35,6 +36,22 @@ export interface SupportTicketListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+}
+
+export interface SlaInfo {
+  targetMin: number;
+  elapsedMin: number;
+  met: boolean;
+  breached: boolean;
+}
+
+export interface ActivityEntry {
+  action: string;
+  field?: string;
+  from?: string;
+  to?: string;
+  performedBy?: { id?: string; name?: string; email?: string };
+  createdAt?: string;
 }
 
 export interface SupportTicket {
@@ -51,6 +68,10 @@ export interface SupportTicket {
   assignedTo?: { id?: string; _id?: string; name?: string; email?: string; role?: string; subRole?: string } | null;
   comments?: SupportTicketComment[];
   attachments?: SupportTicketAttachment[];
+  sla?: { firstResponse: SlaInfo; resolution: SlaInfo };
+  activityLog?: ActivityEntry[];
+  firstResponseAt?: string;
+  slaBreached?: boolean;
   resolvedAt?: string;
   resolvedBy?: { id?: string; name?: string; email?: string };
   closedAt?: string;
@@ -65,6 +86,7 @@ export interface SupportTicketComment {
   content: string;
   commentedBy: { id?: string; _id?: string; name?: string; email?: string; role?: string; subRole?: string };
   isAdminComment?: boolean;
+  isInternal?: boolean;
   attachments?: SupportTicketAttachment[];
   createdAt?: string;
 }
@@ -107,6 +129,7 @@ export async function getAllSupportTickets(filters?: TicketFilters): Promise<Sup
   if (filters?.status) params.append("status", filters.status);
   if (filters?.priority) params.append("priority", filters.priority);
   if (filters?.category) params.append("category", filters.category);
+  if (filters?.search) params.append("search", filters.search);
   if (filters?.page) params.append("page", String(filters.page));
   if (filters?.limit) params.append("limit", String(filters.limit));
   if (filters?.sortBy) params.append("sortBy", filters.sortBy);
@@ -129,18 +152,72 @@ export async function updateSupportTicket(ticketId: string, updateData: UpdateTi
 export async function addCommentToTicket(
   ticketId: string,
   content: string,
-  attachments?: File[]
+  attachments?: File[],
+  isInternal?: boolean
 ): Promise<SupportTicket> {
   if (attachments && attachments.length > 0) {
     const formData = new FormData();
     formData.append("content", content);
+    if (isInternal) formData.append("isInternal", "true");
     attachments.forEach((file) => formData.append("attachments", file));
     const { data } = await apiClient.post<SupportTicket>(`${BASE}/${ticketId}/comments`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
     return data;
   }
-  const { data } = await apiClient.post<SupportTicket>(`${BASE}/${ticketId}/comments`, { content });
+  const { data } = await apiClient.post<SupportTicket>(`${BASE}/${ticketId}/comments`, { content, isInternal: !!isInternal });
+  return data;
+}
+
+// ── Canned Responses ──
+
+const CANNED_BASE = "/canned-responses";
+
+export interface CannedResponse {
+  id?: string;
+  _id?: string;
+  title: string;
+  content: string;
+  category?: string;
+  shortcut?: string;
+  isShared?: boolean;
+  usageCount?: number;
+}
+
+export interface CannedResponseListResponse {
+  results: CannedResponse[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export async function getCannedResponses(params?: { category?: string; search?: string }): Promise<CannedResponseListResponse> {
+  const q = new URLSearchParams();
+  if (params?.category) q.append("category", params.category);
+  if (params?.search) q.append("search", params.search);
+  q.append("limit", "50");
+  const url = q.toString() ? `${CANNED_BASE}?${q}` : CANNED_BASE;
+  const { data } = await apiClient.get<CannedResponseListResponse>(url);
+  return data;
+}
+
+export async function createCannedResponse(body: { title: string; content: string; category?: string; shortcut?: string }): Promise<CannedResponse> {
+  const { data } = await apiClient.post<CannedResponse>(CANNED_BASE, body);
+  return data;
+}
+
+export async function updateCannedResponse(id: string, body: Partial<CannedResponse>): Promise<CannedResponse> {
+  const { data } = await apiClient.patch<CannedResponse>(`${CANNED_BASE}/${id}`, body);
+  return data;
+}
+
+export async function deleteCannedResponse(id: string): Promise<void> {
+  await apiClient.delete(`${CANNED_BASE}/${id}`);
+}
+
+export async function useCannedResponse(id: string): Promise<CannedResponse> {
+  const { data } = await apiClient.post<CannedResponse>(`${CANNED_BASE}/${id}/use`);
   return data;
 }
 
