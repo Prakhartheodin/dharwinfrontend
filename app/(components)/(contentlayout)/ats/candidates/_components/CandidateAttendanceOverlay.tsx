@@ -194,6 +194,13 @@ export default function CandidateAttendanceOverlay({
     records.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
+
+      // Skip records before joining date
+      if (joiningDateStart) {
+        const recDate = new Date(dateKey + "T00:00:00");
+        if (recDate.getTime() < joiningDateStart.getTime()) return;
+      }
+
       const hasOut = !!r.punchOut;
       const ms = sessionDurationMsForDisplay(r);
       const recStatus = r.status;
@@ -306,12 +313,12 @@ export default function CandidateAttendanceOverlay({
         !info.incomplete;
       const cellAbsent =
         !inactiveEmployment && !isScheduledWeekOff && (info.absent || inferredAbsent);
-      const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
+      const displayMs = inactiveEmployment || info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
       cells.push({
         day,
         date,
-        present: info.present,
-        incomplete: info.incomplete && !info.present,
+        present: inactiveEmployment ? false : info.present,
+        incomplete: inactiveEmployment ? false : info.incomplete && !info.present,
         holiday: info.holiday,
         leave: info.leave,
         leaveType: info.leaveType,

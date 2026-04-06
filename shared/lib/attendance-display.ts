@@ -3,11 +3,11 @@
  * Backend: ATTENDANCE_MAX_SESSION_HOURS, ATTENDANCE_MAX_HOURS_PER_CALENDAR_DAY (default 24).
  */
 
-/** One punch session — default cap 24h (match ATTENDANCE_MAX_SESSION_HOURS). */
-export const MAX_ATTENDANCE_MS_PER_SESSION = 24 * 60 * 60 * 1000;
+/** One punch session — cap at 12h (prevents forgotten punch-out from showing 17h+). */
+export const MAX_ATTENDANCE_MS_PER_SESSION = 12 * 60 * 60 * 1000;
 
-/** Sum of all punch sessions on one calendar day cannot exceed one wall-clock day. */
-export const MAX_ATTENDANCE_MS_PER_CALENDAR_DAY = 24 * 60 * 60 * 1000;
+/** Sum of all punch sessions on one calendar day — cap at 14h (generous for multi-session days). */
+export const MAX_ATTENDANCE_MS_PER_CALENDAR_DAY = 14 * 60 * 60 * 1000;
 
 export function capSessionMs(ms: number): number {
   if (!Number.isFinite(ms) || ms <= 0) return 0;

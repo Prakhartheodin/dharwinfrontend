@@ -9,8 +9,13 @@ import {
   updateSupportTicket,
   addCommentToTicket,
   deleteSupportTicket,
+  getCannedResponses,
+  useCannedResponse,
+  createCannedResponse,
   type SupportTicket,
   type TicketFilters,
+  type CannedResponse,
+  type ActivityEntry,
 } from "@/shared/lib/api/supportTickets";
 import { listCandidates } from "@/shared/lib/api/candidates";
 import { listUsers } from "@/shared/lib/api/users";
@@ -87,9 +92,17 @@ const SupportTicketsPage = () => {
   const [commentAttachments, setCommentAttachments] = useState<File[]>([]);
   const [commentAttachmentErrors, setCommentAttachmentErrors] = useState<string[]>([]);
   const commentFileInputRef = useRef<HTMLInputElement>(null);
+  const [isInternalNote, setIsInternalNote] = useState(false);
 
   const [updateForm, setUpdateForm] = useState({ status: "", priority: "", category: "", assignedTo: "" });
   const [updatingTicket, setUpdatingTicket] = useState(false);
+
+  const [detailTab, setDetailTab] = useState<"activity" | "timeline">("activity");
+  const [cannedResponses, setCannedResponses] = useState<CannedResponse[]>([]);
+  const [showCannedPicker, setShowCannedPicker] = useState(false);
+  const [cannedSearch, setCannedSearch] = useState("");
+  const [showSaveCannedModal, setShowSaveCannedModal] = useState(false);
+  const [saveCannedForm, setSaveCannedForm] = useState({ title: "", category: "General" });
 
   const isAdmin = user?.role === "admin";
   const isAgent = roleNames.some((r) => String(r).toLowerCase() === "agent");
@@ -103,8 +116,9 @@ const SupportTicketsPage = () => {
     if (statusFilter) params.status = statusFilter as TicketFilters["status"];
     if (priorityFilter) params.priority = priorityFilter as TicketFilters["priority"];
     if (categoryFilter.trim()) params.category = categoryFilter.trim();
+    if (searchQuery.trim()) params.search = searchQuery.trim();
     return params;
-  }, [currentPage, limit, sortBy, statusFilter, priorityFilter, categoryFilter]);
+  }, [currentPage, limit, sortBy, statusFilter, priorityFilter, categoryFilter, searchQuery]);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
@@ -112,22 +126,9 @@ const SupportTicketsPage = () => {
     try {
       const params = buildFilterParams();
       const data = await getAllSupportTickets(params);
-      let ticketsData = data?.results ?? [];
+      const ticketsData = data?.results ?? [];
       setTotalPages(data?.totalPages ?? 1);
       setTotalResults(data?.totalResults ?? 0);
-
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim();
-        ticketsData = ticketsData.filter((t: SupportTicket) => {
-          const tid = t.id ?? t._id;
-          const ticketIdStr = (t.ticketId ?? String(tid).slice(-8)).toUpperCase();
-          const title = (t.title ?? "").toLowerCase();
-          const desc = (t.description ?? "").toLowerCase();
-          return title.includes(query) || desc.includes(query) || ticketIdStr.toLowerCase().includes(query);
-        });
-        setTotalResults(ticketsData.length);
-        setTotalPages(Math.ceil(ticketsData.length / limit));
-      }
       setTickets(ticketsData);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
@@ -136,7 +137,7 @@ const SupportTicketsPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [buildFilterParams, searchQuery, limit]);
+  }, [buildFilterParams]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
 
@@ -357,9 +358,10 @@ const SupportTicketsPage = () => {
     if (!ticketId) return;
     try {
       setAddingComment(true);
-      await addCommentToTicket(String(ticketId), commentText.trim(), commentAttachments.length ? commentAttachments : undefined);
+      await addCommentToTicket(String(ticketId), commentText.trim(), commentAttachments.length ? commentAttachments : undefined, isInternalNote);
       setCommentText("");
       setCommentAttachments([]);
+      setIsInternalNote(false);
       if (commentFileInputRef.current) commentFileInputRef.current.value = "";
       const latest = await getSupportTicketById(String(ticketId));
       setSelectedTicket(latest);
@@ -433,10 +435,11 @@ const SupportTicketsPage = () => {
       setAddingComment(true);
       if (hasUpdate) await updateSupportTicket(String(ticketId), updateData);
       if (hasComment) {
-        await addCommentToTicket(String(ticketId), commentText.trim(), commentAttachments.length ? commentAttachments : undefined);
+        await addCommentToTicket(String(ticketId), commentText.trim(), commentAttachments.length ? commentAttachments : undefined, isInternalNote);
       }
       setCommentText("");
       setCommentAttachments([]);
+      setIsInternalNote(false);
       if (commentFileInputRef.current) commentFileInputRef.current.value = "";
       const latest = await getSupportTicketById(String(ticketId));
       setSelectedTicket(latest);
@@ -472,7 +475,7 @@ const SupportTicketsPage = () => {
     try {
       setAssigningTicket(true);
       setAssigningTicketId(String(ticketId));
-      await updateSupportTicket(String(ticketId), { assignedTo: assignedToUserId || undefined });
+      await updateSupportTicket(String(ticketId), { assignedTo: assignedToUserId || "" });
       const updated = await getSupportTicketById(String(ticketId));
       setTickets((prev) => prev.map((t) => (String(t.id ?? t._id) === String(ticketId) ? updated : t)));
       if (selectedTicket && String(selectedTicket.id ?? selectedTicket._id) === String(ticketId)) {
@@ -559,7 +562,7 @@ const SupportTicketsPage = () => {
     setAssignSelectedUserId("");
   };
 
-  const showCreateBtn = canCreate || (user?.role === "user" && canView);
+  const showCreateBtn = canCreate || canView;
   const showDeleteBtn = isAdmin && canDelete;
   const canAssign = isAdmin;
 
@@ -666,7 +669,7 @@ const SupportTicketsPage = () => {
                 <input
                   type="text"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                   placeholder="Search by ticket ID, title, or description..."
                   className="form-control !pl-9 !rounded-md !text-[0.8125rem]"
                 />
@@ -810,9 +813,9 @@ const SupportTicketsPage = () => {
                       const ticketCreatedById = ticket.createdBy?.id ?? ticket.createdBy?._id;
                       const canViewTicket =
                         isAdmin ||
-                        (user?.role === "user" && candidateId && ticketCandidateId === candidateId) ||
                         ticketCreatedById === user?.id ||
-                        ticketCandidateId === user?.id;
+                        (candidateId && ticketCandidateId === candidateId) ||
+                        (ticketCandidateId && user?.id && String(ticketCandidateId) === String(user.id));
                       const sc = getStatusConfig(ticket.status || "");
                       const pc = getPriorityConfig(ticket.priority || "");
                       const displayId = ticket.ticketId ?? String(tid).slice(-8).toUpperCase();
@@ -820,22 +823,17 @@ const SupportTicketsPage = () => {
                       return (
                         <tr
                           key={String(tid)}
-                          className="border-b border-defaultborder dark:border-defaultborder/10 hover:bg-gray-50/50 dark:hover:bg-light/5 transition-colors"
+                          className="border-b border-defaultborder dark:border-defaultborder/10 hover:bg-gray-50/50 dark:hover:bg-light/5 transition-colors cursor-pointer"
+                          onClick={() => openTicketModal(ticket)}
                         >
                           <td className="!py-3">
-                            {canViewTicket && canView ? (
-                              <button
-                                type="button"
-                                onClick={() => openTicketModal(ticket)}
-                                className="font-mono text-[0.75rem] font-semibold text-primary hover:underline"
-                              >
-                                {displayId}
-                              </button>
-                            ) : (
-                              <span className="font-mono text-[0.75rem] font-medium text-defaulttextcolor dark:text-white">
-                                {displayId}
-                              </span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openTicketModal(ticket); }}
+                              className="font-mono text-[0.75rem] font-semibold text-primary hover:underline"
+                            >
+                              {displayId}
+                            </button>
                           </td>
                           <td className="!py-3">
                             <div className="max-w-[280px]">
@@ -880,18 +878,16 @@ const SupportTicketsPage = () => {
                               <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-0">{formatDate(ticket.createdAt)}</p>
                             </div>
                           </td>
-                          <td className="!py-3 !text-center">
+                          <td className="!py-3 !text-center" onClick={(e) => e.stopPropagation()}>
                             <div className="flex items-center justify-center gap-1">
-                              {canViewTicket && canView && (
-                                <button
-                                  type="button"
-                                  onClick={() => openTicketModal(ticket)}
-                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-soft-primary ti-btn-wave"
-                                  title="View Details"
-                                >
-                                  <i className="ri-eye-line" />
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => openTicketModal(ticket)}
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-soft-primary ti-btn-wave"
+                                title="View Details"
+                              >
+                                <i className="ri-eye-line" />
+                              </button>
                               {canAssign && (
                                 <button
                                   type="button"
@@ -1174,250 +1170,712 @@ const SupportTicketsPage = () => {
       )}
 
       {/* ═══════ TICKET DETAIL MODAL ═══════ */}
-      {showTicketModal && selectedTicket && (
-        <div className="fixed inset-0 z-[105] flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-[3vh]" onClick={closeTicketModal}>
+      {showTicketModal && selectedTicket && (() => {
+        const sc = getStatusConfig(selectedTicket.status || "");
+        const pc = getPriorityConfig(selectedTicket.priority || "");
+        const statusColorMap: Record<string, string> = {
+          Open: "#6366f1",
+          "In Progress": "#f59e0b",
+          Resolved: "#22c55e",
+          Closed: "#9ca3af",
+        };
+        const accentColor = statusColorMap[selectedTicket.status] || "#6366f1";
+        const isImage = (mime?: string) => !!mime && mime.startsWith("image/");
+        const isVideo = (mime?: string) => !!mime && mime.startsWith("video/");
+
+        return (
+        <div className="fixed inset-0 z-[105] flex items-start justify-center overflow-y-auto p-4 pt-[2vh]" onClick={closeTicketModal}
+          style={{ background: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)" }}
+        >
           <div
-            className="w-full max-w-4xl rounded-md bg-white shadow-lg dark:bg-bodybg animate-[fadeIn_0.2s_ease] mb-8"
+            className="w-full max-w-[56rem] rounded-xl bg-white shadow-2xl dark:bg-bodybg mb-8 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
+            style={{ animation: "fadeIn 0.25s cubic-bezier(.4,0,.2,1)" }}
           >
-            {/* Header */}
-            <div className="border-b border-defaultborder px-5 py-4">
-              <div className="flex items-start justify-between">
+            {/* ── Accent bar + Header ── */}
+            <div style={{ height: "3px", background: `linear-gradient(90deg, ${accentColor}, ${accentColor}88)` }} />
+            <div className="px-6 pt-5 pb-4">
+              <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="badge bg-primary/10 text-primary font-mono !text-[0.6875rem]">
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 dark:bg-white/[0.06] px-2.5 py-1 font-mono text-[0.7rem] font-semibold tracking-wide text-slate-600 dark:text-white/70">
+                      <i className="ri-hashtag text-[0.6rem] opacity-50" />
                       {selectedTicket.ticketId ?? String(selectedTicket.id ?? selectedTicket._id).slice(-8).toUpperCase()}
                     </span>
-                    <span className={"badge !rounded-full !text-[0.6875rem] " + getStatusConfig(selectedTicket.status || "").badge}>
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[0.6875rem] font-semibold"
+                      style={{ background: `${accentColor}14`, color: accentColor }}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: accentColor }} />
                       {selectedTicket.status}
                     </span>
-                    <span className={"badge !rounded-full !text-[0.6875rem] " + getPriorityConfig(selectedTicket.priority || "").badge}>
-                      <i className={getPriorityConfig(selectedTicket.priority || "").icon + " me-1 text-[0.55rem]"} />
+                    <span className={"inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[0.6875rem] font-medium " + pc.badge}>
+                      <i className={pc.icon + " text-[0.55rem]"} />
                       {selectedTicket.priority}
                     </span>
                   </div>
-                  <h6 className="text-[1rem] font-semibold text-defaulttextcolor dark:text-white">{selectedTicket.title}</h6>
+                  <h5 className="text-[1.125rem] font-bold text-slate-800 dark:text-white leading-snug tracking-[-0.01em]">
+                    {selectedTicket.title}
+                  </h5>
+                  {selectedTicket.createdBy && (
+                    <p className="mt-1 text-[0.75rem] text-slate-400 dark:text-white/40">
+                      Opened by <span className="font-medium text-slate-500 dark:text-white/60">{selectedTicket.createdBy.name || selectedTicket.createdBy.email}</span>
+                      {" "}· {formatRelative(selectedTicket.createdAt)}
+                    </p>
+                  )}
                 </div>
-                <button type="button" onClick={closeTicketModal} className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !rounded-full ms-3">
-                  <i className="ri-close-line" />
+                <button
+                  type="button"
+                  onClick={closeTicketModal}
+                  className="shrink-0 flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
+                >
+                  <i className="ri-close-line text-[1.125rem]" />
                 </button>
               </div>
             </div>
 
-            <div className="p-5 space-y-5">
-              {/* Meta Info Grid */}
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <div className="rounded-md bg-gray-50/70 dark:bg-black/10 p-3">
-                  <p className="text-[0.6875rem] font-medium text-[#8c9097] dark:text-white/50 mb-1">Category</p>
-                  <p className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white mb-0">{selectedTicket.category ?? "General"}</p>
-                </div>
-                <div className="rounded-md bg-gray-50/70 dark:bg-black/10 p-3">
-                  <p className="text-[0.6875rem] font-medium text-[#8c9097] dark:text-white/50 mb-1">Created</p>
-                  <p className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white mb-0">{formatDate(selectedTicket.createdAt)}</p>
-                </div>
-                {selectedTicket.assignedTo && (
-                  <div className="rounded-md bg-gray-50/70 dark:bg-black/10 p-3">
-                    <p className="text-[0.6875rem] font-medium text-[#8c9097] dark:text-white/50 mb-1">Assigned To</p>
-                    <div className="flex items-center gap-2">
-                      <span className="avatar avatar-xs avatar-rounded bg-success/10 text-success text-[0.55rem] font-bold">
-                        {(selectedTicket.assignedTo.name ?? selectedTicket.assignedTo.email ?? "?")[0]?.toUpperCase()}
+            {/* ── Two-column body ── */}
+            <div className="flex flex-col lg:flex-row">
+              {/* LEFT: Main content */}
+              <div className="flex-1 min-w-0 border-t border-slate-100 dark:border-white/[0.06]">
+                <div className="p-6 space-y-6">
+                  {/* Description */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 dark:bg-white/[0.06]">
+                        <i className="ri-file-text-line text-[0.75rem] text-slate-500 dark:text-white/50" />
                       </span>
-                      <span className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white">
-                        {selectedTicket.assignedTo.name || selectedTicket.assignedTo.email}
-                      </span>
+                      <h6 className="text-[0.8125rem] font-semibold text-slate-700 dark:text-white/90">Description</h6>
+                    </div>
+                    <div className="rounded-lg border border-slate-100 dark:border-white/[0.06] bg-slate-50/50 dark:bg-black/10 p-4 text-[0.8125rem] text-slate-600 dark:text-white/75 leading-[1.7] whitespace-pre-wrap">
+                      {selectedTicket.description}
                     </div>
                   </div>
-                )}
-                {selectedTicket.updatedAt && (
-                  <div className="rounded-md bg-gray-50/70 dark:bg-black/10 p-3">
-                    <p className="text-[0.6875rem] font-medium text-[#8c9097] dark:text-white/50 mb-1">Last Updated</p>
-                    <p className="text-[0.8125rem] font-medium text-defaulttextcolor dark:text-white mb-0">{formatRelative(selectedTicket.updatedAt)}</p>
-                  </div>
-                )}
-              </div>
 
-              {/* Description */}
-              <div>
-                <h6 className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white mb-2">Description</h6>
-                <div className="rounded-md bg-gray-50/70 dark:bg-black/10 p-4 text-[0.8125rem] text-defaulttextcolor dark:text-white/80 leading-relaxed whitespace-pre-wrap">
-                  {selectedTicket.description}
-                </div>
-              </div>
-
-              {/* Attachments */}
-              {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
-                <div>
-                  <h6 className="text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white mb-2">
-                    Attachments ({selectedTicket.attachments.length})
-                  </h6>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-                    {selectedTicket.attachments.map((att, i) => (
-                      <a
-                        key={i}
-                        href={att.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group flex items-center gap-2 rounded-md border border-defaultborder p-2.5 transition-all hover:border-primary/40 hover:bg-primary/[0.02]"
-                      >
-                        <i className="ri-attachment-2 text-[#8c9097] group-hover:text-primary" />
-                        <span className="truncate text-[0.75rem] text-defaulttextcolor dark:text-white group-hover:text-primary">{att.originalName}</span>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Admin: Update fields */}
-              {isAdmin && (
-                <div className="rounded-md border border-primary/20 bg-primary/[0.02] p-4">
-                  <h6 className="flex items-center gap-2 text-[0.8125rem] font-semibold text-primary mb-3">
-                    <i className="ri-settings-3-line" />
-                    Admin Controls
-                  </h6>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  {/* Attachments */}
+                  {selectedTicket.attachments && selectedTicket.attachments.length > 0 && (
                     <div>
-                      <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Status</label>
-                      <select
-                        value={updateForm.status}
-                        onChange={(e) => setUpdateForm((f) => ({ ...f, status: e.target.value }))}
-                        className="form-control !rounded-md !text-[0.8125rem]"
-                      >
-                        <option value="Open">Open</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Resolved">Resolved</option>
-                        <option value="Closed">Closed</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="form-label mb-1 text-[0.75rem] font-medium text-[#8c9097]">Priority</label>
-                      <select
-                        value={updateForm.priority}
-                        onChange={(e) => setUpdateForm((f) => ({ ...f, priority: e.target.value }))}
-                        className="form-control !rounded-md !text-[0.8125rem]"
-                      >
-                        <option value="Low">Low</option>
-                        <option value="Medium">Medium</option>
-                        <option value="High">High</option>
-                        <option value="Urgent">Urgent</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Comments Section */}
-              <div>
-                <h6 className="flex items-center gap-2 text-[0.8125rem] font-semibold text-defaulttextcolor dark:text-white mb-3">
-                  <i className="ri-chat-3-line text-[#8c9097]" />
-                  Comments
-                  <span className="badge bg-light text-default rounded-full text-[0.6875rem]">
-                    {selectedTicket.comments?.length ?? 0}
-                  </span>
-                </h6>
-                <div className="mb-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                  {selectedTicket.comments?.length ? (
-                    selectedTicket.comments.map((c, i) => (
-                      <div
-                        key={i}
-                        className={"rounded-md p-3 " + (c.isAdminComment ? "border-l-[3px] border-l-primary bg-primary/[0.03]" : "border-l-[3px] border-l-defaultborder bg-gray-50/50 dark:bg-black/10")}
-                      >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className={"avatar avatar-xs avatar-rounded text-[0.5rem] font-bold " + (c.isAdminComment ? "bg-primary/10 text-primary" : "bg-gray-200 text-gray-600 dark:bg-white/10 dark:text-white/60")}>
-                            {((c.commentedBy?.name ?? c.commentedBy?.email ?? "?")[0] || "?").toUpperCase()}
-                          </span>
-                          <span className="text-[0.75rem] font-medium text-defaulttextcolor dark:text-white">
-                            {c.commentedBy?.name || c.commentedBy?.email}
-                          </span>
-                          {c.isAdminComment && (
-                            <span className="badge bg-primary/10 text-primary !text-[0.6rem] !py-0 !px-1.5">Admin</span>
-                          )}
-                          <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 ms-auto">
-                            {formatRelative(c.createdAt)}
-                          </span>
-                        </div>
-                        <p className="text-[0.8125rem] text-defaulttextcolor/90 dark:text-white/80 mb-0 pl-7 leading-relaxed">{c.content}</p>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="flex items-center justify-center w-6 h-6 rounded-md bg-slate-100 dark:bg-white/[0.06]">
+                          <i className="ri-attachment-2 text-[0.75rem] text-slate-500 dark:text-white/50" />
+                        </span>
+                        <h6 className="text-[0.8125rem] font-semibold text-slate-700 dark:text-white/90">
+                          Attachments
+                          <span className="ml-1.5 text-[0.6875rem] font-normal text-slate-400">({selectedTicket.attachments.length})</span>
+                        </h6>
                       </div>
-                    ))
-                  ) : (
-                    <div className="py-6 text-center">
-                      <i className="ri-chat-off-line text-[1.5rem] text-[#8c9097]/40" />
-                      <p className="mt-1 text-[0.8125rem] text-[#8c9097] dark:text-white/50">No comments yet</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        {selectedTicket.attachments.map((att, i) => (
+                          <a
+                            key={i}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group relative block rounded-lg border border-slate-150 dark:border-white/[0.08] overflow-hidden transition-all hover:border-primary/50 hover:shadow-md hover:shadow-primary/5"
+                          >
+                            {isImage(att.mimeType) ? (
+                              <div className="aspect-[4/3] bg-slate-100 dark:bg-black/20 overflow-hidden">
+                                <img
+                                  src={att.url}
+                                  alt={att.originalName}
+                                  className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              </div>
+                            ) : isVideo(att.mimeType) ? (
+                              <div className="aspect-[4/3] bg-slate-900 flex items-center justify-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <i className="ri-play-circle-line text-[1.75rem] text-white/70 group-hover:text-white transition-colors" />
+                                  <span className="text-[0.6rem] text-white/40 uppercase tracking-wider font-medium">Video</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="aspect-[4/3] bg-slate-50 dark:bg-black/15 flex items-center justify-center">
+                                <i className="ri-file-line text-[1.5rem] text-slate-300 dark:text-white/20" />
+                              </div>
+                            )}
+                            <div className="px-2.5 py-2 bg-white dark:bg-bodybg border-t border-slate-100 dark:border-white/[0.06]">
+                              <p className="text-[0.6875rem] font-medium text-slate-600 dark:text-white/70 truncate mb-0 group-hover:text-primary transition-colors">
+                                {att.originalName}
+                              </p>
+                              {att.size > 0 && (
+                                <p className="text-[0.6rem] text-slate-400 dark:text-white/30 mt-0.5 mb-0">{formatFileSize(att.size)}</p>
+                              )}
+                            </div>
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/90 dark:bg-black/60 shadow-sm">
+                                <i className="ri-external-link-line text-[0.65rem] text-slate-600 dark:text-white/70" />
+                              </span>
+                            </div>
+                          </a>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
 
-                {selectedTicket.status !== "Closed" && (
-                  <div className="rounded-md border border-defaultborder p-3">
-                    <textarea
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder="Write a comment..."
-                      rows={3}
-                      className="form-control !rounded-md !border-0 !bg-transparent !p-0 !shadow-none !text-[0.8125rem] focus:!ring-0 resize-none"
-                      maxLength={2000}
-                    />
-                    <div className="flex items-center justify-between pt-2 border-t border-defaultborder mt-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => commentFileInputRef.current?.click()}
-                          className="ti-btn ti-btn-icon ti-btn-xs ti-btn-light !rounded-full"
-                          title="Attach files"
-                        >
-                          <i className="ri-attachment-2" />
-                        </button>
-                        <input
-                          ref={commentFileInputRef}
-                          type="file"
-                          multiple
-                          accept="image/*,video/*"
-                          onChange={handleCommentFileChange}
-                          className="hidden"
-                        />
-                        {commentAttachments.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {commentAttachments.map((f, i) => (
-                              <span key={i} className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-black/20 px-2 py-0.5 text-[0.6875rem] text-defaulttextcolor dark:text-white/70">
-                                {f.name.length > 15 ? f.name.slice(0, 12) + "..." : f.name}
-                                <button type="button" onClick={() => setCommentAttachments((a) => a.filter((_, j) => j !== i))} className="hover:text-danger">
-                                  <i className="ri-close-line text-[0.6rem]" />
+                  {/* Activity / Timeline Tabs */}
+                  <div>
+                    <div className="flex items-center gap-1 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab("activity")}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.75rem] font-semibold transition-all ${
+                          detailTab === "activity"
+                            ? "bg-primary/10 text-primary"
+                            : "text-slate-500 hover:bg-slate-100 dark:text-white/50 dark:hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        <i className="ri-chat-3-line text-[0.7rem]" />
+                        Activity
+                        {(selectedTicket.comments?.length ?? 0) > 0 && (
+                          <span className="inline-flex items-center justify-center min-w-[1rem] h-[1rem] rounded-full bg-primary/10 text-primary text-[0.55rem] font-bold px-1">
+                            {selectedTicket.comments?.length}
+                          </span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailTab("timeline")}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[0.75rem] font-semibold transition-all ${
+                          detailTab === "timeline"
+                            ? "bg-primary/10 text-primary"
+                            : "text-slate-500 hover:bg-slate-100 dark:text-white/50 dark:hover:bg-white/[0.06]"
+                        }`}
+                      >
+                        <i className="ri-history-line text-[0.7rem]" />
+                        Timeline
+                        {(selectedTicket.activityLog?.length ?? 0) > 0 && (
+                          <span className="inline-flex items-center justify-center min-w-[1rem] h-[1rem] rounded-full bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-white/50 text-[0.55rem] font-bold px-1">
+                            {selectedTicket.activityLog?.length}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Activity tab */}
+                    {detailTab === "activity" && (
+                      <>
+                        <div className="mb-4 max-h-80 overflow-y-auto pr-1 space-y-3" style={{ scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent" }}>
+                          {selectedTicket.comments?.length ? (
+                            selectedTicket.comments.map((c, i) => {
+                              const initials = ((c.commentedBy?.name ?? c.commentedBy?.email ?? "?")[0] || "?").toUpperCase();
+                              return (
+                                <div key={i} className={`flex gap-3 group/comment ${c.isInternal ? "border-l-2 border-amber-400 pl-2 bg-amber-50/40 dark:bg-amber-500/5 rounded-r-lg py-1" : ""}`}>
+                                  <span
+                                    className={"shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-[0.55rem] font-bold mt-0.5 " +
+                                      (c.isInternal
+                                        ? "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                                        : c.isAdminComment
+                                          ? "bg-primary text-white"
+                                          : "bg-slate-200 text-slate-600 dark:bg-white/10 dark:text-white/60")}
+                                  >
+                                    {c.isInternal ? <i className="ri-lock-line text-[0.6rem]" /> : initials}
+                                  </span>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                      <span className="text-[0.8125rem] font-semibold text-slate-700 dark:text-white/90">
+                                        {c.commentedBy?.name || c.commentedBy?.email}
+                                      </span>
+                                      {c.isInternal && (
+                                        <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-px text-[0.5625rem] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
+                                          <i className="ri-lock-line text-[0.5rem]" /> Internal
+                                        </span>
+                                      )}
+                                      {c.isAdminComment && !c.isInternal && (
+                                        <span className="inline-flex items-center rounded px-1.5 py-px text-[0.5625rem] font-bold uppercase tracking-wider bg-primary/10 text-primary">
+                                          Staff
+                                        </span>
+                                      )}
+                                      <span className="text-[0.6875rem] text-slate-400 dark:text-white/35">
+                                        {formatRelative(c.createdAt)}
+                                      </span>
+                                    </div>
+                                    <div className="text-[0.8125rem] text-slate-600 dark:text-white/75 leading-relaxed">
+                                      {c.content}
+                                    </div>
+                                    {c.attachments && c.attachments.length > 0 && (
+                                      <div className="flex flex-wrap gap-1.5 mt-2">
+                                        {c.attachments.map((ca, ci) => (
+                                          <a
+                                            key={ci}
+                                            href={ca.url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-white/[0.06] px-2 py-1 text-[0.6875rem] text-slate-600 dark:text-white/60 hover:text-primary hover:bg-primary/5 transition-colors"
+                                          >
+                                            <i className={isImage(ca.mimeType) ? "ri-image-line" : isVideo(ca.mimeType) ? "ri-video-line" : "ri-file-line"} />
+                                            <span className="max-w-[120px] truncate">{ca.originalName}</span>
+                                          </a>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <div className="py-8 text-center">
+                              <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 dark:bg-white/[0.04] mb-2">
+                                <i className="ri-chat-smile-2-line text-[1.125rem] text-slate-300 dark:text-white/20" />
+                              </div>
+                              <p className="text-[0.8125rem] text-slate-400 dark:text-white/30 mb-0">No comments yet. Start the conversation below.</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Comment input */}
+                        {selectedTicket.status !== "Closed" && (
+                          <div className={`rounded-xl border overflow-hidden transition-colors focus-within:shadow-[0_0_0_3px_rgba(99,102,241,0.06)] ${
+                            isInternalNote
+                              ? "border-amber-300 dark:border-amber-500/30 bg-amber-50/30 dark:bg-amber-500/5 focus-within:border-amber-400"
+                              : "border-slate-200 dark:border-white/[0.08] bg-white dark:bg-bodybg focus-within:border-primary/40"
+                          }`}>
+                            {isInternalNote && (
+                              <div className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-100/60 dark:bg-amber-500/10 border-b border-amber-200 dark:border-amber-500/20">
+                                <i className="ri-lock-line text-[0.7rem] text-amber-600 dark:text-amber-400" />
+                                <span className="text-[0.6875rem] font-medium text-amber-700 dark:text-amber-400">Internal note &mdash; only visible to staff</span>
+                              </div>
+                            )}
+                            <textarea
+                              value={commentText}
+                              onChange={(e) => setCommentText(e.target.value)}
+                              placeholder={isInternalNote ? "Write an internal note (hidden from user)..." : "Write a comment..."}
+                              rows={3}
+                              className="form-control !rounded-none !border-0 !bg-transparent !px-4 !pt-3 !pb-1 !shadow-none !text-[0.8125rem] focus:!ring-0 resize-none placeholder:text-slate-400 dark:placeholder:text-white/25"
+                              maxLength={2000}
+                            />
+                            {commentAttachments.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 px-4 pb-2">
+                                {commentAttachments.map((f, i) => (
+                                  <span key={i} className="inline-flex items-center gap-1.5 rounded-md bg-slate-100 dark:bg-white/[0.06] pl-2 pr-1 py-1 text-[0.6875rem] text-slate-600 dark:text-white/60">
+                                    <i className="ri-file-line text-[0.6rem] opacity-50" />
+                                    <span className="max-w-[100px] truncate">{f.name}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => setCommentAttachments((a) => a.filter((_, j) => j !== i))}
+                                      className="flex items-center justify-center w-4 h-4 rounded hover:bg-red-100 hover:text-red-500 transition-colors"
+                                    >
+                                      <i className="ri-close-line text-[0.55rem]" />
+                                    </button>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Canned responses dropdown */}
+                            {showCannedPicker && isAdmin && (
+                              <div className="mx-3 mb-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg shadow-lg max-h-48 overflow-y-auto" style={{ scrollbarWidth: "thin" }}>
+                                <div className="px-3 py-2 border-b border-slate-100 dark:border-white/[0.06]">
+                                  <input
+                                    type="text"
+                                    value={cannedSearch}
+                                    onChange={(e) => setCannedSearch(e.target.value)}
+                                    placeholder="Search templates..."
+                                    className="w-full bg-transparent border-0 outline-none text-[0.75rem] placeholder:text-slate-400"
+                                    autoFocus
+                                  />
+                                </div>
+                                {cannedResponses
+                                  .filter((cr) => !cannedSearch || cr.title.toLowerCase().includes(cannedSearch.toLowerCase()) || cr.content.toLowerCase().includes(cannedSearch.toLowerCase()))
+                                  .map((cr) => (
+                                    <button
+                                      key={cr.id ?? cr._id}
+                                      type="button"
+                                      onClick={() => {
+                                        setCommentText((prev) => prev + (prev ? "\n" : "") + cr.content);
+                                        setShowCannedPicker(false);
+                                        setCannedSearch("");
+                                        useCannedResponse(String(cr.id ?? cr._id)).catch(() => {});
+                                      }}
+                                      className="w-full text-left px-3 py-2 hover:bg-primary/5 dark:hover:bg-white/[0.04] transition-colors border-b border-slate-50 dark:border-white/[0.03] last:border-0"
+                                    >
+                                      <div className="text-[0.75rem] font-medium text-slate-700 dark:text-white/80">{cr.title}</div>
+                                      <div className="text-[0.6875rem] text-slate-400 dark:text-white/40 truncate">{cr.content}</div>
+                                    </button>
+                                  ))}
+                                {cannedResponses.length === 0 && (
+                                  <div className="px-3 py-4 text-center text-[0.75rem] text-slate-400">No templates yet</div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-white/[0.04] bg-slate-50/50 dark:bg-black/5">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => commentFileInputRef.current?.click()}
+                                  className="flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
+                                  title="Attach files"
+                                >
+                                  <i className="ri-attachment-2 text-[0.875rem]" />
                                 </button>
-                              </span>
-                            ))}
+                                <input
+                                  ref={commentFileInputRef}
+                                  type="file"
+                                  multiple
+                                  accept="image/*,video/*"
+                                  onChange={handleCommentFileChange}
+                                  className="hidden"
+                                />
+                                {isAdmin && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!cannedResponses.length) {
+                                          getCannedResponses().then((r) => setCannedResponses(r.results ?? [])).catch(() => {});
+                                        }
+                                        setShowCannedPicker(!showCannedPicker);
+                                      }}
+                                      className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+                                        showCannedPicker ? "text-primary bg-primary/10" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-white"
+                                      }`}
+                                      title="Quick replies"
+                                    >
+                                      <i className="ri-booklet-line text-[0.875rem]" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsInternalNote(!isInternalNote)}
+                                      className={`flex items-center justify-center w-7 h-7 rounded-md transition-colors ${
+                                        isInternalNote
+                                          ? "text-amber-600 bg-amber-100 dark:bg-amber-500/20 dark:text-amber-400"
+                                          : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-white"
+                                      }`}
+                                      title={isInternalNote ? "Switch to public reply" : "Switch to internal note"}
+                                    >
+                                      <i className={isInternalNote ? "ri-lock-line text-[0.875rem]" : "ri-lock-unlock-line text-[0.875rem]"} />
+                                    </button>
+                                    {commentText.trim().length >= 5 && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSaveCannedForm({ title: "", category: "General" });
+                                          setShowSaveCannedModal(true);
+                                        }}
+                                        className="flex items-center justify-center w-7 h-7 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-white/10 dark:hover:text-white transition-colors"
+                                        title="Save as template"
+                                      >
+                                        <i className="ri-save-line text-[0.875rem]" />
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={handleUpdateAndComment}
+                                disabled={updatingTicket || addingComment}
+                                className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[0.75rem] font-semibold transition-all active:scale-[0.97] disabled:opacity-50 ${
+                                  isInternalNote
+                                    ? "text-amber-800 bg-amber-200 hover:bg-amber-300 dark:text-amber-100 dark:bg-amber-600 dark:hover:bg-amber-500"
+                                    : "text-white bg-primary hover:bg-primary/90"
+                                }`}
+                              >
+                                {updatingTicket || addingComment ? (
+                                  <>
+                                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                    Sending...
+                                  </>
+                                ) : (
+                                  <>
+                                    <i className={isInternalNote ? "ri-lock-line text-[0.7rem]" : "ri-send-plane-2-line text-[0.7rem]"} />
+                                    {isInternalNote ? "Add Note" : isAdmin ? "Update & Reply" : "Reply"}
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                            {commentAttachmentErrors.length > 0 && (
+                              <div className="px-4 py-2 bg-red-50 dark:bg-red-500/10 border-t border-red-100 dark:border-red-500/10">
+                                <p className="text-[0.75rem] text-red-600 dark:text-red-400 mb-0">{commentAttachmentErrors.join(", ")}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Timeline tab */}
+                    {detailTab === "timeline" && (
+                      <div className="max-h-96 overflow-y-auto pr-1" style={{ scrollbarWidth: "thin", scrollbarColor: "#e2e8f0 transparent" }}>
+                        {selectedTicket.activityLog?.length ? (
+                          <div className="relative pl-5 space-y-0">
+                            <div className="absolute left-[7px] top-2 bottom-2 w-px bg-slate-200 dark:bg-white/10" />
+                            {[...selectedTicket.activityLog].reverse().map((entry, i) => {
+                              const actionLabels: Record<string, { label: string; icon: string; color: string }> = {
+                                created: { label: "Ticket created", icon: "ri-add-circle-line", color: "text-success bg-success/10" },
+                                status_changed: { label: `Status changed`, icon: "ri-refresh-line", color: "text-info bg-info/10" },
+                                priority_changed: { label: `Priority changed`, icon: "ri-arrow-up-down-line", color: "text-warning bg-warning/10" },
+                                category_changed: { label: "Category changed", icon: "ri-price-tag-3-line", color: "text-slate-500 bg-slate-100" },
+                                assigned: { label: "Assigned", icon: "ri-user-add-line", color: "text-primary bg-primary/10" },
+                                comment_added: { label: "Comment added", icon: "ri-chat-1-line", color: "text-slate-600 bg-slate-100" },
+                                internal_note: { label: "Internal note added", icon: "ri-lock-line", color: "text-amber-600 bg-amber-100" },
+                              };
+                              const cfg = actionLabels[entry.action] || { label: entry.action, icon: "ri-circle-line", color: "text-slate-400 bg-slate-100" };
+                              return (
+                                <div key={i} className="relative flex gap-3 pb-4">
+                                  <div className={`absolute -left-5 top-0.5 z-10 w-[15px] h-[15px] rounded-full flex items-center justify-center ${cfg.color}`}>
+                                    <i className={`${cfg.icon} text-[0.5rem]`} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-[0.75rem] font-medium text-slate-700 dark:text-white/80">{cfg.label}</span>
+                                      {entry.from && entry.to && (
+                                        <span className="text-[0.6875rem] text-slate-400 dark:text-white/40">
+                                          {entry.from} <i className="ri-arrow-right-s-line text-[0.6rem]" /> {entry.to}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-[0.6875rem] text-slate-500 dark:text-white/50">
+                                        {entry.performedBy?.name || entry.performedBy?.email || "System"}
+                                      </span>
+                                      <span className="text-[0.625rem] text-slate-400 dark:text-white/30">
+                                        {entry.createdAt ? formatRelative(entry.createdAt) : ""}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="py-8 text-center">
+                            <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-slate-100 dark:bg-white/[0.04] mb-2">
+                              <i className="ri-history-line text-[1.125rem] text-slate-300 dark:text-white/20" />
+                            </div>
+                            <p className="text-[0.8125rem] text-slate-400 dark:text-white/30 mb-0">No activity recorded yet.</p>
                           </div>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleUpdateAndComment}
-                        disabled={updatingTicket || addingComment}
-                        className="ti-btn ti-btn-primary ti-btn-sm ti-btn-wave !text-[0.75rem]"
-                      >
-                        {updatingTicket || addingComment ? (
-                          <span className="flex items-center gap-1.5">
-                            <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                            Sending...
-                          </span>
-                        ) : isAdmin ? "Update & Comment" : "Add Comment"}
-                      </button>
-                    </div>
-                    {commentAttachmentErrors.length > 0 && (
-                      <p className="mt-2 text-[0.75rem] text-danger">{commentAttachmentErrors.join(", ")}</p>
                     )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
 
-            {/* Footer */}
-            <div className="flex items-center justify-end border-t border-defaultborder px-5 py-3">
-              <button type="button" onClick={closeTicketModal} className="ti-btn ti-btn-light">
-                Close
-              </button>
+              {/* RIGHT: Sidebar */}
+              <div className="w-full lg:w-[260px] shrink-0 border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-white/[0.06] bg-slate-50/40 dark:bg-black/[0.03]">
+                <div className="p-5 space-y-5">
+                  {/* Details */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-1.5">Category</p>
+                      <div className="flex items-center gap-1.5">
+                        <i className="ri-price-tag-3-line text-[0.75rem] text-slate-400" />
+                        <span className="text-[0.8125rem] font-medium text-slate-700 dark:text-white/80">{selectedTicket.category ?? "General"}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-1.5">Created</p>
+                      <div className="flex items-center gap-1.5">
+                        <i className="ri-calendar-line text-[0.75rem] text-slate-400" />
+                        <span className="text-[0.8125rem] font-medium text-slate-700 dark:text-white/80">{formatDate(selectedTicket.createdAt)}</span>
+                      </div>
+                    </div>
+
+                    {selectedTicket.updatedAt && (
+                      <div>
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-1.5">Last Updated</p>
+                        <div className="flex items-center gap-1.5">
+                          <i className="ri-time-line text-[0.75rem] text-slate-400" />
+                          <span className="text-[0.8125rem] font-medium text-slate-700 dark:text-white/80">{formatRelative(selectedTicket.updatedAt)}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTicket.assignedTo && (
+                      <div>
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-1.5">Assigned To</p>
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-[0.55rem] font-bold">
+                            {(selectedTicket.assignedTo.name ?? selectedTicket.assignedTo.email ?? "?")[0]?.toUpperCase()}
+                          </span>
+                          <span className="text-[0.8125rem] font-medium text-slate-700 dark:text-white/80">
+                            {selectedTicket.assignedTo.name || selectedTicket.assignedTo.email}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {selectedTicket.candidate && (
+                      <div>
+                        <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-1.5">Candidate</p>
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-full bg-emerald-500/10 text-emerald-600 text-[0.55rem] font-bold">
+                            {(selectedTicket.candidate.fullName ?? "?")[0]?.toUpperCase()}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[0.8125rem] font-medium text-slate-700 dark:text-white/80 truncate mb-0">{selectedTicket.candidate.fullName}</p>
+                            {selectedTicket.candidate.email && (
+                              <p className="text-[0.6875rem] text-slate-400 dark:text-white/35 truncate mb-0">{selectedTicket.candidate.email}</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Status timeline */}
+                  <div>
+                    <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-2.5">Status</p>
+                    <div className="space-y-0">
+                      {(["Open", "In Progress", "Resolved", "Closed"] as const).map((s, idx) => {
+                        const steps = ["Open", "In Progress", "Resolved", "Closed"];
+                        const currentIdx = steps.indexOf(selectedTicket.status);
+                        const isActive = s === selectedTicket.status;
+                        const isPast = idx < currentIdx;
+                        const sColor = statusColorMap[s] || "#6366f1";
+                        return (
+                          <div key={s} className="flex items-start gap-2.5">
+                            <div className="flex flex-col items-center">
+                              <span
+                                className="flex items-center justify-center w-5 h-5 rounded-full border-2 transition-all"
+                                style={{
+                                  borderColor: isActive || isPast ? sColor : "#e2e8f0",
+                                  background: isActive ? sColor : isPast ? `${sColor}20` : "white",
+                                }}
+                              >
+                                {isPast && <i className="ri-check-line text-[0.5rem]" style={{ color: sColor }} />}
+                                {isActive && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </span>
+                              {idx < 3 && (
+                                <span
+                                  className="w-px h-4"
+                                  style={{ background: isPast ? sColor : "#e2e8f0" }}
+                                />
+                              )}
+                            </div>
+                            <span
+                              className={"text-[0.75rem] pt-0.5 " + (isActive ? "font-semibold" : isPast ? "font-medium" : "font-normal")}
+                              style={{ color: isActive ? sColor : isPast ? "#475569" : "#94a3b8" }}
+                            >
+                              {s}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* SLA Indicators */}
+                  {selectedTicket.sla && isAdmin && (
+                    <div>
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-slate-400 dark:text-white/30 mb-2.5">SLA</p>
+                      <div className="space-y-2.5">
+                        {/* First Response */}
+                        {(() => {
+                          const fr = selectedTicket.sla.firstResponse;
+                          const pct = Math.min(100, (fr.elapsedMin / fr.targetMin) * 100);
+                          const breached = fr.breached && !fr.met;
+                          const met = fr.met && !fr.breached;
+                          const color = met ? "#10b981" : breached ? "#ef4444" : pct > 75 ? "#f59e0b" : "#6366f1";
+                          const hrs = Math.floor(fr.targetMin / 60);
+                          const mins = fr.targetMin % 60;
+                          return (
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[0.6875rem] font-medium text-slate-600 dark:text-white/60">First Response</span>
+                                {fr.met ? (
+                                  <span className="text-[0.6rem] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5">
+                                    <i className="ri-check-line" /> Met
+                                  </span>
+                                ) : breached ? (
+                                  <span className="text-[0.6rem] font-bold text-red-500 flex items-center gap-0.5">
+                                    <i className="ri-error-warning-line" /> Breached
+                                  </span>
+                                ) : (
+                                  <span className="text-[0.6rem] text-slate-400">{hrs}h{mins > 0 ? ` ${mins}m` : ""} target</span>
+                                )}
+                              </div>
+                              <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%`, backgroundColor: color }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                        {/* Resolution */}
+                        {(() => {
+                          const rs = selectedTicket.sla.resolution;
+                          const pct = Math.min(100, (rs.elapsedMin / rs.targetMin) * 100);
+                          const breached = rs.breached && !rs.met;
+                          const met = rs.met && !rs.breached;
+                          const color = met ? "#10b981" : breached ? "#ef4444" : pct > 75 ? "#f59e0b" : "#6366f1";
+                          const hrs = Math.floor(rs.targetMin / 60);
+                          return (
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[0.6875rem] font-medium text-slate-600 dark:text-white/60">Resolution</span>
+                                {rs.met ? (
+                                  <span className="text-[0.6rem] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-0.5">
+                                    <i className="ri-check-line" /> Resolved
+                                  </span>
+                                ) : breached ? (
+                                  <span className="text-[0.6rem] font-bold text-red-500 flex items-center gap-0.5">
+                                    <i className="ri-error-warning-line" /> Breached
+                                  </span>
+                                ) : (
+                                  <span className="text-[0.6rem] text-slate-400">{hrs}h target</span>
+                                )}
+                              </div>
+                              <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+                                <div
+                                  className="h-full rounded-full transition-all duration-500"
+                                  style={{ width: `${pct}%`, backgroundColor: color }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Admin Controls */}
+                  {isAdmin && (
+                    <div className="pt-4 border-t border-slate-200/70 dark:border-white/[0.06] space-y-3">
+                      <p className="text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-primary/70 mb-0 flex items-center gap-1">
+                        <i className="ri-shield-star-line text-[0.7rem]" />
+                        Admin Controls
+                      </p>
+                      <div>
+                        <label className="block text-[0.6875rem] font-medium text-slate-500 dark:text-white/40 mb-1">Status</label>
+                        <select
+                          value={updateForm.status}
+                          onChange={(e) => setUpdateForm((f) => ({ ...f, status: e.target.value }))}
+                          className="form-control !rounded-lg !text-[0.8125rem] !py-1.5 !border-slate-200 dark:!border-white/10"
+                        >
+                          <option value="Open">Open</option>
+                          <option value="In Progress">In Progress</option>
+                          <option value="Resolved">Resolved</option>
+                          <option value="Closed">Closed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[0.6875rem] font-medium text-slate-500 dark:text-white/40 mb-1">Priority</label>
+                        <select
+                          value={updateForm.priority}
+                          onChange={(e) => setUpdateForm((f) => ({ ...f, priority: e.target.value }))}
+                          className="form-control !rounded-lg !text-[0.8125rem] !py-1.5 !border-slate-200 dark:!border-white/10"
+                        >
+                          <option value="Low">Low</option>
+                          <option value="Medium">Medium</option>
+                          <option value="High">High</option>
+                          <option value="Urgent">Urgent</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* ═══════ ASSIGN MODAL ═══════ */}
       {canAssign && showAssignModal && assignTicket && (
@@ -1501,6 +1959,64 @@ const SupportTicketsPage = () => {
                     Saving...
                   </span>
                 ) : "Save Assignment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Save as Canned Response Modal */}
+      {showSaveCannedModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setShowSaveCannedModal(false)}>
+          <div className="bg-white dark:bg-bodybg rounded-xl shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-200 dark:border-white/[0.08]">
+              <h6 className="text-[0.9375rem] font-semibold text-slate-800 dark:text-white">Save as Quick Reply Template</h6>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-[0.75rem] font-medium text-slate-600 dark:text-white/60 mb-1">Template Name</label>
+                <input
+                  type="text"
+                  value={saveCannedForm.title}
+                  onChange={(e) => setSaveCannedForm((f) => ({ ...f, title: e.target.value }))}
+                  className="form-control !text-[0.8125rem]"
+                  placeholder="e.g. Visa Processing Update"
+                />
+              </div>
+              <div>
+                <label className="block text-[0.75rem] font-medium text-slate-600 dark:text-white/60 mb-1">Category</label>
+                <input
+                  type="text"
+                  value={saveCannedForm.category}
+                  onChange={(e) => setSaveCannedForm((f) => ({ ...f, category: e.target.value }))}
+                  className="form-control !text-[0.8125rem]"
+                  placeholder="General"
+                />
+              </div>
+              <div>
+                <label className="block text-[0.75rem] font-medium text-slate-600 dark:text-white/60 mb-1">Content Preview</label>
+                <div className="rounded-lg bg-slate-50 dark:bg-black/10 p-3 text-[0.8125rem] text-slate-600 dark:text-white/70 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {commentText}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 p-5 border-t border-slate-200 dark:border-white/[0.08]">
+              <button type="button" onClick={() => setShowSaveCannedModal(false)} className="ti-btn ti-btn-light">Cancel</button>
+              <button
+                type="button"
+                disabled={!saveCannedForm.title.trim()}
+                onClick={async () => {
+                  try {
+                    await createCannedResponse({ title: saveCannedForm.title.trim(), content: commentText.trim(), category: saveCannedForm.category.trim() || "General" });
+                    setShowSaveCannedModal(false);
+                    getCannedResponses().then((r) => setCannedResponses(r.results ?? [])).catch(() => {});
+                    await Swal.fire({ icon: "success", title: "Template Saved", timer: 1500, showConfirmButton: false });
+                  } catch {
+                    await Swal.fire({ icon: "error", title: "Failed", text: "Could not save template." });
+                  }
+                }}
+                className="ti-btn ti-btn-primary"
+              >
+                Save Template
               </button>
             </div>
           </div>

@@ -88,14 +88,22 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
       return
     }
 
+    const isPlaceholder = (p: string) => {
+      if (!p) return true
+      const d = p.replace(/\D/g, '')
+      if (!d.length || /^0+$/.test(d)) return true
+      if (d.length >= 10 && /^(\d)\1+$/.test(d)) return true
+      return false
+    }
+
     const candidatesToCall = previewJobApplications.filter(app => {
       const cand = app.candidate as any
       const cId = getCandidateId(cand)
-      return cId && selectedCandidates.has(cId) && cand?.phoneNumber
+      return cId && selectedCandidates.has(cId) && cand?.phoneNumber && !isPlaceholder(cand.phoneNumber)
     })
 
     if (candidatesToCall.length === 0) {
-      alert('Selected candidates do not have phone numbers')
+      alert('Selected candidates do not have valid phone numbers. Update their profiles with real numbers first.')
       return
     }
 
@@ -114,7 +122,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
             candidateName: cand.fullName || 'Candidate',
             email: cand.email || '',
             phoneNumber: cand.phoneNumber || '',
-            countryCode: cand.countryCode || 'US',
+            countryCode: cand.countryCode || '',
             jobId: previewJob.id,
             jobTitle: previewJob.jobTitle,
             companyName: previewJob.company,

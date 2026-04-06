@@ -105,6 +105,78 @@ function AssignFoldersModal({
   )
 }
 
+function BulkAssignFoldersModal({
+  open,
+  count,
+  categoryOptions,
+  onClose,
+  onSave,
+  busy,
+}: {
+  open: boolean
+  count: number
+  categoryOptions: CategorySelectOption[]
+  onClose: () => void
+  onSave: (categoryIds: string[]) => Promise<void>
+  busy: boolean
+}) {
+  const [selected, setSelected] = useState<MultiValue<CategorySelectOption>>([])
+
+  useEffect(() => {
+    if (open) setSelected([])
+  }, [open])
+
+  if (!open) return null
+
+  const handleSave = async () => {
+    await onSave(selected.map((o) => o.value))
+  }
+
+  return (
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-black/60" onClick={onClose}>
+      <div
+        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-full max-w-md flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+          <h5 className="font-semibold mb-0 text-[1rem]">Move {count} module(s) to folder(s)</h5>
+          <button type="button" className="ti-btn ti-btn-light !py-1 !px-2" onClick={onClose} aria-label="Close">
+            <i className="ri-close-line text-lg" />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-0">
+            Choose folder(s) for the selected modules. This will <strong>replace</strong> existing folder assignments.
+          </p>
+          <Select
+            isMulti
+            options={categoryOptions}
+            value={selected}
+            onChange={(opts) => setSelected((opts as MultiValue<CategorySelectOption>) ?? [])}
+            classNamePrefix="Select2"
+            placeholder="Select folders…"
+            menuPlacement="auto"
+            isDisabled={!categoryOptions.length || busy}
+          />
+        </div>
+        <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
+          <button type="button" className="ti-btn ti-btn-light !mb-0" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="ti-btn ti-btn-primary !mb-0"
+            onClick={handleSave}
+            disabled={busy}
+          >
+            {busy ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function NewFolderModal({
   open,
   folderName,
@@ -263,6 +335,8 @@ interface TrainingModuleCardProps {
   onAssignFolders: (moduleId: string) => void
   onSetStatus: (moduleId: string, status: ModuleLifecycleStatus) => void
   statusUpdatingId: string | null
+  selected?: boolean
+  onToggleSelect?: (moduleId: string) => void
 }
 
 interface ModuleDetailModalProps {
@@ -577,6 +651,8 @@ function TrainingModuleCard({
   onAssignFolders,
   onSetStatus,
   statusUpdatingId,
+  selected,
+  onToggleSelect,
 }: TrainingModuleCardProps) {
   const summary = calculateSummary(m.playlist || [])
   const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
@@ -688,8 +764,8 @@ function TrainingModuleCard({
   }, [])
 
   return (
-    <div className="box custom-box">
-      <div className="relative h-36 overflow-hidden bg-defaultborder">
+    <div className="box custom-box overflow-visible">
+      <div className="relative h-36 overflow-hidden bg-defaultborder rounded-t-md">
         <img
           src={coverImageUrl}
           alt={m.moduleName}
@@ -698,6 +774,19 @@ function TrainingModuleCard({
             (e.target as HTMLImageElement).src = '/assets/images/media/team-covers/1.jpg'
           }}
         />
+        {onToggleSelect && (
+          <label
+            className="absolute top-2 left-2 flex items-center justify-center w-6 h-6 rounded bg-white/90 dark:bg-black/60 border border-defaultborder cursor-pointer shadow-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              className="form-check-input !m-0 !w-4 !h-4 cursor-pointer"
+              checked={!!selected}
+              onChange={() => onToggleSelect(m.id)}
+            />
+          </label>
+        )}
         <span className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium ${
           m.status === 'published' 
             ? 'bg-success/20 text-success' 
@@ -708,12 +797,13 @@ function TrainingModuleCard({
           {m.status}
         </span>
       </div>
-      <div className="box-header items-center !justify-start flex-wrap !flex pt-3">
-        <div className="flex-grow min-w-0">
+      <div className="box-header items-center !flex pt-3 gap-2 overflow-visible">
+        <div className="flex-1 min-w-0 overflow-hidden">
           <button
             type="button"
             onClick={handleView}
-            className="font-semibold text-[.875rem] block text-truncate text-start hover:text-primary"
+            className="font-semibold text-[.875rem] block w-full text-start hover:text-primary truncate"
+            title={m.moduleName}
           >
             {m.moduleName}
           </button>
@@ -721,7 +811,7 @@ function TrainingModuleCard({
             <strong className="text-defaulttextcolor">{m.students?.length || 0}</strong> students enrolled
           </span>
         </div>
-        <div className="hs-dropdown ti-dropdown" ref={dropdownRef}>
+        <div className="hs-dropdown ti-dropdown shrink-0" ref={dropdownRef}>
           <button
             type="button"
             id={`dropdown-menu-${m.id}`}
@@ -732,7 +822,7 @@ function TrainingModuleCard({
             <i className="fe fe-more-vertical" />
           </button>
           <ul 
-            className="hs-dropdown-menu ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg"
+            className="hs-dropdown-menu ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-[100] min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg"
             aria-labelledby={`dropdown-menu-${m.id}`}
           >
             <li>
@@ -862,6 +952,33 @@ const TrainingModules = () => {
   const [creatingFolder, setCreatingFolder] = useState(false)
   const [assignFoldersModuleId, setAssignFoldersModuleId] = useState<string | null>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkBusy, setBulkBusy] = useState(false)
+  const [bulkFolderOpen, setBulkFolderOpen] = useState(false)
+
+  const toggleSelect = useCallback((moduleId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(moduleId)) next.delete(moduleId)
+      else next.add(moduleId)
+      return next
+    })
+  }, [])
+
+  const selectAllInFolder = useCallback((folderModules: ApiTrainingModule[]) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      const allSelected = folderModules.every((m) => next.has(m.id))
+      if (allSelected) {
+        folderModules.forEach((m) => next.delete(m.id))
+      } else {
+        folderModules.forEach((m) => next.add(m.id))
+      }
+      return next
+    })
+  }, [])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const fetchModules = useCallback(async () => {
     setLoading(true)
@@ -897,6 +1014,106 @@ const TrainingModules = () => {
       setLoading(false)
     }
   }, [currentPage, pageSize, sortValue, search])
+
+  const handleBulkStatus = useCallback(async (status: ModuleLifecycleStatus) => {
+    if (selectedIds.size === 0) return
+    const confirmResult = await Swal.fire({
+      title: `${status.charAt(0).toUpperCase() + status.slice(1)} ${selectedIds.size} module(s)?`,
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: `Yes, ${status}`,
+    })
+    if (!confirmResult.isConfirmed) return
+
+    setBulkBusy(true)
+    let success = 0
+    let fail = 0
+    for (const id of selectedIds) {
+      try {
+        await trainingModulesApi.updateTrainingModule(id, { status })
+        success++
+      } catch {
+        fail++
+      }
+    }
+    setBulkBusy(false)
+    clearSelection()
+    fetchModules()
+    await Swal.fire({
+      icon: fail > 0 ? 'warning' : 'success',
+      title: `${success} updated${fail > 0 ? `, ${fail} failed` : ''}`,
+      toast: true,
+      position: 'top-end',
+      timer: 3000,
+      showConfirmButton: false,
+      timerProgressBar: true,
+    })
+  }, [selectedIds, clearSelection, fetchModules])
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    const confirmResult = await Swal.fire({
+      title: `Delete ${selectedIds.size} module(s)?`,
+      text: 'This action cannot be undone.',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      confirmButtonText: 'Yes, delete all',
+    })
+    if (!confirmResult.isConfirmed) return
+
+    setBulkBusy(true)
+    let success = 0
+    let fail = 0
+    for (const id of selectedIds) {
+      try {
+        await trainingModulesApi.deleteTrainingModule(id)
+        success++
+      } catch {
+        fail++
+      }
+    }
+    setBulkBusy(false)
+    clearSelection()
+    fetchModules()
+    await Swal.fire({
+      icon: fail > 0 ? 'warning' : 'success',
+      title: `${success} deleted${fail > 0 ? `, ${fail} failed` : ''}`,
+      toast: true,
+      position: 'top-end',
+      timer: 3000,
+      showConfirmButton: false,
+      timerProgressBar: true,
+    })
+  }, [selectedIds, clearSelection, fetchModules])
+
+  const handleBulkFolderSave = useCallback(async (categoryIds: string[]) => {
+    if (selectedIds.size === 0) return
+    setBulkBusy(true)
+    let success = 0
+    let fail = 0
+    for (const id of selectedIds) {
+      try {
+        await trainingModulesApi.setTrainingModuleFolders(id, categoryIds)
+        success++
+      } catch {
+        fail++
+      }
+    }
+    setBulkBusy(false)
+    clearSelection()
+    setBulkFolderOpen(false)
+    fetchModules()
+    await Swal.fire({
+      icon: fail > 0 ? 'warning' : 'success',
+      title: `${success} moved${fail > 0 ? `, ${fail} failed` : ''}`,
+      toast: true,
+      position: 'top-end',
+      timer: 3000,
+      showConfirmButton: false,
+      timerProgressBar: true,
+    })
+  }, [selectedIds, clearSelection, fetchModules])
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -1238,6 +1455,142 @@ const TrainingModules = () => {
         </div>
       </div> 
 
+      {selectedIds.size > 0 && (
+        <div
+          className="sticky top-0 z-[60] mb-5"
+          style={{
+            background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%)',
+            borderRadius: '0.75rem',
+            boxShadow: '0 8px 32px rgba(79, 70, 229, 0.3), 0 2px 8px rgba(0,0,0,0.1)',
+          }}
+        >
+          <div className="px-5 py-3.5">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              {/* Left: selection info */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex items-center justify-center rounded-lg font-bold text-indigo-700 text-[0.9375rem]"
+                  style={{
+                    width: '2.25rem',
+                    height: '2.25rem',
+                    background: 'rgba(255,255,255,0.92)',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+                  }}
+                >
+                  {selectedIds.size}
+                </div>
+                <div>
+                  <span className="text-white font-semibold text-[0.9375rem] leading-tight block">
+                    {selectedIds.size === 1 ? '1 module' : `${selectedIds.size} modules`} selected
+                  </span>
+                  <button
+                    type="button"
+                    className="text-white/70 hover:text-white text-[0.75rem] underline underline-offset-2 transition-colors leading-tight"
+                    onClick={clearSelection}
+                  >
+                    Clear selection
+                  </button>
+                </div>
+              </div>
+
+              {/* Right: actions */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    color: '#fff',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkStatus('published')}
+                >
+                  <i className="ri-send-plane-2-line text-[0.875rem]" />
+                  Publish
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    color: '#fff',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkStatus('draft')}
+                >
+                  <i className="ri-file-edit-line text-[0.875rem]" />
+                  Draft
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    color: '#fff',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkStatus('archived')}
+                >
+                  <i className="ri-archive-2-line text-[0.875rem]" />
+                  Archive
+                </button>
+
+                <div className="w-px h-6 mx-1" style={{ background: 'rgba(255,255,255,0.25)' }} />
+
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    color: '#fff',
+                    backdropFilter: 'blur(4px)',
+                    border: '1px solid rgba(255,255,255,0.2)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
+                  disabled={bulkBusy}
+                  onClick={() => setBulkFolderOpen(true)}
+                >
+                  <i className="ri-folder-transfer-line text-[0.875rem]" />
+                  Move to folder
+                </button>
+
+                <div className="w-px h-6 mx-1" style={{ background: 'rgba(255,255,255,0.25)' }} />
+
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.85)',
+                    color: '#fff',
+                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 1)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.85)' }}
+                  disabled={bulkBusy}
+                  onClick={handleBulkDelete}
+                >
+                  <i className="ri-delete-bin-line text-[0.875rem]" />
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="box custom-box text-center py-12">
           <p className="text-[#8c9097] dark:text-white/50 mb-0">Loading modules...</p>
@@ -1255,27 +1608,44 @@ const TrainingModules = () => {
       ) : (
         folderRows.map((folder) => {
           const isCollapsed = collapsedCategoryIds.has(folder.id)
+          const allInFolderSelected = folder.modules.length > 0 && folder.modules.every((m) => selectedIds.has(m.id))
           return (
             <div key={folder.id} className="mb-6">
-              <button
-                type="button"
-                onClick={() => toggleCategory(folder.id)}
-                className="flex items-center gap-2 w-full text-left py-2 px-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                aria-expanded={!isCollapsed}
-              >
-                <i
-                  className={`text-defaulttextcolor text-lg ${isCollapsed ? 'ri-add-line' : 'ri-subtract-line'}`}
-                  aria-hidden
-                />
-                <i
-                  className={`text-lg ${folder.isUncategorized ? 'ri-inbox-line text-[#8c9097]' : 'ri-folder-2-line text-primary'}`}
-                  aria-hidden
-                />
-                <h2 className="text-lg font-semibold text-defaulttextcolor">{folder.name}</h2>
-                <span className="text-[#8c9097] dark:text-white/50 text-sm ml-1">
-                  ({folder.modules.length} module{folder.modules.length !== 1 ? 's' : ''})
-                </span>
-              </button>
+              <div className="flex items-center gap-2">
+                {folder.modules.length > 0 && (
+                  <label
+                    className="flex items-center justify-center w-6 h-6 cursor-pointer shrink-0"
+                    title={allInFolderSelected ? 'Deselect all in folder' : 'Select all in folder'}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      className="form-check-input !m-0 !w-4 !h-4 cursor-pointer"
+                      checked={allInFolderSelected}
+                      onChange={() => selectAllInFolder(folder.modules)}
+                    />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  onClick={() => toggleCategory(folder.id)}
+                  className="flex items-center gap-2 flex-1 text-left py-2 px-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  aria-expanded={!isCollapsed}
+                >
+                  <i
+                    className={`text-defaulttextcolor text-lg ${isCollapsed ? 'ri-add-line' : 'ri-subtract-line'}`}
+                    aria-hidden
+                  />
+                  <i
+                    className={`text-lg ${folder.isUncategorized ? 'ri-inbox-line text-[#8c9097]' : 'ri-folder-2-line text-primary'}`}
+                    aria-hidden
+                  />
+                  <h2 className="text-lg font-semibold text-defaulttextcolor">{folder.name}</h2>
+                  <span className="text-[#8c9097] dark:text-white/50 text-sm ml-1">
+                    ({folder.modules.length} module{folder.modules.length !== 1 ? 's' : ''})
+                  </span>
+                </button>
+              </div>
               {!isCollapsed && (
                 <>
                   {folder.modules.length === 0 ? (
@@ -1299,6 +1669,8 @@ const TrainingModules = () => {
                             onAssignFolders={(id) => setAssignFoldersModuleId(id)}
                             onSetStatus={handleSetModuleStatus}
                             statusUpdatingId={statusUpdatingId}
+                            selected={selectedIds.has(m.id)}
+                            onToggleSelect={toggleSelect}
                           />
                         </div>
                       ))}
@@ -1374,6 +1746,15 @@ const TrainingModules = () => {
         categoryOptions={categorySelectOptions}
         onClose={() => setAssignFoldersModuleId(null)}
         onSave={handleSaveFolderAssignment}
+      />
+
+      <BulkAssignFoldersModal
+        open={bulkFolderOpen}
+        count={selectedIds.size}
+        categoryOptions={categorySelectOptions}
+        onClose={() => setBulkFolderOpen(false)}
+        onSave={handleBulkFolderSave}
+        busy={bulkBusy}
       />
     </Fragment>
   )

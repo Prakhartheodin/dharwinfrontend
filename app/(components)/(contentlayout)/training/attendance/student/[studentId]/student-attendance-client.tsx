@@ -932,6 +932,13 @@ export default function StudentAttendancePage() {
     attendanceList.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? "");
       if (!dateKey) return;
+
+      // Skip attendance records that fall before the joining date
+      if (joiningDateStart) {
+        const recDate = new Date(dateKey + "T00:00:00");
+        if (recDate.getTime() < joiningDateStart.getTime()) return;
+      }
+
       const hasOut = !!r.punchOut;
       const ms = sessionDurationMsForDisplay(r);
       const status = (r as { status?: string }).status;
@@ -979,6 +986,24 @@ export default function StudentAttendancePage() {
         hasHolidayRecord: false,
         hasLeaveRecord: false,
       };
+
+      // Force-clear attendance for days before joining date
+      const cellDate = new Date(date);
+      cellDate.setHours(0, 0, 0, 0);
+      const isBeforeJoining = joiningDateStart != null && cellDate.getTime() < joiningDateStart.getTime();
+      if (isBeforeJoining) {
+        cells.push({
+          day,
+          date,
+          present: false,
+          incomplete: false,
+          totalHours: 0,
+          status: info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : undefined,
+          holidayName: info.holidayName,
+        });
+        continue;
+      }
+
       const resolvedStatus = info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : info.status;
       const displayMs =
         info.hasHolidayRecord || info.hasLeaveRecord ? 0 : capDayTotalMs(info.totalMs);
@@ -994,7 +1019,7 @@ export default function StudentAttendancePage() {
       });
     }
     return cells;
-  }, [attendanceList, calendarYear, calendarMonth]);
+  }, [attendanceList, calendarYear, calendarMonth, joiningDateStart]);
 
   if (!studentId) {
     return (
@@ -1503,16 +1528,16 @@ export default function StudentAttendancePage() {
                               {isLeave && (
                                 <span className="text-[0.7rem] text-secondary mt-0.5">Leave</span>
                               )}
-                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.present && (
+                              {!beforeJoining && !afterResign && !inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.present && (
                                 <>
                                   <span className="text-[0.7rem] text-success mt-0.5">Present</span>
                                   <span className="text-[0.7rem] text-success">{cell.totalHours.toFixed(1)}h</span>
                                 </>
                               )}
-                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.incomplete && (
+                              {!beforeJoining && !afterResign && !inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.incomplete && (
                                 <span className="text-[0.7rem] text-warning mt-0.5">Incomplete</span>
                               )}
-                              {!inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && !cell.present && !cell.incomplete && isPast && (
+                              {!beforeJoining && !afterResign && !inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && !cell.present && !cell.incomplete && isPast && (
                                 <span className="text-[0.7rem] text-danger/80 mt-0.5">Absent</span>
                               )}
                             </div>
