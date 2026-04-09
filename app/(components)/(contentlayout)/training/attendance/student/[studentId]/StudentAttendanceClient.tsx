@@ -67,6 +67,7 @@ function formatTimeOnlyInTimezone(dateStr: string | null, timezone: string): str
 function formatDate(dateStr: string): string {
   try {
     return new Date(dateStr).toLocaleDateString(undefined, {
+      timeZone: "UTC",
       weekday: "short",
       year: "numeric",
       month: "short",
@@ -77,14 +78,14 @@ function formatDate(dateStr: string): string {
   }
 }
 
-/** Get YYYY-MM-DD in local time for an ISO date string (for display) */
+/** Get YYYY-MM-DD from the stored attendance date (UTC midnight convention). */
 function getLocalDateKey(isoDateStr: string): string {
   if (!isoDateStr) return "";
   const d = new Date(isoDateStr);
   if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const day = d.getUTCDate();
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 

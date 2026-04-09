@@ -9,6 +9,134 @@ import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import { useEffect } from "react";
+import {
+  CANDIDATE_EXCEL_SHEETS,
+  downloadCandidateExcelTemplate,
+} from "@/shared/lib/candidate-excel-template";
+
+function normalizeExcelHeader(h: string) {
+  return (h || "").toString().trim().toLowerCase().replace(/\s+/g, "");
+}
+
+/** Merge Visa / Supervisor / Address tabs onto candidates (same FullName). */
+function mergeSupplementalPersonalExcelSheets(
+  workbook: import("xlsx").WorkBook,
+  XLSX: typeof import("xlsx"),
+  candidates: any[]
+) {
+  const mergeSheet = (sheetName: string) => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as unknown[][];
+    if (data.length < 2) return;
+    const headers = (data[0] as string[]).map((h) => h?.toString().trim() || "");
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i] as any[];
+      if (!row?.some((cell) => cell !== undefined && cell !== null && cell !== "")) continue;
+
+      let fullName = "";
+      headers.forEach((header, idx) => {
+        if (normalizeExcelHeader(header) === "fullname") {
+          fullName = row[idx]?.toString().trim() || "";
+        }
+      });
+      if (!fullName) continue;
+
+      const c = candidates.find((x) => x.fullName === fullName);
+      if (!c) continue;
+
+      headers.forEach((header, index) => {
+        const value = row[index]?.toString().trim() || "";
+        const nh = normalizeExcelHeader(header);
+        if (nh === "fullname" || !value) return;
+
+        const addrField = (() => {
+          switch (nh) {
+            case "streetaddress":
+              return "streetAddress" as const;
+            case "streetaddress2":
+              return "streetAddress2" as const;
+            case "city":
+              return "city" as const;
+            case "state":
+              return "state" as const;
+            case "zipcode":
+              return "zipCode" as const;
+            case "country":
+              return "country" as const;
+            default:
+              return null;
+          }
+        })();
+
+        if (addrField) {
+          c.address = c.address || {
+            streetAddress: "",
+            streetAddress2: "",
+            city: "",
+            state: "",
+            zipCode: "",
+            country: "",
+          };
+          (c.address as any)[addrField] = value;
+          return;
+        }
+
+        switch (nh) {
+          case "email":
+            c.email = value;
+            break;
+          case "phonenumber":
+            c.phoneNumber = value;
+            break;
+          case "countrycode":
+            c.countryCode = value;
+            break;
+          case "password":
+            c.password = value;
+            break;
+          case "shortbio":
+            c.shortBio = value;
+            break;
+          case "sevisid":
+            c.sevisId = value;
+            break;
+          case "ead":
+            c.ead = value;
+            break;
+          case "degree":
+            c.degree = value;
+            break;
+          case "visatype":
+            c.visaType = value;
+            break;
+          case "customvisatype":
+            c.customVisaType = value;
+            break;
+          case "supervisorname":
+            c.supervisorName = value;
+            break;
+          case "supervisorcontact":
+            c.supervisorContact = value;
+            break;
+          case "supervisorcountrycode":
+            c.supervisorCountryCode = value;
+            break;
+          case "salaryrange":
+            c.salaryRange = value;
+            break;
+          default:
+            break;
+        }
+      });
+    }
+  };
+
+  mergeSheet(CANDIDATE_EXCEL_SHEETS.visa);
+  mergeSheet(CANDIDATE_EXCEL_SHEETS.supervisor);
+  mergeSheet(CANDIDATE_EXCEL_SHEETS.address);
+}
 
 // Wizard Component
 const Wizard = ({ step: currentIndex, onChange, onSubmit, children, validateStep, stepValidationErrors, canNavigateToStep }: any) => {
@@ -316,7 +444,7 @@ export const Basicwizard = ({
   }, [initialData, router]);
 
   const [formData, setFormData] = useState({ 
-    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
+    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
   });
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
@@ -793,83 +921,19 @@ export const Basicwizard = ({
 
   const downloadExcelTemplate = async () => {
     try {
-      // Dynamic import of xlsx library
-      const XLSX = await import('xlsx');
-      
-      // Create workbook
-      const workbook = XLSX.utils.book_new();
-      
-      // 1. Personal Info Sheet
-      const personalInfoData = [
-        ['FullName', 'Email', 'CountryCode', 'PhoneNumber', 'Password', 'ShortBio', 'SevisId', 'Ead', 'Degree', 'VisaType', 'SupervisorName', 'SupervisorContact', 'SalaryRange', 'StreetAddress', 'StreetAddress2', 'City', 'State', 'ZipCode', 'Country'],
-        ['John Doe', 'john.doe@example.com', 'US', '9876543210', 'password123', 'Experienced software developer', 'SEVIS123456', 'EAD789012', 'Master of Computer Science', 'F-1', 'Dr. Sarah Johnson', '9876543210', '$80,000 - $100,000', '123 Main St', 'Apt 4B', 'New York', 'NY', '10001', 'United States'],
-        ['Jane Smith', 'jane.smith@example.com', 'IN', '9876543211', 'password123', 'Data scientist with ML expertise', 'SEVIS123457', 'EAD789013', 'PhD in Data Science', 'H-1B', 'Dr. Michael Brown', '9876543210', '$90,000 - $120,000', '456 Oak Ave', '', 'San Francisco', 'CA', '94102', 'United States']
-      ];
-      const personalInfoSheet = XLSX.utils.aoa_to_sheet(personalInfoData);
-      XLSX.utils.book_append_sheet(workbook, personalInfoSheet, 'Personal Info');
-      
-      // 2. Social Links Sheet
-      const socialLinksData = [
-        ['FullName', 'Platform', 'URL'],
-        ['John Doe', 'LinkedIn', 'https://linkedin.com/in/john-doe'],
-        ['John Doe', 'GitHub', 'https://github.com/john-doe'],
-        ['Jane Smith', 'LinkedIn', 'https://linkedin.com/in/jane-smith'],
-        ['Jane Smith', 'Portfolio', 'https://janesmith.dev']
-      ];
-      const socialLinksSheet = XLSX.utils.aoa_to_sheet(socialLinksData);
-      XLSX.utils.book_append_sheet(workbook, socialLinksSheet, 'Social Links');
-      
-      // 3. Skills Sheet
-      const skillsData = [
-        ['FullName', 'SkillName', 'Level', 'Category'],
-        ['John Doe', 'JavaScript', 'Expert', 'Programming Languages'],
-        ['John Doe', 'React', 'Advanced', 'Frontend Frameworks'],
-        ['John Doe', 'Node.js', 'Advanced', 'Backend Technologies'],
-        ['Jane Smith', 'Python', 'Expert', 'Programming Languages'],
-        ['Jane Smith', 'TensorFlow', 'Advanced', 'Machine Learning'],
-        ['Jane Smith', 'SQL', 'Intermediate', 'Database']
-      ];
-      const skillsSheet = XLSX.utils.aoa_to_sheet(skillsData);
-      XLSX.utils.book_append_sheet(workbook, skillsSheet, 'Skills');
-      
-      // 4. Qualification Sheet
-      const qualificationData = [
-        ['FullName', 'Degree', 'Institute', 'Location', 'StartYear', 'EndYear', 'Description'],
-        ['John Doe', 'Master of Computer Science', 'University of Technology', 'New York, USA', '2020', '2022', 'Specialized in Software Engineering'],
-        ['John Doe', 'Bachelor of Computer Science', 'State University', 'California, USA', '2016', '2020', 'Graduated with honors'],
-        ['Jane Smith', 'PhD in Data Science', 'MIT', 'Massachusetts, USA', '2018', '2022', 'Research in machine learning algorithms'],
-        ['Jane Smith', 'Master of Statistics', 'Stanford University', 'California, USA', '2016', '2018', 'Focus on statistical modeling']
-      ];
-      const qualificationSheet = XLSX.utils.aoa_to_sheet(qualificationData);
-      XLSX.utils.book_append_sheet(workbook, qualificationSheet, 'Qualification');
-      
-      // 5. Work Experience Sheet
-      const workExperienceData = [
-        ['FullName', 'Company', 'Role', 'StartDate', 'EndDate', 'Description', 'CurrentlyWorking'],
-        ['John Doe', 'Tech Solutions Inc', 'Senior Software Developer', '2022-01-15', '2024-01-15', 'Led development of web applications using React and Node.js', 'false'],
-        ['John Doe', 'StartupXYZ', 'Full Stack Developer', '2020-06-01', '2021-12-31', 'Developed and maintained web applications', 'false'],
-        ['Jane Smith', 'AI Research Lab', 'Data Scientist', '2022-03-01', '', 'Developing machine learning models for predictive analytics', 'true'],
-        ['Jane Smith', 'DataCorp', 'Junior Data Analyst', '2020-01-01', '2022-02-28', 'Analyzed large datasets and created reports', 'false']
-      ];
-      const workExperienceSheet = XLSX.utils.aoa_to_sheet(workExperienceData);
-      XLSX.utils.book_append_sheet(workbook, workExperienceSheet, 'Work Experience');
-      
-      // Generate and download file
-      const fileName = `Candidate_Import_Template_${new Date().toISOString().split('T')[0]}.xlsx`;
-      XLSX.writeFile(workbook, fileName);
-      
+      await downloadCandidateExcelTemplate();
       await Swal.fire({
-        icon: 'success',
-        title: 'Template Downloaded!',
-        text: 'Excel template has been downloaded successfully.',
-        confirmButtonText: 'OK'
+        icon: "success",
+        title: "Template Downloaded!",
+        text: "Excel template has been downloaded (split across tabs: contact, visa, supervisor, address, then skills, etc.).",
+        confirmButtonText: "OK",
       });
-    } catch (error) {
+    } catch {
       await Swal.fire({
-        icon: 'error',
-        title: 'Download Failed',
-        text: 'Failed to download template. Please install xlsx library: npm install xlsx',
-        confirmButtonText: 'OK'
+        icon: "error",
+        title: "Download Failed",
+        text: "Failed to download template. Please install xlsx library: npm install xlsx",
+        confirmButtonText: "OK",
       });
     }
   };
@@ -1047,12 +1111,9 @@ export const Basicwizard = ({
               // Get all sheet names
               const sheetNames = workbook.SheetNames;
               
-              // Check if required sheets exist
-              const requiredSheets = ['Personal Info', 'Social Links', 'Skills', 'Qualification', 'Work Experience'];
-              const missingSheets = requiredSheets.filter(sheet => !sheetNames.includes(sheet));
-              
-              if (missingSheets.length > 0) {
-                reject(new Error(`Missing required sheets: ${missingSheets.join(', ')}`));
+              // Personal Info is required; other sheets are optional (legacy: all columns on Personal Info only).
+              if (!sheetNames.includes(CANDIDATE_EXCEL_SHEETS.personal)) {
+                reject(new Error(`Missing required sheet: ${CANDIDATE_EXCEL_SHEETS.personal}`));
                 return;
               }
               
@@ -1080,7 +1141,6 @@ export const Basicwizard = ({
                   
                   // Parse personal info and format like manual form payload
                   let addressData: any = {};
-                  let customVisaType = '';
                   
                   headers.forEach((header, index) => {
                     const value = row[index]?.toString().trim() || '';
@@ -1127,7 +1187,7 @@ export const Basicwizard = ({
                         candidate.visaType = value;
                         break;
                       case 'customvisatype':
-                        customVisaType = value;
+                        candidate.customVisaType = value;
                         break;
                       case 'salaryrange':
                         candidate.salaryRange = value;
@@ -1170,7 +1230,9 @@ export const Basicwizard = ({
                     supervisorContact: candidate.supervisorContact,
                     supervisorCountryCode: candidate.supervisorCountryCode,
                     visaType: candidate.visaType,
-                    ...(candidate.visaType === "Other" && customVisaType ? { customVisaType: customVisaType } : {}),
+                    ...(candidate.visaType === "Other" && candidate.customVisaType
+                      ? { customVisaType: candidate.customVisaType }
+                      : {}),
                     salaryRange: candidate.salaryRange,
                     address: {
                       streetAddress: addressData.streetAddress || '',
@@ -1195,146 +1257,123 @@ export const Basicwizard = ({
                   candidates.push(candidate);
                 }
               }
+
+              mergeSupplementalPersonalExcelSheets(workbook, XLSX, candidates);
               
               // Parse Social Links
-              const socialLinksSheet = workbook.Sheets['Social Links'];
-              const socialLinksData = XLSX.utils.sheet_to_json(socialLinksSheet, { header: 1 });
-              
-              for (let i = 1; i < socialLinksData.length; i++) {
-                const row = socialLinksData[i] as any[];
-                if (row && row.length >= 3) {
-                  const fullName = row[0]?.toString().trim();
-                  const platform = row[1]?.toString().trim();
-                  const url = row[2]?.toString().trim();
-                  
-                  if (fullName && platform && url) {
-                    const candidate = candidates.find(c => c.fullName === fullName);
-                    if (candidate) {
-                      candidate.socialLinks.push({ platform, url });
+              const socialLinksSheet = workbook.Sheets[CANDIDATE_EXCEL_SHEETS.social];
+              if (socialLinksSheet) {
+                const socialLinksData = XLSX.utils.sheet_to_json(socialLinksSheet, { header: 1 });
+                for (let i = 1; i < socialLinksData.length; i++) {
+                  const row = socialLinksData[i] as any[];
+                  if (row && row.length >= 3) {
+                    const fullName = row[0]?.toString().trim();
+                    const platform = row[1]?.toString().trim();
+                    const url = row[2]?.toString().trim();
+                    if (fullName && platform && url) {
+                      const candidate = candidates.find((c) => c.fullName === fullName);
+                      if (candidate) candidate.socialLinks.push({ platform, url });
                     }
                   }
                 }
               }
               
               // Parse Skills
-              const skillsSheet = workbook.Sheets['Skills'];
-              const skillsData = XLSX.utils.sheet_to_json(skillsSheet, { header: 1 });
-              
-              for (let i = 1; i < skillsData.length; i++) {
-                const row = skillsData[i] as any[];
-                if (row && row.length >= 3) {
-                  const fullName = row[0]?.toString().trim();
-                  const name = row[1]?.toString().trim();
-                  const level = row[2]?.toString().trim() || 'Beginner';
-                  const category = row[3]?.toString().trim() || '';
-                  
-                  if (fullName && name) {
-                    const candidate = candidates.find(c => c.fullName === fullName);
-                    if (candidate) {
-                      candidate.skills.push({ name, level, category });
+              const skillsSheet = workbook.Sheets[CANDIDATE_EXCEL_SHEETS.skills];
+              if (skillsSheet) {
+                const skillsData = XLSX.utils.sheet_to_json(skillsSheet, { header: 1 });
+                for (let i = 1; i < skillsData.length; i++) {
+                  const row = skillsData[i] as any[];
+                  if (row && row.length >= 3) {
+                    const fullName = row[0]?.toString().trim();
+                    const name = row[1]?.toString().trim();
+                    const level = row[2]?.toString().trim() || "Beginner";
+                    const category = row[3]?.toString().trim() || "";
+                    if (fullName && name) {
+                      const candidate = candidates.find((c) => c.fullName === fullName);
+                      if (candidate) candidate.skills.push({ name, level, category });
                     }
                   }
                 }
               }
               
               // Parse Qualifications
-              const qualificationSheet = workbook.Sheets['Qualification'];
-              const qualificationData = XLSX.utils.sheet_to_json(qualificationSheet, { header: 1 });
-              
-              for (let i = 1; i < qualificationData.length; i++) {
-                const row = qualificationData[i] as any[];
-                if (row && row.length >= 6) {
-                  const fullName = row[0]?.toString().trim();
-                  const degree = row[1]?.toString().trim();
-                  const institute = row[2]?.toString().trim();
-                  const location = row[3]?.toString().trim();
-                  const startYear = row[4]?.toString().trim();
-                  const endYear = row[5]?.toString().trim();
-                  const description = row[6]?.toString().trim() || '';
-                  
-                  if (fullName && degree && institute && location && startYear && endYear) {
-                    const candidate = candidates.find(c => c.fullName === fullName);
-                    if (candidate) {
-                      candidate.qualifications.push({
-                        degree,
-                        institute,
-                        location,
-                        startYear: parseInt(startYear),
-                        endYear: parseInt(endYear),
-                        description
-                      });
+              const qualificationSheet = workbook.Sheets[CANDIDATE_EXCEL_SHEETS.qualification];
+              if (qualificationSheet) {
+                const qualificationData = XLSX.utils.sheet_to_json(qualificationSheet, { header: 1 });
+                for (let i = 1; i < qualificationData.length; i++) {
+                  const row = qualificationData[i] as any[];
+                  if (row && row.length >= 6) {
+                    const fullName = row[0]?.toString().trim();
+                    const degree = row[1]?.toString().trim();
+                    const institute = row[2]?.toString().trim();
+                    const location = row[3]?.toString().trim();
+                    const startYear = row[4]?.toString().trim();
+                    const endYear = row[5]?.toString().trim();
+                    const description = row[6]?.toString().trim() || "";
+                    if (fullName && degree && institute && location && startYear && endYear) {
+                      const candidate = candidates.find((c) => c.fullName === fullName);
+                      if (candidate) {
+                        candidate.qualifications.push({
+                          degree,
+                          institute,
+                          location,
+                          startYear: parseInt(startYear, 10),
+                          endYear: parseInt(endYear, 10),
+                          description,
+                        });
+                      }
                     }
                   }
                 }
               }
               
               // Parse Work Experience
-              const workExperienceSheet = workbook.Sheets['Work Experience'];
-              const workExperienceData = XLSX.utils.sheet_to_json(workExperienceSheet, { header: 1 });
-              
-              for (let i = 1; i < workExperienceData.length; i++) {
-                const row = workExperienceData[i] as any[];
-                if (row && row.length >= 5) {
-                  const fullName = row[0]?.toString().trim();
-                  const company = row[1]?.toString().trim();
-                  const role = row[2]?.toString().trim();
-                  const startDate = row[3]?.toString().trim();
-                  const endDate = row[4]?.toString().trim() || '';
-                  const description = row[5]?.toString().trim() || '';
-                  const currentlyWorking = row[6]?.toString().trim().toLowerCase() === 'true';
-                  
-                  if (fullName && company && role && startDate) {
-                    const candidate = candidates.find(c => c.fullName === fullName);
-                    if (candidate) {
-                      // Convert Excel serial numbers to YYYY-MM-DD format
-                      const convertExcelDateToYYYYMMDD = (excelDate: string | number): string => {
-                        if (!excelDate) return '';
-                        
-                        // If it's already a string in YYYY-MM-DD format, return as is
-                        if (typeof excelDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(excelDate)) {
-                          return excelDate;
-                        }
-                        
-                        // If it's a number (Excel serial date), convert it
-                        if (typeof excelDate === 'number' || !isNaN(Number(excelDate))) {
-                          const serialDate = Number(excelDate);
-                          // Excel serial date conversion (Excel counts from 1900-01-01)
-                          const date = new Date((serialDate - 25569) * 86400 * 1000);
-                          return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
-                        }
-                        
-                        // If it's a string but not in YYYY-MM-DD format, try to parse it
-                        if (typeof excelDate === 'string') {
-                          const parsedDate = new Date(excelDate);
-                          if (!isNaN(parsedDate.getTime())) {
-                            return parsedDate.toISOString().split('T')[0];
+              const workExperienceSheet = workbook.Sheets[CANDIDATE_EXCEL_SHEETS.workExperience];
+              if (workExperienceSheet) {
+                const workExperienceData = XLSX.utils.sheet_to_json(workExperienceSheet, { header: 1 });
+                for (let i = 1; i < workExperienceData.length; i++) {
+                  const row = workExperienceData[i] as any[];
+                  if (row && row.length >= 5) {
+                    const fullName = row[0]?.toString().trim();
+                    const company = row[1]?.toString().trim();
+                    const role = row[2]?.toString().trim();
+                    const startDate = row[3]?.toString().trim();
+                    const endDate = row[4]?.toString().trim() || "";
+                    const description = row[5]?.toString().trim() || "";
+                    const currentlyWorking = row[6]?.toString().trim().toLowerCase() === "true";
+                    if (fullName && company && role && startDate) {
+                      const candidate = candidates.find((c) => c.fullName === fullName);
+                      if (candidate) {
+                        const convertExcelDateToYYYYMMDD = (excelDate: string | number): string => {
+                          if (!excelDate) return "";
+                          if (typeof excelDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(excelDate)) {
+                            return excelDate;
                           }
-                        }
-                        
-                        return String(excelDate);
-                      };
-                      
-                      const convertedStartDate = convertExcelDateToYYYYMMDD(startDate);
-                      const convertedEndDate = endDate ? convertExcelDateToYYYYMMDD(endDate) : undefined;
-                      
-                      console.log('Excel Import - Date conversion:', {
-                        company,
-                        rawStartDate: startDate,
-                        rawStartDateType: typeof startDate,
-                        convertedStartDate: convertedStartDate,
-                        rawEndDate: endDate,
-                        rawEndDateType: typeof endDate,
-                        convertedEndDate: convertedEndDate
-                      });
-                      
-                      candidate.experiences.push({
-                        company,
-                        role,
-                        startDate: convertedStartDate,
-                        endDate: convertedEndDate,
-                        description,
-                        currentlyWorking
-                      });
+                          if (typeof excelDate === "number" || !isNaN(Number(excelDate))) {
+                            const serialDate = Number(excelDate);
+                            const date = new Date((serialDate - 25569) * 86400 * 1000);
+                            return date.toISOString().split("T")[0];
+                          }
+                          if (typeof excelDate === "string") {
+                            const parsedDate = new Date(excelDate);
+                            if (!isNaN(parsedDate.getTime())) {
+                              return parsedDate.toISOString().split("T")[0];
+                            }
+                          }
+                          return String(excelDate);
+                        };
+                        const convertedStartDate = convertExcelDateToYYYYMMDD(startDate);
+                        const convertedEndDate = endDate ? convertExcelDateToYYYYMMDD(endDate) : undefined;
+                        candidate.experiences.push({
+                          company,
+                          role,
+                          startDate: convertedStartDate,
+                          endDate: convertedEndDate,
+                          description,
+                          currentlyWorking,
+                        });
+                      }
                     }
                   }
                 }
@@ -1637,6 +1676,7 @@ export const Basicwizard = ({
         sevisId: initialData.sevisId || "",
         ead: initialData.ead || "",
         degree: initialData.degree || "",
+        designation: initialData.designation || "",
         supervisorName: initialData.supervisorName || "",
         supervisorContact: initialData.supervisorContact || "",
         supervisorCountryCode: initialData.supervisorCountryCode || initialData.countryCode || "IN",
@@ -1900,6 +1940,7 @@ export const Basicwizard = ({
         sevisId: formData.sevisId,
         ead: formData.ead,
         degree: formData.degree,
+        designation: formData.designation?.trim() || undefined,
         supervisorName: formData.supervisorName,
         supervisorContact: (formData.supervisorContact || "").replace(/\D/g, ""),
         supervisorCountryCode: formData.supervisorCountryCode,
@@ -2282,6 +2323,43 @@ export const Basicwizard = ({
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="degree" className="form-label">Degree</label>
                 <input type="text" name="degree" value={formData.degree} onChange={handleFormChange} className="form-control w-full !rounded-md" id="degree" placeholder="Degree" />
+            </div>
+            {initialData && (
+              <div className="xl:col-span-6 col-span-12">
+                <label className="form-label">Assigned agent</label>
+                <div className="form-control w-full !rounded-md bg-gray-50 dark:bg-black/20 text-gray-700 dark:text-white/80 border border-defaultborder dark:border-white/10 py-2 px-3">
+                  {initialData.assignedAgent?.name ? (
+                    <>
+                      <span className="font-medium">{initialData.assignedAgent.name}</span>
+                      {initialData.assignedAgent.email ? (
+                        <span className="text-textmuted dark:text-white/50 text-sm block">{initialData.assignedAgent.email}</span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-textmuted dark:text-white/50">Not assigned</span>
+                  )}
+                </div>
+                <small className="text-gray-500 text-xs mt-1 block">
+                  Assignment is managed from the candidates list (managers).
+                </small>
+              </div>
+            )}
+            <div className="xl:col-span-6 col-span-12">
+                <label htmlFor="designation" className="form-label">Position / job title</label>
+                <input
+                  type="text"
+                  name="designation"
+                  value={formData.designation}
+                  onChange={handleFormChange}
+                  className="form-control w-full !rounded-md"
+                  id="designation"
+                  placeholder="e.g. Software Engineer"
+                />
+                {initialData?.position && typeof initialData.position === 'object' && (initialData.position as { name?: string }).name ? (
+                  <small className="text-gray-500 text-xs mt-1 block">
+                    Catalog position: <span className="font-medium">{(initialData.position as { name: string }).name}</span>
+                  </small>
+                ) : null}
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="supervisorName" className="form-label">Supervisor Name</label>
