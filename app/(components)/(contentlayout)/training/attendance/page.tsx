@@ -64,7 +64,7 @@ function formatTime(dateStr: string): string {
 
 function formatDate(dateStr: string): string {
   try {
-    return new Date(dateStr).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" });
+    return new Date(dateStr).toLocaleDateString(undefined, { timeZone: "UTC", weekday: "short", year: "numeric", month: "short", day: "numeric" });
   } catch {
     return dateStr;
   }
@@ -103,9 +103,9 @@ function getLocalDateKey(isoDateStr: string): string {
   if (!isoDateStr) return "";
   const d = new Date(isoDateStr);
   if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = d.getMonth();
-  const day = d.getDate();
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth();
+  const day = d.getUTCDate();
   return `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 

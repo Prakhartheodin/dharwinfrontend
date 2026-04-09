@@ -17,7 +17,7 @@ import Swal from "sweetalert2";
 const AGENT_ASSIGNABLE_ROLE_NAMES = ["Candidate", "Student", "Mentor"];
 
 export default function SettingsUsersEditPage() {
-  const { user: currentUser, isAdministrator } = useAuth();
+  const { user: currentUser, isAdministrator, isPlatformSuperUser, isDesignatedSuperadmin } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get("id") ?? "";
@@ -44,6 +44,9 @@ export default function SettingsUsersEditPage() {
     if (isAgent) return roles.filter((r) => AGENT_ASSIGNABLE_ROLE_NAMES.includes(r.name ?? ""));
     return roles;
   }, [roles, isAdministrator, isAgent]);
+
+  /** Same tier as HRM WebRTC Feed In — platform super user or designated superadmin only. */
+  const canEditHrmDeviceId = Boolean(isPlatformSuperUser || isDesignatedSuperadmin);
 
   useEffect(() => {
     if (!userId) {
@@ -130,6 +133,8 @@ export default function SettingsUsersEditPage() {
       };
       if (isAdministrator) {
         payload.username = username.trim().toLowerCase() || undefined;
+      }
+      if (canEditHrmDeviceId) {
         payload.hrmDeviceId = hrmDeviceId.trim();
       }
       await usersApi.updateUser(userId, payload);
@@ -279,7 +284,7 @@ export default function SettingsUsersEditPage() {
                       <option value="deleted">Deleted</option>
                     </select>
                   </div>
-                  {isAdministrator && (
+                  {canEditHrmDeviceId && (
                     <div className="mb-6">
                       <label htmlFor="edit-user-hrm-device" className="form-label">
                         HRM monitoring device ID

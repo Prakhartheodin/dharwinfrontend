@@ -23,6 +23,7 @@ import {
   shareCandidateProfile,
   exportCandidateProfile,
   exportAllCandidates,
+  type ExportAllCandidatesParams,
   resendVerificationEmail,
   addNoteToCandidate,
   addFeedbackToCandidate,
@@ -386,6 +387,20 @@ const Candidates = () => {
     if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
     return params
   }, [filters, pageSize, debouncedSearchName])
+
+  /** POST /candidates/export uses the same filters as the list (omit page/limit/SOP count). */
+  const exportQueryParams = useMemo(() => {
+    const params: Record<string, unknown> = {
+      sortBy: 'createdAt:desc',
+    }
+    if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
+    else if (filters.name?.length) params.fullName = filters.name[0]
+    if (filters.email?.trim()) params.email = filters.email.trim()
+    if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
+    if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
+    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
+    return params
+  }, [filters, debouncedSearchName])
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -899,12 +914,12 @@ const Candidates = () => {
     setActionError(null)
     try {
       const body = exportAllEmail.trim() ? { email: exportAllEmail.trim() } : undefined
-      const result = await exportAllCandidates(undefined, body)
+      const result = await exportAllCandidates(exportQueryParams as ExportAllCandidatesParams, body)
       if (result && typeof (result as Blob).slice === 'function') {
         const url = URL.createObjectURL(result as Blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `candidates-export-${new Date().toISOString().split('T')[0]}.csv`
+        a.download = `candidates-export-${new Date().toISOString().split('T')[0]}.xlsx`
         a.click()
         URL.revokeObjectURL(url)
       }

@@ -265,14 +265,50 @@ export async function addFeedbackToCandidate(
   await apiClient.post(`/candidates/${candidateId}/feedback`, { feedback, rating });
 }
 
-/** Export all candidates (CSV); optional body.email to send by email. When no email, returns CSV blob for download. Requires candidates.manage. */
-export async function exportAllCandidates(params?: { owner?: string; fullName?: string; email?: string }, body?: { email?: string }): Promise<Blob | void> {
-  const sendBlob = !body?.email
+/** Same filter shape as list; page/limit/includeOpenSopCount are ignored by export. */
+export type ExportAllCandidatesParams = Omit<
+  ListCandidatesParams,
+  "page" | "limit" | "includeOpenSopCount"
+> & {
+  /** Omit or `xlsx` = multi-sheet Excel (default). `csv` = legacy single-sheet CSV. */
+  format?: "csv" | "xlsx";
+};
+
+/** Export all candidates: default multi-sheet `.xlsx` blob; `format=csv` for one CSV. Email path sends CSV in body. Requires candidates.manage. */
+export async function exportAllCandidates(
+  params?: ExportAllCandidatesParams,
+  body?: { email?: string }
+): Promise<Blob | void> {
+  const sendBlob = !body?.email;
   const res = await apiClient.post("/candidates/export", body ?? {}, {
     params,
     ...(sendBlob ? { responseType: "blob" as const } : {}),
   });
   return res.data as Blob | void;
+}
+
+export interface AgentAssignmentSummaryRow {
+  agentId: string;
+  name: string;
+  email: string;
+  assignedCount: number;
+}
+
+export interface AgentAssignmentSummaryResponse {
+  employmentStatus: string;
+  unassignedCount: number;
+  agents: AgentAssignmentSummaryRow[];
+}
+
+/** Org-wide agent workload (candidates.manage). */
+export async function getAgentAssignmentSummary(params?: {
+  employmentStatus?: "current" | "resigned" | "all" | "";
+}): Promise<AgentAssignmentSummaryResponse> {
+  const { data } = await apiClient.get<AgentAssignmentSummaryResponse>(
+    "/candidates/agent-assignment-summary",
+    { params }
+  );
+  return data;
 }
 
 export async function assignRecruiterToCandidate(candidateId: string, recruiterId: string): Promise<void> {
