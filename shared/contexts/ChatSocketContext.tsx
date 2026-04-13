@@ -58,6 +58,7 @@ interface ChatSocketContextValue {
   onMessagesRead: (callback: (data: { conversationId: string; userId: string; readAt: string }) => void) => () => void;
   emitTyping: (conversationId: string) => void;
   emitMessageRead: (conversationId: string) => void;
+  syncOnlineUsers: (userIds: string[]) => void;
   /** Stops ringtone, clears incoming UI — same as modal Accept/Decline. Registered by GlobalIncomingCall. */
   dismissIncomingCall: () => void;
   /** @internal Registered by GlobalIncomingCall; do not use elsewhere. */
@@ -80,6 +81,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
   const newMsgListeners = useRef<Set<(msg: unknown) => void>>(new Set());
   const convUpdateListeners = useRef<Set<() => void>>(new Set());
@@ -173,6 +175,32 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     [socket]
   );
 
+  const syncOnlineUsers = useCallback(
+    (userIds: string[]) => {
+      if (!socket || !connected || userIds.length === 0) return;
+      const normalized = Array.from(
+        new Set(
+          userIds
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (normalized.length === 0) return;
+      socket.emit("get_online_users", { userIds: normalized }, (response?: { onlineUsers?: Record<string, boolean> }) => {
+        const snapshot = response?.onlineUsers || {};
+        setOnlineUsers((prev) => {
+          const next = new Set(prev);
+          normalized.forEach((id) => {
+            if (snapshot[id]) next.add(id);
+            else next.delete(id);
+          });
+          return next;
+        });
+      });
+    },
+    [socket, connected]
+  );
+
   useEffect(() => {
     const url = getSocketUrl();
     if (!url) return;
@@ -208,6 +236,44 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
         sock.on("disconnect", () => setConnected(false));
 
         sock.on("new_message", (msg: unknown) => {
+          const typedMsg = msg as {
+            id?: string;
+            _id?: string;
+            conversation?: string;
+            sender?: { id?: string; _id?: string; name?: string };
+            content?: string;
+            type?: string;
+          };
+          const senderId = authUserId(typedMsg?.sender);
+          const messageId = String(typedMsg?.id || typedMsg?._id || "").trim();
+          if (
+            typeof window !== "undefined" &&
+            "Notification" in window &&
+            Notification.permission === "granted" &&
+            document.visibilityState !== "visible" &&
+            senderId &&
+            senderId !== userId &&
+            messageId &&
+            !notifiedMessageIdsRef.current.has(messageId)
+          ) {
+            notifiedMessageIdsRef.current.add(messageId);
+            const senderName = typedMsg?.sender?.name?.trim() || "New message";
+            const body =
+              typedMsg?.type === "audio"
+                ? "Sent you a voice note"
+                : typedMsg?.type === "image"
+                  ? "Sent you an image"
+                  : typedMsg?.type === "file"
+                    ? "Sent you a file"
+                    : (typedMsg?.content || "Sent you a new message").trim();
+            const notification = new Notification(senderName, { body, tag: `chat-${messageId}` });
+            notification.onclick = () => {
+              window.focus();
+              if (typedMsg?.conversation) {
+                window.location.href = `/communication/chats?conv=${typedMsg.conversation}`;
+              }
+            };
+          }
           newMsgListeners.current.forEach((cb) => cb(msg));
         });
 
@@ -274,6 +340,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
       sock?.disconnect();
       setSocket(null);
       setConnected(false);
+      notifiedMessageIdsRef.current.clear();
     };
   }, [userId]);
 
@@ -296,6 +363,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     onMessagesRead,
     emitTyping,
     emitMessageRead,
+    syncOnlineUsers,
     dismissIncomingCall,
     registerIncomingCallDismiss,
   };

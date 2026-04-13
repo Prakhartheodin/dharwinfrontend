@@ -31,6 +31,12 @@ function getDetectedTimezone(): string {
   }
 }
 
+function parseYmdLocal(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 function formatDuration(ms: number): string {
   if (ms <= 0) return "0m";
   const totalMins = Math.floor(ms / 60000);
@@ -220,6 +226,9 @@ export default function AttendanceTracking() {
             if (Array.isArray(wo)) setMyWeekOff(wo);
             const shift = (identity as { shift?: { name?: string; startTime?: string; endTime?: string; timezone?: string } }).shift;
             setMyShift(shift && typeof shift === "object" ? shift : null);
+          } else {
+            setMyWeekOff([]);
+            setMyShift(null);
           }
         }
       } catch (e: unknown) {
@@ -362,9 +371,9 @@ export default function AttendanceTracking() {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Please fill in From date, To date, Punch In, and Punch Out." });
       return;
     }
-    const from = new Date(fromDate);
-    const to = new Date(toDate);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    const from = parseYmdLocal(fromDate);
+    const to = parseYmdLocal(toDate);
+    if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
       return;
     }
@@ -439,9 +448,9 @@ export default function AttendanceTracking() {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Please select From date and To date." });
       return;
     }
-    const from = new Date(fromDate);
-    const to = new Date(toDate);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    const from = parseYmdLocal(fromDate);
+    const to = parseYmdLocal(toDate);
+    if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
       return;
     }
@@ -628,7 +637,8 @@ export default function AttendanceTracking() {
     const year = myCalendarYear; const month = myCalendarMonth;
     const firstDay = new Date(year, month, 1); const startDayOfWeek = firstDay.getDay();
     const lastDay = new Date(year, month + 1, 0); const daysInMonth = lastDay.getDate();
-    const weekOffSet = new Set(myWeekOff.map((d) => d.trim()));
+    const effectiveWeekOffDays = myWeekOff.length > 0 ? myWeekOff : ["Saturday", "Sunday"];
+    const weekOffSet = new Set(effectiveWeekOffDays.map((d) => d.trim()));
     const byDate: Record<string, { present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; totalMs: number; holidayName: string }> = {};
     attendanceList.forEach((r) => {
       const dateKey = getLocalDateKey(r.date ?? ""); if (!dateKey) return;
@@ -651,7 +661,7 @@ export default function AttendanceTracking() {
       const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       const info = byDate[dateKey] || { present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, totalMs: 0, holidayName: "" };
       const dayName = DAY_NAME_MAP[date.getDay()];
-      const isWeekOff = weekOffSet.has(dayName) && !info.present && !info.holiday && !info.leave && !info.incomplete;
+      const isWeekOff = weekOffSet.has(dayName);
       const isPast = date < todayStart;
       const isTodayCell = date.getTime() === todayStart.getTime();
       /** Past scheduled workdays with no punch / leave / holiday row: treat as absent (same idea as StudentAttendanceOverlay). */
@@ -1132,7 +1142,7 @@ export default function AttendanceTracking() {
                                     )}
                                     {cell.absent && <span className="text-[0.65rem] text-danger font-medium">Absent</span>}
                                     {cell.weekOff && <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 font-medium">Week Off</span>}
-                                    {cell.present && cell.totalHours > 0 && (
+                                    {!cell.weekOff && cell.present && cell.totalHours > 0 && (
                                       <span className="text-[0.65rem] text-success font-semibold mt-auto">{cell.totalHours}h</span>
                                     )}
                                     {cell.incomplete && <span className="text-[0.65rem] text-warning font-medium">Active</span>}

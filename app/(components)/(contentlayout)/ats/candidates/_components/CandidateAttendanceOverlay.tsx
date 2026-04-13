@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { listAttendanceByCandidate, type AttendanceRecord } from "@/shared/lib/api/attendance";
 import { getCandidate, getCandidateWeekOff } from "@/shared/lib/api/candidates";
+import { getStudentWeekOff } from "@/shared/lib/api/students";
 import {
   capDayTotalMs,
   countsTowardWorkedMs,
@@ -24,6 +25,17 @@ const CALENDAR_YEAR_END = 2150;
 function effectiveWeekOffDays(weekOff: string[]): string[] {
   if (weekOff.length > 0) return weekOff;
   return ["Saturday", "Sunday"];
+}
+
+function mergeWeekOffLists(lists: string[][]): string[] {
+  const set = new Set<string>();
+  for (const list of lists) {
+    for (const day of list) {
+      const trimmed = day.trim();
+      if (trimmed) set.add(trimmed);
+    }
+  }
+  return DAY_NAME_MAP.filter((day) => set.has(day));
 }
 
 function formatLocalYmd(d: Date): string {
@@ -95,6 +107,7 @@ export default function CandidateAttendanceOverlay({
   const [month, setMonth] = useState(now.getMonth());
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [weekOff, setWeekOff] = useState<string[]>([]);
+  const [linkedStudentId, setLinkedStudentId] = useState<string | null>(null);
   const [joiningDateStart, setJoiningDateStart] = useState<Date | null>(null);
   const [resignDateEnd, setResignDateEnd] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,10 +115,31 @@ export default function CandidateAttendanceOverlay({
 
   useEffect(() => {
     if (!open || !candidateId) return;
-    getCandidateWeekOff(candidateId)
-      .then((r) => setWeekOff(r.weekOff ?? []))
-      .catch(() => setWeekOff([]));
-  }, [open, candidateId]);
+    let cancelled = false;
+    (async () => {
+      const parts: string[][] = [];
+      try {
+        const candidateWeekOff = await getCandidateWeekOff(candidateId);
+        parts.push(candidateWeekOff.weekOff ?? []);
+      } catch {
+        parts.push([]);
+      }
+      if (linkedStudentId) {
+        try {
+          const studentWeekOff = await getStudentWeekOff(linkedStudentId);
+          parts.push(studentWeekOff.weekOff ?? []);
+        } catch {
+          parts.push([]);
+        }
+      }
+      if (!cancelled) {
+        setWeekOff(mergeWeekOffLists(parts));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, candidateId, linkedStudentId]);
 
   useEffect(() => {
     if (!open || !candidateId?.trim()) {
@@ -118,11 +152,13 @@ export default function CandidateAttendanceOverlay({
       try {
         const c = await getCandidate(candidateId);
         if (!cancelled) {
+          setLinkedStudentId(c.studentId ?? null);
           setJoiningDateStart(parseCalendarDayLocal(c.joiningDate ?? undefined));
           setResignDateEnd(parseCalendarDayLocal(c.resignDate ?? undefined));
         }
       } catch {
         if (!cancelled) {
+          setLinkedStudentId(null);
           setJoiningDateStart(null);
           setResignDateEnd(null);
         }
@@ -135,10 +171,10 @@ export default function CandidateAttendanceOverlay({
 
   const monthRange = useMemo(() => {
     const start = new Date(year, month, 1);
-    const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
+    const end = new Date(year, month + 1, 0);
     return {
-      startDate: start.toISOString().slice(0, 10),
-      endDate: end.toISOString().slice(0, 10),
+      startDate: formatLocalYmd(start),
+      endDate: formatLocalYmd(end),
     };
   }, [year, month]);
 
@@ -295,11 +331,7 @@ export default function CandidateAttendanceOverlay({
       const inactiveEmployment = beforeJoining || afterResign;
       const isScheduledWeekOff =
         !inactiveEmployment &&
-        weekOffSet.has(dayName) &&
-        !info.present &&
-        !info.holiday &&
-        !info.leave &&
-        !info.incomplete;
+        weekOffSet.has(dayName);
       const isPast = date < todayStart;
       const isTodayCell = date.getTime() === todayStart.getTime();
       const inferredAbsent =
@@ -408,7 +440,7 @@ export default function CandidateAttendanceOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)] backdrop-blur-[2px]"
+      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="candidate-attendance-title"
@@ -688,7 +720,7 @@ export default function CandidateAttendanceOverlay({
                         if (cell.afterResign) titleParts.push("After last employment day");
                         if (cell.beforeJoining) titleParts.push("Before joining date");
                         if (cell.absent) titleParts.push("Absent");
-                        if (cell.present && cell.totalHours > 0) titleParts.push(`Worked ${cell.totalHours}h`);
+                        if (!cell.weekOff && cell.present && cell.totalHours > 0) titleParts.push(`Worked ${cell.totalHours}h`);
                         if (cell.incomplete) titleParts.push("Open punch — still clocked in");
                         if (isWeekendCol && !cell.weekOff && !cell.holiday && !cell.leave) titleParts.push("Weekend");
                       }
@@ -766,7 +798,7 @@ export default function CandidateAttendanceOverlay({
                                 {cell.absent && (
                                   <p className="text-[0.6875rem] font-semibold text-rose-700 dark:text-rose-300">Absent</p>
                                 )}
-                                {cell.present && cell.totalHours > 0 && (
+                                {!cell.weekOff && cell.present && cell.totalHours > 0 && (
                                   <p className="mt-auto text-[0.75rem] font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                                     {cell.totalHours}h
                                   </p>

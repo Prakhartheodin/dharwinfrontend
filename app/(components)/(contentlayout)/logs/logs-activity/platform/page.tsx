@@ -11,10 +11,12 @@ import {
   ACTIVITY_LOG_ENTITY_TYPES,
   getActionDisplay,
   getActivityActionDisplayForRow,
+  getCandidateActivityEntitySummary,
   getEntityTypeDisplay,
   getRoleActivityEntitySummary,
   getUserActivityEntitySummary,
   getImpersonationEntitySummary,
+  getJobActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
 import {
   canOpenActivityLogEntity,
@@ -940,6 +942,8 @@ export default function PlatformAuditLogsPage() {
                           !!isPlatformSuperUser
                         );
                         const entityRichSummary =
+                          getCandidateActivityEntitySummary(log) ??
+                          getJobActivityEntitySummary(log) ??
                           getRoleActivityEntitySummary(log) ??
                           getUserActivityEntitySummary(log) ??
                           getImpersonationEntitySummary(log);

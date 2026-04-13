@@ -1,6 +1,6 @@
 "use client"
 import Link from 'next/link'
-import React, { Fragment, useEffect, useState, useCallback } from 'react';
+import React, { Fragment, useEffect, useState, useCallback, useRef } from 'react';
 import { ThemeChanger } from "../../redux/action";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
@@ -22,6 +22,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
   const pathname = usePathname();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -166,6 +167,35 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   };
 
   const notifications = notificationItems;
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setIsProfileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isProfileMenuOpen) return undefined;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && profileMenuRef.current?.contains(target)) return;
+      setIsProfileMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsProfileMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isProfileMenuOpen]);
 
 
   //full screen
@@ -600,10 +630,19 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 </Link>
               </div>
               ) : (
-              <div className="header-element md:!px-[0.65rem] px-2 hs-dropdown !items-center ti-dropdown [--placement:bottom-left]">
-
-                <button id="dropdown-profile" type="button"
-                  className="hs-dropdown-toggle ti-dropdown-toggle !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent ">
+              <div ref={profileMenuRef} className="header-element md:!px-[0.65rem] px-2 relative !items-center ti-dropdown [--placement:bottom-left]">
+                <button
+                  id="dropdown-profile"
+                  type="button"
+                  aria-expanded={isProfileMenuOpen}
+                  aria-haspopup="menu"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsProfileMenuOpen((open) => !open);
+                  }}
+                  className="ti-dropdown-toggle inline-flex items-center !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent "
+                >
                   {user?.profilePicture?.url ? (
                     <img className="inline-block rounded-full object-cover" src={user.profilePicture.url} width="32" height="32" alt="" />
                   ) : (
@@ -611,48 +650,54 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                       {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
                     </span>
                   )}
+                  <span className="md:block hidden dropdown-profile text-start">
+                    <span className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] block">{user?.name ?? user?.email ?? "User"}</span>
+                    <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">{user?.role ?? "User"}</span>
+                  </span>
                 </button>
-                <div className="md:block hidden dropdown-profile">
-                  <p className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] ">{user?.name ?? user?.email ?? "User"}</p>
-                  <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">{user?.role ?? "User"}</span>
-                </div>
                 <div
-                  className="hs-dropdown-menu ti-dropdown-menu !-mt-3 border-0 w-[11rem] !p-0 border-defaultborder hidden main-header-dropdown  pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end"
-                  aria-labelledby="dropdown-profile">
+                  role="menu"
+                  onClick={(event) => event.stopPropagation()}
+                  className={`ti-dropdown-menu border-0 w-[11rem] !p-0 border-defaultborder main-header-dropdown pt-0 overflow-hidden header-profile-dropdown dropdown-menu-end absolute !top-[calc(100%+0.5rem)] end-0 z-50 !mt-0 ${
+                    isProfileMenuOpen ? 'block !opacity-100 visible pointer-events-auto' : 'hidden !opacity-0 invisible pointer-events-none'
+                  }`}
+                  aria-labelledby="dropdown-profile"
+                >
 
                   <ul className="text-defaulttextcolor font-medium dark:text-[#8c9097] dark:text-white/50 list-none !m-0 !p-0">
                     <li>
                       <Link
                         className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]"
                         href="/ats/my-profile/"
+                        onClick={() => setIsProfileMenuOpen(false)}
                       >
                         <i className="ti ti-user-circle text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>My Profile
                       </Link>
                     </li>
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/communication/email">
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0  !p-[0.65rem]" href="/communication/email" onClick={() => setIsProfileMenuOpen(false)}>
                         <i className="ti ti-inbox text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Inbox
                       </Link>
                     </li>
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={user?.role === "admin" ? "/task/kanban-board" : "/task/my-tasks"}>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={user?.role === "admin" ? "/task/kanban-board" : "/task/my-tasks"} onClick={() => setIsProfileMenuOpen(false)}>
                         <i className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager
                       </Link>
                     </li>
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/">
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href="/settings/" onClick={() => setIsProfileMenuOpen(false)}>
                         <i className="ti ti-adjustments-horizontal text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Settings
                       </Link>
                     </li>
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/support-tickets">
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex" href="/support-tickets" onClick={() => setIsProfileMenuOpen(false)}>
                         <i className="ti ti-headset text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Support
                       </Link>
                     </li>
                     <li className="border-t border-defaultborder dark:border-defaultborder/50 my-1 !py-0 !px-0 list-none pointer-events-none" aria-hidden />
                     <li>
-                      <button type="button" onClick={() => logout()} className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex !text-start !border-0 !bg-transparent"><i
+                      <button type="button" onClick={() => { setIsProfileMenuOpen(false); logout(); }} className="w-full ti-dropdown-item !text-[0.8125rem] !p-[0.65rem] !gap-x-0 !inline-flex !text-start !border-0 !bg-transparent"><i
                         className="ti ti-logout text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Log Out</button>
                     </li>
                   </ul>

@@ -26,3 +26,28 @@ export function userCanListRoles(rawPermissions: string[]): boolean {
     );
   });
 }
+
+/** True when the user may open/read Communication -> Email and personal email preferences. */
+export function hasEmailReadAccess(rawPermissions: string[]): boolean {
+  return rawPermissions.some((p) => {
+    if (p === "emails.read" || p === "emails.manage") return true;
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "communication.emails" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return (
+      actions.includes("view") ||
+      actions.some((x) => x === "create" || x === "edit" || x === "delete")
+    );
+  });
+}
+
+/** True when the user may modify email data (send mail, save templates/signature, etc). */
+export function hasEmailManageAccess(rawPermissions: string[]): boolean {
+  return rawPermissions.some((p) => {
+    if (p === "emails.manage") return true;
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "communication.emails" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return actions.some((x) => x === "create" || x === "edit" || x === "delete");
+  });
+}

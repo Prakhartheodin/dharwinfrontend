@@ -5,7 +5,6 @@ import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
 import { ROUTES } from "@/shared/lib/constants";
 import * as rolesApi from "@/shared/lib/api/roles";
-import * as usersApi from "@/shared/lib/api/users";
 import type { Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
@@ -22,7 +21,6 @@ function formatDate(isoString: string | undefined): string {
 
 export default function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
-  const [users, setUsers] = useState<{ id: string; roleIds?: string[] }[]>([]);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(100);
   const [totalPages, setTotalPages] = useState(1);
@@ -30,16 +28,6 @@ export default function RolesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [viewRole, setViewRole] = useState<Role | null>(null);
-
-  const userCountByRoleId = useMemo(() => {
-    const map = new Map<string, number>();
-    users.forEach((u) => {
-      (u.roleIds ?? []).forEach((roleId) => {
-        map.set(roleId, (map.get(roleId) ?? 0) + 1);
-      });
-    });
-    return map;
-  }, [users]);
 
   const sortedRoles = useMemo(() => {
     const list = [...roles];
@@ -54,14 +42,10 @@ export default function RolesPage() {
     setLoading(true);
     setError("");
     try {
-      const [rolesRes, usersRes] = await Promise.all([
-        rolesApi.listRoles({ page, limit }),
-        usersApi.listUsers({ limit: 500 }),
-      ]);
+      const rolesRes = await rolesApi.listRoles({ page, limit });
       setRoles(rolesRes.results);
       setTotalPages(rolesRes.totalPages);
       setTotalResults(rolesRes.totalResults);
-      setUsers(usersRes.results ?? []);
     } catch (err) {
       const msg =
         err instanceof AxiosError && err.response?.data?.message
@@ -69,7 +53,6 @@ export default function RolesPage() {
           : "Failed to load roles.";
       setError(msg);
       setRoles([]);
-      setUsers([]);
     } finally {
       setLoading(false);
     }
@@ -158,7 +141,12 @@ export default function RolesPage() {
                         <th className="px-4 py-2.5 text-start font-semibold">Role</th>
                         <th className="px-4 py-2.5 text-start font-semibold">Permissions</th>
                         <th className="px-4 py-2.5 text-start font-semibold">Date Created</th>
-                        <th className="px-4 py-2.5 text-center font-semibold">Total Users</th>
+                        <th className="px-4 py-2.5 text-center font-semibold">
+                          <span className="block">Users</span>
+                          <span className="block text-[0.65rem] font-normal text-defaulttextcolor/60 normal-case">
+                            total / active·pending
+                          </span>
+                        </th>
                         <th className="px-4 py-2.5 text-center font-semibold w-24">Action</th>
                       </tr>
                     </thead>
@@ -212,9 +200,21 @@ export default function RolesPage() {
                               {formatDate(role.createdAt)}
                             </td>
                             <td className="px-4 py-2.5 align-middle text-center">
-                              <span className="text-[0.8125rem] font-medium">
-                                {userCountByRoleId.get(role.id) ?? 0}
+                              <span className="text-[0.8125rem] font-medium tabular-nums">
+                                {role.assigneeCountTotal ?? "—"}
                               </span>
+                              <span className="text-[0.8125rem] text-defaulttextcolor/70 tabular-nums block">
+                                {role.assigneeCountActivePending ?? "—"}
+                              </span>
+                              {role.name === "Candidate" &&
+                                (role.assigneeCountTotal ?? 0) > (role.assigneeCountActivePending ?? 0) && (
+                                  <span
+                                    className="text-[0.65rem] text-defaulttextcolor/50 block max-w-[10rem] mx-auto leading-tight mt-0.5"
+                                    title="ATS lists candidates whose account is active or pending. Disabled accounts stay in total until you remove the role."
+                                  >
+                                    ATS uses active/pending row
+                                  </span>
+                                )}
                             </td>
                             <td className="px-4 py-2.5 align-middle">
                               <div className="flex items-center justify-center gap-2">
@@ -353,8 +353,18 @@ export default function RolesPage() {
                       <dd className="text-[0.9375rem]">{formatDate(viewRole.createdAt)}</dd>
                     </div>
                     <div>
-                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Total Users</dt>
-                      <dd className="text-[0.9375rem]">{userCountByRoleId.get(viewRole.id) ?? 0}</dd>
+                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
+                        Users (total / active·pending)
+                      </dt>
+                      <dd className="text-[0.9375rem] tabular-nums">
+                        {viewRole.assigneeCountTotal ?? "—"} / {viewRole.assigneeCountActivePending ?? "—"}
+                      </dd>
+                      {viewRole.name === "Candidate" &&
+                        (viewRole.assigneeCountTotal ?? 0) > (viewRole.assigneeCountActivePending ?? 0) && (
+                          <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1 mb-0">
+                            The ATS candidates list only includes active and pending accounts (plus profile filters).
+                          </p>
+                        )}
                     </div>
                     <div>
                       <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Status</dt>

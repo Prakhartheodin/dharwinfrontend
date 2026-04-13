@@ -7,6 +7,9 @@ import * as emailApi from "@/shared/lib/api/email";
 import mailStyles from "./mail-app.module.css";
 import type {
   EmailAccount,
+  EmailDraftLength,
+  EmailDraftOption,
+  EmailDraftTone,
   EmailLabel,
   EmailMessage,
   EmailThreadListItem,
@@ -19,11 +22,38 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
+import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
 import SimpleBar from "simplebar-react";
 
 type ComposeMode = "new" | "reply" | "replyAll" | "forward";
+type ComposeAttachment = {
+  id: string;
+  filename: string;
+  content: string;
+  mimeType: string;
+  size: number;
+};
+
+const AI_TONE_OPTIONS: { value: EmailDraftTone; label: string }[] = [
+  { value: "professional", label: "Professional" },
+  { value: "friendly", label: "Friendly" },
+  { value: "formal", label: "Formal" },
+  { value: "persuasive", label: "Persuasive" },
+  { value: "empathetic", label: "Empathetic" },
+];
+
+const AI_LENGTH_OPTIONS: { value: EmailDraftLength; label: string }[] = [
+  { value: "short", label: "Short" },
+  { value: "medium", label: "Medium" },
+  { value: "long", label: "Long" },
+];
+
+const PRACTICAL_ATTACHMENT_LIMIT_BYTES = {
+  gmail: 22 * 1024 * 1024,
+  outlook: 18 * 1024 * 1024,
+} as const;
 
 const mailBody = DM_Sans({
   subsets: ["latin"],
@@ -142,16 +172,67 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  return `${value >= 10 || exponent === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[exponent]}`;
+}
+
+function splitComposeSignature(html: string): { bodyHtml: string; signatureHtml: string } {
+  const signatureMatch = String(html || "").match(/<div[^>]*data-email-signature="true"[^>]*>[\s\S]*?<\/div>/i);
+  return {
+    bodyHtml: String(html || "").replace(/<div[^>]*data-email-signature="true"[^>]*>[\s\S]*?<\/div>/i, "").trim(),
+    signatureHtml: signatureMatch?.[0] || "",
+  };
+}
+
+function hasMeaningfulComposeBody(html: string): boolean {
+  const { bodyHtml } = splitComposeSignature(html);
+  const plain = bodyHtml
+    .replace(/<p>\s*<\/p>/gi, "")
+    .replace(/<br\s*\/?>/gi, "")
+    .replace(/&nbsp;/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+  return plain.length > 0;
+}
+
+function joinComposeBodyAndSignature(bodyHtml: string, signatureHtml: string): string {
+  const cleanedBody = String(bodyHtml || "").trim();
+  if (cleanedBody) return `${cleanedBody}${signatureHtml}`;
+  if (signatureHtml) return `<p></p>${signatureHtml}`;
+  return "<p></p>";
+}
+
+function appendDraftToCompose(existingHtml: string, draftHtml: string): string {
+  const { bodyHtml, signatureHtml } = splitComposeSignature(existingHtml);
+  const trimmedBody = String(bodyHtml || "").trim();
+  const trimmedDraft = String(draftHtml || "").trim();
+  if (!trimmedDraft) {
+    return joinComposeBodyAndSignature(trimmedBody, signatureHtml);
+  }
+  const nextBody = hasMeaningfulComposeBody(trimmedBody) ? `${trimmedBody}<p><br></p>${trimmedDraft}` : trimmedDraft;
+  return joinComposeBodyAndSignature(nextBody, signatureHtml);
+}
+
+function replaceComposeBody(existingHtml: string, draftHtml: string): string {
+  const { signatureHtml } = splitComposeSignature(existingHtml);
+  return joinComposeBodyAndSignature(String(draftHtml || "").trim(), signatureHtml);
+}
+
 const Mailapp = () => {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const { roleNames, permissionsLoaded } = useAuth();
-  const isAgent = roleNames.includes("Agent");
-  const isAgentRef = useRef(isAgent);
+  const { permissions, permissionsLoaded } = useAuth();
+  const canUseEmailPreferences = hasEmailReadAccess(permissions ?? []);
+  const canManageEmail = hasEmailManageAccess(permissions ?? []);
+  const isAgentRef = useRef(canUseEmailPreferences);
   useEffect(() => {
-    isAgentRef.current = isAgent;
-  }, [isAgent]);
+    isAgentRef.current = canUseEmailPreferences;
+  }, [canUseEmailPreferences]);
 
   const [agentTemplatesOwn, setAgentTemplatesOwn] = useState<AgentEmailTemplate[]>([]);
   const [agentTemplatesShared, setAgentTemplatesShared] = useState<AgentEmailTemplateShared[]>([]);
@@ -172,7 +253,7 @@ const Mailapp = () => {
   }, [agentSignature]);
 
   useEffect(() => {
-    if (!permissionsLoaded || !isAgent) {
+    if (!permissionsLoaded || !canUseEmailPreferences) {
       setAgentTemplatesOwn([]);
       setAgentTemplatesShared([]);
       setAgentSignature(null);
@@ -192,7 +273,7 @@ const Mailapp = () => {
         setAgentTemplatesShared([]);
       }
     })();
-  }, [permissionsLoaded, isAgent]);
+  }, [permissionsLoaded, canUseEmailPreferences]);
 
   useEffect(() => {
     if (!showComposeTemplatesMenu) return;
@@ -224,6 +305,10 @@ const Mailapp = () => {
 
   const mailProvider =
     accounts.find((a) => a.id === selectedAccountId)?.provider === "outlook" ? "outlook" : "gmail";
+  const composeAttachmentLimitBytes = PRACTICAL_ATTACHMENT_LIMIT_BYTES[mailProvider];
+  const composeAttachmentLimitLabel = `${formatBytes(composeAttachmentLimitBytes)} practical max for ${
+    mailProvider === "outlook" ? "Outlook" : "Gmail"
+  }`;
 
   const gmailAccountCount = useMemo(
     () => accounts.filter((a) => a.provider === "gmail").length,
@@ -254,9 +339,18 @@ const Mailapp = () => {
   const [inlineReplyAttachments, setInlineReplyAttachments] = useState<
     { filename: string; content: string; mimeType: string }[]
   >([]);
-  const [composeAttachments, setComposeAttachments] = useState<
-    { filename: string; content: string; mimeType: string }[]
-  >([]);
+  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachment[]>([]);
+  const [showComposeAiPanel, setShowComposeAiPanel] = useState(false);
+  const [composeAiTone, setComposeAiTone] = useState<EmailDraftTone>("professional");
+  const [composeAiLength, setComposeAiLength] = useState<EmailDraftLength>("medium");
+  const [composeAiPrompt, setComposeAiPrompt] = useState("");
+  const [composeAiContext, setComposeAiContext] = useState("");
+  const [composeAiLoading, setComposeAiLoading] = useState(false);
+  const [composeAiError, setComposeAiError] = useState<string | null>(null);
+  const [composeAiSubject, setComposeAiSubject] = useState("");
+  const [composeAiOptions, setComposeAiOptions] = useState<EmailDraftOption[]>([]);
+  const [composeAttachmentError, setComposeAttachmentError] = useState<string | null>(null);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const composeMessageRef = useRef<EmailMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -785,6 +879,16 @@ const Mailapp = () => {
       composeMessageRef.current = msg ?? null;
       setComposeMode(mode);
       setShowComposeTemplatesMenu(false);
+      setShowComposeAiPanel(false);
+      setComposeAiPrompt("");
+      setComposeAiContext("");
+      setComposeAiTone("professional");
+      setComposeAiLength("medium");
+      setComposeAiError(null);
+      setComposeAiSubject("");
+      setComposeAiOptions([]);
+      setComposeAttachmentError(null);
+      setAttachmentsBusy(false);
       if (mode === "new") {
         setComposeTo("");
         setComposeCc("");
@@ -868,6 +972,16 @@ const Mailapp = () => {
   const closeCompose = useCallback(() => {
     setShowComposeModal(false);
     composeMessageRef.current = null;
+    setShowComposeAiPanel(false);
+    setComposeAiTone("professional");
+    setComposeAiLength("medium");
+    setComposeAiPrompt("");
+    setComposeAiContext("");
+    setComposeAiError(null);
+    setComposeAiSubject("");
+    setComposeAiOptions([]);
+    setComposeAttachmentError(null);
+    setAttachmentsBusy(false);
   }, []);
 
   const handleAddAttachment = useCallback(() => {
@@ -878,26 +992,108 @@ const Mailapp = () => {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files;
       if (!files?.length) return;
-      for (let i = 0; i < files.length; i++) {
+      setAttachmentsBusy(true);
+      setComposeAttachmentError(null);
+      const existingKeys = new Set(composeAttachments.map((att) => `${att.filename.toLowerCase()}::${att.size}`));
+      const nextAttachments: ComposeAttachment[] = [];
+      const skipped: string[] = [];
+
+      for (let i = 0; i < files.length; i += 1) {
         const file = files[i];
+        const duplicateKey = `${file.name.toLowerCase()}::${file.size}`;
+        if (existingKeys.has(duplicateKey)) {
+          skipped.push(`${file.name} is already attached.`);
+          continue;
+        }
+        if (file.size > composeAttachmentLimitBytes) {
+          skipped.push(`${file.name} is too large. Keep files under ${composeAttachmentLimitLabel}.`);
+          continue;
+        }
         try {
           const content = await fileToBase64(file);
-          setComposeAttachments((prev) => [
-            ...prev,
-            { filename: file.name, content, mimeType: file.type || "application/octet-stream" },
-          ]);
+          nextAttachments.push({
+            id: `${file.name}-${file.size}-${file.lastModified}-${i}`,
+            filename: file.name,
+            content,
+            mimeType: file.type || "application/octet-stream",
+            size: file.size,
+          });
+          existingKeys.add(duplicateKey);
         } catch {
-          // skip
+          skipped.push(`Could not read ${file.name}. Please try again.`);
         }
       }
+
+      if (nextAttachments.length > 0) {
+        setComposeAttachments((prev) => [...prev, ...nextAttachments]);
+      }
+      setComposeAttachmentError(skipped.length ? skipped.join(" ") : null);
+      setAttachmentsBusy(false);
       e.target.value = "";
     },
-    []
+    [composeAttachments, composeAttachmentLimitBytes, composeAttachmentLimitLabel]
   );
 
-  const removeAttachment = useCallback((idx: number) => {
-    setComposeAttachments((prev) => prev.filter((_, i) => i !== idx));
+  const removeAttachment = useCallback((attachmentId: string) => {
+    setComposeAttachments((prev) => prev.filter((att) => att.id !== attachmentId));
   }, []);
+
+  const handleGenerateComposeDrafts = useCallback(async () => {
+    if (!canManageEmail) return;
+    const prompt = composeAiPrompt.trim();
+    if (!prompt) {
+      setComposeAiError("Tell AI what this email should say before generating drafts.");
+      return;
+    }
+
+    setComposeAiLoading(true);
+    setComposeAiError(null);
+    try {
+      const firstRecipient = composeTo
+        .split(/[,;]/)
+        .map((value) => value.trim())
+        .find(Boolean);
+      const recipientName =
+        firstRecipient && firstRecipient.includes("@") ? emailToDisplayName(firstRecipient) : firstRecipient || "";
+      const result = await emailApi.generateDraft({
+        tone: composeAiTone,
+        prompt,
+        subject: composeSubject,
+        context: composeAiContext,
+        recipientName,
+        length: composeAiLength,
+      });
+      setComposeAiOptions(result.options || []);
+      setComposeAiSubject(result.subject || "");
+    } catch (error: any) {
+      setComposeAiError(error?.response?.data?.message || "Could not generate drafts right now. Please try again.");
+      setComposeAiOptions([]);
+      setComposeAiSubject("");
+    } finally {
+      setComposeAiLoading(false);
+    }
+  }, [canManageEmail, composeAiContext, composeAiLength, composeAiPrompt, composeAiTone, composeSubject, composeTo]);
+
+  const applyComposeDraft = useCallback(
+    (option: EmailDraftOption, mode: "replace" | "append" = "replace") => {
+      if (mode === "replace" && hasMeaningfulComposeBody(composeHtml)) {
+        const shouldReplace = window.confirm(
+          "Replace the current draft body with this AI version? Your existing text will be removed, but your signature will stay."
+        );
+        if (!shouldReplace) return;
+      }
+      setComposeHtml((prev) =>
+        mode === "append" ? appendDraftToCompose(prev, option.html) : replaceComposeBody(prev, option.html)
+      );
+      setComposeSubject((prev) => {
+        if (prev.trim()) return prev;
+        return composeAiSubject.trim() || prev;
+      });
+      setComposeAiError(null);
+      setShowComposeAiPanel(false);
+    },
+    [composeAiSubject, composeHtml]
+  );
 
   const handleAddInlineReplyAttachment = useCallback(() => {
     inlineReplyFileInputRef.current?.click();
@@ -1601,7 +1797,7 @@ const Mailapp = () => {
             </div>
           </div>
         ) : (
-          <div className={`main-mail-container !p-2 gap-x-2 flex ${mailStyles.shell} ${mailStyles.fadeIn}`}>
+          <div className={`main-mail-container !p-2 gap-x-2 flex min-h-0 ${mailStyles.shell} ${mailStyles.fadeIn}`}>
             <div
               className={`mail-navigation ${isMailNavigationVisible ? "!block" : ""} border dark:border-defaultborder/10`}
             >
@@ -1869,7 +2065,7 @@ const Mailapp = () => {
             </div>
 
             <div
-              className={`total-mails ${isTotalMailsVisible ? "!block" : ""} ${isTotalMailsHidden ? "!hidden" : ""} border dark:border-defaultborder/10`}
+              className={`total-mails ${mailStyles.threadListPane} ${isTotalMailsVisible ? "!block" : ""} ${isTotalMailsHidden ? "!hidden" : ""} border dark:border-defaultborder/10`}
             >
               <div className="!p-4 flex items-center gap-2 border-b dark:border-defaultborder/10">
                 <input
@@ -2024,8 +2220,8 @@ const Mailapp = () => {
                   </button>
                 </div>
               </div>
-              <SimpleBar>
-                <div className="mail-messages">
+              <SimpleBar className={mailStyles.threadListScroll}>
+                <div className={`mail-messages ${mailStyles.threadListMessages}`}>
                   <ul className="list-none mb-0 mail-messages-container text-defaulttextcolor text-defaultsize w-full">
                     {loadingMessages ? (
                       <li className="!p-6 space-y-3">
@@ -2062,24 +2258,26 @@ const Mailapp = () => {
                                 {thread.from?.[0]?.toUpperCase() || "?"}
                               </span>
                             </div>
-                            <div className="flex-grow min-w-0">
-                              <p className="mb-1 text-[0.75rem]">
-                                <span className={thread.isUnread ? "font-semibold" : ""}>
-                                  {thread.from}
-                                </span>
+                            <div className={`flex-grow min-w-0 max-w-full overflow-hidden ${mailStyles.threadContent}`}>
+                              <div className={`mb-1 flex items-start gap-2 min-w-0 max-w-full ${mailStyles.threadTopLine}`}>
+                                <p className="flex-1 min-w-0 max-w-full text-[0.75rem] mb-0 overflow-hidden">
+                                  <span className={`block ${mailStyles.threadSender} ${thread.isUnread ? "font-semibold" : ""}`}>
+                                    {thread.from}
+                                  </span>
+                                </p>
                                 <span
-                                  className={`ltr:float-right rtl:float-left text-[#8c9097] dark:text-white/50 font-normal text-[.6875rem] ${mailStyles.threadListDate}`}
+                                  className={`shrink-0 text-[#8c9097] dark:text-white/50 font-normal text-[.6875rem] ${mailStyles.threadListDate}`}
                                 >
                                   {formatMailListDate(thread.date)}
                                 </span>
-                              </p>
-                              <p className="mail-msg mb-0">
+                              </div>
+                              <p className={`mail-msg mb-0 min-w-0 max-w-full overflow-hidden ${mailStyles.threadMeta}`}>
                                 <span
-                                  className={`block mb-0 ${thread.isUnread ? "font-semibold" : ""}`}
+                                  className={`block mb-0 ${mailStyles.threadSubject} ${thread.isUnread ? "font-semibold" : ""}`}
                                 >
                                   {thread.subject || "(No subject)"}
                                 </span>
-                                <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 line-clamp-2">
+                                <span className={`text-[.6875rem] text-[#8c9097] dark:text-white/50 ${mailStyles.threadSnippet}`}>
                                   {thread.snippet || ""}
                                 </span>
                               </p>
@@ -2819,12 +3017,26 @@ const Mailapp = () => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {isAgent ? (
+                        {composeMode === "new" && canManageEmail ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowComposeAiPanel((value) => !value);
+                              setComposeAiError(null);
+                            }}
+                            className={`ti-btn ti-btn-light !mb-0 text-[0.8125rem] ${mailStyles.composeUtilityBtn}`}
+                            title="Generate two AI draft options"
+                          >
+                            <i className="ri-magic-line me-1" />
+                            AI Draft
+                          </button>
+                        ) : null}
+                        {canUseEmailPreferences ? (
                           <div className="relative" ref={composeTemplatesMenuRef}>
                             <button
                               type="button"
                               onClick={() => setShowComposeTemplatesMenu((v) => !v)}
-                              className="ti-btn ti-btn-light !mb-0 text-[0.8125rem]"
+                              className={`ti-btn ti-btn-light !mb-0 text-[0.8125rem] ${mailStyles.composeUtilityBtn}`}
                               title="Insert a saved template"
                             >
                               <i className="ri-layout-line me-1" />
@@ -2887,10 +3099,12 @@ const Mailapp = () => {
                         <button
                           type="button"
                           onClick={handleAddAttachment}
-                          className="ti-btn ti-btn-icon ti-btn-light"
-                          title="Add attachment"
+                          disabled={attachmentsBusy}
+                          className={`ti-btn ti-btn-icon ti-btn-light ${mailStyles.composeUtilityBtn}`}
+                          title={attachmentsBusy ? "Adding attachment..." : "Add attachment"}
+                          aria-busy={attachmentsBusy}
                         >
-                          <i className="ri-attachment-2"></i>
+                          <i className={attachmentsBusy ? "ri-loader-4-line animate-spin" : "ri-attachment-2"}></i>
                         </button>
                         <input
                           ref={fileInputRef}
@@ -2899,15 +3113,13 @@ const Mailapp = () => {
                           className="hidden"
                           onChange={handleFileChange}
                         />
-                        {composeAttachments.map((att, idx) => (
-                          <span
-                            key={idx}
-                            className="inline-flex items-center gap-1 px-2 py-1 rounded bg-light dark:bg-white/10 text-sm"
-                          >
-                            {att.filename}
+                        {composeAttachments.map((att) => (
+                          <span key={att.id} className={mailStyles.composeAttachmentChip}>
+                            <span className="truncate max-w-[14rem]">{att.filename}</span>
+                            <span className={mailStyles.composeAttachmentMeta}>{formatBytes(att.size)}</span>
                             <button
                               type="button"
-                              onClick={() => removeAttachment(idx)}
+                              onClick={() => removeAttachment(att.id)}
                               className="ti-btn ti-btn-icon ti-btn-ghost !p-0 !w-5 !h-5"
                             >
                               <i className="ri-close-line text-xs"></i>
@@ -2915,6 +3127,132 @@ const Mailapp = () => {
                           </span>
                         ))}
                       </div>
+                      {composeMode === "new" && showComposeAiPanel ? (
+                        <div className={mailStyles.composeAiPanel}>
+                          <div className="flex flex-col lg:flex-row gap-3 lg:items-end">
+                            <div className="flex-1">
+                              <label className="form-label block mb-1">Tone</label>
+                              <select
+                                className={`form-control w-full ${mailStyles.composeAiSelect}`}
+                                value={composeAiTone}
+                                onChange={(e) => setComposeAiTone(e.target.value as EmailDraftTone)}
+                              >
+                                {AI_TONE_OPTIONS.map((tone) => (
+                                  <option key={tone.value} value={tone.value}>
+                                    {tone.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-full lg:w-[11rem]">
+                              <label className="form-label block mb-1">Length</label>
+                              <select
+                                className={`form-control w-full ${mailStyles.composeAiSelect}`}
+                                value={composeAiLength}
+                                onChange={(e) => setComposeAiLength(e.target.value as EmailDraftLength)}
+                              >
+                                {AI_LENGTH_OPTIONS.map((length) => (
+                                  <option key={length.value} value={length.value}>
+                                    {length.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="mt-3">
+                            <label className="form-label block mb-1">What should this email say?</label>
+                            <textarea
+                              className={`form-control w-full ${mailStyles.composeAiTextarea}`}
+                              rows={3}
+                              value={composeAiPrompt}
+                              onChange={(e) => setComposeAiPrompt(e.target.value)}
+                              placeholder="Example: Write a professional follow-up after yesterday's interview and thank them for their time."
+                            />
+                          </div>
+                          <div className="mt-3">
+                            <label className="form-label block mb-1">Extra context (optional)</label>
+                            <textarea
+                              className={`form-control w-full ${mailStyles.composeAiTextarea}`}
+                              rows={2}
+                              value={composeAiContext}
+                              onChange={(e) => setComposeAiContext(e.target.value)}
+                              placeholder="Add details, deadlines, bullet points, or a call to action."
+                            />
+                          </div>
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={handleGenerateComposeDrafts}
+                              disabled={composeAiLoading}
+                              className={`ti-btn ti-btn-primary !mb-0 ${mailStyles.composeAiAction}`}
+                            >
+                              <i className={`${composeAiLoading ? "ri-loader-4-line animate-spin" : "ri-sparkling-line"} me-1`} />
+                              {composeAiLoading ? "Generating..." : "Generate 2 drafts"}
+                            </button>
+                            {composeAiOptions.length > 0 ? (
+                              <button
+                                type="button"
+                                onClick={handleGenerateComposeDrafts}
+                                disabled={composeAiLoading}
+                                className={`ti-btn ti-btn-light !mb-0 ${mailStyles.composeUtilityBtn}`}
+                              >
+                                Regenerate
+                              </button>
+                            ) : null}
+                            <span className={mailStyles.composeHint}>
+                              Keeps the current email look and lets you choose before inserting.
+                            </span>
+                          </div>
+                          {composeAiError ? <p className={mailStyles.composeError}>{composeAiError}</p> : null}
+                          {composeAiOptions.length > 0 ? (
+                            <div className={mailStyles.composeAiResults}>
+                              {composeAiSubject ? (
+                                <div className={mailStyles.composeAiSubject}>
+                                  Suggested subject:
+                                  <span>{composeAiSubject}</span>
+                                </div>
+                              ) : null}
+                              {composeAiOptions.map((option) => {
+                                const hasExistingDraft = hasMeaningfulComposeBody(composeHtml);
+                                return (
+                                  <div key={option.id} className={mailStyles.composeAiCard}>
+                                    <div className="flex items-center justify-between gap-3 mb-2">
+                                      <p className={mailStyles.composeAiCardTitle}>{option.label}</p>
+                                      <span className={mailStyles.composeAiTonePill}>
+                                        {AI_TONE_OPTIONS.find((tone) => tone.value === composeAiTone)?.label}
+                                      </span>
+                                    </div>
+                                    <p className={mailStyles.composeAiPreview}>{option.text}</p>
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => applyComposeDraft(option, "replace")}
+                                        className={`ti-btn ti-btn-primary !mb-0 ${mailStyles.composeAiAction}`}
+                                      >
+                                        {hasExistingDraft ? "Replace body" : "Use draft"}
+                                      </button>
+                                      {hasExistingDraft ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => applyComposeDraft(option, "append")}
+                                          className={`ti-btn ti-btn-light !mb-0 ${mailStyles.composeUtilityBtn}`}
+                                        >
+                                          Append below
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <p className={mailStyles.composeHint}>
+                        Attachments stay in the current compose flow. Keep files under {composeAttachmentLimitLabel}
+                        {" "}because email encoding adds overhead.
+                      </p>
+                      {composeAttachmentError ? <p className={mailStyles.composeError}>{composeAttachmentError}</p> : null}
                     </div>
                   </div>
                 </div>

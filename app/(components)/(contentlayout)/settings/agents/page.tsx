@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { components as RSComponents, type MultiValue, type OptionProps } from "react-select";
 import Seo from "@/shared/layout-components/seo/seo";
 import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { AgentOption, StudentAgentAssignmentRow } from "@/shared/lib/api/candidates";
+import AssignAgentSopModal from "../../ats/candidates/_components/AssignAgentSopModal";
 import { AxiosError } from "axios";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -45,6 +46,13 @@ export default function SettingsAgentsPage() {
   const [search, setSearch] = useState("");
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [pendingByAgent, setPendingByAgent] = useState<Record<string, AssignOption[]>>({});
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [bulkTargetAgentId, setBulkTargetAgentId] = useState("");
+  const [reassignModal, setReassignModal] = useState<StudentAgentAssignmentRow | null>(null);
+  const [showUnassignedList, setShowUnassignedList] = useState(false);
+  const [collapsedAgentIds, setCollapsedAgentIds] = useState<string[]>([]);
+  const agentCardsRef = useRef<HTMLDivElement | null>(null);
+  const unassignedSectionRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -108,6 +116,14 @@ export default function SettingsAgentsPage() {
     }));
   }, [students]);
 
+  const unassignedStudents = useMemo(
+    () =>
+      [...students]
+        .filter((student) => !student.assignedAgent)
+        .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: "base" })),
+    [students]
+  );
+
   const validOptionIds = useMemo(() => new Set(assignmentSelectOptions.map((o) => o.value)), [assignmentSelectOptions]);
 
   useEffect(() => {
@@ -124,6 +140,19 @@ export default function SettingsAgentsPage() {
       return changed ? next : prev;
     });
   }, [validOptionIds]);
+
+  useEffect(() => {
+    setSelectedCandidateIds((prev) =>
+      prev.filter((id) => students.some((s) => s.id === id && s.assignedAgent))
+    );
+  }, [students]);
+
+  useEffect(() => {
+    if (!showUnassignedList) return;
+    requestAnimationFrame(() => {
+      unassignedSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, [showUnassignedList]);
 
   const assignManyToAgent = useCallback(
     async (agentId: string, opts: AssignOption[]) => {
@@ -182,6 +211,72 @@ export default function SettingsAgentsPage() {
     }
   };
 
+  const selectedCandidates = useMemo(
+    () => students.filter((s) => selectedCandidateIds.includes(s.id) && s.assignedAgent),
+    [students, selectedCandidateIds]
+  );
+
+  const toggleCandidateSelection = useCallback((candidateId: string) => {
+    setSelectedCandidateIds((prev) =>
+      prev.includes(candidateId) ? prev.filter((id) => id !== candidateId) : [...prev, candidateId]
+    );
+  }, []);
+
+  const clearSelectedCandidates = useCallback(() => {
+    setSelectedCandidateIds([]);
+    setBulkTargetAgentId("");
+  }, []);
+
+  const scrollToAgentCards = useCallback(() => {
+    agentCardsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
+  const openUnassignedList = useCallback(() => {
+    if (unassignedStudents.length === 0) return;
+    setShowUnassignedList(true);
+  }, [unassignedStudents.length]);
+
+  const toggleAgentFold = useCallback((agentId: string) => {
+    setCollapsedAgentIds((prev) =>
+      prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId]
+    );
+  }, []);
+
+  const runBulkReassign = useCallback(async () => {
+    if (!bulkTargetAgentId || selectedCandidates.length === 0) return;
+    setSavingKey(`bulk-reassign:${bulkTargetAgentId}`);
+    setError("");
+    try {
+      await Promise.all(
+        selectedCandidates.map((candidate) =>
+          candidatesApi.assignAgentToStudent(candidate.id, bulkTargetAgentId)
+        )
+      );
+      const picked = agents.find((agent) => agent.id === bulkTargetAgentId);
+      setStudents((prev) =>
+        prev.map((student) =>
+          selectedCandidateIds.includes(student.id)
+            ? {
+                ...student,
+                assignedAgent: picked
+                  ? { id: picked.id, name: picked.name, email: picked.email }
+                  : student.assignedAgent,
+              }
+            : student
+        )
+      );
+      clearSelectedCandidates();
+    } catch (e) {
+      const msg =
+        e instanceof AxiosError
+          ? (e.response?.data as { message?: string })?.message ?? e.message
+          : "Could not reassign selected candidates";
+      setError(msg);
+    } finally {
+      setSavingKey(null);
+    }
+  }, [agents, bulkTargetAgentId, clearSelectedCandidates, selectedCandidateIds, selectedCandidates]);
+
   return (
     <>
       <Seo title="Agents" />
@@ -210,14 +305,23 @@ export default function SettingsAgentsPage() {
             </div>
             {!loading && agents.length > 0 && (
               <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/80 px-3 py-1 text-xs font-medium text-defaulttextcolor/80 dark:bg-white/5">
+                <button
+                  type="button"
+                  onClick={scrollToAgentCards}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/80 px-3 py-1 text-xs font-medium text-defaulttextcolor/80 transition-colors hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary dark:bg-white/5"
+                >
                   <i className="ri-team-line text-primary" aria-hidden />
                   {agents.length} agent{agents.length === 1 ? "" : "s"}
-                </span>
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/80 px-3 py-1 text-xs font-medium text-defaulttextcolor/80 dark:bg-white/5">
+                </button>
+                <button
+                  type="button"
+                  onClick={openUnassignedList}
+                  disabled={unassignedCount === 0}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/80 px-3 py-1 text-xs font-medium text-defaulttextcolor/80 transition-colors hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-default disabled:opacity-60 dark:bg-white/5"
+                >
                   <i className="ri-user-unfollow-line text-defaulttextcolor/50" aria-hidden />
                   {unassignedCount} unassigned
-                </span>
+                </button>
               </div>
             )}
           </div>
@@ -255,6 +359,113 @@ export default function SettingsAgentsPage() {
           />
         </div>
 
+        {selectedCandidates.length > 0 && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.05] px-4 py-4 shadow-sm dark:bg-primary/[0.08]">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="mb-1 text-sm font-semibold text-defaulttextcolor dark:text-white">
+                  {selectedCandidates.length} candidate{selectedCandidates.length === 1 ? "" : "s"} selected
+                </p>
+                <p className="mb-0 text-xs text-defaulttextcolor/60 dark:text-white/55">
+                  Choose another agent and move all selected candidates in one action.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  value={bulkTargetAgentId}
+                  onChange={(e) => setBulkTargetAgentId(e.target.value)}
+                  disabled={savingKey !== null}
+                  className="h-10 min-w-[14rem] rounded-xl border border-defaultborder/70 bg-white px-3 text-sm text-defaulttextcolor shadow-sm focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-white/15 dark:bg-bodybg dark:text-white"
+                >
+                  <option value="">Select target agent</option>
+                  {agents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name} ({agent.email})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary-full inline-flex min-h-[2.5rem] items-center justify-center gap-2 rounded-xl border-0 px-4 py-2 text-sm font-semibold text-white disabled:pointer-events-none disabled:opacity-55"
+                  disabled={!bulkTargetAgentId || savingKey !== null}
+                  onClick={() => void runBulkReassign()}
+                >
+                  <i className="ri-user-shared-line text-base" aria-hidden />
+                  Reassign selected
+                </button>
+                <button
+                  type="button"
+                  className="ti-btn inline-flex min-h-[2.5rem] items-center justify-center rounded-xl border border-defaultborder/70 bg-white px-4 py-2 text-sm font-semibold text-defaulttextcolor/70 shadow-sm hover:bg-slate-50 dark:border-white/15 dark:bg-transparent dark:text-white/75 dark:hover:bg-white/5"
+                  disabled={savingKey !== null}
+                  onClick={clearSelectedCandidates}
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && showUnassignedList && (
+          <section
+            ref={unassignedSectionRef}
+            className="rounded-2xl border border-defaultborder/70 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg"
+          >
+            <div className="flex flex-col gap-3 border-b border-defaultborder/45 bg-slate-50/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10 dark:bg-white/[0.02]">
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center justify-between gap-3 text-left"
+                onClick={() => setShowUnassignedList((prev) => !prev)}
+              >
+                <div>
+                  <h3 className="mb-1 text-base font-semibold text-defaulttextcolor dark:text-white">
+                    Unassigned candidates
+                  </h3>
+                  <p className="mb-0 text-xs text-defaulttextcolor/55">
+                    {unassignedStudents.length} candidate{unassignedStudents.length === 1 ? "" : "s"} currently have no assigned agent.
+                  </p>
+                </div>
+                <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-defaultborder/70 bg-white text-defaulttextcolor/65 shadow-sm dark:border-white/15 dark:bg-transparent dark:text-white/70">
+                  <i className={`ri-arrow-${showUnassignedList ? "up" : "down"}-s-line text-lg`} aria-hidden />
+                </span>
+              </button>
+            </div>
+            {showUnassignedList && unassignedStudents.length > 0 ? (
+              <ul className="divide-y divide-defaultborder/35 dark:divide-white/10">
+                {unassignedStudents.map((student) => (
+                  <li
+                    key={student.id}
+                    className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-baseline gap-2">
+                        <span className="font-medium text-defaulttextcolor dark:text-white">{student.fullName}</span>
+                        <span className="rounded-md bg-defaultborder/25 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-defaulttextcolor/70 dark:bg-white/10 dark:text-white/70">
+                          {student.ownerRoleLabel ?? "—"}
+                        </span>
+                      </div>
+                      <p className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50">{student.email}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-primary/20 bg-primary/[0.06] px-3 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/[0.1]"
+                      disabled={savingKey !== null}
+                      onClick={() => setReassignModal(student)}
+                    >
+                      <i className="ri-user-add-line text-base" aria-hidden />
+                      Assign agent
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : showUnassignedList ? (
+              <div className="px-5 py-8 text-sm text-defaulttextcolor/55">
+                Everyone is assigned right now.
+              </div>
+            ) : null}
+          </section>
+        )}
+
         {agents.length === 0 && !loading && (
           <div className="rounded-xl border border-dashed border-defaultborder/70 bg-slate-50/50 px-6 py-12 text-center dark:bg-white/[0.02]">
             <i className="ri-user-settings-line mb-3 text-4xl text-defaulttextcolor/25" aria-hidden />
@@ -290,12 +501,13 @@ export default function SettingsAgentsPage() {
         ) : (
           !loading &&
           filteredAgents.length > 0 && (
-            <div className="grid gap-5">
+            <div ref={agentCardsRef} className="grid gap-5">
               {filteredAgents.map((agent) => {
                 const agentKey = String(agent.id);
                 const assigned = studentsByAgentId.get(agentKey) ?? [];
                 const pending = pendingByAgent[agentKey] ?? [];
                 const busy = savingKey !== null;
+                const isCollapsed = collapsedAgentIds.includes(agentKey);
 
                 return (
                   <article
@@ -303,25 +515,40 @@ export default function SettingsAgentsPage() {
                     className="overflow-hidden rounded-2xl border border-defaultborder/70 bg-white shadow-sm shadow-black/[0.03] transition-shadow duration-200 hover:shadow-md hover:shadow-black/[0.05] dark:border-white/10 dark:bg-bodybg dark:shadow-none"
                   >
                     <header className="flex flex-wrap items-center justify-between gap-3 border-b border-defaultborder/45 bg-slate-50/40 px-5 py-4 dark:border-white/10 dark:bg-white/[0.02]">
-                      <div className="flex min-w-0 items-center gap-3">
+                      <button
+                        type="button"
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                        onClick={() => toggleAgentFold(agentKey)}
+                      >
                         <span
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 text-sm font-semibold tracking-tight text-defaulttextcolor ring-1 ring-defaultborder/40 dark:from-white/10 dark:to-white/5 dark:text-white/90"
                           aria-hidden
                         >
                           {getInitials(agent.name)}
                         </span>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <h3 className="mb-0 truncate text-base font-semibold text-defaulttextcolor dark:text-white">
                             {agent.name}
                           </h3>
                           <p className="mb-0 truncate text-xs text-defaulttextcolor/55">{agent.email}</p>
                         </div>
+                      </button>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-primary/[0.09] px-3 py-1 text-xs font-semibold text-primary ring-1 ring-primary/15">
+                          {assigned.length} assigned
+                        </span>
+                        <button
+                          type="button"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-defaultborder/70 bg-white text-defaulttextcolor/65 shadow-sm hover:bg-slate-50 dark:border-white/15 dark:bg-transparent dark:text-white/70 dark:hover:bg-white/5"
+                          onClick={() => toggleAgentFold(agentKey)}
+                          aria-label={isCollapsed ? `Expand ${agent.name}` : `Collapse ${agent.name}`}
+                        >
+                          <i className={`ri-arrow-${isCollapsed ? "down" : "up"}-s-line text-lg`} aria-hidden />
+                        </button>
                       </div>
-                      <span className="shrink-0 rounded-full bg-primary/[0.09] px-3 py-1 text-xs font-semibold text-primary ring-1 ring-primary/15">
-                        {assigned.length} assigned
-                      </span>
                     </header>
 
+                    {!isCollapsed && (
                     <div className="px-5 py-4">
                       {assigned.length > 0 ? (
                         <ul className="mb-0 divide-y divide-defaultborder/35 rounded-xl border border-defaultborder/40 bg-slate-50/30 dark:divide-white/10 dark:border-white/10 dark:bg-white/[0.02]">
@@ -330,27 +557,51 @@ export default function SettingsAgentsPage() {
                               key={s.id}
                               className="flex flex-col gap-2 py-3 pl-4 pr-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                             >
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-baseline gap-2">
+                              <div className="min-w-0 flex flex-1 gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCandidateIds.includes(s.id)}
+                                  onChange={() => toggleCandidateSelection(s.id)}
+                                  disabled={busy}
+                                  className="mt-1 h-4 w-4 shrink-0 rounded border-defaultborder/80 text-primary focus:ring-primary/30"
+                                  aria-label={`Select ${s.fullName} for bulk reassignment`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-baseline gap-2">
                                   <span className="font-medium text-defaulttextcolor dark:text-white">{s.fullName}</span>
                                   <span className="rounded-md bg-defaultborder/25 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-defaulttextcolor/70 dark:bg-white/10 dark:text-white/70">
                                     {s.ownerRoleLabel ?? "—"}
                                   </span>
+                                  </div>
+                                  <p className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50">{s.email}</p>
                                 </div>
-                                <p className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50">{s.email}</p>
                               </div>
-                              <button
-                                type="button"
-                                className="shrink-0 self-start rounded-lg px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor/55 transition-colors hover:bg-danger/10 hover:text-danger sm:self-center"
-                                disabled={busy}
-                                title="Remove from this agent"
-                                onClick={() => void runAssign(s, null)}
-                              >
-                                <span className="inline-flex items-center gap-1.5">
-                                  <i className="ri-close-circle-line text-base" aria-hidden />
-                                  Remove
-                                </span>
-                              </button>
+                              <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-primary/20 bg-primary/[0.06] px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/[0.1]"
+                                  disabled={busy}
+                                  title="Reassign candidate to another agent"
+                                  onClick={() => setReassignModal(s)}
+                                >
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <i className="ri-user-shared-line text-base" aria-hidden />
+                                    Reassign
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor/55 transition-colors hover:bg-danger/10 hover:text-danger"
+                                  disabled={busy}
+                                  title="Remove from this agent"
+                                  onClick={() => void runAssign(s, null)}
+                                >
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <i className="ri-close-circle-line text-base" aria-hidden />
+                                    Remove
+                                  </span>
+                                </button>
+                              </div>
                             </li>
                           ))}
                         </ul>
@@ -364,7 +615,9 @@ export default function SettingsAgentsPage() {
                         </div>
                       )}
                     </div>
+                    )}
 
+                    {!isCollapsed && (
                     <footer className="border-t border-defaultborder/45 bg-slate-50/50 px-5 py-4 dark:border-white/10 dark:bg-white/[0.03]">
                       <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-defaulttextcolor/45">
                         Add people
@@ -461,6 +714,7 @@ export default function SettingsAgentsPage() {
                         )}
                       </div>
                     </footer>
+                    )}
                   </article>
                 );
               })}
@@ -508,6 +762,14 @@ export default function SettingsAgentsPage() {
           color: #334155;
         }
       `}</style>
+      <AssignAgentSopModal
+        open={!!reassignModal}
+        candidateId={reassignModal?.id ?? ""}
+        candidateName={reassignModal?.fullName}
+        currentAgent={reassignModal?.assignedAgent ?? null}
+        onClose={() => setReassignModal(null)}
+        onAssigned={() => void load()}
+      />
     </>
   );
 }

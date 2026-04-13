@@ -33,9 +33,11 @@ export const ACTIVITY_LOG_ACTIONS: string[] = [
   "candidate.create",
   "candidate.update",
   "candidate.delete",
+  "candidate.onboardingShare",
   "job.create",
   "job.update",
   "job.delete",
+  "job.share",
   "jobApplication.create",
   "jobApplication.update",
   "jobApplication.delete",
@@ -96,9 +98,14 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
   "candidate.create": { title: "Candidate created", description: "A new ATS candidate was added." },
   "candidate.update": { title: "Candidate updated", description: "Candidate profile or pipeline data changed." },
   "candidate.delete": { title: "Candidate deleted", description: "A candidate record was removed." },
+  "candidate.onboardingShare": {
+    title: "Candidate onboarding form shared",
+    description: "An onboarding invitation link was sent by email.",
+  },
   "job.create": { title: "Job created", description: "A job posting was added." },
   "job.update": { title: "Job updated", description: "Job details were changed." },
   "job.delete": { title: "Job deleted", description: "A job posting was removed." },
+  "job.share": { title: "Job shared", description: "A job link was sent by email." },
   "jobApplication.create": { title: "Application created", description: "Someone applied to a job." },
   "jobApplication.update": { title: "Application updated", description: "Application status or data changed." },
   "jobApplication.delete": { title: "Application deleted", description: "A job application was removed." },
@@ -158,6 +165,25 @@ export function getActivityActionDisplayForRow(log: {
 export function getEntityTypeDisplay(entityType: string | null | undefined): ActivityLogLabel {
   const t = entityType ?? "";
   return ENTITY_TYPE_LABELS[t] ?? { title: t || "—", description: t ? `Entity type: ${t}` : "No entity type" };
+}
+
+function readRecipients(metadata: Record<string, unknown>): string[] {
+  const recipients = metadata.recipients;
+  if (Array.isArray(recipients)) {
+    return recipients.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  }
+  const recipient = metadata.recipient;
+  if (typeof recipient === "string" && recipient.trim()) {
+    return [recipient.trim()];
+  }
+  return [];
+}
+
+function recipientsLine(metadata: Record<string, unknown>): string | null {
+  const recipients = readRecipients(metadata);
+  if (recipients.length === 0) return null;
+  if (recipients.length <= 3) return `Recipients: ${recipients.join(", ")}`;
+  return `Recipients: ${recipients.slice(0, 3).join(", ")} +${recipients.length - 3} more`;
 }
 
 /** Rich Entity column for Role rows (platform audit); uses activity log metadata from the API. */
@@ -315,4 +341,75 @@ export function getImpersonationEntitySummary(log: {
     return { headline: `End login as · ${label}`, detailLines: [] };
   }
   return { headline: label, detailLines: [] };
+}
+
+export function getCandidateActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "Candidate") return null;
+  const action = log.action ?? "";
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+
+  if (action === "candidate.onboardingShare") {
+    const detailLines: string[] = [];
+    const recipients = recipientsLine(m);
+    if (typeof m.inviteMode === "string" && m.inviteMode.trim()) {
+      detailLines.push(`Mode: ${m.inviteMode}`);
+    }
+    if (typeof m.invitationCount === "number") {
+      detailLines.push(`Invitation count: ${m.invitationCount}`);
+    }
+    if (recipients) {
+      detailLines.push(recipients);
+    }
+    return {
+      headline: "Candidate onboarding form",
+      detailLines,
+    };
+  }
+
+  const candidateName =
+    typeof m.fullName === "string" && m.fullName.trim() ? m.fullName.trim() : null;
+  return candidateName ? { headline: candidateName, detailLines: [] } : null;
+}
+
+export function getJobActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "Job") return null;
+  const action = log.action ?? "";
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const jobTitle =
+    typeof m.jobTitle === "string" && m.jobTitle.trim()
+      ? m.jobTitle.trim()
+      : typeof m.title === "string" && m.title.trim()
+        ? m.title.trim()
+        : null;
+
+  if (action === "job.share") {
+    const detailLines: string[] = [];
+    const recipients = recipientsLine(m);
+    if (typeof m.deliveryMethod === "string" && m.deliveryMethod.trim()) {
+      detailLines.push(`Via: ${m.deliveryMethod}`);
+    }
+    if (recipients) {
+      detailLines.push(recipients);
+    }
+    return {
+      headline: jobTitle ? `Shared “${jobTitle}”` : "Job shared",
+      detailLines,
+    };
+  }
+
+  return jobTitle ? { headline: jobTitle, detailLines: [] } : null;
 }

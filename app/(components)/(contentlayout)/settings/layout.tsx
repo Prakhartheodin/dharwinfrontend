@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
-import { hasSettingsUsersManage } from "@/shared/lib/permissions";
+import { hasEmailReadAccess, hasSettingsUsersManage } from "@/shared/lib/permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -129,7 +129,7 @@ export default function SettingsLayout({
     } else if (activeTab === "candidate-sop") {
       if (!hasCandidateSopAccess) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates") {
-      if (!roleNames.includes("Agent")) router.replace(ROUTES.settingsPersonalInfo);
+      if (!hasEmailReadAccess(permissions ?? [])) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
       if (!isAdministrator) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "bolna-voice-agent") {
@@ -227,7 +227,7 @@ export default function SettingsLayout({
                     Candidate SOP
                   </Link>
                 )}
-                {roleNames.includes("Agent") && (
+                {hasEmailReadAccess(permissions ?? []) && (
                   <Link
                     href={ROUTES.settingsEmailTemplates}
                     className={tabClass("email-templates")}

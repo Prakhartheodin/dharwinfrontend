@@ -110,6 +110,15 @@ export const MenuItems: any = [
         dirchange: false,
       },
       {
+    icon: ShareCandidateFormIcon,
+    title: "Share candidate form",
+        type: "link",
+    path: "/ats/share-candidate-form",
+        active: false,
+        selected: false,
+        dirchange: false,
+      },
+      {
     icon: BrowseJobsIcon,
     title: "Browse Jobs",
         type: "link",
@@ -161,31 +170,11 @@ export const MenuItems: any = [
       {
     icon: PreBoardingIcon,
     title: "Pre-boarding",
-        type: "sub",
+        type: "link",
     path: "/ats/pre-boarding",
         active: false,
         selected: false,
         dirchange: false,
-        children: [
-          {
-            icon: PreBoardingIcon,
-            title: "Pre-boarding",
-            type: "link",
-            path: "/ats/pre-boarding",
-            active: false,
-            selected: false,
-            dirchange: false,
-          },
-          {
-            icon: ShareCandidateFormIcon,
-            title: "Share candidate form",
-            type: "link",
-            path: "/ats/share-candidate-form",
-            active: false,
-            selected: false,
-            dirchange: false,
-          },
-        ],
       },
 
       {

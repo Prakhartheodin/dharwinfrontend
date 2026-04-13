@@ -62,6 +62,10 @@ export interface Role {
   status?: "active" | "inactive";
   createdAt?: string;
   updatedAt?: string;
+  /** All users with this role (any user status). */
+  assigneeCountTotal?: number;
+  /** Users with active or pending account — same scope as ATS candidate list owners. */
+  assigneeCountActivePending?: number;
 }
 
 /** Paginated roles list response. */

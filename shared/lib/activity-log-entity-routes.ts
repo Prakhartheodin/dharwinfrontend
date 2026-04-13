@@ -13,6 +13,7 @@ export function getActivityLogEntityHref(
 ): string | null {
   const id = entityId?.trim();
   if (!id) return null;
+  if (entityType === "Candidate" && id === "onboarding-invite") return null;
 
   switch (entityType) {
     case "Candidate":

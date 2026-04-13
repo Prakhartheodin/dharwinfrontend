@@ -384,7 +384,7 @@ const Candidates = () => {
     if (filters.email?.trim()) params.email = filters.email.trim()
     if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
-    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
+    params.employmentStatus = filters.employmentStatus
     return params
   }, [filters, pageSize, debouncedSearchName])
 
@@ -398,7 +398,7 @@ const Candidates = () => {
     if (filters.email?.trim()) params.email = filters.email.trim()
     if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
-    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
+    params.employmentStatus = filters.employmentStatus
     return params
   }, [filters, debouncedSearchName])
 
@@ -429,8 +429,7 @@ const Candidates = () => {
   // Fetch all unique names for filter dropdown (not limited by page); respect employmentStatus
   useEffect(() => {
     setFilterOptionsLoading(true)
-    const params: Record<string, unknown> = { limit: 5000, sortBy: 'fullName:asc' }
-    if (filters.employmentStatus && filters.employmentStatus !== 'current') params.employmentStatus = filters.employmentStatus
+    const params: Record<string, unknown> = { limit: 5000, sortBy: 'fullName:asc', employmentStatus: filters.employmentStatus }
     listCandidates(params)
       .then((res) => {
         const results = (res.results ?? []).map(mapCandidateToDisplay)
