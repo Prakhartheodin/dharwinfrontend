@@ -9,13 +9,23 @@ import type { ActivityLog } from "@/shared/lib/types";
 import * as activityLogsApi from "@/shared/lib/api/activity-logs";
 import { AxiosError } from "axios";
 import {
+  ACTIVITY_LOG_ACTIONS,
+  ACTIVITY_LOG_ENTITY_TYPES,
+  getActionDisplay,
+  getActivityActionDisplayForRow,
+  getCandidateActivityEntitySummary,
   getEntityTypeDisplay,
   getImpersonationEntitySummary,
+  getJobActivityEntitySummary,
   getRoleActivityEntitySummary,
   getUserActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
 import { ActivityLogLocationCell } from "@/shared/components/activity-log-location-cell";
 import { getActivityLogDisplayIp } from "@/shared/lib/activity-log-location-display";
+import {
+  canOpenActivityLogEntity,
+  getActivityLogEntityHref,
+} from "@/shared/lib/activity-log-entity-routes";
 
 function formatDateTime(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -262,35 +272,51 @@ export default function LogsActivityPage() {
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
-                    Action (e.g. role.create)
+                    Action
                   </label>
-                  <input
+                  <select
                     id="logs-action"
-                    type="text"
                     className="form-control !py-1.5 !text-[0.8125rem]"
-                    placeholder="Action..."
                     value={action}
                     onChange={(e) => {
                       setAction(e.target.value);
                       setPage(1);
                     }}
-                  />
+                  >
+                    <option value="">Any action</option>
+                    {ACTIVITY_LOG_ACTIONS.map((actionKey) => {
+                      const display = getActionDisplay(actionKey);
+                      return (
+                        <option key={actionKey} value={actionKey} title={display.description}>
+                          {display.title} ({actionKey})
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
                     Entity type
                   </label>
-                  <input
+                  <select
                     id="logs-entity-type"
-                    type="text"
                     className="form-control !py-1.5 !text-[0.8125rem]"
-                    placeholder="Role, User..."
                     value={entityType}
                     onChange={(e) => {
                       setEntityType(e.target.value);
                       setPage(1);
                     }}
-                  />
+                  >
+                    <option value="">Any entity</option>
+                    {ACTIVITY_LOG_ENTITY_TYPES.map((typeKey) => {
+                      const display = getEntityTypeDisplay(typeKey);
+                      return (
+                        <option key={typeKey} value={typeKey} title={display.description}>
+                          {display.title} ({typeKey})
+                        </option>
+                      );
+                    })}
+                  </select>
                 </div>
                 <div className="min-w-[10rem]">
                   <label htmlFor="logs-entity-id" className="form-label !text-[0.75rem] mb-1">
@@ -382,11 +408,22 @@ export default function LogsActivityPage() {
                       </tr>
                     ) : (
                       logs.map((log) => {
+                        const actionDisp = getActivityActionDisplayForRow(log);
                         const entityDisp = getEntityTypeDisplay(log.entityType);
                         const entityRich =
+                          getCandidateActivityEntitySummary(log) ??
+                          getJobActivityEntitySummary(log) ??
                           getRoleActivityEntitySummary(log) ??
                           getUserActivityEntitySummary(log) ??
                           getImpersonationEntitySummary(log);
+                        const entityHref = getActivityLogEntityHref(log.entityType, log.entityId);
+                        const canOpenEntity = canOpenActivityLogEntity(
+                          log.entityType,
+                          log.entityId,
+                          permissions,
+                          !!isAdministrator,
+                          !!isPlatformSuperUser
+                        );
                         return (
                         <tr key={log.id} className="border-b border-defaultborder">
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
@@ -399,7 +436,10 @@ export default function LogsActivityPage() {
                             </div>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            <span className="font-mono text-[0.8rem]">{log.action}</span>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium">{actionDisp.title}</span>
+                              <span className="font-mono text-[0.7rem] text-defaulttextcolor/60">{log.action}</span>
+                            </div>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
                             <div className="flex flex-col gap-0.5">
@@ -422,16 +462,30 @@ export default function LogsActivityPage() {
                               ) : (
                                 <span>{log.entityType ?? "—"}</span>
                               )}
-                              <span
-                                className={
-                                  entityRich
-                                    ? "text-[0.65rem] text-defaulttextcolor/45 font-mono break-all"
-                                    : "text-[0.7rem] text-defaulttextcolor/70 break-all"
-                                }
-                                title={entityRich ? "Database id (reference)" : undefined}
-                              >
-                                {log.entityId ?? "—"}
-                              </span>
+                              {entityHref && canOpenEntity ? (
+                                <Link
+                                  href={entityHref}
+                                  className={
+                                    entityRich
+                                      ? "text-[0.65rem] text-primary font-mono break-all hover:underline"
+                                      : "text-[0.7rem] text-primary break-all hover:underline"
+                                  }
+                                  title="Open linked entity"
+                                >
+                                  {log.entityId ?? "—"}
+                                </Link>
+                              ) : (
+                                <span
+                                  className={
+                                    entityRich
+                                      ? "text-[0.65rem] text-defaulttextcolor/45 font-mono break-all"
+                                      : "text-[0.7rem] text-defaulttextcolor/70 break-all"
+                                  }
+                                  title={entityRich ? "Database id (reference)" : undefined}
+                                >
+                                  {log.entityId ?? "—"}
+                                </span>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-2.5 align-middle text-[0.8125rem]">

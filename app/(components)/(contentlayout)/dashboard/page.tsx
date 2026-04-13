@@ -329,7 +329,7 @@ export default function DashboardPage() {
   const [applicantsList, setApplicantsList] = useState<JobApplication[] | null>(null);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [statBoxModal, setStatBoxModal] = useState<
-    "totalJobs" | "activeJobs" | "candidates" | "applications" | null
+    "activeJobs" | "candidates" | "applications" | null
   >(null);
   const [statBoxList, setStatBoxList] = useState<
     Job[] | CandidateListItem[] | JobApplication[] | null
@@ -511,10 +511,7 @@ export default function DashboardPage() {
     setStatBoxLoading(true);
     const fetchList = async () => {
       try {
-        if (statBoxModal === "totalJobs") {
-          const res = await listJobs({ limit: 100 });
-          if (!cancelled) setStatBoxList(res.results ?? []);
-        } else if (statBoxModal === "activeJobs") {
+        if (statBoxModal === "activeJobs") {
           const res = await listJobs({ status: "Active", limit: 100 });
           if (!cancelled) setStatBoxList(res.results ?? []);
         } else if (statBoxModal === "candidates") {
@@ -706,10 +703,9 @@ export default function DashboardPage() {
             <div className="xxl:col-span-5 col-span-12">
               <div className="grid grid-cols-12 gap-x-6">
                 <div className="sm:col-span-6 col-span-12">
-                  <button
-                    type="button"
-                    onClick={() => setStatBoxModal("totalJobs")}
-                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  <Link
+                    href="/ats/jobs"
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
                       <div className="box-body flex justify-between items-center">
@@ -728,7 +724,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  </button>
+                  </Link>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
                   <button
@@ -1224,14 +1220,14 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stat box modal (Total Jobs, Active Jobs, Candidates, Applications) */}
+      {/* Stat box modal (Active Jobs, Candidates, Applications) */}
       {statBoxModal && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
           onClick={() => setStatBoxModal(null)}
           role="dialog"
           aria-modal="true"
-          aria-label={statBoxModal === "totalJobs" ? "Total Jobs" : statBoxModal === "activeJobs" ? "Active Jobs" : statBoxModal === "candidates" ? "Total Candidates" : "Applications"}
+          aria-label={statBoxModal === "activeJobs" ? "Active Jobs" : statBoxModal === "candidates" ? "Total Candidates" : "Applications"}
         >
           <div
             className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
@@ -1239,13 +1235,11 @@ export default function DashboardPage() {
           >
             <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2 flex-shrink-0">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate flex-1">
-                {statBoxModal === "totalJobs"
-                  ? "Total Jobs"
-                  : statBoxModal === "activeJobs"
-                    ? "Active Jobs"
-                    : statBoxModal === "candidates"
-                      ? "Total Candidates"
-                      : "Applications"}
+                {statBoxModal === "activeJobs"
+                  ? "Active Jobs"
+                  : statBoxModal === "candidates"
+                    ? "Total Candidates"
+                    : "Applications"}
               </h3>
               <button
                 type="button"
@@ -1261,13 +1255,13 @@ export default function DashboardPage() {
                 <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading…</p>
               ) : statBoxList === null ? null : statBoxList.length === 0 ? (
                 <p className="text-[#8c9097] dark:text-white/50 text-sm">
-                  {statBoxModal === "totalJobs" || statBoxModal === "activeJobs"
+                  {statBoxModal === "activeJobs"
                     ? "No jobs yet."
                     : statBoxModal === "candidates"
                       ? "No candidates yet."
                       : "No applications yet."}
                 </p>
-              ) : statBoxModal === "totalJobs" || statBoxModal === "activeJobs" ? (
+              ) : statBoxModal === "activeJobs" ? (
                 <ul className="list-none space-y-3">
                   {(statBoxList as Job[]).map((job) => {
                     const jobId = String(job._id ?? job.id ?? "");

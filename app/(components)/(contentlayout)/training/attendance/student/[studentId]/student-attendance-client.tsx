@@ -103,6 +103,12 @@ function parseCalendarDayLocal(raw: string | null | undefined): Date | null {
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
 }
 
+function parseYmdLocal(value: string): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+}
+
 function formatLocalYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -397,9 +403,9 @@ export default function StudentAttendancePage() {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Please select From date and To date." });
       return;
     }
-    const from = new Date(fromDate);
-    const to = new Date(toDate);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    const from = parseYmdLocal(fromDate);
+    const to = parseYmdLocal(toDate);
+    if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range." });
       return;
     }
@@ -469,9 +475,9 @@ export default function StudentAttendancePage() {
       });
       return;
     }
-    const from = new Date(fromDate);
-    const to = new Date(toDate);
-    if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+    const from = parseYmdLocal(fromDate);
+    const to = parseYmdLocal(toDate);
+    if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
       await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range.", confirmButtonText: "OK" });
       return;
     }
@@ -566,9 +572,9 @@ export default function StudentAttendancePage() {
         await Swal.fire({ icon: "warning", title: "Validation", text: "Please fill in From date, To date, Punch In, and Punch Out.", confirmButtonText: "OK" });
         return;
       }
-      const from = new Date(fromDate);
-      const to = new Date(toDate);
-      if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+      const from = parseYmdLocal(fromDate);
+      const to = parseYmdLocal(toDate);
+      if (!from || !to || isNaN(from.getTime()) || isNaN(to.getTime())) {
         await Swal.fire({ icon: "warning", title: "Validation", text: "Invalid date range.", confirmButtonText: "OK" });
         return;
       }

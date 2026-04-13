@@ -426,11 +426,7 @@ export default function StudentAttendanceOverlay({
       const inactiveEmployment = beforeJoining || afterResign;
       const isScheduledWeekOff =
         !inactiveEmployment &&
-        weekOffSet.has(dayName) &&
-        !info.present &&
-        !info.holiday &&
-        !info.leave &&
-        !info.incomplete;
+        weekOffSet.has(dayName);
       const isPast = date < todayStart;
       const isTodayCell = date.getTime() === todayStart.getTime();
       /** Same idea as student-attendance-client: past workdays with no punch/leave/holiday read as absent (not only status=Absent rows). */
@@ -539,7 +535,7 @@ export default function StudentAttendanceOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)] backdrop-blur-[2px]"
+      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="student-attendance-title"
@@ -790,7 +786,7 @@ export default function StudentAttendanceOverlay({
                         if (cell.afterResign) titleParts.push("After last employment day");
                         if (cell.beforeJoining) titleParts.push("Before joining date");
                         if (cell.absent) titleParts.push("Absent");
-                        if (cell.present && cell.totalHours > 0) titleParts.push(`Worked ${cell.totalHours}h`);
+                        if (!cell.weekOff && cell.present && cell.totalHours > 0) titleParts.push(`Worked ${cell.totalHours}h`);
                         if (cell.incomplete) titleParts.push("Open punch - still clocked in");
                         if (isWeekendCol && !cell.weekOff && !cell.holiday && !cell.leave) titleParts.push("Weekend");
                       }
@@ -868,7 +864,7 @@ export default function StudentAttendanceOverlay({
                                 {cell.absent && (
                                   <p className="text-[0.6875rem] font-semibold text-rose-700 dark:text-rose-300">Absent</p>
                                 )}
-                                {cell.present && cell.totalHours > 0 && (
+                                {!cell.weekOff && cell.present && cell.totalHours > 0 && (
                                   <p className="mt-auto text-[0.75rem] font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
                                     {cell.totalHours}h
                                   </p>

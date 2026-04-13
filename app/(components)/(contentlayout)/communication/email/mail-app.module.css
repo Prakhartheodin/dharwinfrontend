@@ -15,6 +15,7 @@
   --mail-shadow: 0 2px 8px rgba(28, 25, 23, 0.04), 0 12px 40px rgba(28, 25, 23, 0.06);
   --mail-shadow-hover: 0 4px 16px rgba(28, 25, 23, 0.07), 0 20px 50px rgba(28, 25, 23, 0.08);
   min-height: calc(100vh - 8rem);
+  min-height: calc(100dvh - 8rem);
 }
 
 :global(.dark) .mailRoot {
@@ -34,6 +35,7 @@
   box-shadow: var(--mail-shadow);
   overflow: hidden;
   border: 1px solid rgba(28, 25, 23, 0.06);
+  min-height: 0;
 }
 
 :global(.dark) .shell {
@@ -98,6 +100,153 @@
   transform: translateY(0);
 }
 
+.composeUtilityBtn {
+  border-radius: var(--mail-radius-sm) !important;
+  border: 1px solid rgba(28, 25, 23, 0.08) !important;
+  background: var(--mail-paper-elevated) !important;
+  color: var(--mail-ink) !important;
+  box-shadow: none !important;
+}
+
+.composeUtilityBtn:hover {
+  background: var(--mail-accent-mist) !important;
+  color: var(--mail-accent) !important;
+}
+
+.composeAiPanel {
+  margin-top: 0.9rem;
+  padding: 1rem;
+  border-radius: calc(var(--mail-radius-sm) + 2px);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  background:
+    linear-gradient(180deg, rgba(194, 65, 12, 0.04) 0%, rgba(250, 248, 245, 0.86) 100%),
+    var(--mail-paper-elevated);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+:global(.dark) .composeAiPanel {
+  border-color: rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(251, 146, 60, 0.08) 0%, rgba(28, 25, 23, 0.98) 100%),
+    var(--mail-paper-elevated);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.composeAiSelect,
+.composeAiTextarea {
+  border-radius: var(--mail-radius-sm) !important;
+  border-color: rgba(28, 25, 23, 0.1) !important;
+  background: var(--mail-paper-elevated) !important;
+}
+
+.composeAiTextarea {
+  min-height: 5.75rem;
+  resize: vertical;
+}
+
+.composeAiAction {
+  border-radius: var(--mail-radius-sm) !important;
+}
+
+.composeHint {
+  margin-top: 0.75rem;
+  margin-bottom: 0;
+  color: var(--mail-ink-soft);
+  font-size: 0.77rem;
+  line-height: 1.45;
+}
+
+.composeError {
+  margin-top: 0.7rem;
+  margin-bottom: 0;
+  color: #dc2626;
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.composeAiResults {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 1280px) {
+  .composeAiResults {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.composeAiSubject {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--mail-ink-soft);
+  font-size: 0.8rem;
+}
+
+.composeAiSubject span {
+  color: var(--mail-ink);
+  font-weight: 600;
+}
+
+.composeAiCard {
+  padding: 1rem;
+  border-radius: calc(var(--mail-radius-sm) + 2px);
+  border: 1px solid rgba(28, 25, 23, 0.08);
+  background: var(--mail-paper-elevated);
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.04), 0 8px 24px rgba(28, 25, 23, 0.04);
+}
+
+:global(.dark) .composeAiCard {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.composeAiCardTitle {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--mail-ink);
+}
+
+.composeAiTonePill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.73rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--mail-accent);
+  background: var(--mail-accent-mist);
+}
+
+.composeAiPreview {
+  margin: 0;
+  color: var(--mail-ink-soft);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  white-space: pre-line;
+}
+
+.composeAttachmentChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  max-width: min(100%, 18rem);
+  padding: 0.38rem 0.55rem;
+  border-radius: 999px;
+  background: var(--mail-accent-mist);
+  color: var(--mail-ink);
+  font-size: 0.8125rem;
+}
+
+.composeAttachmentMeta {
+  color: var(--mail-ink-soft);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
 .navProfile {
   background: linear-gradient(145deg, #292524 0%, #1c1917 100%);
   border-radius: var(--mail-radius-sm);
@@ -158,6 +307,41 @@
 .threadUnread {
   border-left: 3px solid var(--mail-accent);
   padding-left: 2px;
+}
+
+.threadContent {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.threadTopLine {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.threadSender,
+.threadSubject {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.threadMeta {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.threadSnippet {
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-clamp: 2;
+  max-width: 100%;
+  word-break: break-word;
 }
 
 .threadListDate {
@@ -304,6 +488,41 @@
 
 :global(.dark) .searchWrap {
   border-color: rgba(255, 255, 255, 0.08);
+}
+
+.threadListPane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.threadListScroll {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+
+.threadListScroll :global(.simplebar-wrapper),
+.threadListScroll :global(.simplebar-mask),
+.threadListScroll :global(.simplebar-offset),
+.threadListScroll :global(.simplebar-content-wrapper) {
+  height: 100%;
+}
+
+.threadListScroll :global(.simplebar-content-wrapper) {
+  min-height: 0;
+  overflow-x: hidden;
+}
+
+.threadListScroll :global(.simplebar-content) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.threadListMessages {
+  flex: 1 1 auto;
+  min-height: 100%;
 }
 
 /* Reading pane: fill column height and scroll message body (fixes global .mail-info-body max-h clipping) */

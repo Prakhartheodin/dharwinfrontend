@@ -66,6 +66,21 @@ export interface EmailLabel {
   labelListVisibility?: string;
 }
 
+export type EmailDraftTone = "professional" | "friendly" | "formal" | "persuasive" | "empathetic";
+export type EmailDraftLength = "short" | "medium" | "long";
+
+export interface EmailDraftOption {
+  id: string;
+  label: string;
+  html: string;
+  text: string;
+}
+
+export interface GeneratedEmailDraft {
+  subject: string;
+  options: EmailDraftOption[];
+}
+
 const EMAIL_BASE = "/email";
 const OUTLOOK_BASE = "/outlook";
 
@@ -187,6 +202,18 @@ export async function sendMessage(
   provider: MailProvider = "gmail"
 ): Promise<{ id: string; threadId?: string }> {
   const { data } = await apiClient.post(`${mailBase(provider)}/messages/send`, body);
+  return data;
+}
+
+export async function generateDraft(body: {
+  tone: EmailDraftTone;
+  prompt: string;
+  subject?: string;
+  context?: string;
+  recipientName?: string;
+  length?: EmailDraftLength;
+}): Promise<GeneratedEmailDraft> {
+  const { data } = await apiClient.post(`${EMAIL_BASE}/drafts/generate`, body);
   return data;
 }
 

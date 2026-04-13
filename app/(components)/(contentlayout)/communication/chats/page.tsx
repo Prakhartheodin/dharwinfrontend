@@ -570,6 +570,7 @@ const Chat = () => {
     emitTyping,
     emitMessageRead,
     onlineUsers,
+    syncOnlineUsers,
   } = useChatSocket();
 
   const [activeTab, setActiveTab] = useState<"recent" | "groups" | "calls">("recent");
@@ -772,6 +773,19 @@ const Chat = () => {
       setReplyingTo(null);
     }
   }, [convId, fetchMessages, joinConversation, leaveConversation]);
+
+  useEffect(() => {
+    const userIds = conversations
+      .flatMap((conversation) =>
+        (conversation.participants || []).map((participant) =>
+          String((participant.user as any)?.id || (participant.user as any)?._id || "").trim()
+        )
+      )
+      .filter(Boolean);
+    if (userIds.length > 0) {
+      syncOnlineUsers(userIds);
+    }
+  }, [conversations, syncOnlineUsers]);
 
   // New message from socket
   useEffect(() => {
@@ -1411,7 +1425,7 @@ const Chat = () => {
               <i className="ri-notification-3-line text-lg" />
             </span>
             <p className="mb-0 min-w-0 text-sm text-defaulttextcolor dark:text-defaulttextcolor/90">
-              Get notified of incoming calls when this tab is in the background.
+              Get notified of incoming chats and calls when this tab is in the background.
             </p>
           </div>
           <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2 sm:justify-start">
