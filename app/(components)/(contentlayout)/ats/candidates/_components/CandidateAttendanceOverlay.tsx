@@ -89,6 +89,15 @@ function formatLeaveLabel(leaveType: string): string {
   return leaveType ? leaveType.charAt(0).toUpperCase() + leaveType.slice(1) : "Leave";
 }
 
+function formatDuration(ms: number): string {
+  if (ms <= 0) return "0m";
+  const totalMins = Math.floor(ms / 60000);
+  const hours = Math.floor(totalMins / 60);
+  const mins = totalMins % 60;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
 export interface CandidateAttendanceOverlayProps {
   open: boolean;
   onClose: () => void;
@@ -359,6 +368,7 @@ export default function CandidateAttendanceOverlay({
         beforeJoining,
         afterResign,
         totalHours: Math.round((displayMs / 3600000) * 100) / 100,
+        durationLabel: displayMs > 0 ? formatDuration(displayMs) : "",
         holidayName: info.holidayName,
       });
     }
@@ -720,7 +730,7 @@ export default function CandidateAttendanceOverlay({
                         if (cell.afterResign) titleParts.push("After last employment day");
                         if (cell.beforeJoining) titleParts.push("Before joining date");
                         if (cell.absent) titleParts.push("Absent");
-                        if (!cell.weekOff && cell.present && cell.totalHours > 0) titleParts.push(`Worked ${cell.totalHours}h`);
+                        if (!cell.weekOff && cell.present && cell.durationLabel) titleParts.push(`Worked ${cell.durationLabel}`);
                         if (cell.incomplete) titleParts.push("Open punch — still clocked in");
                         if (isWeekendCol && !cell.weekOff && !cell.holiday && !cell.leave) titleParts.push("Weekend");
                       }
@@ -798,9 +808,9 @@ export default function CandidateAttendanceOverlay({
                                 {cell.absent && (
                                   <p className="text-[0.6875rem] font-semibold text-rose-700 dark:text-rose-300">Absent</p>
                                 )}
-                                {!cell.weekOff && cell.present && cell.totalHours > 0 && (
+                                {!cell.weekOff && cell.present && cell.durationLabel && (
                                   <p className="mt-auto text-[0.75rem] font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
-                                    {cell.totalHours}h
+                                    {cell.durationLabel}
                                   </p>
                                 )}
                                 {cell.incomplete && (

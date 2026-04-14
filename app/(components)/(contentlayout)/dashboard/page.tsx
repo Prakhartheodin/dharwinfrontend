@@ -1430,10 +1430,10 @@ export default function DashboardPage() {
               <div className="box-title">Projects Summary</div>
               <div className="flex flex-wrap items-center gap-2">
                 <input className="ti-form-control form-control-sm !rounded-sm !w-auto min-w-[140px]" type="text" placeholder="Search Here" aria-label="Search" />
-                <Link href="/project-management/projects" className="ti-btn ti-btn-primary !bg-primary !text-white !py-1 !px-2 !text-[0.75rem] !m-0 !gap-0 !font-medium" aria-expanded="false">
+                <Link href="/apps/projects/project-list" className="ti-btn ti-btn-primary !bg-primary !text-white !py-1 !px-2 !text-[0.75rem] !m-0 !gap-0 !font-medium" aria-expanded="false">
                   Sort By <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                 </Link>
-                <Link href="/project-management/projects" className="px-2 font-normal text-[0.75rem] text-primary">View All</Link>
+                <Link href="/apps/projects/project-list" className="px-2 font-normal text-[0.75rem] text-primary">View All</Link>
               </div>
             </div>
             <div className="box-body">

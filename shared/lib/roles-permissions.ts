@@ -29,6 +29,7 @@ export const PERMISSION_SECTIONS: {
       { id: "my-profile", label: "My Profile" },
       { id: "jobs", label: "Jobs" },
       { id: "candidates", label: "Candidates" },
+      { id: "share-candidate-form", label: "Share candidate form" },
       { id: "recruiters", label: "Recruiters" },
       { id: "interviews", label: "Interviews" },
       { id: "offers", label: "Offers" },

@@ -358,7 +358,7 @@ export const MenuItems: any = [
     menutitle: "Project Management",
   },
 
-  {
+      {
     icon: ProjectsIcon,
         title: "Projects",
             type: "link",
@@ -367,6 +367,16 @@ export const MenuItems: any = [
         selected: false,
         dirchange: false, 
       },
+
+      {
+    icon: ProjectsIcon,
+    title: "My Projects",
+    type: "link",
+    path: "/apps/projects/my-projects",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
 
       {
     icon: TaskIcon,

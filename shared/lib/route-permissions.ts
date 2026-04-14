@@ -9,6 +9,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // ATS
   "/ats/jobs": "ats.jobs:",
   "/ats/candidates": "ats.candidates:",
+  "/ats/share-candidate-form": "ats.share-candidate-form:",
   // Browse Jobs and My Applications are public - no permission required
   "/ats/my-profile": "ats.my-profile:",
   "/courses": "candidate.courses:",
@@ -35,6 +36,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // Project Management (sidebar uses /apps/... and /task/...; app routes also use /project-management/...)
   "/apps/projects/my-projects": "project.projects:",
   "/apps/projects/project-list": "project.projects:",
+  "/apps/projects/assignment": "project.projects:",
   "/task/my-tasks": "project.tasks:",
   "/task/kanban-board": "project.kanban:",
   "/pages/team": "project.teams:",

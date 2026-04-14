@@ -305,7 +305,7 @@ export async function publicApplyToJob(
   documents?: File[]
 ): Promise<PublicApplyResponse> {
   const formData = new FormData();
-  
+
   // Add text fields
   formData.append("fullName", payload.fullName);
   formData.append("email", payload.email);
@@ -315,25 +315,31 @@ export async function publicApplyToJob(
   if (payload.coverLetter) {
     formData.append("coverLetter", payload.coverLetter);
   }
-  
+
   // Add resume file
   formData.append("resume", resume);
-  
+
   // Add additional documents if provided
   if (documents && documents.length > 0) {
     documents.forEach((doc) => {
       formData.append("documents", doc);
     });
   }
-  
+
   const { data } = await publicApiClient.post<PublicApplyResponse>(
     `/public/jobs/${jobId}/apply`,
     formData,
     {
       timeout: 120_000,
+      transformRequest: [
+        (body: unknown, headers: Record<string, string>) => {
+          delete headers["Content-Type"];
+          return body;
+        },
+      ],
     }
   );
-  
+
   return data;
 }
 
