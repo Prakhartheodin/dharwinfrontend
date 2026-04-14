@@ -28,6 +28,8 @@ import {
   type TeamGroup as ApiTeamGroup,
   listTeamGroups,
   createTeamGroup,
+  updateTeamGroup,
+  deleteTeamGroup,
 } from "@/shared/lib/api/projectTeams";
 import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 
@@ -826,19 +828,73 @@ const TeamsPage = () => {
   };
   const groupedMembersByTeamId = useMemo(() => {
     const map: Record<string, TeamMember[]> = {};
+    const validTeamIds = new Set(teamGroups.map((t) => getTeamGroupId(t)));
     for (const t of teamGroups) {
       map[getTeamGroupId(t)] = [];
     }
-    const unassigned: TeamMember[] = [];
     for (const m of members) {
       const tid = getMemberTeamId(m);
-      if (tid && map[tid]) map[tid].push(m);
-      else if (tid) map[tid] = [m];
-      else unassigned.push(m);
+      if (tid && validTeamIds.has(tid)) {
+        if (map[tid]) map[tid].push(m);
+        else map[tid] = [m];
+      }
+      /* No teamId or unknown teamId: not listed in the team sidebar (see main roster). */
     }
-    if (unassigned.length > 0) map["__none__"] = unassigned;
     return map;
   }, [members, teamGroups]);
+
+  const handleRenameTeamGroup = async (team: ApiTeamGroup) => {
+    const tid = getTeamGroupId(team);
+    const { value: name, isConfirmed } = await Swal.fire({
+      title: "Rename team",
+      input: "text",
+      inputValue: team.name ?? "",
+      showCancelButton: true,
+      confirmButtonText: "Save",
+      inputValidator: (v) => {
+        if (!v || !String(v).trim()) return "Name is required";
+        return null;
+      },
+    });
+    if (!isConfirmed || !name?.trim()) return;
+    try {
+      await updateTeamGroup(tid, { name: name.trim() });
+      await Swal.fire("Updated", "Team renamed successfully.", "success");
+      await fetchTeamGroups();
+      fetchMembers({ page, search: searchQuery || undefined });
+    } catch {
+      Swal.fire("Error", "Failed to rename team.", "error");
+    }
+  };
+
+  const handleDeleteTeamGroup = async (team: ApiTeamGroup) => {
+    const tid = getTeamGroupId(team);
+    const count = (groupedMembersByTeamId[tid] ?? []).length;
+    const { isConfirmed } = await Swal.fire({
+      title: "Delete team?",
+      text:
+        count > 0
+          ? `This team has ${count} roster member(s). Deleting the team removes those roster rows so names no longer appear here (ATS candidate profiles are not deleted).`
+          : "This cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      confirmButtonText: "Delete",
+    });
+    if (!isConfirmed) return;
+    try {
+      await deleteTeamGroup(tid);
+      await Swal.fire("Deleted", "Team removed.", "success");
+      await fetchTeamGroups();
+      fetchMembers({ page, search: searchQuery || undefined });
+    } catch {
+      Swal.fire(
+        "Error",
+        "Could not delete this team. Remove members (and unlink the team from projects if it is still assigned) and try again.",
+        "error"
+      );
+    }
+  };
 
   const hasMembers = members.length > 0;
 
@@ -1011,18 +1067,36 @@ const TeamsPage = () => {
                         return (
                         <Fragment key={tid}>
                           <li className="!pb-0">
-                            <div className="flex justify-between items-center">
-                              <div className="text-[.625rem] font-semibold mb-2 text-[#8c9097] dark:text-white/50">
+                            <div className="flex justify-between items-center gap-1">
+                              <div className="text-[.625rem] font-semibold mb-2 text-[#8c9097] dark:text-white/50 flex-grow min-w-0 truncate">
                                 {team.name || tid}
                               </div>
-                              <button
-                                type="button"
-                                aria-label="Add member to team"
-                                className="ti-btn ti-btn-sm ti-btn-success"
-                                onClick={() => openCreateForm(tid)}
-                              >
-                                <i className="ri-add-line" />
-                              </button>
+                              <div className="flex items-center gap-0.5 shrink-0 mb-2">
+                                <button
+                                  type="button"
+                                  aria-label="Rename team"
+                                  className="ti-btn ti-btn-sm ti-btn-light !px-1 !py-0"
+                                  onClick={() => void handleRenameTeamGroup(team)}
+                                >
+                                  <i className="ri-pencil-line text-[0.95rem]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Delete team"
+                                  className="ti-btn ti-btn-sm ti-btn-danger !px-1 !py-0"
+                                  onClick={() => void handleDeleteTeamGroup(team)}
+                                >
+                                  <i className="ri-delete-bin-line text-[0.95rem]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Add member to team"
+                                  className="ti-btn ti-btn-sm ti-btn-success"
+                                  onClick={() => openCreateForm(tid)}
+                                >
+                                  <i className="ri-add-line" />
+                                </button>
+                              </div>
                             </div>
                           </li>
                           {(groupedMembersByTeamId[tid] ?? []).map((member) => (
@@ -1067,48 +1141,7 @@ const TeamsPage = () => {
                         </Fragment>
                       );
                       })}
-                      {(groupedMembersByTeamId["__none__"] ?? []).length > 0 && (
-                        <Fragment>
-                          <li className="!pb-0">
-                            <div className="text-[.625rem] font-semibold mb-2 text-[#8c9097] dark:text-white/50">
-                              No team
-                            </div>
-                          </li>
-                          {groupedMembersByTeamId["__none__"].map((member) => (
-                            <li key={getMemberId(member)}>
-                              <button
-                                type="button"
-                                className="w-full text-left"
-                                onClick={() => openEditForm(member)}
-                              >
-                                <div className="flex items-center">
-                                  <div className="me-2 flex items-center">
-                                    <span
-                                      className={`avatar avatar-sm avatar-rounded ${
-                                        member.onlineStatus === "online"
-                                          ? "online"
-                                          : "offline"
-                                      }`}
-                                    >
-                                      <img
-                                        src={
-                                          member.avatarImageUrl ||
-                                          "../../assets/images/faces/3.jpg"
-                                        }
-                                        alt={member.name}
-                                      />
-                                    </span>
-                                  </div>
-                                  <div className="flex-grow">
-                                    <span>{member.name}</span>
-                                  </div>
-                                </div>
-                              </button>
-                            </li>
-                          ))}
-                        </Fragment>
-                      )}
-                      {teamGroups.length === 0 && (groupedMembersByTeamId["__none__"] ?? []).length === 0 && (
+                      {teamGroups.length === 0 && (
                         <li className="text-[.75rem] text-[#8c9097] dark:text-white/50 py-2">
                           No teams yet. Create a team to add members.
                         </li>

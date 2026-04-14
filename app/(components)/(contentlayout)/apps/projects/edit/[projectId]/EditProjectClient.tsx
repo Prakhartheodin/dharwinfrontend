@@ -14,12 +14,16 @@ import {
   type ProjectStatus,
   type ProjectPriority,
 } from "@/shared/lib/api/projects";
-import { listTeamGroups } from "@/shared/lib/api/projectTeams";
+import { createTeamGroup, listTeamGroups } from "@/shared/lib/api/projectTeams";
+import { listUsers } from "@/shared/lib/api/users";
 import { PROJECT_STATUS_OPTIONS, PROJECT_PRIORITY_OPTIONS } from "@/shared/data/apps/projects/projectFormConfig";
 import type { SelectOption } from "@/shared/data/apps/projects/projectFormConfig";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Swal from "sweetalert2";
+import { isPmAssistantUiEnabled } from "@/shared/lib/pm/featureFlags";
+import { runAssignmentGenerationWithUi } from "@/shared/lib/pm/runAssignmentGenerationWithUi";
+import { composeProjectDescriptionPlainFromParts } from "@/shared/lib/apps/composeProjectDescriptionPlain";
 
 /** Strip HTML tags to plain text */
 function stripHtmlToText(html: string): string {
@@ -39,9 +43,14 @@ function projectToFormValues(project: Project): ProjectFormValues {
   const priorityOption =
     PROJECT_PRIORITY_OPTIONS.find((o) => o.value === project.priority) ??
     PROJECT_PRIORITY_OPTIONS[0];
-  const assignedTo: SelectOption[] = (project.assignedTeams ?? []).map((t) => {
+  const assignedTeams: SelectOption[] = (project.assignedTeams ?? []).map((t) => {
     const teamId = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? t._id;
     return { value: teamId, label: t.name ?? teamId };
+  });
+  const assignedUsers: SelectOption[] = (project.assignedTo ?? []).map((u) => {
+    const uid = (u as { _id?: string; id?: string })._id ?? (u as { id?: string }).id ?? "";
+    const label = [u.name, u.email].filter(Boolean).join(" — ") || uid;
+    return { value: uid, label };
   });
   const tags: SelectOption[] = (project.tags ?? []).map((t) => ({
     value: t,
@@ -53,11 +62,15 @@ function projectToFormValues(project: Project): ProjectFormValues {
     projectManager: project.projectManager ?? "",
     clientStakeholder: project.clientStakeholder ?? "",
     description: project.description ?? "",
+    intakeSuccess: "",
+    intakeConstraints: "",
+    intakeMilestones: "",
     startDate: project.startDate ? new Date(project.startDate) : null,
     endDate: project.endDate ? new Date(project.endDate) : null,
     status: statusOption,
     priority: priorityOption,
-    assignedTo,
+    assignedTeams,
+    assignedUsers,
     tags,
   };
 }
@@ -70,11 +83,12 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
   const router = useRouter();
 
   const [values, setValues] = useState<ProjectFormValues | null>(null);
-  const [attachmentFiles, setAttachmentFiles] = useState<unknown[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [assignedToOptions, setAssignedToOptions] = useState<SelectOption[]>([]);
+  const [assignedUserOptions, setAssignedUserOptions] = useState<SelectOption[]>([]);
+  const [assignmentStarting, setAssignmentStarting] = useState(false);
 
   useEffect(() => {
     listTeamGroups({ limit: 200 })
@@ -86,6 +100,16 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
         setAssignedToOptions(options);
       })
       .catch(() => setAssignedToOptions([]));
+    listUsers({ limit: 200, status: "active" })
+      .then((res) => {
+        setAssignedUserOptions(
+          (res.results ?? []).map((u) => ({
+            value: String(u.id ?? "").trim(),
+            label: [u.name, u.email].filter(Boolean).join(" — ") || u.id,
+          }))
+        );
+      })
+      .catch(() => setAssignedUserOptions([]));
   }, []);
 
   useEffect(() => {
@@ -108,6 +132,19 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
     });
   }, []);
 
+  const handleCreateTeamGroup = useCallback(async (name: string) => {
+    const trimmed = name.trim();
+    const created = await createTeamGroup({ name: trimmed });
+    const id = String((created as { id?: string }).id ?? created._id ?? "").trim();
+    const label = created.name?.trim() || trimmed || id;
+    const opt: SelectOption = { value: id, label };
+    setAssignedToOptions((prev) => {
+      if (prev.some((o) => String(o.value) === id)) return prev;
+      return [...prev, opt].sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+    });
+    return opt;
+  }, []);
+
   const buildPayload = (): UpdateProjectPayload => {
     if (!values) return {};
     const statusVal =
@@ -118,8 +155,12 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
       typeof values.priority === "object" && values.priority !== null && "value" in values.priority
         ? (values.priority as SelectOption).value
         : values.priority;
-    const selectedTeams = (values.assignedTo as SelectOption[]) ?? [];
+    const selectedTeams = (values.assignedTeams as SelectOption[]) ?? [];
     const assignedTeamIds: string[] = selectedTeams
+      .map((o) => (o?.value != null ? String(o.value) : ""))
+      .filter((id) => id !== "undefined" && /^[0-9a-fA-F]{24}$/.test(id));
+    const selectedUsers = (values.assignedUsers as SelectOption[]) ?? [];
+    const assignedUserIds: string[] = selectedUsers
       .map((o) => (o?.value != null ? String(o.value) : ""))
       .filter((id) => id !== "undefined" && /^[0-9a-fA-F]{24}$/.test(id));
     const tagsRaw = (values.tags as SelectOption[] | undefined) ?? [];
@@ -128,18 +169,23 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
       .map((s) => (typeof s === "string" ? s : "").trim())
       .filter((s) => s.length > 0);
 
-    const descriptionStr = String(values.description ?? "").trim();
-    const descriptionPlain = descriptionStr ? stripHtmlToText(descriptionStr) : "";
+    const descriptionPlain = composeProjectDescriptionPlainFromParts({
+      mainPlain: stripHtmlToText(String(values.description ?? "")).trim(),
+      intakeSuccess: String(values.intakeSuccess ?? ""),
+      intakeConstraints: String(values.intakeConstraints ?? ""),
+      intakeMilestones: String(values.intakeMilestones ?? ""),
+    });
 
     const payload: UpdateProjectPayload = {
       name: String(values.name ?? "").trim(),
       projectManager: String(values.projectManager ?? "").trim() || undefined,
       clientStakeholder: String(values.clientStakeholder ?? "").trim() || undefined,
-      description: descriptionPlain || undefined,
+      description: descriptionPlain,
       status: (statusVal as ProjectStatus) ?? undefined,
       priority: (priorityVal as ProjectPriority) ?? undefined,
-      assignedTeams: assignedTeamIds.length > 0 ? assignedTeamIds : undefined,
-      tags: tags.length > 0 ? tags : undefined,
+      assignedTeams: assignedTeamIds,
+      assignedTo: assignedUserIds,
+      tags,
     };
     if (values.startDate) {
       payload.startDate =
@@ -174,13 +220,23 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
       router.push("/apps/projects/project-list/");
     } catch (err: unknown) {
       const message =
-        err && typeof err === "object" && "response" in err
+        (err && typeof err === "object" && "response" in err
           ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
-          : "Failed to update project.";
+          : undefined) ?? "Failed to update project.";
       setErrors({ submit: message });
       Swal.fire({ icon: "error", title: "Error", text: message });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleStartAssignmentRun = async () => {
+    if (!projectId) return;
+    setAssignmentStarting(true);
+    try {
+      await runAssignmentGenerationWithUi(projectId, router);
+    } finally {
+      setAssignmentStarting(false);
     }
   };
 
@@ -229,9 +285,10 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
                 values={values}
                 onChange={handleChange}
                 errors={errors}
-                attachmentFiles={attachmentFiles}
-                onAttachmentFilesChange={setAttachmentFiles}
                 assignedToOptions={assignedToOptions}
+                assignedUserOptions={assignedUserOptions}
+                onCreateTeamGroup={handleCreateTeamGroup}
+                briefAiEnhanceEnabled={isPmAssistantUiEnabled()}
               />
               {errors.submit && (
                 <div className="text-danger mt-2">{errors.submit}</div>
@@ -244,6 +301,16 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
               >
                 Cancel
               </Link>
+              {isPmAssistantUiEnabled() && (
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-success btn-wave me-2"
+                  onClick={() => void handleStartAssignmentRun()}
+                  disabled={submitting || assignmentStarting}
+                >
+                  {assignmentStarting ? "Generating…" : "AI candidate assignment"}
+                </button>
+              )}
               <button
                 type="button"
                 className="ti-btn ti-btn-primary btn-wave"

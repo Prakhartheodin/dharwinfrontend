@@ -1,11 +1,16 @@
 "use client";
 
 import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Swal from "sweetalert2";
+import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
+import { isPmAssistantUiEnabled } from "@/shared/lib/pm/featureFlags";
+import { AiTaskBreakdownModal } from "@/shared/components/pm/AiTaskBreakdownModal";
+import { runAssignmentGenerationWithUi } from "@/shared/lib/pm/runAssignmentGenerationWithUi";
 import {
   listProjects,
   deleteProject,
@@ -28,6 +33,9 @@ const SORT_OPTIONS = [
 ];
 
 const PAGE_SIZE = 12;
+
+/** Not `hs-dropdown` — global Preline autoInit() binds to that and can swallow menu clicks. */
+const PROJECT_CARD_DROPDOWN_MENU_CLASS = "project-card-dropdown-panel";
 
 function priorityBadgeClass(priority: string): string {
   switch (priority) {
@@ -288,9 +296,17 @@ interface ProjectCardProps {
   project: Project;
   onDelete: (id: string) => void;
   onView: (projectId: string) => void;
+  onAiTaskBreakdown?: (project: Project) => void;
+  onAiCandidateAssignment?: (project: Project) => void;
 }
 
-function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
+function ProjectCard({
+  project,
+  onDelete,
+  onView,
+  onAiTaskBreakdown,
+  onAiCandidateAssignment,
+}: ProjectCardProps) {
   const projectId = getProjectId(project);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const progress = getProjectProgress(project);
@@ -319,20 +335,24 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
     e.preventDefault();
     e.stopPropagation();
     if (!dropdownRef.current) return;
-    const menu = dropdownRef.current.querySelector(".hs-dropdown-menu") as HTMLElement;
+    const menu = dropdownRef.current.querySelector(
+      `.${PROJECT_CARD_DROPDOWN_MENU_CLASS}`
+    ) as HTMLElement;
     const button = dropdownRef.current.querySelector("button") as HTMLElement;
     if (!menu || !button) return;
 
     const isHidden = menu.classList.contains("hidden");
 
     // Close all other dropdowns
-    document.querySelectorAll(".hs-dropdown-menu").forEach((otherMenu) => {
+    document.querySelectorAll(`.${PROJECT_CARD_DROPDOWN_MENU_CLASS}`).forEach((otherMenu) => {
       if (otherMenu !== menu) {
         const otherMenuEl = otherMenu as HTMLElement;
         otherMenuEl.classList.add("hidden");
         otherMenuEl.style.cssText =
           "opacity: 0 !important; pointer-events: none !important; display: none !important;";
-        const otherButton = otherMenuEl.closest(".hs-dropdown")?.querySelector("button");
+        const otherButton = otherMenuEl
+          .closest("[data-project-card-dropdown]")
+          ?.querySelector("button");
         if (otherButton) {
           otherButton.setAttribute("aria-expanded", "false");
         }
@@ -360,7 +380,9 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
 
   const closeDropdown = () => {
     if (!dropdownRef.current) return;
-    const menu = dropdownRef.current.querySelector(".hs-dropdown-menu") as HTMLElement;
+    const menu = dropdownRef.current.querySelector(
+      `.${PROJECT_CARD_DROPDOWN_MENU_CLASS}`
+    ) as HTMLElement;
     const button = dropdownRef.current.querySelector("button") as HTMLElement;
     if (menu) {
       menu.classList.add("hidden");
@@ -379,7 +401,9 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
       ) {
-        const menu = dropdownRef.current.querySelector(".hs-dropdown-menu") as HTMLElement;
+        const menu = dropdownRef.current.querySelector(
+          `.${PROJECT_CARD_DROPDOWN_MENU_CLASS}`
+        ) as HTMLElement;
         const button = dropdownRef.current.querySelector("button") as HTMLElement;
         if (menu) {
           menu.classList.add("hidden");
@@ -421,7 +445,7 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
               tasks completed
             </span>
           </div>
-          <div className="hs-dropdown ti-dropdown" ref={dropdownRef}>
+          <div className="ti-dropdown relative" ref={dropdownRef} data-project-card-dropdown>
             <button
               type="button"
               id={`dropdown-menu-${projectId || "project"}`}
@@ -432,9 +456,37 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
               <i className="fe fe-more-vertical" />
             </button>
             <ul
-              className="hs-dropdown-menu ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg"
+              className={`ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg ${PROJECT_CARD_DROPDOWN_MENU_CLASS}`}
               aria-labelledby={`dropdown-menu-${projectId || "project"}`}
             >
+              {onAiTaskBreakdown ? (
+                <li>
+                  <button
+                    type="button"
+                    className="ti-dropdown-item w-full text-left"
+                    onClick={() => {
+                      closeDropdown();
+                      onAiTaskBreakdown(project);
+                    }}
+                  >
+                    <i className="ri-sparkling-line align-middle me-1 inline-flex" /> AI task breakdown
+                  </button>
+                </li>
+              ) : null}
+              {onAiCandidateAssignment ? (
+                <li>
+                  <button
+                    type="button"
+                    className="ti-dropdown-item w-full text-left"
+                    onClick={() => {
+                      closeDropdown();
+                      onAiCandidateAssignment(project);
+                    }}
+                  >
+                    <i className="ri-user-shared-line align-middle me-1 inline-flex" /> AI candidate assignment
+                  </button>
+                </li>
+              ) : null}
               <li>
                 <button
                   type="button"
@@ -546,6 +598,14 @@ function ProjectCard({ project, onDelete, onView }: ProjectCardProps) {
 }
 
 const Projectlist = () => {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const mineOnly =
+    searchParams.get("mine") === "1" ||
+    searchParams.get("mine") === "true" ||
+    searchParams.get("mine") === "yes";
+  const showPmAi = isPmAssistantUiEnabled();
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState("");
@@ -559,6 +619,24 @@ const Projectlist = () => {
   const [detailError, setDetailError] = useState<string | null>(null);
   const [selectedProjectDetail, setSelectedProjectDetail] = useState<Project | null>(null);
   const [membersByTeamId, setMembersByTeamId] = useState<Record<string, TeamMember[]>>({});
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiProject, setAiProject] = useState<Project | null>(null);
+
+  const handleAiCandidateAssignment = useCallback(
+    async (p: Project) => {
+      const id = getProjectId(p);
+      if (!id) {
+        await Swal.fire({
+          icon: "warning",
+          title: "AI candidate assignment",
+          text: "Could not read this project’s id from the list. Refresh the page or open the project from Edit and try again.",
+        });
+        return;
+      }
+      await runAssignmentGenerationWithUi(id, router);
+    },
+    [router]
+  );
 
   const fetchProjects = useCallback(
     async (params?: Partial<ProjectsListParams>) => {
@@ -569,6 +647,7 @@ const Projectlist = () => {
           sortBy: sortBy || undefined,
           page: params?.page ?? page,
           limit: PAGE_SIZE,
+          ...(mineOnly ? { mine: true } : {}),
           ...params,
         });
         setProjects(result.results ?? []);
@@ -583,12 +662,18 @@ const Projectlist = () => {
         setLoading(false);
       }
     },
-    [searchQuery, sortBy, page]
+    [searchQuery, sortBy, page, mineOnly]
   );
 
   useEffect(() => {
     fetchProjects({ page });
-  }, [searchQuery, sortBy, page]);
+  }, [fetchProjects, page]);
+
+  usePmRefetchOnFocus(
+    useCallback(() => {
+      fetchProjects({ page });
+    }, [fetchProjects, page])
+  );
 
   const handleSearch = () => {
     setSearchQuery(searchInput.trim());
@@ -663,11 +748,11 @@ const Projectlist = () => {
 
   return (
     <Fragment>
-      <Seo title="Project List" />
+      <Seo title={mineOnly ? "My projects" : "Project List"} />
       <Pageheader
-        currentpage="Project List"
+        currentpage={mineOnly ? "My projects" : "Project List"}
         activepage="Projects"
-        mainpage="Project List"
+        mainpage={mineOnly ? "My projects" : "Project List"}
       />
       <div className="grid grid-cols-12 gap-6">
         <div className="xl:col-span-12 col-span-12">
@@ -731,6 +816,15 @@ const Projectlist = () => {
               project={project}
               onDelete={handleDelete}
               onView={handleView}
+              onAiTaskBreakdown={
+                showPmAi
+                  ? (p) => {
+                      setAiProject(p);
+                      setAiModalOpen(true);
+                    }
+                  : undefined
+              }
+              onAiCandidateAssignment={showPmAi ? handleAiCandidateAssignment : undefined}
             />
           ))}
         </div>
@@ -752,6 +846,19 @@ const Projectlist = () => {
         membersByTeamId={membersByTeamId}
         onClose={closeDetailModal}
       />
+
+      {showPmAi && aiProject && (
+        <AiTaskBreakdownModal
+          open={aiModalOpen}
+          projectId={getProjectId(aiProject)}
+          projectName={aiProject.name}
+          onClose={() => {
+            setAiModalOpen(false);
+            setAiProject(null);
+          }}
+          onApplied={() => fetchProjects({ page })}
+        />
+      )}
 
       {totalPages > 1 && (
         <nav aria-label="Page navigation" className="mt-4">

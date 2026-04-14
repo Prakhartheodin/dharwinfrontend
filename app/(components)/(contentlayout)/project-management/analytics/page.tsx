@@ -3,6 +3,7 @@
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useMemo, useCallback } from "react";
+import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { listProjects, type Project, type ProjectStatus } from "@/shared/lib/api/projects";
@@ -103,6 +104,8 @@ const AnalyticsPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  usePmRefetchOnFocus(fetchData);
 
   const kpis = useMemo(() => {
     const totalProjects = projects.length;

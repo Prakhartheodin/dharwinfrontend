@@ -633,7 +633,7 @@ export default function AttendanceTracking() {
   /* Calendar */
   const DAY_NAME_MAP = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> => {
+  const getMyAttendanceCalendarData = useCallback((): Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; durationLabel: string; holidayName: string }> => {
     const year = myCalendarYear; const month = myCalendarMonth;
     const firstDay = new Date(year, month, 1); const startDayOfWeek = firstDay.getDay();
     const lastDay = new Date(year, month + 1, 0); const daysInMonth = lastDay.getDate();
@@ -651,8 +651,8 @@ export default function AttendanceTracking() {
       else if (hasOut && countsTowardWorkedMs(recStatus)) { byDate[dateKey].present = true; byDate[dateKey].totalMs += ms; }
       else { byDate[dateKey].incomplete = true; }
     });
-    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; totalHours: number; holidayName: string }> = [];
-    for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, weekOff: false, totalHours: 0, holidayName: "" });
+    const cells: Array<{ day: number; date: Date; present: boolean; incomplete: boolean; holiday: boolean; leave: boolean; leaveType: string; absent: boolean; weekOff: boolean; durationLabel: string; holidayName: string }> = [];
+    for (let i = 0; i < startDayOfWeek; i++) cells.push({ day: 0, date: new Date(year, month, -startDayOfWeek + 1 + i), present: false, incomplete: false, holiday: false, leave: false, leaveType: "", absent: false, weekOff: false, durationLabel: "", holidayName: "" });
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     for (let day = 1; day <= daysInMonth; day++) {
@@ -675,7 +675,7 @@ export default function AttendanceTracking() {
         !info.incomplete;
       const cellAbsent = info.absent || inferredAbsent;
       const displayMs = info.holiday || info.leave ? 0 : capDayTotalMs(info.totalMs);
-      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: cellAbsent, weekOff: isWeekOff, totalHours: Math.round((displayMs / 3600000) * 100) / 100, holidayName: info.holidayName });
+      cells.push({ day, date, present: info.present, incomplete: info.incomplete && !info.present, holiday: info.holiday, leave: info.leave, leaveType: info.leaveType, absent: cellAbsent, weekOff: isWeekOff, durationLabel: displayMs > 0 ? formatDuration(displayMs) : "", holidayName: info.holidayName });
     }
     return cells;
   }, [attendanceList, myCalendarYear, myCalendarMonth, myWeekOff]);
@@ -1142,8 +1142,8 @@ export default function AttendanceTracking() {
                                     )}
                                     {cell.absent && <span className="text-[0.65rem] text-danger font-medium">Absent</span>}
                                     {cell.weekOff && <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 font-medium">Week Off</span>}
-                                    {!cell.weekOff && cell.present && cell.totalHours > 0 && (
-                                      <span className="text-[0.65rem] text-success font-semibold mt-auto">{cell.totalHours}h</span>
+                                    {!cell.weekOff && cell.present && cell.durationLabel && (
+                                      <span className="text-[0.65rem] text-success font-semibold mt-auto">{cell.durationLabel}</span>
                                     )}
                                     {cell.incomplete && <span className="text-[0.65rem] text-warning font-medium">Active</span>}
                                   </div>

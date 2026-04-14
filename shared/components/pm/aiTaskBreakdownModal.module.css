@@ -1,0 +1,1020 @@
+/* AI task breakdown modal — motion + skeleton (prefers-reduced-motion safe) */
+
+@keyframes overlayFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes panelRise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+/** Indeterminate progress — GPU translateX only */
+@keyframes progressSweep {
+  0% {
+    transform: translate3d(-120%, 0, 0);
+  }
+  100% {
+    transform: translate3d(320%, 0, 0);
+  }
+}
+
+/** Conic orb — GPU rotate */
+@keyframes orbRotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/** Inner skeleton lines */
+@keyframes lineShimmer {
+  0% {
+    transform: translate3d(-100%, 0, 0);
+  }
+  100% {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@keyframes phasePulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--ai-gen-violet), 0.35);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(var(--ai-gen-violet), 0.12);
+  }
+}
+
+@keyframes btnRingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rowReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.overlay {
+  animation: overlayFadeIn 0.28s ease-out both;
+  backdrop-filter: blur(4px);
+}
+
+.panel {
+  animation: panelRise 0.42s cubic-bezier(0.34, 1.35, 0.64, 1) both;
+  box-shadow:
+    0 4px 6px -1px rgba(15, 23, 42, 0.06),
+    0 24px 48px -12px rgba(15, 23, 42, 0.14);
+}
+
+/** One accent family (indigo) — avoids violet + teal + mint “color chaos” in the same overlay. */
+.headerAccent {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.07) 0%, rgba(99, 102, 241, 0.05) 100%);
+}
+
+.badgeGpt {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(79, 70, 229, 0.28);
+  color: rgb(67, 56, 202);
+  background: rgba(79, 70, 229, 0.09);
+}
+
+:global(.dark) .badgeGpt {
+  color: rgb(165, 180, 252);
+  border-color: rgba(129, 140, 248, 0.4);
+  background: rgba(79, 70, 229, 0.18);
+}
+
+/** Scoped tokens: single indigo ramp (loading rail / orb / progress). */
+.aiGenRoot {
+  --ai-gen-violet: 79, 70, 229;
+  --ai-gen-indigo: 99, 102, 241;
+  --ai-gen-blue: 129, 140, 248;
+  contain: layout;
+}
+
+.skeletonBlock {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(140, 144, 151, 0.22);
+  overflow: hidden;
+  position: relative;
+  background: rgba(140, 144, 151, 0.06);
+}
+
+.skeletonBlock > * {
+  position: relative;
+  z-index: 1;
+}
+
+.skeletonBlock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(var(--ai-gen-violet), 0.07) 38%,
+    rgba(var(--ai-gen-blue), 0.1) 50%,
+    rgba(var(--ai-gen-violet), 0.07) 62%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: shimmer 1.45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+}
+
+:global(.dark) .skeletonBlock {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+:global(.dark) .skeletonBlock::before {
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    rgba(129, 140, 248, 0.1) 40%,
+    rgba(99, 102, 241, 0.12) 50%,
+    rgba(129, 140, 248, 0.1) 60%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+}
+
+.skeletonBlock.skeletonStagger0::before {
+  animation-delay: 0s;
+}
+.skeletonBlock.skeletonStagger1::before {
+  animation-delay: 0.14s;
+}
+.skeletonBlock.skeletonStagger2::before {
+  animation-delay: 0.28s;
+}
+
+.skeletonLine {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  background: rgba(15, 23, 42, 0.06);
+}
+
+:global(.dark) .skeletonLine {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.skeletonLine::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    transparent
+  );
+  transform: translate3d(-100%, 0, 0);
+  animation: lineShimmer 1.1s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+:global(.dark) .skeletonLine::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+}
+
+.skeletonLine:nth-child(1)::after {
+  animation-delay: 0s;
+}
+.skeletonLine:nth-child(2)::after {
+  animation-delay: 0.08s;
+}
+.skeletonLine:nth-child(3)::after {
+  animation-delay: 0.16s;
+}
+.skeletonLine:nth-child(4)::after {
+  animation-delay: 0.24s;
+}
+
+.progressTrack {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(var(--ai-gen-violet), 0.12);
+  overflow: hidden;
+  position: relative;
+}
+
+:global(.dark) .progressTrack {
+  background: rgba(129, 140, 248, 0.18);
+}
+
+.progressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: min(42%, 9rem);
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--ai-gen-violet), 0.15),
+    rgba(var(--ai-gen-violet), 0.95),
+    rgba(var(--ai-gen-indigo), 0.9),
+    rgba(var(--ai-gen-blue), 0.85)
+  );
+  animation: progressSweep 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  will-change: transform;
+}
+
+.phaseTrack {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0.15rem 0.5rem;
+  position: relative;
+}
+
+.phaseTrack::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 2px;
+  margin-top: -5px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--ai-gen-violet), 0.25),
+    rgba(var(--ai-gen-blue), 0.2),
+    transparent
+  );
+  pointer-events: none;
+}
+
+.phaseNode {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.phaseDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 9999px;
+  background: rgba(var(--ai-gen-violet), 0.18);
+  border: 2px solid rgba(var(--ai-gen-violet), 0.28);
+  transform: scale(0.92);
+  transition:
+    transform 0.4s cubic-bezier(0.34, 1.35, 0.64, 1),
+    background 0.35s ease,
+    border-color 0.35s ease,
+    box-shadow 0.35s ease;
+}
+
+.phaseNodeActive .phaseDot {
+  transform: scale(1.12);
+  background: rgb(var(--ai-gen-violet));
+  border-color: rgba(129, 140, 248, 0.95);
+  animation: phasePulse 1.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.phaseLabel {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(148, 163, 184);
+  text-align: center;
+  line-height: 1.15;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phaseNodeActive .phaseLabel {
+  color: rgb(var(--ai-gen-violet));
+}
+
+:global(.dark) .phaseLabel {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+:global(.dark) .phaseNodeActive .phaseLabel {
+  color: rgb(165, 180, 252);
+}
+
+.loadingStrip {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(79, 70, 229, 0.22);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.06) 0%, rgba(99, 102, 241, 0.05) 100%);
+}
+
+:global(.dark) .loadingStrip {
+  border-color: rgba(129, 140, 248, 0.28);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.16) 0%, rgba(99, 102, 241, 0.1) 100%);
+}
+
+.aiOrb {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: conic-gradient(
+    from 0deg,
+    rgba(var(--ai-gen-violet), 0.35),
+    rgb(var(--ai-gen-violet)),
+    rgb(var(--ai-gen-indigo)),
+    rgb(var(--ai-gen-blue)),
+    rgba(var(--ai-gen-violet), 0.35)
+  );
+  animation: orbRotate 1.35s linear infinite;
+  will-change: transform;
+}
+
+.aiOrbInner {
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: rgb(255 253 250);
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.12);
+}
+
+:global(.dark) .aiOrbInner {
+  background: rgb(15 23 42);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.18);
+}
+
+.liveStatus {
+  font-size: 0.8125rem;
+  margin: 0;
+  color: rgb(108, 112, 119);
+  min-height: 1.25rem;
+  transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:global(.dark) .liveStatus {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.emptyCard {
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 0.65rem;
+  padding: 1.35rem 1.25rem;
+  text-align: center;
+  background: rgba(79, 70, 229, 0.03);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.emptyCard:hover {
+  border-color: rgba(79, 70, 229, 0.32);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+:global(.dark) .emptyCard {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.taskListShell {
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background:
+    radial-gradient(900px 240px at 12% -20%, rgba(79, 70, 229, 0.05), transparent 55%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.97) 0%, rgba(241, 245, 249, 0.65) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.75),
+    0 1px 3px rgba(15, 23, 42, 0.04);
+}
+
+:global(.dark) .taskListShell {
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(700px 200px at 10% -30%, rgba(99, 102, 241, 0.12), transparent 50%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.92) 0%, rgba(15, 23, 42, 0.72) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+/** Preview row — indigo rail matches modal accent (no second hue family). */
+.taskCard {
+  position: relative;
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.85rem 0.9rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background:
+    radial-gradient(ellipse 140% 90% at 0% 0%, rgba(79, 70, 229, 0.06), transparent 52%),
+    linear-gradient(165deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.92) 100%);
+  box-shadow:
+    0 2px 6px rgba(15, 23, 42, 0.035),
+    0 1px 2px rgba(15, 23, 42, 0.025);
+  transition:
+    border-color 0.22s ease,
+    box-shadow 0.22s ease,
+    transform 0.28s cubic-bezier(0.34, 1.35, 0.64, 1);
+  animation: rowReveal 0.42s cubic-bezier(0.34, 1.35, 0.64, 1) both;
+}
+
+.taskCard::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: linear-gradient(180deg, rgb(99, 102, 241) 0%, rgb(79, 70, 229) 50%, rgb(67, 56, 202) 100%);
+  box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.15);
+}
+
+:global(.dark) .taskCard {
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(ellipse 120% 80% at 0% 0%, rgba(99, 102, 241, 0.12), transparent 50%),
+    linear-gradient(165deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.88) 100%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.2);
+}
+
+:global(.dark) .taskCard::before {
+  background: linear-gradient(180deg, rgb(129, 140, 248) 0%, rgb(99, 102, 241) 50%, rgb(79, 70, 229) 100%);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.2);
+}
+
+.taskCard:hover {
+  border-color: rgba(79, 70, 229, 0.28);
+  box-shadow:
+    0 10px 26px rgba(15, 23, 42, 0.06),
+    0 3px 10px rgba(79, 70, 229, 0.1);
+  transform: translateY(-2px);
+}
+
+.taskCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.taskCardLead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.includeToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(100, 116, 139);
+}
+
+.includeToggle input {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  accent-color: rgb(79, 70, 229);
+  cursor: pointer;
+}
+
+.taskIndex {
+  font-family: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgb(67, 56, 202);
+  background: rgba(79, 70, 229, 0.1);
+  border: 1px solid rgba(79, 70, 229, 0.22);
+  padding: 0.12rem 0.4rem;
+  border-radius: 0.3rem;
+  line-height: 1.2;
+}
+
+:global(.dark) .includeToggle {
+  color: rgba(226, 232, 240, 0.65);
+}
+
+:global(.dark) .taskIndex {
+  color: rgb(165, 180, 252);
+  background: rgba(79, 70, 229, 0.2);
+  border-color: rgba(129, 140, 248, 0.35);
+}
+
+.taskRemoveBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  background: rgba(148, 163, 184, 0.08);
+  color: rgb(100, 116, 139);
+  transition:
+    background 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    transform 0.15s cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+
+.taskRemoveBtn:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.1);
+  color: rgb(190, 18, 60);
+  border-color: rgba(244, 63, 94, 0.22);
+}
+
+.taskRemoveBtn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+:global(.dark) .taskRemoveBtn {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(226, 232, 240, 0.55);
+}
+
+:global(.dark) .taskRemoveBtn:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.15);
+  color: rgb(251, 113, 133);
+}
+
+.taskCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+.taskCardBodyMuted {
+  opacity: 0.52;
+  filter: saturate(0.75);
+}
+
+.fieldLabel {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: rgb(100, 116, 139);
+  margin-bottom: 0.3rem;
+}
+
+:global(.dark) .fieldLabel {
+  color: rgba(148, 163, 184, 0.85);
+}
+
+.taskTitleInput {
+  font-size: 0.9375rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  border-radius: 0.5rem !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+
+:global(.dark) .taskTitleInput {
+  background: rgba(15, 23, 42, 0.65) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: rgb(248, 250, 252) !important;
+}
+
+.taskDescWell {
+  border-radius: 0.55rem;
+  padding: 0.45rem 0.55rem 0.5rem;
+  background: rgba(15, 23, 42, 0.025);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+:global(.dark) .taskDescWell {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.taskTextarea {
+  min-height: 4.5rem !important;
+  border-radius: 0.45rem !important;
+  border-color: rgba(148, 163, 184, 0.28) !important;
+  font-size: 0.8125rem !important;
+  line-height: 1.45 !important;
+  resize: vertical;
+  background: rgba(255, 255, 255, 0.75) !important;
+}
+
+:global(.dark) .taskTextarea {
+  background: rgba(15, 23, 42, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.taskMetaGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+@media (min-width: 640px) {
+  .taskMetaGrid {
+    display: grid;
+    grid-template-columns: minmax(7.5rem, 0.9fr) minmax(0, 1.3fr) minmax(0, 1.3fr);
+    gap: 0.55rem 0.65rem;
+    align-items: end;
+  }
+
+  .metaOrder {
+    grid-column: 1 / -1;
+    max-width: 7.5rem;
+  }
+}
+
+.taskSelect {
+  border-radius: 0.45rem !important;
+  font-size: 0.8125rem !important;
+  font-weight: 500 !important;
+  border-color: rgba(148, 163, 184, 0.32) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+}
+
+:global(.dark) .taskSelect {
+  background: rgba(15, 23, 42, 0.55) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgb(226, 232, 240) !important;
+}
+
+.taskMetaInput {
+  border-radius: 0.45rem !important;
+  font-size: 0.8125rem !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+}
+
+:global(.dark) .taskMetaInput {
+  background: rgba(15, 23, 42, 0.5) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* —— Token chip fields (tags vs skills) —— */
+.chipField {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+  min-height: 2.4rem;
+  padding: 0.38rem 0.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(255, 255, 255, 0.92);
+  cursor: text;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.chipFieldTags:focus-within {
+  border-color: rgba(71, 85, 105, 0.45);
+  box-shadow: 0 0 0 2px rgba(71, 85, 105, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.chipFieldSkills:focus-within {
+  border-color: rgba(79, 70, 229, 0.38);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+:global(.dark) .chipField {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:global(.dark) .chipFieldTags:focus-within {
+  border-color: rgba(148, 163, 184, 0.35);
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.12);
+}
+
+:global(.dark) .chipFieldSkills:focus-within {
+  border-color: rgba(129, 140, 248, 0.45);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+}
+
+.chipFieldDisabled {
+  opacity: 0.55;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.chipTag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 0.05rem;
+  padding: 0.2rem 0.2rem 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgb(51, 65, 85);
+  background: linear-gradient(160deg, rgba(248, 250, 252, 0.98) 0%, rgba(226, 232, 240, 0.88) 100%);
+  border: 1px solid rgba(100, 116, 139, 0.32);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.chipSkill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: 0.05rem;
+  padding: 0.2rem 0.2rem 0.2rem 0.55rem;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: rgb(67, 56, 202);
+  background: linear-gradient(165deg, rgba(238, 242, 255, 0.95) 0%, rgba(224, 231, 255, 0.75) 100%);
+  border: 1px solid rgba(129, 140, 248, 0.45);
+  box-shadow: 0 1px 2px rgba(79, 70, 229, 0.06);
+}
+
+:global(.dark) .chipTag {
+  color: rgb(226, 232, 240);
+  background: linear-gradient(160deg, rgba(51, 65, 85, 0.9) 0%, rgba(30, 41, 59, 0.85) 100%);
+  border-color: rgba(148, 163, 184, 0.28);
+}
+
+:global(.dark) .chipSkill {
+  color: rgb(199, 210, 254);
+  background: linear-gradient(165deg, rgba(49, 46, 129, 0.55) 0%, rgba(67, 56, 202, 0.28) 100%);
+  border-color: rgba(129, 140, 248, 0.35);
+}
+
+.chipText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(12.5rem, 42vw);
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin-left: 0.05rem;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: rgb(100, 116, 139);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    transform 0.12s ease;
+}
+
+.chipRemove:hover:not(:disabled) {
+  background: rgba(244, 63, 94, 0.12);
+  color: rgb(190, 18, 60);
+}
+
+.chipRemove:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.chipSkill .chipRemove {
+  color: rgb(99, 102, 241);
+}
+
+.chipSkill .chipRemove:hover:not(:disabled) {
+  background: rgba(79, 70, 229, 0.12);
+  color: rgb(67, 56, 202);
+}
+
+:global(.dark) .chipRemove {
+  color: rgba(226, 232, 240, 0.55);
+}
+
+.chipInput {
+  flex: 1 1 4.5rem;
+  min-width: 4rem;
+  max-width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  padding: 0.22rem 0.2rem;
+  color: rgb(30, 41, 59);
+}
+
+.chipInput::placeholder {
+  color: rgb(148, 163, 184);
+}
+
+:global(.dark) .chipInput {
+  color: rgb(248, 250, 252);
+}
+
+:global(.dark) .chipInput::placeholder {
+  color: rgba(148, 163, 184, 0.65);
+}
+
+.chipLimitNote {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgb(148, 163, 184);
+  padding: 0.15rem 0.25rem;
+}
+
+.orderPill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.orderInput {
+  font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace !important;
+  font-weight: 600 !important;
+  text-align: center;
+  border-radius: 0.45rem !important;
+  border-color: rgba(79, 70, 229, 0.28) !important;
+  background: linear-gradient(180deg, rgba(238, 242, 255, 0.9), rgba(255, 255, 255, 0.92)) !important;
+}
+
+:global(.dark) .orderInput {
+  background: linear-gradient(180deg, rgba(67, 56, 202, 0.35), rgba(15, 23, 42, 0.65)) !important;
+  border-color: rgba(129, 140, 248, 0.35) !important;
+  color: rgb(224, 231, 255) !important;
+}
+
+.btnPress {
+  transition: transform 0.15s cubic-bezier(0.34, 1.35, 0.64, 1);
+}
+
+.btnPress:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/** Replace generic icon spinners on primary / outline buttons */
+.btnSpinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.btnSpinnerRing {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: rgba(255, 255, 255, 0.95);
+  animation: btnRingSpin 0.65s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.btnSpinnerRingOutline {
+  border-color: rgba(79, 70, 229, 0.22);
+  border-top-color: rgb(79, 70, 229);
+}
+
+/**
+ * Modal actions: align primary/outline with indigo; keep ONE semantic green for confirm only.
+ */
+.actionBar :global(.ti-btn-primary) {
+  background: linear-gradient(180deg, rgb(79, 70, 229), rgb(67, 56, 202)) !important;
+  border-color: rgb(55, 48, 163) !important;
+  color: #fff !important;
+}
+
+.actionBar :global(.ti-btn-primary):hover:not(:disabled) {
+  background: linear-gradient(180deg, rgb(99, 102, 241), rgb(79, 70, 229)) !important;
+  border-color: rgb(67, 56, 202) !important;
+}
+
+.actionBar :global(.ti-btn-outline-primary) {
+  border-color: rgba(79, 70, 229, 0.45) !important;
+  color: rgb(67, 56, 202) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+
+.actionBar :global(.ti-btn-outline-primary):hover:not(:disabled) {
+  background: rgba(238, 242, 255, 0.95) !important;
+  border-color: rgb(79, 70, 229) !important;
+  color: rgb(55, 48, 163) !important;
+}
+
+:global(.dark) .actionBar :global(.ti-btn-outline-primary) {
+  background: rgba(30, 27, 75, 0.4) !important;
+  color: rgb(199, 210, 254) !important;
+}
+
+.actionBar :global(.ti-btn-success) {
+  background: linear-gradient(180deg, #059669, #047857) !important;
+  border-color: #065f46 !important;
+  color: #fff !important;
+}
+
+.actionBar :global(.ti-btn-success):hover:not(:disabled) {
+  background: linear-gradient(180deg, #10b981, #059669) !important;
+  border-color: #047857 !important;
+}
+
+:global(.dark) .actionBar :global(.ti-btn-primary) {
+  background: linear-gradient(180deg, rgb(99, 102, 241), rgb(79, 70, 229)) !important;
+  border-color: rgb(67, 56, 202) !important;
+}
+
+:global(.dark) .actionBar :global(.ti-btn-primary):hover:not(:disabled) {
+  background: linear-gradient(180deg, rgb(129, 140, 248), rgb(99, 102, 241)) !important;
+}
+
+:global(.dark) .actionBar :global(.ti-btn-outline-primary):hover:not(:disabled) {
+  background: rgba(67, 56, 202, 0.28) !important;
+  border-color: rgb(165, 180, 252) !important;
+  color: rgb(238, 242, 255) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .overlay,
+  .panel,
+  .skeletonBlock::before,
+  .skeletonLine::after,
+  .progressFill,
+  .aiOrb,
+  .phaseNodeActive .phaseDot,
+  .btnSpinnerRing,
+  .taskCard {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .taskCard:hover {
+    transform: none;
+  }
+
+  .skeletonBlock::before {
+    opacity: 0.5;
+  }
+
+  .btnPress:active:not(:disabled) {
+    transform: none;
+  }
+}

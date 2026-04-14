@@ -5,6 +5,7 @@
 
 export type ProjectFormFieldType =
   | "text"
+  | "textarea"
   | "select"
   | "multiselect"
   | "date"
@@ -23,11 +24,17 @@ export interface ProjectFormFieldConfig {
   type: ProjectFormFieldType;
   required?: boolean;
   placeholder?: string;
+  /** Shown under the label (muted) — clarifies free-text vs user links, etc. */
+  helpText?: string;
   colSpan?: 4 | 6 | 12; // grid cols: 4 = xl:col-span-4, etc.
   /** For select/multiselect: option list key or inline options */
   options?: SelectOption[];
   /** Max items for tags (creatable) or file */
   maxItems?: number;
+  /** Rows for textarea */
+  rows?: number;
+  /** When true, field is part of optional “intake” block toggled in the form */
+  intake?: boolean;
 }
 
 export const PROJECT_STATUS_OPTIONS: SelectOption[] = [
@@ -55,22 +62,54 @@ export const PROJECT_FORM_FIELDS: ProjectFormFieldConfig[] = [
     name: "projectManager",
     label: "Project Manager",
     type: "text",
-    placeholder: "Project Manager Name",
+    placeholder: "e.g. Jane Doe",
+    helpText: "Free-text label on the project card — not linked to a user account.",
     colSpan: 4,
   },
   {
     name: "clientStakeholder",
     label: "Client / Stakeholder",
     type: "text",
-    placeholder: "Enter Client Name",
+    placeholder: "Organization or sponsor name",
+    helpText: "Free-text for who owns outcomes — not a user picker.",
     colSpan: 4,
   },
   {
     name: "description",
-    label: "Project Description",
+    label: "Scope & narrative",
     type: "richtext",
-    placeholder: "Enter project description...",
+    placeholder: "Goals, scope, links, constraints worth highlighting in prose…",
+    helpText:
+      "Rich text is stored on the project. Optional guided questions (above) append structured answers for search and PM assistant.",
     colSpan: 12,
+  },
+  {
+    name: "intakeSuccess",
+    label: "What does “done” look like?",
+    type: "textarea",
+    placeholder: "e.g. MVP live in UAT, sign-off from sponsor, training delivered…",
+    helpText: "Optional — appended to the stored description for search and AI context.",
+    colSpan: 12,
+    rows: 3,
+    intake: true,
+  },
+  {
+    name: "intakeConstraints",
+    label: "Constraints, risks, or dependencies",
+    type: "textarea",
+    placeholder: "Budget, compliance, vendor lead times, critical path…",
+    colSpan: 12,
+    rows: 3,
+    intake: true,
+  },
+  {
+    name: "intakeMilestones",
+    label: "Key milestones or phases",
+    type: "textarea",
+    placeholder: "e.g. Discovery → Build → UAT → Go-live",
+    colSpan: 12,
+    rows: 3,
+    intake: true,
   },
   {
     name: "startDate",
@@ -101,24 +140,24 @@ export const PROJECT_FORM_FIELDS: ProjectFormFieldConfig[] = [
     colSpan: 6,
   },
   {
-    name: "assignedTo",
-    label: "Assigned To",
+    name: "assignedTeams",
+    label: "Project team(s)",
     type: "multiselect",
     colSpan: 6,
-    // options passed from parent (e.g. users list)
+    helpText: "Squads from Team directory — shown on the project and used for AI roster flows.",
+  },
+  {
+    name: "assignedUsers",
+    label: "Assigned people",
+    type: "multiselect",
+    colSpan: 6,
+    helpText: "Users who appear as project assignees (separate from teams).",
   },
   {
     name: "tags",
     label: "Tags",
     type: "tags",
     placeholder: "Type something and press enter...",
-    colSpan: 6,
-  },
-  {
-    name: "attachments",
-    label: "Attachments",
-    type: "file",
     colSpan: 12,
-    maxItems: 3,
   },
 ];

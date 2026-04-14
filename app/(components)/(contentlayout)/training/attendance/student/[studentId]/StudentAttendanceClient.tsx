@@ -619,7 +619,7 @@ export function StudentAttendanceClient() {
     date: Date;
     present: boolean;
     incomplete: boolean;
-    totalHours: number;
+    durationLabel: string;
     status?: string;
     holidayName?: string;
   };
@@ -681,7 +681,7 @@ export function StudentAttendanceClient() {
         date: new Date(year, month, -startDayOfWeek + 1 + i),
         present: false,
         incomplete: false,
-        totalHours: 0,
+        durationLabel: "",
       });
     }
     for (let day = 1; day <= daysInMonth; day++) {
@@ -697,13 +697,12 @@ export function StudentAttendanceClient() {
       const resolvedStatus = info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : info.status;
       const displayMs =
         info.hasHolidayRecord || info.hasLeaveRecord ? 0 : capDayTotalMs(info.totalMs);
-      const totalHours = formatDurationHours(displayMs);
       cells.push({
         day,
         date,
         present: info.present,
         incomplete: info.incomplete && !info.present,
-        totalHours,
+        durationLabel: displayMs > 0 ? formatDuration(displayMs) : "",
         status: resolvedStatus,
         holidayName: info.holidayName,
       });
@@ -1130,7 +1129,7 @@ export function StudentAttendanceClient() {
                               {!isWeekOff && !isHoliday && !isLeave && cell.present && (
                                 <>
                                   <span className="text-[0.7rem] text-success mt-0.5">Present</span>
-                                  <span className="text-[0.7rem] text-success">{cell.totalHours.toFixed(1)}h</span>
+                                  <span className="text-[0.7rem] text-success">{cell.durationLabel}</span>
                                 </>
                               )}
                               {!isWeekOff && !isHoliday && !isLeave && cell.incomplete && (

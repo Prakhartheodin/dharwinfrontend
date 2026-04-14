@@ -911,7 +911,7 @@ export default function StudentAttendancePage() {
     date: Date;
     present: boolean;
     incomplete: boolean;
-    totalHours: number;
+    durationLabel: string;
     status?: string;
     holidayName?: string;
   };
@@ -980,7 +980,7 @@ export default function StudentAttendancePage() {
         date: new Date(year, month, -startDayOfWeek + 1 + i),
         present: false,
         incomplete: false,
-        totalHours: 0,
+        durationLabel: "",
       });
     }
     for (let day = 1; day <= daysInMonth; day++) {
@@ -1004,7 +1004,7 @@ export default function StudentAttendancePage() {
           date,
           present: false,
           incomplete: false,
-          totalHours: 0,
+          durationLabel: "",
           status: info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : undefined,
           holidayName: info.holidayName,
         });
@@ -1014,13 +1014,12 @@ export default function StudentAttendancePage() {
       const resolvedStatus = info.hasHolidayRecord ? "Holiday" : info.hasLeaveRecord ? "Leave" : info.status;
       const displayMs =
         info.hasHolidayRecord || info.hasLeaveRecord ? 0 : capDayTotalMs(info.totalMs);
-      const totalHours = formatDurationHours(displayMs);
       cells.push({
         day,
         date,
         present: info.present,
         incomplete: info.incomplete && !info.present,
-        totalHours,
+        durationLabel: displayMs > 0 ? formatDuration(displayMs) : "",
         status: resolvedStatus,
         holidayName: info.holidayName,
       });
@@ -1346,6 +1345,7 @@ export default function StudentAttendancePage() {
                           const isHolidayOrLeave = recStatus === "Holiday" || recStatus === "Leave";
                           const leaveType = getLeaveTypeFromRecord(r);
                           const leaveLabel = leaveType ? "Leave (" + leaveType.charAt(0).toUpperCase() + leaveType.slice(1) + ")" : "Leave";
+                          const displayDurationMs = sessionDurationMsForDisplay(r);
                           return (
                             <tr key={r.id} className={`border-b border-defaultborder/60 ${idx % 2 === 1 ? "bg-gray-50/50 dark:bg-white/[0.02]" : ""}`}>
                               <td className="py-3.5 pl-5 pr-5">{formatDate(r.date)}</td>
@@ -1367,7 +1367,7 @@ export default function StudentAttendancePage() {
                                 {isHolidayOrLeave
                                   ? "—"
                                   : r.punchOut
-                                    ? (r.duration != null ? formatDuration(r.duration) : "—")
+                                    ? (displayDurationMs > 0 ? formatDuration(displayDurationMs) : "—")
                                     : status?.isPunchedIn && status?.record?.id === r.id
                                       ? elapsedDisplay || "…"
                                       : "—"}
@@ -1538,7 +1538,7 @@ export default function StudentAttendancePage() {
                               {!beforeJoining && !afterResign && !inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.present && (
                                 <>
                                   <span className="text-[0.7rem] text-success mt-0.5">Present</span>
-                                  <span className="text-[0.7rem] text-success">{cell.totalHours.toFixed(1)}h</span>
+                                  <span className="text-[0.7rem] text-success">{cell.durationLabel}</span>
                                 </>
                               )}
                               {!beforeJoining && !afterResign && !inactiveEmployment && !isWeekOff && !isHoliday && !isLeave && cell.incomplete && (

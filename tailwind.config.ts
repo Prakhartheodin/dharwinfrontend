@@ -155,6 +155,9 @@ module.exports = {
       'external-jobs-shimmer': 'externalJobsShimmer 1.2s ease-in-out infinite',
       'external-jobs-orbit': 'externalJobsOrbit 2.75s linear infinite',
       'candidates-load-bar': 'candidatesLoadBar 1.15s ease-in-out infinite',
+      /** Create / edit project form — section reveal (opacity + translateY only) */
+      'pm-section-in': 'pmSectionIn 0.48s cubic-bezier(0.34, 1.56, 0.64, 1) both',
+      'pm-panel-in': 'pmPanelIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both',
     },
     keyframes: {
       particles: {
@@ -242,6 +245,14 @@ module.exports = {
         "0%": { transform: "translateX(-100%)", opacity: "0.85" },
         "55%": { opacity: "1" },
         "100%": { transform: "translateX(360%)", opacity: "0.85" },
+      },
+      pmSectionIn: {
+        "0%": { opacity: "0", transform: "translateY(10px)" },
+        "100%": { opacity: "1", transform: "translateY(0)" },
+      },
+      pmPanelIn: {
+        "0%": { opacity: "0", transform: "translateY(-6px) scale(0.99)" },
+        "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
       },
     },
   },

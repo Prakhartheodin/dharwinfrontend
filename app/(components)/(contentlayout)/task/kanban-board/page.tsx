@@ -25,6 +25,7 @@ import { listProjects } from "@/shared/lib/api/projects";
 import { listUsers } from "@/shared/lib/api/users";
 import { KanbanTaskCard } from "./KanbanTaskCard";
 import { TaskDetailModal } from "./TaskDetailModal";
+import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 const DatePicker = dynamic(() => import("react-datepicker"), { ssr: false });
@@ -123,6 +124,8 @@ const Kanbanboard = () => {
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
+
+  usePmRefetchOnFocus(fetchTasks);
 
   const tasksByStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -366,7 +369,12 @@ const Kanbanboard = () => {
       if (taskId && newStatus) {
         updateTaskStatus(taskId, newStatus)
           .then(() => fetchTasks())
-          .catch(() => Swal.fire("Error", "Failed to update task status.", "error"));
+          .catch(() => {
+            Swal.fire("Error", "Failed to update task status.", "error");
+            fetchTasks();
+          });
+      } else {
+        fetchTasks();
       }
     });
     return () => {

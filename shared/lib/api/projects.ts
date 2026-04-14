@@ -43,6 +43,8 @@ export interface ProjectsListParams {
   search?: string;
   status?: ProjectStatus;
   priority?: ProjectPriority;
+  /** When true, list only projects created by the current user (including for admins). */
+  mine?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;

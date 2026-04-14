@@ -1,6 +1,7 @@
 "use client";
 
 import React, { Fragment, useState, useEffect, useCallback } from "react";
+import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
@@ -205,6 +206,12 @@ export default function MyTasksPage() {
   useEffect(() => {
     fetchTasks({ page, sortBy, status: statusFilter });
   }, [sortBy, page, statusFilter]);
+
+  const refetchVisible = useCallback(() => {
+    fetchTasks({ page, sortBy, status: statusFilter });
+  }, [fetchTasks, page, sortBy, statusFilter]);
+
+  usePmRefetchOnFocus(refetchVisible);
 
   const handleStatusChange = useCallback(
     async (taskId: string, status: TaskStatus) => {
