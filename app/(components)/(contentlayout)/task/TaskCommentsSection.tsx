@@ -65,59 +65,63 @@ export function TaskCommentsSection({
   };
 
   return (
-    <div className="border-t border-defaultborder pt-4 mt-4">
-      <div className="font-semibold mb-2 text-[0.875rem]">Comments</div>
-      {error && (
-        <div className="text-danger text-[0.8125rem] mb-2">{error}</div>
-      )}
+    <div className="mt-0">
+      <div className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted dark:text-white/45">
+        Comments
+      </div>
+      {error ? <div className="mb-2 text-[0.8125rem] text-danger">{error}</div> : null}
       {loading ? (
-        <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem] py-2">
-          Loading comments...
+        <div className="space-y-2 py-1" role="status" aria-label="Loading comments">
+          <div className="h-3 w-3/4 max-w-[12rem] rounded-md bg-defaultborder/45 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-3 w-full max-w-[18rem] rounded-md bg-defaultborder/35 motion-safe:animate-pulse motion-reduce:animate-none" />
         </div>
       ) : (
-        <div className="space-y-3 max-h-48 overflow-y-auto mb-3">
+        <div className="mb-2 max-h-40 space-y-2 overflow-y-auto pe-0.5">
           {comments.length === 0 ? (
-            <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
-              No comments yet.
+            <div className="rounded-lg border border-dashed border-defaultborder/60 bg-defaultbackground/40 px-2.5 py-2 text-[0.8125rem] leading-snug text-muted dark:border-white/10 dark:bg-white/[0.02] dark:text-white/50">
+              No comments yet — be the first to leave a note.
             </div>
           ) : (
             comments.map((c) => (
               <div
                 key={c._id ?? (c as TaskComment & { id?: string }).id ?? c.content}
-                className="text-[0.8125rem] p-2 rounded bg-bodybg/50 dark:bg-white/5"
+                className="rounded-lg border border-defaultborder/50 bg-defaultbackground/50 p-2 text-[0.8125rem] shadow-sm transition-shadow duration-200 hover:border-primary/15 hover:shadow-sm dark:border-white/10 dark:bg-white/[0.04]"
               >
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="font-medium">
+                <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="font-semibold text-defaulttextcolor">
                     {c.commentedBy?.name ?? c.commentedBy?.email ?? "Unknown"}
                   </span>
-                  <span className="text-[#8c9097] dark:text-white/50 text-[0.75rem]">
-                    {formatCommentDate(c.createdAt)}
-                  </span>
+                  <span className="text-[0.75rem] text-muted dark:text-white/45">{formatCommentDate(c.createdAt)}</span>
                 </div>
-                <p className="text-defaulttextcolor/90 whitespace-pre-wrap mb-0">
-                  {c.content}
-                </p>
+                <p className="mb-0 whitespace-pre-wrap text-defaulttextcolor/90">{c.content}</p>
               </div>
             ))
           )}
         </div>
       )}
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
         <input
           type="text"
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder="Add a comment..."
+          placeholder="Add a comment…"
           maxLength={2000}
-          className="form-control !py-2 !text-[0.8125rem] flex-1"
+          className="form-control min-h-[2.5rem] flex-1 !rounded-xl !py-2 !text-[0.8125rem] shadow-sm transition-[border-color,box-shadow] duration-200 focus:border-primary/40 dark:focus:border-primary/35"
           disabled={adding}
         />
         <button
           type="submit"
-          className="ti-btn ti-btn-primary !py-2 !px-3 !text-[0.8125rem]"
+          className="ti-btn ti-btn-primary flex min-h-[2.5rem] shrink-0 items-center justify-center !rounded-xl !px-5 !py-0 !text-[0.8125rem] font-semibold transition-transform duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100 sm:!min-w-[5.5rem]"
           disabled={adding || !content.trim()}
         >
-          {adding ? "..." : "Post"}
+          {adding ? (
+            <>
+              <i className="ri-loader-4-line me-1 inline-block animate-spin motion-reduce:animate-none" aria-hidden />
+              Posting
+            </>
+          ) : (
+            "Post"
+          )}
         </button>
       </form>
     </div>

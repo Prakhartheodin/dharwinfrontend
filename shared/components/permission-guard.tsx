@@ -1,15 +1,17 @@
 "use client";
 
+import { Suspense, useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import {
-  getRequiredPermissionForPath,
+  getRequiredPermissionForPathWithSearch,
+  hasMyProjectsWorkspaceAccess,
   hasPermissionForPath,
+  PROJECT_MY_PROJECTS_PREFIX,
 } from "@/shared/lib/route-permissions";
 import { isDesignatedSuperadminPath } from "@/shared/lib/designated-superadmin-paths";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 interface PermissionGuardProps {
   children: ReactNode;
@@ -23,18 +25,13 @@ interface PermissionGuardProps {
   renderChrome?: (content: ReactNode) => ReactNode;
 }
 
-/**
- * Protects routes by permission: if the current path requires a permission prefix
- * (see route-permissions.ts) and the user does not have it, redirects to redirectTo.
- * Renders children only when the user is allowed to access the current path.
- * When renderChrome is provided, the nav bar and layout remain visible during the check.
- */
-export function PermissionGuard({
+function PermissionGuardInner({
   children,
   redirectTo,
   renderChrome,
 }: PermissionGuardProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const {
     permissions: userPermissions,
@@ -47,11 +44,12 @@ export function PermissionGuard({
   const targetRedirect =
     redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
 
+  const searchKey = searchParams?.toString() ?? "";
+
   const allowed = useMemo(() => {
     if (!permissionsLoaded) return null;
     if (isPublicLayoutPath(pathname ?? "")) return true;
     const n = (pathname ?? "").replace(/\/$/, "") || "/";
-    // Standard activity logs: admins, platform super, role permission, or designated operator email.
     if (n === "/logs/logs-activity") {
       return (
         isDesignatedSuperadmin ||
@@ -64,19 +62,22 @@ export function PermissionGuard({
       return isDesignatedSuperadmin;
     }
     if (isAdministrator || isPlatformSuperUser) return true;
-    const required = getRequiredPermissionForPath(pathname ?? "");
+    const required = getRequiredPermissionForPathWithSearch(pathname ?? "", searchParams);
     if (required == null) return true;
+    if (required === PROJECT_MY_PROJECTS_PREFIX) {
+      return hasMyProjectsWorkspaceAccess(userPermissions);
+    }
     return hasPermissionForPath(userPermissions, required);
   }, [
     permissionsLoaded,
     pathname,
+    searchKey,
     userPermissions,
     isAdministrator,
     isPlatformSuperUser,
     isDesignatedSuperadmin,
   ]);
 
-  // Redirect when not allowed
   useEffect(() => {
     if (allowed === false) {
       router.replace(targetRedirect);
@@ -89,7 +90,6 @@ export function PermissionGuard({
     </div>
   );
 
-  // When renderChrome is provided, show nav bar even during permission check
   if (renderChrome) {
     if (!permissionsLoaded || allowed === null) {
       return <>{renderChrome(loadingContent)}</>;
@@ -100,7 +100,6 @@ export function PermissionGuard({
     return <>{renderChrome(children)}</>;
   }
 
-  // Legacy: no chrome, full replace
   if (!permissionsLoaded || allowed === null) {
     return <>{loadingContent}</>;
   }
@@ -108,4 +107,29 @@ export function PermissionGuard({
     return null;
   }
   return <>{children}</>;
+}
+
+/**
+ * Protects routes by permission (see route-permissions.ts). Wrapped in Suspense for useSearchParams (e.g. ?mine=1).
+ */
+export function PermissionGuard(props: PermissionGuardProps) {
+  return (
+    <Suspense
+      fallback={
+        props.renderChrome ? (
+          <>{props.renderChrome(
+            <div className="flex min-h-[40vh] items-center justify-center">
+              <div className="ti-btn ti-btn-primary ti-btn-loading">Checking access...</div>
+            </div>
+          )}</>
+        ) : (
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <div className="ti-btn ti-btn-primary ti-btn-loading">Checking access...</div>
+          </div>
+        )
+      }
+    >
+      <PermissionGuardInner {...props} />
+    </Suspense>
+  );
 }

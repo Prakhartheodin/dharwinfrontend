@@ -4,7 +4,6 @@ import React, { useEffect, useState, useCallback, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import {
@@ -14,8 +13,11 @@ import {
   applyAssignmentRun,
   type AssignmentGenerationMeta,
   type AssignmentApplyTeamSync,
+  type RecommendedJobDraft,
 } from "@/shared/lib/api/pmAssistant";
 import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { JobFromAssignmentGapModal } from "@/shared/components/pm/JobFromAssignmentGapModal";
 import styles from "./assignmentRunReview.module.css";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -27,6 +29,7 @@ type Row = {
   recommendedCandidateId?: { _id?: string; id?: string; fullName?: string; email?: string } | string | null;
   gap?: boolean;
   notes?: string;
+  recommendedJobDraft?: unknown;
 };
 
 type Run = {
@@ -34,7 +37,7 @@ type Run = {
   id?: string;
   status?: string;
   supervisorValue?: string;
-  projectId?: { name?: string; _id?: string };
+  projectId?: { name?: string; _id?: string; projectManager?: string; clientStakeholder?: string };
   generationMeta?: AssignmentGenerationMeta;
 };
 
@@ -64,6 +67,39 @@ function candidateIdFromRow(r: Row): string | null {
     return String((raw as { $oid: string }).$oid);
   }
   return String(raw);
+}
+
+function parseRecommendedJobDraft(r: Row): RecommendedJobDraft | null {
+  const raw = r.recommendedJobDraft;
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const title = typeof o.title === "string" ? o.title.trim() : "";
+  const descriptionOutline = typeof o.descriptionOutline === "string" ? o.descriptionOutline.trim() : "";
+  if (!title || !descriptionOutline) return null;
+  const mustHaveSkills = Array.isArray(o.mustHaveSkills)
+    ? o.mustHaveSkills.map((s) => String(s).trim()).filter(Boolean)
+    : [];
+  const seniority = typeof o.seniority === "string" ? o.seniority.trim() : "";
+  return { title, descriptionOutline, mustHaveSkills, seniority };
+}
+
+function notesLookLikeNoMatch(n?: string): boolean {
+  if (!n?.trim()) return false;
+  const s = n.toLowerCase();
+  return (
+    /no\s+(suitable\s+)?candidates?/.test(s) ||
+    /no\s+suitable\s+candidate/.test(s) ||
+    /no\s+eligible\s+candidates?/.test(s) ||
+    s.includes("no ats match") ||
+    s.includes("no active candidates") ||
+    s.includes("no matcher row") ||
+    s.includes("gap: assign")
+  );
+}
+
+function isRowEligibleForInternalJob(r: Row): boolean {
+  if (candidateIdFromRow(r)) return false;
+  return !!(r.gap || parseRecommendedJobDraft(r) != null || notesLookLikeNoMatch(r.notes));
 }
 
 function serializeRowsSnapshot(rows: Row[]): string {
@@ -109,6 +145,36 @@ export default function AssignmentRunPage() {
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { permissions, isAdministrator, isPlatformSuperUser } = useAuth();
+  const [jobGapModal, setJobGapModal] = useState<{
+    rowKey: string;
+    seed: RecommendedJobDraft | null;
+    taskTitle: string;
+  } | null>(null);
+
+  const hasJobsManage = useMemo(() => {
+    if (isAdministrator || isPlatformSuperUser) return true;
+    return permissions.some((p) => {
+      if (p === "jobs.manage" || p.startsWith("jobs.manage")) return true;
+      const [key, actionsPart] = p.split(":");
+      if (key !== "ats.jobs" || !actionsPart) return false;
+      return actionsPart
+        .split(",")
+        .some((a) => ["create", "edit", "delete"].includes(a.trim().toLowerCase()));
+    });
+  }, [permissions, isAdministrator, isPlatformSuperUser]);
+
+  const projectMeta = useMemo(() => {
+    if (run?.projectId && typeof run.projectId === "object") {
+      const p = run.projectId;
+      return {
+        name: p.name ?? "",
+        projectManager: p.projectManager ?? "",
+        clientStakeholder: p.clientStakeholder ?? "",
+      };
+    }
+    return { name: "", projectManager: "", clientStakeholder: "" };
+  }, [run]);
 
   const loadCandidateOptions = useCallback(async () => {
     setCandidatesLoading(true);
@@ -282,81 +348,92 @@ export default function AssignmentRunPage() {
       ? String((run.projectId as { _id?: string })._id ?? "")
       : "";
 
+  const seoTitle =
+    run?.projectId && typeof run.projectId === "object" && run.projectId.name
+      ? `Assignment — ${run.projectId.name}`
+      : "Assignment review";
+
   return (
     <>
-      <Seo title="Assignment run" />
-      <Pageheader
-        currentpage="Assignment review"
-        activepage="Projects"
-        mainpage="Assignment run"
-      />
+      <Seo title={seoTitle} />
       <div className={styles.page}>
-        <div className={`${styles.layout} space-y-2`}>
-          <div className={styles.toolbar}>
-            <Link
-              href={pid ? `/apps/projects/edit/${pid}` : "/apps/projects/project-list"}
-              className={`${styles.btn} ${styles.btnGhost}`}
-            >
-              Back to project
-            </Link>
-            {run?.status === "ready_for_review" ? (
-              <>
-                <button
-                  type="button"
-                  className={`${styles.btn} ${styles.btnOutline}`}
-                  disabled={saving}
-                  onClick={() => void handleSaveEdits()}
-                >
-                  Save preview
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.btn} ${styles.btnPrimary}`}
-                  disabled={saving}
-                  onClick={() => void handleApprove()}
-                >
-                  Approve
-                </button>
-              </>
-            ) : null}
-            {run?.status === "approved" ? (
-              <button
-                type="button"
-                className={`${styles.btn} ${styles.btnSuccess}`}
-                disabled={saving}
-                onClick={() => void handleApply()}
-              >
-                Apply to tasks
-              </button>
-            ) : null}
-          </div>
-          {run?.status === "ready_for_review" ? (
-            <p className={styles.hint}>
-              Edit <strong>candidate</strong>, <strong>gap</strong>, or <strong>notes</strong> below, then save. Approving saves
-              unsaved preview changes automatically, then locks the run until you apply.
-            </p>
-          ) : null}
-          {dirty && run?.status === "ready_for_review" ? (
-            <div className={styles.unsaved} role="status">
-              <strong>Unsaved preview edits</strong> — click <strong>Save preview</strong>, or use <strong>Approve</strong> to save
-              and approve in one flow.
+        <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
+          <div className="col-span-12 flex flex-col gap-6">
+            <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+              <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
+                <div className={`${styles.toolbar} gap-2`}>
+                  <Link
+                    href={pid ? `/apps/projects/edit/${pid}` : "/apps/projects/project-list"}
+                    className={`${styles.btn} ${styles.btnGhost}`}
+                  >
+                    Back to project
+                  </Link>
+                  {run?.status === "ready_for_review" ? (
+                    <>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnOutline}`}
+                        disabled={saving}
+                        onClick={() => void handleSaveEdits()}
+                      >
+                        Save preview
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.btn} ${styles.btnPrimary}`}
+                        disabled={saving}
+                        onClick={() => void handleApprove()}
+                      >
+                        Approve
+                      </button>
+                    </>
+                  ) : null}
+                  {run?.status === "approved" ? (
+                    <button
+                      type="button"
+                      className={`${styles.btn} ${styles.btnSuccess}`}
+                      disabled={saving}
+                      onClick={() => void handleApply()}
+                    >
+                      Apply to tasks
+                    </button>
+                  ) : null}
+                </div>
+                {run?.status === "ready_for_review" ? (
+                  <p className={`${styles.hint} mb-0 mt-3`}>
+                    Edit <strong>candidate</strong>, <strong>gap</strong>, or <strong>notes</strong> below, then save. Approving saves
+                    unsaved preview changes automatically, then locks the run until you apply.
+                  </p>
+                ) : null}
+                {dirty && run?.status === "ready_for_review" ? (
+                  <div className={`${styles.unsaved} mt-3`} role="status">
+                    <strong>Unsaved preview edits</strong> — click <strong>Save preview</strong>, or use <strong>Approve</strong> to save
+                    and approve in one flow.
+                  </div>
+                ) : null}
+              </div>
             </div>
-          ) : null}
-        </div>
 
-        {loading ? (
-          <div className={styles.loadingPanel} role="status" aria-busy="true" aria-label="Loading assignment run">
-            <div className={styles.loadingShimmer} aria-hidden />
-            <div>Loading assignment run…</div>
-            <div className={styles.loadingLines} aria-hidden>
-              <div className={styles.loadingLine} />
-              <div className={styles.loadingLine} />
-            </div>
-          </div>
-        ) : !run ? (
-          <div className={styles.errorPanel}>Run not found.</div>
-        ) : (
-          <div className={styles.card}>
+            {loading ? (
+              <div
+                className="motion-safe:animate-pm-panel-in motion-reduce:animate-none"
+                role="presentation"
+              >
+                <div className={styles.loadingPanel} role="status" aria-busy="true" aria-label="Loading assignment run">
+                  <div className={styles.loadingShimmer} aria-hidden />
+                  <div className="font-medium text-defaulttextcolor dark:text-white/80">Loading assignment run…</div>
+                  <div className={styles.loadingLines} aria-hidden>
+                    <div className={styles.loadingLine} />
+                    <div className={styles.loadingLine} />
+                  </div>
+                </div>
+              </div>
+            ) : !run ? (
+              <div className="motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-danger/25 bg-danger/5 px-4 py-6 text-center text-danger dark:border-danger/30 dark:bg-danger/10">
+                Run not found.
+              </div>
+            ) : (
+              <div className={`${styles.card} motion-safe:animate-pm-panel-in motion-reduce:animate-none`}>
             <div className={styles.cardHead}>
               <h2 className={styles.cardTitle}>
                 {run.projectId && typeof run.projectId === "object" ? run.projectId.name : "Project"}
@@ -568,20 +645,37 @@ export default function AssignmentRunPage() {
                           )}
                         </td>
                         <td className={`${styles.td} ${styles.tdNotes}`}>
-                          {run.status === "ready_for_review" ? (
-                            <input
-                              className={styles.noteInput}
-                              value={r.notes ?? ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setRows((prev) =>
-                                  prev.map((x) => (rowKey(x) === rk ? { ...x, notes: v } : x))
-                                );
-                              }}
-                            />
-                          ) : (
-                            <span className="text-[0.8125rem] whitespace-normal">{r.notes}</span>
-                          )}
+                          <div className={styles.notesStack}>
+                            {run.status === "ready_for_review" ? (
+                              <input
+                                className={styles.noteInput}
+                                value={r.notes ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setRows((prev) =>
+                                    prev.map((x) => (rowKey(x) === rk ? { ...x, notes: v } : x))
+                                  );
+                                }}
+                              />
+                            ) : (
+                              <span className="text-[0.8125rem] whitespace-normal">{r.notes}</span>
+                            )}
+                            {isRowEligibleForInternalJob(r) ? (
+                              <button
+                                type="button"
+                                className={`${styles.btn} ${styles.btnOutline} ${styles.jobFromGapBtn}`}
+                                onClick={() =>
+                                  setJobGapModal({
+                                    rowKey: rk,
+                                    seed: parseRecommendedJobDraft(r),
+                                    taskTitle: tid,
+                                  })
+                                }
+                              >
+                                Internal job from gap…
+                              </button>
+                            ) : null}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -591,8 +685,25 @@ export default function AssignmentRunPage() {
               </div>
             </div>
           </div>
-        )}
+            )}
+          </div>
+        </div>
       </div>
+      {jobGapModal ? (
+        <JobFromAssignmentGapModal
+          key={jobGapModal.rowKey}
+          open
+          onClose={() => setJobGapModal(null)}
+          runId={runId}
+          rowId={jobGapModal.rowKey}
+          taskTitle={jobGapModal.taskTitle}
+          seedDraft={jobGapModal.seed}
+          projectName={projectMeta.name}
+          projectManager={projectMeta.projectManager}
+          clientStakeholder={projectMeta.clientStakeholder}
+          hasJobsManage={hasJobsManage}
+        />
+      ) : null}
     </>
   );
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import React, { Fragment, useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -20,6 +19,7 @@ import {
   type ProjectsListParams,
 } from "@/shared/lib/api/projects";
 import { listTeamMembers, type TeamMember } from "@/shared/lib/api/teams";
+import { useAuth } from "@/shared/contexts/auth-context";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -33,6 +33,11 @@ const SORT_OPTIONS = [
 ];
 
 const PAGE_SIZE = 12;
+
+/** Keeps react-select menu aligned (portaled + fixed) — avoids clipped/mispositioned menus under overflow/transform ancestors. */
+const SORT_SELECT_STYLES = {
+  menuPortal: (base: React.CSSProperties) => ({ ...base, zIndex: 200 }),
+};
 
 /** Not `hs-dropdown` — global Preline autoInit() binds to that and can swallow menu clicks. */
 const PROJECT_CARD_DROPDOWN_MENU_CLASS = "project-card-dropdown-panel";
@@ -64,6 +69,41 @@ function stripHtml(html: string): string {
   if (!html) return "";
   const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
   return text.slice(0, 80);
+}
+
+const SKELETON_PLACEHOLDERS = 8;
+
+function ProjectCardSkeleton() {
+  return (
+    <div className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12">
+      <div className="box custom-box flex h-full flex-col overflow-hidden rounded-xl border border-defaultborder/70 shadow-sm dark:border-white/10">
+        <div className="flex flex-1 flex-col gap-4 border-b border-defaultborder/60 p-5 dark:border-white/10">
+          <div className="flex items-start gap-3">
+            <div
+              className="h-11 w-11 shrink-0 rounded-xl bg-defaultborder/55 motion-safe:animate-pulse motion-reduce:animate-none"
+              aria-hidden
+            />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 max-w-[12rem] rounded-md bg-defaultborder/55 motion-safe:animate-pulse motion-reduce:animate-none" />
+              <div className="h-3 w-28 rounded-md bg-defaultborder/45 motion-safe:animate-pulse motion-reduce:animate-none" />
+            </div>
+            <div className="h-8 w-8 shrink-0 rounded-lg bg-defaultborder/45 motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="space-y-2">
+            <div className="h-3 w-full rounded-md bg-defaultborder/40 motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-3 w-[88%] rounded-md bg-defaultborder/35 motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-defaultborder/40 dark:bg-white/10">
+            <div className="h-full w-[35%] rounded-full bg-primary/25 motion-safe:animate-pulse motion-reduce:animate-none" />
+          </div>
+        </div>
+        <div className="flex justify-between px-5 py-4">
+          <div className="h-3 w-24 rounded-md bg-defaultborder/45 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-3 w-24 rounded-md bg-defaultborder/45 motion-safe:animate-pulse motion-reduce:animate-none" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function getProjectId(project: Project): string {
@@ -98,14 +138,14 @@ function ProjectDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60"
+      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60 backdrop-blur-[2px] motion-safe:transition-opacity motion-reduce:backdrop-blur-none"
       onClick={onClose}
     >
       <div
-        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-[96vw] max-w-4xl max-h-[92vh] flex flex-col"
+        className="bg-bodybg border border-defaultborder/80 flex max-h-[92vh] w-[96vw] max-w-4xl flex-col overflow-hidden rounded-2xl shadow-2xl motion-safe:animate-pm-panel-in motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
+        <div className="flex items-center justify-between border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 to-white px-5 py-4 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent">
           <h5 className="font-semibold mb-0 text-[1rem]">Project Details</h5>
           <button
             type="button"
@@ -118,13 +158,13 @@ function ProjectDetailModal({
 
         <div className="p-5 overflow-y-auto flex-1 min-h-0">
           {loading ? (
-            <div className="text-center py-10 text-[#8c9097] dark:text-white/50">
+            <div className="text-center py-10 text-muted dark:text-white/50">
               Loading project details...
             </div>
           ) : error ? (
             <div className="text-center py-10 text-danger">{error}</div>
           ) : !projectData ? (
-            <div className="text-center py-10 text-[#8c9097] dark:text-white/50">
+            <div className="text-center py-10 text-muted dark:text-white/50">
               Project not found.
             </div>
           ) : (
@@ -141,35 +181,35 @@ function ProjectDetailModal({
                 <div className="box-body">
                   <div className="grid grid-cols-12 gap-3 text-[0.8125rem]">
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Project Manager: </span>
+                      <span className="text-muted dark:text-white/50">Project Manager: </span>
                       <span className="text-defaulttextcolor">
                         {projectData.projectManager || "—"}
                       </span>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Client / Stakeholder: </span>
+                      <span className="text-muted dark:text-white/50">Client / Stakeholder: </span>
                       <span className="text-defaulttextcolor">
                         {projectData.clientStakeholder || "—"}
                       </span>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Status: </span>
+                      <span className="text-muted dark:text-white/50">Status: </span>
                       <span className="text-defaulttextcolor">{projectData.status}</span>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Progress: </span>
+                      <span className="text-muted dark:text-white/50">Progress: </span>
                       <span className="text-defaulttextcolor">
                         {projectData.completedTasks ?? 0}/{projectData.totalTasks ?? 0} tasks ({progress}%)
                       </span>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Start Date: </span>
+                      <span className="text-muted dark:text-white/50">Start Date: </span>
                       <span className="text-defaulttextcolor">
                         {formatDate(projectData.startDate)}
                       </span>
                     </div>
                     <div className="xl:col-span-6 col-span-12">
-                      <span className="text-[#8c9097] dark:text-white/50">Due Date: </span>
+                      <span className="text-muted dark:text-white/50">Due Date: </span>
                       <span className="text-defaulttextcolor">
                         {formatDate(projectData.endDate)}
                       </span>
@@ -196,7 +236,7 @@ function ProjectDetailModal({
                 </div>
                 <div className="box-body space-y-4">
                   {(projectData.assignedTeams ?? []).length === 0 ? (
-                    <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
+                    <div className="text-muted dark:text-white/50 text-[0.8125rem]">
                       No team assigned.
                     </div>
                   ) : (
@@ -210,7 +250,7 @@ function ProjectDetailModal({
                             {teamName}
                           </div>
                           {members.length === 0 ? (
-                            <div className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
+                            <div className="text-muted dark:text-white/50 text-[0.8125rem]">
                               No members in this team.
                             </div>
                           ) : (
@@ -228,12 +268,12 @@ function ProjectDetailModal({
                                       {m.name || "—"}
                                     </span>
                                     {m.email ? (
-                                      <span className="text-[#8c9097] dark:text-white/50 ms-1">
+                                      <span className="text-muted dark:text-white/50 ms-1">
                                         ({m.email})
                                       </span>
                                     ) : null}
                                     {m.position ? (
-                                      <span className="block text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                                      <span className="block text-[0.75rem] text-muted dark:text-white/50">
                                         {m.position}
                                       </span>
                                     ) : null}
@@ -298,6 +338,8 @@ interface ProjectCardProps {
   onView: (projectId: string) => void;
   onAiTaskBreakdown?: (project: Project) => void;
   onAiCandidateAssignment?: (project: Project) => void;
+  /** Staggered list entrance (transform/opacity only — see `animate-pm-panel-in`). */
+  staggerIndex?: number;
 }
 
 function ProjectCard({
@@ -306,6 +348,7 @@ function ProjectCard({
   onView,
   onAiTaskBreakdown,
   onAiCandidateAssignment,
+  staggerIndex = 0,
 }: ProjectCardProps) {
   const projectId = getProjectId(project);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -422,22 +465,26 @@ function ProjectCard({
   }, []);
 
   return (
-    <div className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12">
-      <div className="box custom-box">
-        <div className="box-header items-center !justify-start flex-wrap !flex">
-          <div className="me-2">
-            <span className="avatar avatar-rounded p-1 bg-primary/10">
-              <i className="ri-folder-line text-primary text-xl" />
+    <div
+      className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12 motion-safe:animate-pm-panel-in motion-reduce:animate-none"
+      style={{ animationDelay: `${Math.min(staggerIndex, 24) * 48}ms` }}
+    >
+      <div className="box custom-box group flex h-full flex-col overflow-visible rounded-xl border border-defaultborder/70 shadow-sm transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:shadow-md hover:border-primary/20 dark:border-white/10 motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+        <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2 gap-y-1 border-b border-defaultborder/50 bg-[rgb(var(--default-background))]/35 px-[1.25rem] py-4 font-medium dark:border-white/10 dark:bg-white/[0.02]">
+          <div className="shrink-0 pt-0.5">
+            <span className="avatar avatar-rounded flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 p-0 ring-1 ring-primary/10">
+              <i className="ri-folder-line text-xl text-primary" />
             </span>
           </div>
-          <div className="flex-grow min-w-0">
+          <div className="min-w-0">
             <Link
               href={projectId ? `/apps/projects/edit/${projectId}` : "#"}
-              className="font-semibold text-[.875rem] block text-truncate project-list-title"
+              title={project.name}
+              className="project-list-title block break-words text-[0.875rem] font-semibold leading-snug text-defaulttextcolor transition-colors duration-200 hover:text-primary line-clamp-3"
             >
               {project.name}
             </Link>
-            <span className="text-[#8c9097] dark:text-white/50 block text-[0.75rem]">
+            <span className="mt-0.5 block text-[0.75rem] text-muted dark:text-white/50">
               Total{" "}
               <strong className="text-defaulttextcolor">
                 {project.completedTasks ?? 0}/{project.totalTasks ?? 0}
@@ -445,18 +492,22 @@ function ProjectCard({
               tasks completed
             </span>
           </div>
-          <div className="ti-dropdown relative" ref={dropdownRef} data-project-card-dropdown>
+          <div
+            className="ti-dropdown relative w-auto shrink-0 justify-self-end pt-0.5"
+            ref={dropdownRef}
+            data-project-card-dropdown
+          >
             <button
               type="button"
               id={`dropdown-menu-${projectId || "project"}`}
-              className="ti-btn ti-btn-sm ti-btn-light !mb-0"
+              className="ti-btn ti-btn-sm ti-btn-light !mb-0 rounded-lg transition-colors hover:border-primary/25 hover:text-primary"
               aria-expanded="false"
               onClick={toggleDropdown}
             >
               <i className="fe fe-more-vertical" />
             </button>
             <ul
-              className={`ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg ${PROJECT_CARD_DROPDOWN_MENU_CLASS}`}
+              className={`ti-dropdown-menu absolute right-0 top-full z-50 mt-1 hidden min-w-[180px] rounded-xl border border-defaultborder/80 bg-bodybg shadow-lg motion-safe:transition-[opacity,transform] motion-safe:duration-200 ${PROJECT_CARD_DROPDOWN_MENU_CLASS}`}
               aria-labelledby={`dropdown-menu-${projectId || "project"}`}
             >
               {onAiTaskBreakdown ? (
@@ -517,13 +568,15 @@ function ProjectCard({
             </ul>
           </div>
         </div>
-        <div className="box-body">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="font-semibold mb-1">Team :</div>
-              <div className="flex flex-wrap gap-1.5 items-center">
+        <div className="box-body flex flex-1 flex-col">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="mb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/60 dark:text-white/50">
+                Team
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
                 {assignedTeams.length === 0 ? (
-                  <span className="text-[#8c9097] text-[0.75rem]">No team assigned</span>
+                  <span className="text-[0.75rem] text-muted dark:text-white/50">No team assigned</span>
                 ) : (
                   <>
                     {assignedTeams.slice(0, displayCount).map((t) => {
@@ -548,8 +601,10 @@ function ProjectCard({
                 )}
               </div>
             </div>
-            <div className="text-end">
-              <div className="font-semibold mb-1">Priority :</div>
+            <div className="shrink-0 text-end">
+              <div className="mb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/60 dark:text-white/50">
+                Priority
+              </div>
               <span
                 className={`badge ${priorityBadgeClass(project.priority)}`}
               >
@@ -557,37 +612,50 @@ function ProjectCard({
               </span>
             </div>
           </div>
-          <div className="font-semibold mb-1">Description :</div>
-          <p className="text-[#8c9097] dark:text-white/50 mb-3">
+          <div className="mb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/60 dark:text-white/50">
+            Description
+          </div>
+          <p className="mb-3 line-clamp-2 text-[0.8125rem] text-muted dark:text-white/50">
             {descriptionSnippet || "No description."}
           </p>
-          <div className="font-semibold mb-1">Status :</div>
-          <div>
-            <div className="progress progress-xs progress-animate" role="progressbar">
-              <div
-                className="progress-bar bg-primary"
-                style={{ width: `${progress}%` }}
-              />
+          <div className="mt-auto">
+            <div className="mb-1 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/60 dark:text-white/50">
+              Status
             </div>
-            <div className="mt-1">
-              <span className="text-primary font-semibold">{progress}%</span> Completed
+            <div>
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-defaultborder/50 dark:bg-white/10"
+                role="progressbar"
+                aria-valuenow={progress}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-primary to-primary/85 motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-out"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="mt-1.5 text-[0.8125rem]">
+                <span className="font-semibold text-primary">{progress}%</span>{" "}
+                <span className="text-muted dark:text-white/50">completed</span>
+              </div>
             </div>
           </div>
         </div>
-        <div className="box-footer flex items-center justify-between">
+        <div className="box-footer mt-auto flex items-center justify-between border-t border-defaultborder/60 bg-[rgb(var(--default-background))]/25 dark:border-white/10 dark:bg-white/[0.02]">
           <div>
-            <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] block">
-              Assigned Date :
+            <span className="mb-0.5 block text-[0.6875rem] text-muted dark:text-white/50">
+              Assigned
             </span>
-            <span className="font-semibold block">
+            <span className="block text-[0.8125rem] font-semibold text-defaulttextcolor">
               {formatDate(project.startDate)}
             </span>
           </div>
           <div className="text-end">
-            <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] block">
-              Due Date :
+            <span className="mb-0.5 block text-[0.6875rem] text-muted dark:text-white/50">
+              Due
             </span>
-            <span className="font-semibold block">
+            <span className="block text-[0.8125rem] font-semibold text-defaulttextcolor">
               {formatDate(project.endDate)}
             </span>
           </div>
@@ -599,17 +667,25 @@ function ProjectCard({
 
 const Projectlist = () => {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { roleNames, isAdministrator, permissionsLoaded } = useAuth();
+  const isCandidateSpecialistListViewer =
+    permissionsLoaded &&
+    !isAdministrator &&
+    roleNames.some((n) => n.toLowerCase() === "candidate");
   const mineOnly =
     searchParams.get("mine") === "1" ||
     searchParams.get("mine") === "true" ||
     searchParams.get("mine") === "yes";
   const showPmAi = isPmAssistantUiEnabled();
 
+  const urlSearchKey = searchParams.get("search") ?? "";
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchInput, setSearchInput] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchInput, setSearchInput] = useState(() => urlSearchKey.trim());
+  const [searchQuery, setSearchQuery] = useState(() => urlSearchKey.trim());
   const [sortBy, setSortBy] = useState("createdAt:desc");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -621,6 +697,27 @@ const Projectlist = () => {
   const [membersByTeamId, setMembersByTeamId] = useState<Record<string, TeamMember[]>>({});
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiProject, setAiProject] = useState<Project | null>(null);
+  const [sortMenuPortalEl, setSortMenuPortalEl] = useState<HTMLElement | null>(null);
+  const lastSyncedUrlSearchRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setSortMenuPortalEl(document.body);
+  }, []);
+
+  /** When `?search=` changes from navigation (back/forward, link), refetch; skip first paint (state already seeded). */
+  useEffect(() => {
+    if (lastSyncedUrlSearchRef.current === null) {
+      lastSyncedUrlSearchRef.current = urlSearchKey;
+      return;
+    }
+    if (urlSearchKey !== lastSyncedUrlSearchRef.current) {
+      lastSyncedUrlSearchRef.current = urlSearchKey;
+      const q = urlSearchKey.trim();
+      setSearchInput(q);
+      setSearchQuery(q);
+      setPage(1);
+    }
+  }, [urlSearchKey]);
 
   const handleAiCandidateAssignment = useCallback(
     async (p: Project) => {
@@ -643,12 +740,12 @@ const Projectlist = () => {
       setLoading(true);
       try {
         const result = await listProjects({
-          search: searchQuery || undefined,
+          ...params,
+          search: searchQuery.trim() || undefined,
           sortBy: sortBy || undefined,
           page: params?.page ?? page,
           limit: PAGE_SIZE,
           ...(mineOnly ? { mine: true } : {}),
-          ...params,
         });
         setProjects(result.results ?? []);
         setTotalPages(result.totalPages ?? 0);
@@ -676,8 +773,15 @@ const Projectlist = () => {
   );
 
   const handleSearch = () => {
-    setSearchQuery(searchInput.trim());
+    const term = searchInput.trim();
+    setSearchQuery(term);
     setPage(1);
+    const params = new URLSearchParams(searchParams.toString());
+    if (term) params.set("search", term);
+    else params.delete("search");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    lastSyncedUrlSearchRef.current = term ? term : "";
   };
 
   const handleSortChange = (opt: { value: string; label: string } | null) => {
@@ -749,47 +853,60 @@ const Projectlist = () => {
   return (
     <Fragment>
       <Seo title={mineOnly ? "My projects" : "Project List"} />
-      <Pageheader
-        currentpage={mineOnly ? "My projects" : "Project List"}
-        activepage="Projects"
-        mainpage={mineOnly ? "My projects" : "Project List"}
-      />
-      <div className="grid grid-cols-12 gap-6">
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box custom-box">
-            <div className="box-body p-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex flex-wrap gap-1 newproject">
-                  <Link
-                    href="/apps/projects/create-project/"
-                    className="ti-btn ti-btn-primary-full me-2 !mb-0"
-                  >
-                    <i className="ri-add-line me-1 font-semibold align-middle" />
-                    New Project
-                  </Link>
-                  <Select
-                    name="sort"
-                    options={SORT_OPTIONS}
-                    className="!w-40"
-                    menuPlacement="auto"
-                    classNamePrefix="Select2"
-                    placeholder="Sort By"
-                    value={currentSortOption}
-                    onChange={(opt) => handleSortChange(opt as { value: string; label: string } | null)}
-                  />
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
+        <div className="col-span-12 xl:col-span-12">
+          <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="newproject flex flex-wrap items-center gap-2">
+                  {!mineOnly ? (
+                    <Link
+                      href="/apps/projects/create-project/"
+                      className="ti-btn ti-btn-primary-full !mb-0 shadow-sm transition-transform duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+                    >
+                      <i className="ri-add-line me-1 align-middle font-semibold" />
+                      New Project
+                    </Link>
+                  ) : null}
+                  <div className="min-w-[10.5rem] rounded-xl border border-defaultborder/70 bg-white/90 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+                    <Select
+                      name="sort"
+                      options={SORT_OPTIONS}
+                      className="w-full min-w-[10.5rem]"
+                      classNamePrefix="Select2"
+                      menuPlacement="auto"
+                      menuPosition="fixed"
+                      menuPortalTarget={sortMenuPortalEl}
+                      styles={SORT_SELECT_STYLES}
+                      placeholder="Sort By"
+                      value={currentSortOption}
+                      onChange={(opt) => handleSortChange(opt as { value: string; label: string } | null)}
+                    />
+                  </div>
                 </div>
-                <div className="flex" role="search">
-                  <input
-                    className="form-control me-2"
-                    type="search"
-                    placeholder="Search Project"
-                    aria-label="Search"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  />
+                <div
+                  className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch lg:max-w-xl"
+                  role="search"
+                >
+                  <div className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/15 dark:bg-black/20">
+                    <span
+                      className="flex items-center border-e border-defaultborder/60 bg-defaultbackground/40 px-3 text-muted dark:border-white/10 dark:bg-white/[0.03]"
+                      aria-hidden
+                    >
+                      <i className="ri-search-line text-base" />
+                    </span>
+                    <input
+                      className="form-control !rounded-none border-0 shadow-none focus:ring-0"
+                      type="search"
+                      placeholder="Search projects"
+                      aria-label="Search projects"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    />
+                  </div>
                   <button
-                    className="ti-btn ti-btn-light !mb-0"
+                    className="ti-btn ti-btn-primary !mb-0 shrink-0 sm:px-5"
                     type="button"
                     onClick={handleSearch}
                   >
@@ -797,22 +914,39 @@ const Projectlist = () => {
                   </button>
                 </div>
               </div>
+              {!loading && totalResults > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
+                  <span>
+                    {totalPages > 1
+                      ? `Page ${page} of ${totalPages} · `
+                      : null}
+                    {totalResults} project{totalResults === 1 ? "" : "s"}
+                  </span>
+                  {mineOnly ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[0.6875rem] font-medium text-primary ring-1 ring-primary/15">
+                      <i className="ri-user-smile-line" aria-hidden />
+                      My projects
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       </div>
 
       {loading ? (
-        <div className="box custom-box">
-          <div className="box-body p-6 text-center text-[#8c9097]">
-            Loading projects...
-          </div>
+        <div className="grid grid-cols-12 gap-x-6 gap-y-6">
+          {Array.from({ length: SKELETON_PLACEHOLDERS }, (_, i) => (
+            <ProjectCardSkeleton key={i} />
+          ))}
         </div>
       ) : (
-        <div className="grid grid-cols-12 gap-x-6">
-          {projects.map((project) => (
+        <div className="grid grid-cols-12 gap-x-6 gap-y-6">
+          {projects.map((project, index) => (
             <ProjectCard
               key={getProjectId(project)}
+              staggerIndex={index}
               project={project}
               onDelete={handleDelete}
               onView={handleView}
@@ -831,9 +965,86 @@ const Projectlist = () => {
       )}
 
       {!loading && projects.length === 0 && (
-        <div className="box custom-box">
-          <div className="box-body p-6 text-center text-[#8c9097]">
-            No projects found. Create one with &quot;New Project&quot;.
+        <div className="box custom-box overflow-hidden rounded-xl border border-dashed border-defaultborder/80 dark:border-white/15">
+          <div className="box-body flex flex-col items-center justify-center gap-3 px-6 py-14 text-center">
+            <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
+              <i className="ri-folder-open-line text-2xl" aria-hidden />
+            </span>
+            <div>
+              <p className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor">No projects found</p>
+              {isCandidateSpecialistListViewer && mineOnly ? (
+                <p className="mb-0 max-w-lg text-[0.8125rem] text-muted dark:text-white/50">
+                  This view lists projects you created and projects where you have at least one task assigned (any
+                  type). Tasks must be linked to a project to appear here. Try another search, or open{" "}
+                  <Link href="/task/my-tasks" className="text-primary underline-offset-2 hover:underline">
+                    My Tasks
+                  </Link>{" "}
+                  to review assignments.
+                </p>
+              ) : isCandidateSpecialistListViewer ? (
+                <p className="mb-0 max-w-lg text-[0.8125rem] text-muted dark:text-white/50">
+                  On the main Projects list, projects you did not create only appear when you are assigned to a task
+                  tagged for one of these workflows:{" "}
+                  <strong className="text-defaulttextcolor">feature-engineer</strong>,{" "}
+                  <strong className="text-defaulttextcolor">feasibility-reviewer</strong>, or{" "}
+                  <strong className="text-defaulttextcolor">orchestrating-swarms</strong> (as a tag, required skill, or
+                  task code). Use{" "}
+                  <Link href="/apps/projects/my-projects" className="text-primary underline-offset-2 hover:underline">
+                    My Projects
+                  </Link>{" "}
+                  for everything you are assigned to, or open{" "}
+                  <Link href="/task/my-tasks" className="text-primary underline-offset-2 hover:underline">
+                    My Tasks
+                  </Link>
+                  .
+                </p>
+              ) : mineOnly ? (
+                <p className="mb-0 max-w-md text-[0.8125rem] text-muted dark:text-white/50">
+                  Try another search, or open the full{" "}
+                  <Link href="/apps/projects/project-list" className="text-primary underline-offset-2 hover:underline">
+                    project list
+                  </Link>{" "}
+                  if you have access to create projects there.
+                </p>
+              ) : (
+                <p className="mb-0 max-w-md text-[0.8125rem] text-muted dark:text-white/50">
+                  Try another search or create a project with <strong className="text-defaulttextcolor">New Project</strong>.
+                </p>
+              )}
+            </div>
+            {isCandidateSpecialistListViewer && mineOnly ? (
+              <Link href="/task/my-tasks" className="ti-btn ti-btn-primary-full !mb-0 mt-1">
+                <i className="ri-task-line me-1 align-middle" aria-hidden />
+                My Tasks
+              </Link>
+            ) : isCandidateSpecialistListViewer ? (
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-2">
+                <Link href="/apps/projects/my-projects" className="ti-btn ti-btn-primary-full !mb-0">
+                  <i className="ri-folder-user-line me-1 align-middle" aria-hidden />
+                  My Projects
+                </Link>
+                <Link href="/task/my-tasks" className="ti-btn ti-btn-light !mb-0 border border-defaultborder/80">
+                  <i className="ri-task-line me-1 align-middle" aria-hidden />
+                  My Tasks
+                </Link>
+              </div>
+            ) : mineOnly ? (
+              <Link
+                href="/apps/projects/project-list"
+                className="ti-btn ti-btn-primary-full !mb-0 mt-1"
+              >
+                <i className="ri-folder-line me-1 align-middle" aria-hidden />
+                All projects
+              </Link>
+            ) : (
+              <Link
+                href="/apps/projects/create-project/"
+                className="ti-btn ti-btn-primary-full !mb-0 mt-1"
+              >
+                <i className="ri-add-line me-1 align-middle" />
+                Create project
+              </Link>
+            )}
           </div>
         </div>
       )}

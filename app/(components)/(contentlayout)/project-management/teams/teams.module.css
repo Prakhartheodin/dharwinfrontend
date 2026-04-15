@@ -1,0 +1,220 @@
+/**
+ * Teams sidebar + skeleton — scoped styles. Surfaces use theme tokens (Tailwind / custom-box).
+ */
+
+.teamNameBtn {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-align: left;
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: rgb(var(--text-muted));
+  padding: 0.35rem 0.4rem;
+  border-radius: 8px;
+  transition: color 0.2s ease;
+}
+
+.teamNameBtn:hover {
+  color: rgb(var(--default-text-color));
+}
+
+.memberPreview {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.35rem 0.35rem 1.85rem;
+  color: rgb(var(--default-text-color));
+  border-radius: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.memberPreview:hover {
+  background: color-mix(in srgb, rgb(var(--default-border)) 14%, transparent);
+}
+
+:global(.dark) .memberPreview:hover {
+  background: rgb(255 255 255 / 0.06);
+}
+
+.statusDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: rgb(var(--primary));
+  box-shadow: 0 0 0 2px rgb(var(--primary) / 0.35);
+}
+
+.statusDotOffline {
+  background: rgb(var(--text-muted));
+  box-shadow: none;
+}
+
+/* Shimmer on roster skeleton cards — mirrors project-list loading polish */
+.skeletonCard {
+  position: relative;
+  isolation: isolate;
+}
+
+.skeletonCard::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgb(var(--primary) / 0.08) 45%,
+    transparent 90%
+  );
+  animation: teamsSkeletonShimmer 1.35s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+}
+
+@keyframes teamsSkeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonCard::after {
+    animation: none;
+  }
+
+  .teamNameBtn,
+  .memberPreview {
+    transition-duration: 0.01ms;
+  }
+
+  .memberModalBackdrop {
+    backdrop-filter: none;
+  }
+}
+
+/* —— Edit / create team member modal: single accent, neutral surfaces (palette discipline) —— */
+.memberModalBackdrop {
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+.memberModalPanel {
+  border-left: 4px solid rgb(var(--primary));
+  box-shadow:
+    0 25px 50px -12px rgb(0 0 0 / 0.22),
+    0 0 0 1px color-mix(in srgb, rgb(var(--default-border)) 40%, transparent);
+}
+
+:global(.dark) .memberModalPanel {
+  box-shadow:
+    0 25px 50px -12px rgb(0 0 0 / 0.45),
+    0 0 0 1px rgb(255 255 255 / 0.06);
+}
+
+.memberModalSection {
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, rgb(var(--default-border)) 65%, transparent);
+  background: color-mix(in srgb, rgb(var(--body-bg)) 94%, rgb(var(--default-border)) 6%);
+  padding: 1rem 1.1rem;
+}
+
+:global(.dark) .memberModalSection {
+  background: rgb(255 255 255 / 0.03);
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+.memberModalSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgb(var(--text-muted));
+  margin: 0 0 0.875rem;
+}
+
+.memberModalSectionTitle::before {
+  content: "";
+  width: 3px;
+  height: 0.85rem;
+  border-radius: 2px;
+  background: rgb(var(--primary));
+  flex-shrink: 0;
+}
+
+.memberPreviewStrip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.875rem 1rem;
+  align-items: stretch;
+}
+
+@media (max-width: 480px) {
+  .memberPreviewStrip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.memberAvatarPreview {
+  width: 4.25rem;
+  height: 4.25rem;
+  border-radius: 999px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, rgb(var(--default-border)) 50%, transparent);
+  background: color-mix(in srgb, rgb(var(--primary)) 8%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06);
+}
+
+.memberCoverPreview {
+  position: relative;
+  min-height: 4.25rem;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, rgb(var(--default-border)) 55%, transparent);
+  background: linear-gradient(
+    125deg,
+    color-mix(in srgb, rgb(var(--primary)) 12%, transparent),
+    color-mix(in srgb, rgb(var(--body-bg)) 100%, transparent)
+  );
+}
+
+.memberCoverPreview img {
+  width: 100%;
+  height: 100%;
+  min-height: 4.25rem;
+  object-fit: cover;
+}
+
+.memberModalHint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgb(var(--text-muted));
+}
+
+.memberStarRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  border: 1px dashed color-mix(in srgb, rgb(var(--default-border)) 70%, transparent);
+  background: color-mix(in srgb, rgb(var(--body-bg)) 100%, rgb(var(--primary)) 4%);
+}
+
+:global(.dark) .memberStarRow {
+  border-color: rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.02);
+}

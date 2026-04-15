@@ -75,7 +75,9 @@ Toast
 /* Montserrat */
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600&display=swap");
 /* End Tailwind Styles Styles */
-/* Start Icons — loaded from app/globals.scss for Next.js / Turbopack (postcss-import path resolution) */
+/* Start Icons */
+/* Icon stylesheets are linked from app/(components)/layout.tsx <head> (/assets/iconfonts/…).
+   @import here breaks Next.js + postcss-import (resolves relative to app/). */
 /* Start Icons */
 :root {
   --body-bg:	240 241 247;
@@ -3153,22 +3155,27 @@ label {
 
 /* Start:: mail-app */
 .main-mail-container {
-  @apply relative overflow-hidden my-0 -mx-[1.25rem];
+  @apply relative overflow-hidden my-0 -mx-[1.25rem] items-stretch min-h-0;
 }
 
 .mail-navigation,
 .total-mails,
 .mail-recepients {
-  @apply bg-white dark:bg-bodybg h-[calc(100vh-8rem)] overflow-hidden rounded-md;
+  @apply bg-white dark:bg-bodybg overflow-hidden rounded-md flex flex-col min-h-0;
+  height: calc(100vh - 8rem);
+  height: calc(100dvh - 8rem);
 }
 
+/* Reading column: flex column so message body scrolls instead of clipping below global max-h */
 .mails-information {
-  @apply bg-white dark:bg-bodybg h-[calc(100vh-8rem)] overflow-hidden rounded-md flex flex-col min-h-0 min-w-0 flex-1 w-full;
+  @apply bg-white dark:bg-bodybg overflow-hidden rounded-md flex flex-col min-h-0 min-w-0 flex-1 w-full;
+  height: calc(100vh - 8rem);
+  height: calc(100dvh - 8rem);
 }
 
 .mail-info-body {
   @apply flex-1 min-h-0 overflow-y-auto overflow-x-hidden;
-  max-height: none !important;
+  max-height: none;
 }
 
 .mails-information .mail-info-header,
@@ -3229,10 +3236,11 @@ label {
   }
 }
 .total-mails {
-  @apply w-full;
+  @apply w-full flex flex-col min-h-0;
 }
 .total-mails .mail-messages {
-  @apply max-w-full max-h-[calc(100vh-16.65rem)];
+  @apply max-w-full min-h-0;
+  max-height: none;
 }
 .total-mails .mail-messages li {
   @apply pt-[1.1rem] px-[1.25rem] pb-[0.625rem] border border-solid border-defaultborder dark:border-defaultborder/10;
@@ -3260,7 +3268,8 @@ label {
   @apply min-w-[4.4rem] max-w-[4.4rem];
 }
 .mail-recepients .total-mail-recepients {
-  @apply max-h-[calc(100vh-12.4rem)];
+  @apply flex-1 min-h-0;
+  max-height: none;
 }
 .mail-recepients .mail-recepeint-person .avatar {
   @apply w-8 h-8 mb-4;
@@ -11028,9 +11037,9 @@ code {
   @apply overflow-hidden;
 }
 
-/* start:: project-list */
+/* start:: project-list — title truncates within the card (flex child min-w-0), not a fixed px width */
 .project-list-title {
-  @apply max-w-[13.375rem];
+  @apply min-w-0 max-w-full;
 }
 
 /* Start Custom Styles */
