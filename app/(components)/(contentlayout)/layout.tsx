@@ -68,7 +68,9 @@ const Layout = ({ children }: any) => {
               )}
               <div className='page'>
                 <Header/>
-                <Sidebar/>
+                <Suspense fallback={null}>
+                  <Sidebar />
+                </Suspense>
                 <div className='content'>
                   <div className='main-content' onClick={Bodyclickk}>
                     <Suspense fallback={null}>

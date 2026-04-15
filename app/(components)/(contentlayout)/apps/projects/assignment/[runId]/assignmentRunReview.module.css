@@ -499,6 +499,18 @@
   min-width: 12rem;
 }
 
+.notesStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: stretch;
+}
+
+.jobFromGapBtn {
+  align-self: flex-start;
+  margin-top: 0.1rem;
+}
+
 .gapWrap {
   display: inline-flex;
   align-items: center;

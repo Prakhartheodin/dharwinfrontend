@@ -394,7 +394,7 @@ code {
   @apply overflow-hidden;
 }
 
-/* start:: project-list */
+/* start:: project-list — title truncates within the card (flex child min-w-0), not a fixed px width */
 .project-list-title {
-  @apply max-w-[13.375rem];
+  @apply min-w-0 max-w-full;
 }

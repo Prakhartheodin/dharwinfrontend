@@ -108,6 +108,33 @@ export async function getAssignmentRun(runId: string): Promise<{ run: unknown; r
   return data;
 }
 
+/** Matcher / PM assistant job draft for staffing gap rows */
+export interface RecommendedJobDraft {
+  title: string;
+  descriptionOutline: string;
+  mustHaveSkills: string[];
+  seniority: string;
+}
+
+export interface AssignmentRowJobDraftResponse {
+  recommendedJobDraft: RecommendedJobDraft;
+  modelId?: string | null;
+  usage?: { promptTokens?: number; completionTokens?: number } | null;
+  cached?: boolean;
+}
+
+export async function generateAssignmentRowJobDraft(
+  runId: string,
+  rowId: string,
+  body?: { force?: boolean }
+): Promise<AssignmentRowJobDraftResponse> {
+  const { data } = await apiClient.post<AssignmentRowJobDraftResponse>(
+    `/pm-assistant/assignment-runs/${runId}/rows/${rowId}/job-draft`,
+    body ?? {}
+  );
+  return data;
+}
+
 export async function patchAssignmentRun(
   runId: string,
   rows: { id?: string; _id?: string; recommendedCandidateId?: string | null; gap?: boolean; notes?: string }[]
@@ -161,11 +188,22 @@ export async function bootstrapSmartTeam(
   return data;
 }
 
+export type EnhanceBriefFeedbackRating = "up" | "down";
+
 export interface EnhanceProjectBriefBody {
   html: string;
   projectName?: string;
   projectManager?: string;
   clientStakeholder?: string;
+  /** Last AI HTML from the review modal — sent so the model can revise instead of starting cold. */
+  previousEnhancedHtml?: string;
+  /** User steering for the next draft (plain text; server treats as untrusted). */
+  refinementInstructions?: string;
+  /** Optional thumbs + short comment for the previous suggestion. */
+  feedback?: {
+    rating?: EnhanceBriefFeedbackRating;
+    comment?: string;
+  };
 }
 
 export interface EnhanceProjectBriefResponse {

@@ -7,14 +7,34 @@ import { basePath } from "@/next.config";
 import store from "@/shared/redux/store";
 import SimpleBar from 'simplebar-react';
 import Menuloop from "./menuloop";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
 	PATH_PERMISSION_PREFIX,
+	hasExplicitMyProjectsNavPermission,
 	hasPermissionForPath,
 	getRequiredPermissionForPath,
 } from "@/shared/lib/route-permissions";
+
+/** My Projects redirects to project-list?mine=1 — nav must use query, not pathname alone. */
+function isMineProjectsQuery(sp: URLSearchParams): boolean {
+	const v = (sp.get("mine") || "").toLowerCase();
+	return v === "1" || v === "true" || v === "yes";
+}
+
+function menuPathMatchesItem(item: { path?: string }, currentPath: string, sp: URLSearchParams): boolean {
+	if (!item.path) return false;
+	if (item.path === "/apps/projects/my-projects") {
+		if (currentPath === "/apps/projects/my-projects") return true;
+		return currentPath === "/apps/projects/project-list" && isMineProjectsQuery(sp);
+	}
+	if (item.path === "/apps/projects/project-list") {
+		if (currentPath !== "/apps/projects/project-list") return false;
+		return !isMineProjectsQuery(sp);
+	}
+	return item.path === currentPath;
+}
 
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
@@ -59,6 +79,9 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		if (!menuPath) return true;
+		if (menuPath === "/apps/projects/my-projects") {
+			return hasExplicitMyProjectsNavPermission(userPermissions);
+		}
 		const requiredPrefix = getRequiredPermissionForPath(menuPath);
 		if (!requiredPrefix) return true;
 		return hasPermissionForPath(userPermissions, requiredPrefix);
@@ -134,7 +157,8 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	}, []);
 
 	const router = useRouter();
-	const pathname = usePathname()
+	const pathname = usePathname();
+	const searchParams = useSearchParams();
 
 	function Onhover() {
 
@@ -498,7 +522,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 	}
 
-	function setMenuUsingUrl(currentPath: any) {
+	function setMenuUsingUrl(currentPath: any, sp: URLSearchParams) {
 		hasParent = false;
 		hasParentLevel = 1;
 		// Check current url and trigger the setSidemenu method to active the menu.
@@ -506,7 +530,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 			items?.forEach((item: any) => {
 				if (item.path == '') { }
-				else if (item.path === currentPath) {
+				else if (menuPathMatchesItem(item, currentPath, sp)) {
 					setSubmenu(null, item);
 				}
 				setSubmenuRecursively(item.children);
@@ -514,7 +538,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		};
 		setSubmenuRecursively(MenuItems);
 	}
-	const [previousUrl, setPreviousUrl] = useState("/");
+	const [previousNavKey, setPreviousNavKey] = useState("");
 
 	useEffect(() => {
 
@@ -530,11 +554,13 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		// Start observing the target element
 		observer.observe(targetElement, config);
 		let currentPath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
-		if (currentPath !== previousUrl) {
-			setMenuUsingUrl(currentPath);
-			setPreviousUrl(currentPath);
+		const sp = new URLSearchParams(searchParams?.toString() || "");
+		const navKey = `${currentPath}?${sp.toString()}`;
+		if (navKey !== previousNavKey) {
+			setMenuUsingUrl(currentPath, sp);
+			setPreviousNavKey(navKey);
 		}
-	}, [pathname]);
+	}, [pathname, searchParams]);
 
 	function toggleSidemenu(event: any, targetObject: any, MenuItems = menuitems) {
 		const theme = store.getState();
@@ -700,7 +726,10 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 				if (newValue == 'vertical') {
 					let currentPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
 					currentPath = !currentPath ? '/dashboard' : currentPath;
-					setMenuUsingUrl(currentPath);
+					const sp = new URLSearchParams(
+						typeof window !== "undefined" ? window.location.search : searchParams?.toString() || ""
+					);
+					setMenuUsingUrl(currentPath, sp);
 				} else {
 					closeMenu();
 				}

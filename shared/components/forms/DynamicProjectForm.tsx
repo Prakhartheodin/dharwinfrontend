@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import TiptapEditor from "@/shared/data/forms/form-editors/tiptapeditor";
 import { FilePond } from "react-filepond";
@@ -16,6 +16,10 @@ import {
 import { multiselectdata } from "@/shared/data/apps/projects/createprojectdata";
 import Swal from "sweetalert2";
 import { enhanceProjectBrief } from "@/shared/lib/api/pmAssistant";
+import {
+  BriefEnhancedReviewModal,
+  type BriefRegenerateInput,
+} from "@/shared/components/pm/BriefEnhancedReviewModal";
 
 const DatePicker = dynamic(() => import("react-datepicker"), { ssr: false });
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -235,15 +239,6 @@ function htmlToPreviewPlain(html: string): string {
   return stripBriefPlain(html);
 }
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function sectionHeadingId(title: string) {
   return `pm-form-section-${title.replace(/\s+/g, "-").toLowerCase()}`;
 }
@@ -329,12 +324,79 @@ export function DynamicProjectForm({
       : false
   );
 
+  type BriefReviewState = {
+    open: boolean;
+    busy: boolean;
+    error: string | null;
+    baseHtml: string;
+    projectName?: string;
+    projectManager?: string;
+    clientStakeholder?: string;
+    plainBefore: string;
+    plainAfter: string;
+    enhancedHtml: string;
+    contextLines: string[];
+    emptyEditorExplain: boolean;
+  };
+
+  const [briefReview, setBriefReview] = useState<BriefReviewState | null>(null);
+  const briefReviewRef = useRef<BriefReviewState | null>(null);
+
+  useEffect(() => {
+    briefReviewRef.current = briefReview;
+  }, [briefReview]);
+
   const handleChange = useCallback(
     (name: string) => (value: unknown) => {
       onChange(name, value);
     },
     [onChange]
   );
+
+  const handleBriefRegenerate = useCallback(async (input: BriefRegenerateInput) => {
+    const snap = briefReviewRef.current;
+    if (!snap?.open) return;
+    setBriefReview({ ...snap, busy: true, error: null });
+    try {
+      const out = await enhanceProjectBrief({
+        html: snap.baseHtml,
+        ...(snap.projectName ? { projectName: snap.projectName } : {}),
+        ...(snap.projectManager ? { projectManager: snap.projectManager } : {}),
+        ...(snap.clientStakeholder ? { clientStakeholder: snap.clientStakeholder } : {}),
+        previousEnhancedHtml: snap.enhancedHtml,
+        ...(input.refinementInstructions ? { refinementInstructions: input.refinementInstructions } : {}),
+        ...(input.feedbackRating || input.feedbackComment
+          ? {
+              feedback: {
+                ...(input.feedbackRating ? { rating: input.feedbackRating } : {}),
+                ...(input.feedbackComment ? { comment: input.feedbackComment } : {}),
+              },
+            }
+          : {}),
+      });
+      setBriefReview((prev) =>
+        prev
+          ? {
+              ...prev,
+              busy: false,
+              error: null,
+              enhancedHtml: out.enhancedHtml,
+              plainAfter: htmlToPreviewPlain(out.enhancedHtml),
+            }
+          : null
+      );
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : e instanceof Error
+            ? e.message
+            : "Could not regenerate the brief.";
+      setBriefReview((prev) =>
+        prev ? { ...prev, busy: false, error: typeof msg === "string" ? msg : "Could not regenerate the brief." } : null
+      );
+    }
+  }, []);
 
   const handleBriefEnhance = useCallback(async () => {
     if (!briefAiEnhanceEnabled || disabled) return;
@@ -353,66 +415,24 @@ export function DynamicProjectForm({
 
       const plainBefore = htmlToPreviewPlain(html);
       const plainAfter = htmlToPreviewPlain(out.enhancedHtml);
-      const ctxBits: string[] = [];
-      if (projectName) ctxBits.push(`Project name: ${projectName}`);
-      if (projectManager) ctxBits.push(`PM label: ${projectManager}`);
-      if (clientStakeholder) ctxBits.push(`Stakeholder: ${clientStakeholder}`);
+      const contextLines: string[] = [];
+      if (projectName) contextLines.push(`Project name: ${projectName}`);
+      if (projectManager) contextLines.push(`PM label: ${projectManager}`);
+      if (clientStakeholder) contextLines.push(`Stakeholder: ${clientStakeholder}`);
 
-      const ctxBlock =
-        ctxBits.length > 0
-          ? `<p class="text-start text-[0.72rem] leading-snug text-[#64748b] dark:text-white/55 mb-2">${escapeHtml(ctxBits.join(" · "))}</p>`
-          : `<p class="text-start text-[0.72rem] leading-snug text-[#64748b] dark:text-white/55 mb-2">No Overview fields filled yet — the model only sees an empty editor and will draft a generic starter brief.</p>`;
-
-      const emptyExplain =
-        plainBefore.length === 0
-          ? `<p class="text-start text-[0.72rem] text-indigo-800/90 dark:text-indigo-200/90 mb-2 rounded-md bg-indigo-500/[0.08] px-2 py-1.5">The box is empty, so the server sends your <strong>Overview</strong> labels (above) plus empty HTML. The model is instructed to write an honest starter brief from that context — not to invent sponsors or dates.</p>`
-          : "";
-
-      const oldPanel =
-        plainBefore.length > 0
-          ? escapeHtml(plainBefore)
-          : `<span class="text-[#94a3b8] italic">(Empty editor — compare with context above.)</span>`;
-
-      const previewHtml = `
-<style>
-  .pm-brief-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; text-align: left; }
-  @media (max-width: 640px) { .pm-brief-compare { grid-template-columns: 1fr; } }
-  .pm-brief-panel { max-height: min(48vh, 340px); overflow: auto; border: 1px solid rgb(226 232 240); border-radius: 10px; padding: 10px 12px; font-size: 0.8125rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
-  .dark .pm-brief-panel { border-color: rgba(255,255,255,0.12); }
-</style>
-${ctxBlock}
-${emptyExplain}
-<div class="pm-brief-compare">
-  <div>
-    <div class="text-start font-semibold text-[0.78rem] text-[#334155] dark:text-white/85 mb-1">Current brief</div>
-    <div class="pm-brief-panel bg-slate-50 dark:bg-black/25">${oldPanel}</div>
-  </div>
-  <div>
-    <div class="text-start font-semibold text-[0.78rem] text-[#0f766e] dark:text-teal-300/95 mb-1">AI suggestion</div>
-    <div class="pm-brief-panel border-teal-500/30 bg-teal-500/[0.06] dark:bg-teal-950/20">${escapeHtml(plainAfter)}</div>
-  </div>
-</div>
-<p class="text-start text-[0.7rem] text-[#94a3b8] dark:text-white/45 mt-2 mb-0">Preview is plain text (formatting may differ slightly in the editor after you apply).</p>`;
-
-      const r = await Swal.fire({
-        title: "Review enhanced brief",
-        html: previewHtml,
-        width: "min(96vw, 960px)",
-        showCancelButton: true,
-        confirmButtonText: "Use AI version",
-        cancelButtonText: "Cancel",
-        reverseButtons: true,
-        focusCancel: true,
-        customClass: { htmlContainer: "swal2-text-start text-defaulttextcolor" },
-      });
-      if (!r.isConfirmed) return;
-
-      handleChange("description")(out.enhancedHtml);
-      await Swal.fire({
-        icon: "success",
-        title: "Brief updated",
-        timer: 1600,
-        showConfirmButton: false,
+      setBriefReview({
+        open: true,
+        busy: false,
+        error: null,
+        baseHtml: html,
+        ...(projectName ? { projectName } : {}),
+        ...(projectManager ? { projectManager } : {}),
+        ...(clientStakeholder ? { clientStakeholder } : {}),
+        plainBefore,
+        plainAfter,
+        enhancedHtml: out.enhancedHtml,
+        contextLines,
+        emptyEditorExplain: plainBefore.length === 0,
       });
     } catch (e: unknown) {
       const msg =
@@ -436,8 +456,25 @@ ${emptyExplain}
     values.name,
     values.projectManager,
     values.clientStakeholder,
-    handleChange,
   ]);
+
+  const handleBriefReviewClose = useCallback(() => {
+    if (briefReviewRef.current?.busy) return;
+    setBriefReview(null);
+  }, []);
+
+  const handleBriefReviewApply = useCallback(() => {
+    const snap = briefReviewRef.current;
+    if (!snap?.open || snap.busy) return;
+    handleChange("description")(snap.enhancedHtml);
+    setBriefReview(null);
+    void Swal.fire({
+      icon: "success",
+      title: "Brief updated",
+      timer: 1600,
+      showConfirmButton: false,
+    });
+  }, [handleChange]);
 
   const renderField = (field: ProjectFormFieldConfig) => {
     const value = values[field.name];
@@ -935,6 +972,20 @@ ${emptyExplain}
 
   return (
     <div className="space-y-6 overflow-visible">
+      {briefReview?.open ? (
+        <BriefEnhancedReviewModal
+          open={briefReview.open}
+          onClose={handleBriefReviewClose}
+          contextLines={briefReview.contextLines}
+          emptyEditorExplain={briefReview.emptyEditorExplain}
+          plainCurrent={briefReview.plainBefore}
+          plainSuggestion={briefReview.plainAfter}
+          busy={briefReview.busy}
+          error={briefReview.error}
+          onApply={handleBriefReviewApply}
+          onRegenerate={handleBriefRegenerate}
+        />
+      ) : null}
       {INTAKE_FIELD_NAMES.length ? (
         <div
           className="rounded-xl border border-dashed border-teal-500/35 bg-teal-500/[0.04] px-4 py-3 motion-safe:animate-pm-section-in motion-reduce:animate-none dark:border-teal-400/25 dark:bg-teal-500/[0.07]"

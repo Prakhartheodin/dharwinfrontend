@@ -20,6 +20,8 @@ export interface TeamMember {
   position?: string;
   coverImageUrl?: string;
   avatarImageUrl?: string;
+  /** Presigned URL from GET /teams when a Candidate with this email has profilePicture (server-enriched). */
+  candidateProfilePictureUrl?: string;
   teamGroup: TeamGroup;
   teamId?: string | TeamMemberTeamRef;
   onlineStatus: "online" | "offline";

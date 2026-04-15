@@ -75,6 +75,7 @@ export const PERMISSION_SECTIONS: {
     label: "Project Management",
     features: [
       { id: "projects", label: "Projects" },
+      { id: "my-projects", label: "My Projects" },
       { id: "tasks", label: "My Tasks" },
       { id: "kanban", label: "Task Board (Kanban)" },
       { id: "milestones", label: "Milestones" },

@@ -31,8 +31,11 @@ export interface Task {
   status: TaskStatus;
   dueDate?: string;
   tags?: string[];
+  /** Staffing hints from PM / AI (may include specialist slugs such as feature-engineer). */
+  requiredSkills?: string[];
   assignedTo?: TaskUser[];
-  projectId?: { _id: string; id?: string; name?: string };
+  /** Populated project, raw ObjectId string, or null if unlinked / missing ref */
+  projectId?: { _id?: string; id?: string; name?: string } | string | null;
   likesCount: number;
   commentsCount: number;
   comments?: TaskComment[];
@@ -46,6 +49,27 @@ export interface Task {
 /** Get task id from API response (handles id vs _id) */
 export function getTaskId(task: Task): string {
   return (task as Task & { id?: string }).id ?? task._id ?? "";
+}
+
+export type TaskProjectMeta = { projectId?: string; embeddedName?: string };
+
+/** Normalize task.projectId from API (populated object, string id, or null). */
+export function getTaskProjectMeta(task: Task): TaskProjectMeta {
+  const p = task.projectId;
+  if (p == null) return {};
+  if (typeof p === "string") {
+    const s = p.trim();
+    return s ? { projectId: s } : {};
+  }
+  if (typeof p === "object") {
+    const id = (p.id ?? p._id) != null ? String(p.id ?? p._id) : undefined;
+    const name = typeof p.name === "string" ? p.name.trim() : "";
+    return {
+      projectId: id,
+      embeddedName: name || undefined,
+    };
+  }
+  return {};
 }
 
 export interface TasksListParams {
@@ -175,5 +199,9 @@ export function formatCreatedDate(dateStr: string | undefined): string {
   if (!dateStr) return "";
   const d = new Date(dateStr);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
