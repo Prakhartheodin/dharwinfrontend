@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect, useCallback } from 'react'
 import Swal from 'sweetalert2'
@@ -166,8 +165,7 @@ const TrainingPositions = () => {
   return (
     <Fragment>
       <Seo title="Positions" />
-      <Pageheader currentpage="Positions" activepage="Training Curriculum" mainpage="Positions" />
-      <div className="grid grid-cols-12 gap-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-12 col-span-12">
           <div className="box custom-box overflow-hidden rounded-2xl border border-defaultborder/70 shadow-[0_18px_45px_-24px_rgba(0,0,0,0.35)]">
             <div className="box-header flex items-center justify-between flex-wrap gap-4 bg-gradient-to-br from-primary/[0.08] via-transparent to-amber-500/[0.04] dark:from-primary/15 px-5 py-5">

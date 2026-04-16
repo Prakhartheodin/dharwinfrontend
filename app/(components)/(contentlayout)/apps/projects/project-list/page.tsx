@@ -6,7 +6,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Swal from "sweetalert2";
-import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
+import { usePmRefetchOnFocus, emitPmDataMutated } from "@/shared/hooks/usePmRefetchOnFocus";
 import { isPmAssistantUiEnabled } from "@/shared/lib/pm/featureFlags";
 import { AiTaskBreakdownModal } from "@/shared/components/pm/AiTaskBreakdownModal";
 import { runAssignmentGenerationWithUi } from "@/shared/lib/pm/runAssignmentGenerationWithUi";
@@ -795,6 +795,7 @@ const Projectlist = () => {
     async (id: string) => {
       try {
         await deleteProject(id);
+        emitPmDataMutated();
         await Swal.fire("Deleted", "Project has been deleted.", "success");
         fetchProjects({ page });
       } catch {

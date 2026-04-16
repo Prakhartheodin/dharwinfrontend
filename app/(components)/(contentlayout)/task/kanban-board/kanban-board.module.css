@@ -1,0 +1,372 @@
+/* Task board: slate neutrals + teal accent (60/30/10). Scoped to .kbRoot only. */
+
+.kbRoot {
+  /* --kb-font-body / --kb-font-display from next/font (Plus Jakarta Sans + Syne) */
+  font-family: var(--kb-font-body), ui-sans-serif, system-ui, sans-serif;
+  --kb-bg: #eef2f6;
+  --kb-bg2: #e8edf3;
+  --kb-surface: #ffffff;
+  --kb-border: #d8dee9;
+  --kb-text: #0f172a;
+  --kb-muted: #64748b;
+  --kb-muted2: #94a3b8;
+  --kb-accent: #0f766e;
+  --kb-accent-hover: #115e59;
+  --kb-accent-soft: #ccfbf1;
+  --kb-accent-ring: rgba(15, 118, 110, 0.35);
+  --kb-col-new: #0f766e;
+  --kb-col-todo: #b45309;
+  --kb-col-going: #0369a1;
+  --kb-col-review: #a21caf;
+  --kb-col-done: #15803d;
+}
+
+:global(.dark) .kbRoot {
+  --kb-bg: #0f1419;
+  --kb-bg2: #121a22;
+  --kb-surface: rgba(24, 33, 44, 0.92);
+  --kb-border: rgba(148, 163, 184, 0.2);
+  --kb-text: #f1f5f9;
+  --kb-muted: #94a3b8;
+  --kb-muted2: #64748b;
+  --kb-accent: #2dd4bf;
+  --kb-accent-hover: #5eead4;
+  --kb-accent-soft: rgba(45, 212, 191, 0.12);
+  --kb-accent-ring: rgba(45, 212, 191, 0.35);
+  --kb-col-new: #2dd4bf;
+  --kb-col-todo: #fbbf24;
+  --kb-col-going: #38bdf8;
+  --kb-col-review: #e879f9;
+  --kb-col-done: #4ade80;
+}
+
+.kbBtnPrimary {
+  font-family: var(--kb-font-body);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: linear-gradient(180deg, var(--kb-accent) 0%, var(--kb-accent-hover) 100%);
+  color: #fff !important;
+  border: none;
+  border-radius: 0.625rem;
+  padding: 0.45rem 1rem;
+  box-shadow: 0 2px 8px -2px var(--kb-accent-ring);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.kbBtnPrimary:hover {
+  filter: brightness(1.05);
+  box-shadow: 0 6px 20px -4px var(--kb-accent-ring);
+}
+
+.kbBtnPrimary:active {
+  transform: scale(0.98);
+}
+
+.kbBtnGhost {
+  font-family: var(--kb-font-body);
+  font-weight: 500;
+  font-size: 0.8125rem;
+  color: var(--kb-muted);
+  background: transparent;
+  border: 1px solid var(--kb-border);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.65rem;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+
+.kbBtnGhost:hover {
+  color: var(--kb-text);
+  border-color: var(--kb-muted2);
+  background: color-mix(in srgb, var(--kb-surface) 70%, transparent);
+}
+
+.kbDragHint {
+  font-family: var(--kb-font-body);
+  font-size: 0.75rem;
+  color: var(--kb-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px dashed var(--kb-border);
+  background: color-mix(in srgb, var(--kb-surface) 60%, transparent);
+}
+
+.kbBoard {
+  font-family: var(--kb-font-body);
+  color: var(--kb-text);
+  align-items: stretch;
+  width: 100%;
+  max-width: 100%;
+  /* Height follows columns; no tall min-height so the page does not force huge empty space */
+}
+
+.kbColumn {
+  font-family: var(--kb-font-body);
+  background: var(--kb-surface);
+  border: 1px solid var(--kb-border);
+  border-radius: 1rem;
+  padding: 1rem 0.875rem 0.75rem;
+  flex: 1 0 0;
+  width: auto;
+  min-width: 13.5rem;
+  max-width: none;
+  box-sizing: border-box;
+  box-shadow: 0 10px 40px -18px rgba(15, 23, 42, 0.15);
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(88dvh, calc(100dvh - 8.5rem));
+  overflow: hidden;
+  align-self: stretch;
+}
+
+.kbColumnBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Fill Perfect Scrollbar viewport so tinted area runs to “View more” when there are few cards */
+.kbFirstDrag {
+  min-height: max(100%, 7.5rem);
+}
+
+:global(.dark) .kbColumn {
+  box-shadow: 0 12px 48px -20px rgba(0, 0, 0, 0.55);
+}
+
+.kbColumn:hover {
+  border-color: color-mix(in srgb, var(--kb-accent) 22%, var(--kb-border));
+  box-shadow: 0 14px 44px -16px rgba(15, 23, 42, 0.18);
+}
+
+.kbColumnHeader {
+  font-family: var(--kb-font-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--kb-text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid var(--kb-border);
+}
+
+.kbCount {
+  font-family: var(--kb-font-body);
+  font-weight: 700;
+  font-size: 0.75rem;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--kb-accent-soft);
+  color: var(--kb-accent);
+}
+
+.kbColumnAccentNew {
+  border-top: 3px solid var(--kb-col-new);
+}
+.kbColumnAccentTodo {
+  border-top: 3px solid var(--kb-col-todo);
+}
+.kbColumnAccentGoing {
+  border-top: 3px solid var(--kb-col-going);
+}
+.kbColumnAccentReview {
+  border-top: 3px solid var(--kb-col-review);
+}
+.kbColumnAccentDone {
+  border-top: 3px solid var(--kb-col-done);
+}
+
+.kbScrollHost {
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--kb-bg2) 35%, transparent);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
+  max-height: 100% !important;
+  position: relative;
+}
+
+.kbEmpty {
+  font-family: var(--kb-font-body);
+  color: var(--kb-muted);
+}
+
+.kbViewMore {
+  font-family: var(--kb-font-body);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--kb-border);
+  background: transparent;
+  color: var(--kb-muted);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.kbViewMore:hover {
+  color: var(--kb-accent);
+  border-color: color-mix(in srgb, var(--kb-accent) 35%, var(--kb-border));
+  background: var(--kb-accent-soft);
+}
+
+.kbViewMore:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--kb-surface), 0 0 0 4px var(--kb-accent-ring);
+}
+
+/* Task cards */
+.kbCard {
+  font-family: var(--kb-font-body);
+  border-radius: 0.875rem !important;
+  border: 1px solid var(--kb-border) !important;
+  background: var(--kb-surface) !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.2s ease;
+  cursor: grab;
+  margin-bottom: 0.75rem;
+}
+
+.kbCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px -10px rgba(15, 23, 42, 0.14);
+  border-color: color-mix(in srgb, var(--kb-accent) 28%, var(--kb-border)) !important;
+}
+
+.kbCard:active {
+  cursor: grabbing;
+}
+
+.kbTag {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+  background: color-mix(in srgb, var(--kb-muted2) 14%, transparent);
+  color: var(--kb-muted);
+  border: 1px solid var(--kb-border);
+}
+
+.kbTagAccent {
+  background: var(--kb-accent-soft);
+  color: var(--kb-accent);
+  border-color: color-mix(in srgb, var(--kb-accent) 22%, var(--kb-border));
+}
+
+.kbTitle {
+  font-family: var(--kb-font-display), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.9375rem !important;
+  line-height: 1.35;
+  color: var(--kb-text);
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.kbDesc {
+  color: var(--kb-muted);
+  font-size: 0.8125rem;
+}
+
+.kbStat {
+  color: var(--kb-accent);
+}
+
+.kbMeta {
+  color: var(--kb-muted2);
+  font-size: 0.75rem;
+}
+
+/* Loading skeleton */
+.kbSkeletonBoard {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 0.5rem 0.25rem 1rem;
+  font-family: var(--kb-font-body);
+}
+
+.kbSkeletonCol {
+  flex: 1 0 0;
+  min-width: 13.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--kb-border);
+  background: var(--kb-surface);
+  padding: 1rem;
+  min-height: 22rem;
+}
+
+.kbSkeletonLine {
+  height: 0.65rem;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--kb-border) 80%, var(--kb-muted2)) 0%,
+    color-mix(in srgb, var(--kb-surface) 40%, var(--kb-border)) 50%,
+    color-mix(in srgb, var(--kb-border) 80%, var(--kb-muted2)) 100%
+  );
+  background-size: 200% 100%;
+  animation: kbShimmer 1.25s ease-in-out infinite;
+  margin-bottom: 0.65rem;
+}
+
+.kbSkeletonCard {
+  height: 5.5rem;
+  border-radius: 0.75rem;
+  margin-top: 0.75rem;
+  background: linear-gradient(
+    90deg,
+    var(--kb-border) 0%,
+    color-mix(in srgb, var(--kb-surface) 50%, var(--kb-border)) 45%,
+    var(--kb-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: kbShimmer 1.35s ease-in-out infinite;
+}
+
+@keyframes kbShimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbCard,
+  .kbBtnPrimary {
+    transition: none !important;
+  }
+
+  .kbCard:hover {
+    transform: none;
+  }
+
+  .kbSkeletonLine,
+  .kbSkeletonCard {
+    animation: none;
+    background: var(--kb-border);
+  }
+}

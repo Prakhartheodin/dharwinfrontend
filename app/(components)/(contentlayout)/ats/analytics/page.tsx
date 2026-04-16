@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect, useMemo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
@@ -453,9 +452,7 @@ const ATSAnalytics = () => {
   return (
     <Fragment>
       <Seo title="ATS Analytics" />
-      <Pageheader currentpage="Analytics" activepage="ATS" mainpage="Analytics" />
-
-      <div className="container w-full max-w-full mx-auto">
+      <div className="container mx-auto mt-5 w-full max-w-full sm:mt-6">
         {/* Header: Range selector + Export */}
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex flex-wrap items-center gap-2">

@@ -643,7 +643,7 @@ export default function DashboardPage() {
       )}
 
       {/* ========== WELCOME BAR ========== */}
-      <div className="box mb-4">
+      <div className="box mt-5 mb-4 sm:mt-6">
         <div className="box-body flex flex-wrap items-center justify-between gap-4 !py-3">
           <div>
             <h4 className="font-semibold text-[1.125rem] mb-0">

@@ -393,7 +393,7 @@ const Filemanager = () => {
         </div>
       )}
 
-      <div className="file-manager-container p-2 gap-2 sm:!flex !block text-defaulttextcolor text-defaultsize">
+      <div className="file-manager-container mt-5 p-2 gap-2 sm:mt-6 sm:!flex !block text-defaulttextcolor text-defaultsize">
         {/* Left sidebar */}
         <div className={`file-manager-navigation ${isFoldersOpen ? "close" : ""} bg-white dark:bg-bodybg border-e border-defaultborder/10`}>
           <div className="flex items-center justify-between w-full p-4 border-b border-defaultborder/10">

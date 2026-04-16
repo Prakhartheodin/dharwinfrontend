@@ -713,7 +713,7 @@ export default function AttendanceTracking() {
         </div>
       )}
 
-      <div className="container w-full max-w-full mx-auto">
+      <div className="container mx-auto mt-5 w-full max-w-full sm:mt-6">
         {/* Loading / Error */}
         {loadingStudent && (
           <div className="py-12 flex flex-col items-center">

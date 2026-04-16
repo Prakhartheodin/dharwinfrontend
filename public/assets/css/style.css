@@ -3830,7 +3830,7 @@ label {
   @apply flex overflow-x-auto items-stretch mb-3 pb-4;
 }
 .dharwin-kanban-board .kanban-tasks-type {
-  @apply min-w-[20rem] me-6 w-full;
+  @apply me-6 shrink-0;
 }
 .dharwin-kanban-board .kanban-tasks-type:last-child {
   @apply me-0;
@@ -3866,10 +3866,7 @@ label {
   @apply mb-0;
 }
 .dharwin-kanban-board #new-tasks, .dharwin-kanban-board #todo-tasks, .dharwin-kanban-board #inprogress-tasks, .dharwin-kanban-board #inreview-tasks, .dharwin-kanban-board #completed-tasks {
-  @apply relative max-h-[35rem];
-}
-.dharwin-kanban-board #new-tasks .simplebar-content, .dharwin-kanban-board #todo-tasks .simplebar-content, .dharwin-kanban-board #inprogress-tasks .simplebar-content, .dharwin-kanban-board #inreview-tasks .simplebar-content, .dharwin-kanban-board #completed-tasks .simplebar-content {
-  @apply pt-0 pb-4 px-0;
+  @apply relative flex-1 min-h-0;
 }
 .dharwin-kanban-board .task-Null {
   @apply relative min-h-[12.5rem] before:absolute before:inset-0 before:bg-white dark:before:bg-bodybg before:rounded-md before:bg-[url('../public/assets/images/media/media-83.svg')] before:bg-cover before:bg-center before:h-[12.5rem]

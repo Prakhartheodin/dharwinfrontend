@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
-import Link from "next/link";
-import type { Task, TaskStatus } from "@/shared/lib/api/tasks";
+import type { Task } from "@/shared/lib/api/tasks";
 import {
   getTaskId,
   formatCreatedDate,
   formatDueDate,
 } from "@/shared/lib/api/tasks";
+import styles from "./kanban-board.module.css";
 
 export interface KanbanTaskCardProps {
   task: Task;
@@ -138,13 +138,13 @@ export function KanbanTaskCard({
 
   return (
     <div
-      className="box kanban-tasks"
+      className={`box kanban-tasks ${styles.kbCard}`}
       data-task-id={taskId}
       data-status={task.status}
     >
       <div className="box-body !p-0">
         <div className="p-4 kanban-board-head">
-          <div className="flex text-[#8c9097] dark:text-white/50 justify-between mb-1 text-[.75rem] font-semibold">
+          <div className={`flex justify-between mb-1 text-[.75rem] font-semibold ${styles.kbMeta}`}>
             <div className="inline-flex">
               <i className="ri-time-line me-1 align-middle" />
               Created - {formatCreatedDate(task.createdAt)}
@@ -160,13 +160,10 @@ export function KanbanTaskCard({
           <div className="flex items-center justify-between">
             <div className="task-badges flex flex-wrap gap-1">
               {task.taskCode && (
-                <span className="badge bg-light text-default">{task.taskCode}</span>
+                <span className={`badge bg-light text-default border ${styles.kbTag}`}>{task.taskCode}</span>
               )}
               {tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="badge bg-primary/10 text-primary"
-                >
+                <span key={tag} className={`badge border-0 ${styles.kbTag} ${styles.kbTagAccent}`}>
                   {tag}
                 </span>
               ))}
@@ -231,8 +228,8 @@ export function KanbanTaskCard({
                 />
               </div>
             )}
-            <h6 className="font-semibold mb-1 !text-[.9375rem]">{task.title}</h6>
-            <div className="kanban-task-description line-clamp-2">
+            <h6 className={`mb-1 ${styles.kbTitle}`}>{task.title}</h6>
+            <div className={`kanban-task-description line-clamp-2 ${styles.kbDesc}`}>
               {task.description || "No description."}
             </div>
           </div>
@@ -240,12 +237,12 @@ export function KanbanTaskCard({
         <div className="p-4 border-t dark:border-defaultborder/10 border-dashed">
           <div className="flex items-center justify-between">
             <div className="inline-flex items-center">
-              <span className="inline-flex items-center me-2 text-primary">
-                <i className="ri-thumb-up-fill align-middle font-normal" />
+              <span className={`inline-flex items-center me-2 ${styles.kbStat}`}>
+                <i className="ri-thumb-up-fill align-middle font-normal" aria-hidden />
                 <span className="font-semibold text-[.75rem] ms-1">{task.likesCount ?? 0}</span>
               </span>
-              <span className="inline-flex items-center text-[#8c9097] dark:text-white/50">
-                <i className="ri-message-2-line align-middle font-normal" />
+              <span className={`inline-flex items-center ${styles.kbMeta}`}>
+                <i className="ri-message-2-line align-middle font-normal" aria-hidden />
                 <span className="font-semibold text-[.75rem] ms-1">{task.commentsCount ?? 0}</span>
               </span>
             </div>
@@ -263,7 +260,7 @@ export function KanbanTaskCard({
                 );
               })}
               {assignedTo.length === 0 && (
-                <span className="text-[#8c9097] text-[0.75rem]">Unassigned</span>
+                <span className={`text-[0.75rem] ${styles.kbMeta}`}>Unassigned</span>
               )}
             </div>
           </div>

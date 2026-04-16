@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect } from 'react'
 import { useTable, useSortBy, usePagination } from 'react-table'
@@ -237,13 +236,7 @@ const Evaluation = () => {
   return (
     <Fragment>
       <Seo title="Evaluation" />
-      <Pageheader
-        currentpage="Evaluation"
-        activepage="Training Management"
-        mainpage="Evaluation"
-      />
-
-      <div className="container w-full max-w-full mx-auto">
+      <div className="container mx-auto mt-5 w-full max-w-full sm:mt-6">
         {/* Summary */}
         <div className="grid grid-cols-12 gap-4 mb-6">
           <div className="xl:col-span-4 col-span-12">

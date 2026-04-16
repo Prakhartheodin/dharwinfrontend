@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -340,9 +339,7 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
-      <Pageheader currentpage="Calling" activepage="Communication" mainpage="Calling" />
-
-      <div className="grid grid-cols-12 gap-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-8 col-span-12">
           <div className="box custom-box">
             <div className="box-header justify-between flex-wrap gap-3">

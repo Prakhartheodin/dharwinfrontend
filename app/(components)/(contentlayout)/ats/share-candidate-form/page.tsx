@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useRef } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -162,8 +161,7 @@ const ShareCandidateForm = () => {
   return (
     <Fragment>
       <Seo title="Share Candidate Onboarding Forms" />
-      <Pageheader currentpage="Share candidate form" activepage="Pre-boarding" mainpage="Share candidate form" />
-      <div className="min-h-[80vh] bg-gray-50 dark:bg-bodybg py-8 px-4 sm:px-6 lg:px-8">
+      <div className="mt-5 min-h-[80vh] bg-gray-50 px-4 py-8 dark:bg-bodybg sm:mt-6 sm:px-6 lg:px-8">
         <div className="max-w-2xl mx-auto">
           {/* Centered title and intro */}
           <div className="text-center mb-8">

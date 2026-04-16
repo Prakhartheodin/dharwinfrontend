@@ -2,7 +2,7 @@
 .dharwin-kanban-board {
     @apply flex overflow-x-auto items-stretch mb-3 pb-4;
     .kanban-tasks-type {
-        @apply min-w-[20rem] me-6 w-full;
+        @apply me-6 shrink-0;
         &:last-child {
             @apply me-0;
         }
@@ -53,11 +53,9 @@
             @apply mb-0;
         }
     }
+    /* Scroll height comes from flex + kbScrollHost (Perfect Scrollbar), not a fixed max-height */
     #new-tasks,#todo-tasks,#inprogress-tasks,#inreview-tasks,#completed-tasks {
-        @apply relative max-h-[35rem];
-        .simplebar-content {
-            @apply pt-0 pb-4 px-0;
-        }
+        @apply relative flex-1 min-h-0;
     }
     .task-Null {
         @apply relative min-h-[12.5rem] before:absolute before:inset-0 before:bg-white dark:before:bg-bodybg before:rounded-md before:bg-[url('../public/assets/images/media/media-83.svg')] before:bg-cover before:bg-center before:h-[12.5rem]
