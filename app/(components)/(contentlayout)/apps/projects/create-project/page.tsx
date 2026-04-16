@@ -105,24 +105,43 @@ const Createproject = () => {
   /** Full-screen staged progress while `bootstrapSmartTeam` runs (replaces Swal loading). */
   const [aiBootstrapLoading, setAiBootstrapLoading] = useState(false);
 
-  const runSmartSetupFlow = useCallback(async (projectId: string) => {
+  const runSmartSetupFlow = useCallback(async (projectId: string): Promise<{ openedAssignmentReview: boolean }> => {
     setAiBootstrapLoading(true);
     try {
       const result = await bootstrapSmartTeam(projectId, {});
-      if (result.staffed === false) {
-        const reviewUrl = `/apps/projects/assignment/${encodeURIComponent(result.assignmentRunId)}`;
-        await Swal.fire({
+      const runId = encodeURIComponent(result.assignmentRunId);
+      const reviewUrl = `/apps/projects/assignment/${runId}`;
+      const hasMatches =
+        result.hasStaffableMatches === true ||
+        (result.hasStaffableMatches !== false && result.staffed === true);
+
+      if (!hasMatches) {
+        const r1 = await Swal.fire({
           icon: "info",
           title: "Tasks created — staffing needs review",
-          html: `<p class="text-start text-sm">${result.message ?? "No automatic candidate matches were produced."} You can match candidates on the assignment screen.</p><p class="text-start text-sm mb-0"><a href="${reviewUrl}" class="text-primary">Open AI assignment review</a></p>`,
+          html: `<p class="text-start text-sm">${result.message ?? "No automatic candidate matches were produced."} Match candidates on the assignment screen, then approve and apply when ready.</p>`,
+          confirmButtonText: "Open assignment review",
         });
-        return;
+        if (r1.isConfirmed) {
+          router.push(reviewUrl);
+          return { openedAssignmentReview: true };
+        }
+        return { openedAssignmentReview: false };
       }
-      await Swal.fire({
+
+      const r2 = await Swal.fire({
         icon: "success",
-        title: "Team created & students assigned",
-        text: "A new team was created for this project, matched students/candidates were added to it, tasks were created, task owners were set from smart assignment, and the team was linked on the project under Project team(s).",
+        title: "Review AI staffing before apply",
+        html: `<p class="text-start text-sm mb-0">Tasks are saved and AI candidate matches are ready. Open the assignment screen to <strong>review</strong> rows, then <strong>approve and apply</strong> to set task owners and sync the project team — same flow as other PM assistant staffing.</p>`,
+        confirmButtonText: "Open assignment review",
+        showCancelButton: true,
+        cancelButtonText: "Later",
       });
+      if (r2.isConfirmed) {
+        router.push(reviewUrl);
+        return { openedAssignmentReview: true };
+      }
+      return { openedAssignmentReview: false };
     } catch (err: unknown) {
       const message =
         (err && typeof err === "object" && "response" in err
@@ -130,10 +149,11 @@ const Createproject = () => {
           : undefined) ??
         "Smart team setup failed. The project still exists—open it to add tasks or a team manually.";
       await Swal.fire({ icon: "warning", title: "AI team & assignment", text: message });
+      return { openedAssignmentReview: false };
     } finally {
       setAiBootstrapLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     setTeamOptionsError(null);
@@ -303,8 +323,8 @@ const Createproject = () => {
       }
 
       if (afterCreateAiMode === "smart_team") {
-        await runSmartSetupFlow(projectId);
-        router.push("/apps/projects/project-list/");
+        const { openedAssignmentReview } = await runSmartSetupFlow(projectId);
+        if (!openedAssignmentReview) router.push("/apps/projects/project-list/");
         return;
       }
 
@@ -337,7 +357,7 @@ const Createproject = () => {
               <span>
                 <strong class="text-defaulttextcolor">New AI team + smart student assignment</strong>
                 <span class="block text-[#8c9097] dark:text-white/55 mt-1">
-                  Creates tasks with GPT, runs smart candidate matching, <strong>creates a new team</strong> for this project, <strong>adds matched students/candidates</strong> to that team roster, sets task owners, and links the team here — one automated run (often 30–90 seconds).
+                  Creates tasks with GPT and runs smart candidate matching (often 30–90 seconds). You then <strong>review on the assignment screen</strong> and apply when ready — that step sets task owners and syncs the project team.
                 </span>
               </span>
             </label>
@@ -412,8 +432,8 @@ const Createproject = () => {
       }
 
       if (smart) {
-        await runSmartSetupFlow(projectId);
-        router.push("/apps/projects/project-list/");
+        const { openedAssignmentReview } = await runSmartSetupFlow(projectId);
+        if (!openedAssignmentReview) router.push("/apps/projects/project-list/");
         return;
       }
 

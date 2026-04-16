@@ -165,8 +165,12 @@ export interface AssignmentApplyTeamSync {
 
 export interface BootstrapSmartTeamResult {
   projectId: string;
-  /** When false, tasks were created but no one was auto-matched; use assignmentRunId to review. */
+  /** True when the matcher produced at least one staffed row (still requires user review + apply). */
   staffed?: boolean;
+  /** Explicit mirror of staffed for new clients; prefer this when branching UX. */
+  hasStaffableMatches?: boolean;
+  /** False until the user approves and applies on the assignment review screen. */
+  assignmentApplied?: boolean;
   assignmentRunId: string;
   teamGroup: { _id?: string; id?: string; name?: string } | null;
   tasksCreated: number;

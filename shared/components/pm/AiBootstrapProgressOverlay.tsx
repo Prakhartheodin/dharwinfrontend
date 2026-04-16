@@ -21,12 +21,12 @@ const STEPS: { label: string; logs: string[] }[] = [
     ],
   },
   {
-    label: "Building project team",
-    logs: ["Creating team roster…", "Resolving team name collisions…", "Setting team defaults…"],
-  },
-  {
-    label: "Linking team to project",
-    logs: ["Connecting workspace…", "Syncing assignments…", "Finalizing links…"],
+    label: "Ready for your review",
+    logs: [
+      "Opening assignment workspace next…",
+      "You approve matches when you are ready…",
+      "Apply sets owners and syncs the team…",
+    ],
   },
 ];
 
@@ -62,7 +62,7 @@ export function AiBootstrapProgressOverlay({ open }: AiBootstrapProgressOverlayP
   if (!open) return null;
 
   const elapsed = elapsedMs;
-  const activeIdx = Math.min(STEPS.length - 1, Math.floor(elapsed / 16500));
+  const activeIdx = Math.min(STEPS.length - 1, Math.floor(elapsed / 22000));
   const pct = Math.min(90, 3 + (elapsed / 88000) * 87);
   const logs = STEPS[activeIdx]?.logs ?? STEPS[0].logs;
   const logIdx = Math.min(logs.length - 1, Math.floor((elapsed % 3200) / 1050));
@@ -101,7 +101,7 @@ export function AiBootstrapProgressOverlay({ open }: AiBootstrapProgressOverlayP
               Creating AI team &amp; assignments
             </p>
             <p className="mb-0 mt-1 text-[0.8125rem] leading-snug text-[#8c9097] dark:text-white/50">
-              GPT is drafting tasks, matching students to work, creating a new team, and linking it here.
+              GPT is drafting tasks and matching candidates. When this finishes, review suggestions on the assignment screen and apply when ready — that updates task owners and the project team.
               Keep this tab open — often 30–90 seconds.
             </p>
           </div>
