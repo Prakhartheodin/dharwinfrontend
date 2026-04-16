@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect } from 'react'
 import { listPlacements, updatePlacement } from '@/shared/lib/api/placements'
@@ -152,8 +151,7 @@ const PreBoarding = () => {
     return (
       <Fragment>
         <Seo title="Pre-boarding" />
-        <Pageheader currentpage="Pre-boarding" activepage="ATS" mainpage="Pre-boarding" />
-        <div className="grid grid-cols-12 gap-6">
+        <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
           <div className="col-span-12 p-6 rounded-lg border border-danger/20 bg-danger/5 text-danger">
             You do not have permission to view Pre-boarding.
           </div>
@@ -165,9 +163,7 @@ const PreBoarding = () => {
   return (
     <Fragment>
       <Seo title="Pre-boarding" />
-      <Pageheader currentpage="Pre-boarding" activepage="ATS" mainpage="Pre-boarding" />
-
-      <div className="grid grid-cols-12 gap-6 min-w-0">
+      <div className="mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6">
         <div className="col-span-12 min-w-0">
           <div className="box min-w-0">
             <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">

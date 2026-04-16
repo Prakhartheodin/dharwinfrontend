@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -68,12 +67,7 @@ export default function RecordingsPage() {
   return (
     <>
       <Seo title="Recordings" />
-      <Pageheader
-        currentpage="Recordings"
-        activepage="Communication"
-        mainpage="Recordings"
-      />
-      <div className="grid grid-cols-12 gap-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-12 col-span-12">
           <div className="box custom-box">
             <div className="box-header flex flex-wrap items-center justify-between gap-2">

@@ -45,19 +45,26 @@ export function TaskDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/60"
+      role="presentation"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px] motion-safe:transition-opacity motion-reduce:backdrop-blur-none"
       onClick={onClose}
     >
       <div
-        className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-[96vw] max-w-2xl max-h-[92vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="task-detail-modal-title"
+        className="flex max-h-[92vh] w-[96vw] max-w-3xl flex-col overflow-hidden rounded-2xl border border-defaultborder/80 bg-bodybg shadow-2xl motion-safe:animate-pm-panel-in motion-reduce:animate-none dark:border-white/10"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-defaultborder">
-          <h5 className="font-semibold mb-0 text-[1rem]">Task Details</h5>
+        <div className="flex items-center justify-between border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 to-white px-5 py-4 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent">
+          <h5 id="task-detail-modal-title" className="mb-0 text-[1rem] font-semibold">
+            Task Details
+          </h5>
           <button
             type="button"
             className="ti-btn ti-btn-light !py-1 !px-2"
             onClick={onClose}
+            aria-label="Close task details"
           >
             <i className="ri-close-line text-lg" />
           </button>
@@ -201,7 +208,7 @@ export function TaskDetailModal({
             </div>
           )}
         </div>
-        <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
+        <div className="flex items-center justify-end gap-2 border-t border-defaultborder/60 bg-gradient-to-r from-transparent to-slate-50/80 p-4 dark:border-white/10 dark:to-white/[0.02]">
           {task && (
             <>
               {onEdit && (

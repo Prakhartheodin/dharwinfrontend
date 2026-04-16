@@ -1,6 +1,5 @@
 "use client";
 
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useMemo, useCallback } from "react";
 import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
@@ -27,6 +26,11 @@ const CHART_COLORS = [
   "#8b5cf6",
 ];
 
+const csvSafe = (v: string | number | null | undefined): string => {
+  const raw = String(v ?? "");
+  return `"${raw.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
+};
+
 function getProjectId(p: Project): string {
   return (p as Project & { id?: string }).id ?? p._id ?? "";
 }
@@ -43,15 +47,15 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <div className="sm:col-span-6 xl:col-span-3 col-span-12">
-      <div className="box">
-        <div className="box-body flex justify-between items-center">
+    <div className="sm:col-span-6 xl:col-span-3 col-span-12 motion-safe:animate-pm-panel-in motion-reduce:animate-none">
+      <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+        <div className="box-body flex items-center justify-between">
           <div>
-            <p className="mb-1 text-[0.8125rem] text-defaulttextcolor/70">{title}</p>
-            <h4 className="font-semibold mb-0 text-[1.5rem]">{value}</h4>
+            <p className="mb-1 text-[0.75rem] uppercase tracking-[0.08em] text-muted dark:text-white/55">{title}</p>
+            <h4 className="mb-0 text-[1.45rem] font-semibold text-defaulttextcolor">{value}</h4>
           </div>
-          <span className={`avatar avatar-md ${iconBg} text-white p-2`}>
-            <i className={`${icon} text-[1.25rem] opacity-80`} />
+          <span className={`avatar avatar-md ${iconBg} text-white p-2 ring-4 ring-white/60 dark:ring-black/20`}>
+            <i className={`${icon} text-[1.1rem] opacity-90`} />
           </span>
         </div>
       </div>
@@ -62,11 +66,11 @@ function StatCard({
 function SkeletonCard() {
   return (
     <div className="sm:col-span-6 xl:col-span-3 col-span-12">
-      <div className="box">
+      <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
         <div className="box-body flex justify-between items-center">
           <div>
-            <div className="h-4 w-24 rounded bg-defaultborder/50 animate-pulse mb-2" />
-            <div className="h-8 w-16 rounded bg-defaultborder/50 animate-pulse" />
+            <div className="mb-2 h-4 w-24 rounded bg-defaultborder/50 motion-safe:animate-pulse motion-reduce:animate-none" />
+            <div className="h-8 w-16 rounded bg-defaultborder/50 motion-safe:animate-pulse motion-reduce:animate-none" />
           </div>
           <div className="avatar avatar-md rounded-full bg-defaultborder/50 animate-pulse p-2" />
         </div>
@@ -228,27 +232,27 @@ const AnalyticsPage = () => {
     return (
       <Fragment>
         <Seo title="Analytics" />
-        <Pageheader
-          currentpage="Analytics"
-          activepage="Project Management"
-          mainpage="Analytics"
-        />
-        <div className="flex justify-end mb-4">
-          <button
-            type="button"
-            className="ti-btn ti-btn-sm ti-btn-light"
-            disabled
-            title="Refresh"
-          >
-            <i className="ri-refresh-line animate-spin" />
-          </button>
+        <div className="box custom-box mt-5 mb-6 overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm sm:mt-6 dark:border-white/10">
+          <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h1 className="mb-1 text-[1rem] font-semibold text-defaulttextcolor">Project Analytics</h1>
+                <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
+                  Progress, delivery risk, and execution health at a glance.
+                </p>
+              </div>
+              <button type="button" className="ti-btn ti-btn-sm ti-btn-light !mb-0" disabled title="Refreshing data">
+                <i className="ri-refresh-line motion-safe:animate-spin motion-reduce:animate-none" />
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-12 gap-6">
+        <div className="grid grid-cols-12 gap-x-2 gap-y-6">
           {[1, 2, 3, 4].map((i) => (
             <SkeletonCard key={i} />
           ))}
         </div>
-        <div className="grid grid-cols-12 gap-6 mt-6">
+        <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
           <div className="xl:col-span-6 col-span-12">
             <div className="box">
               <div className="box-body flex items-center justify-center h-80">
@@ -271,16 +275,20 @@ const AnalyticsPage = () => {
   return (
     <Fragment>
       <Seo title="Analytics" />
-      <Pageheader
-        currentpage="Analytics"
-        activepage="Project Management"
-        mainpage="Analytics"
-      />
-      <div className="flex justify-end gap-2 mb-4">
-        <button
-          type="button"
-          className="ti-btn ti-btn-sm ti-btn-outline-secondary"
-          onClick={() => {
+      <div className="box custom-box mt-5 mb-6 overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm sm:mt-6 dark:border-white/10 motion-safe:animate-pm-panel-in motion-reduce:animate-none">
+        <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="mb-1 text-[1rem] font-semibold text-defaulttextcolor">Project Analytics</h1>
+              <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
+                Delivery health for projects, tasks, and risk indicators.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="ti-btn ti-btn-outline-secondary !mb-0 shrink-0 whitespace-nowrap !px-3"
+                onClick={() => {
             const rows: string[] = [
               "Projects Overview",
               "Project,Status,Priority,Progress,Tasks",
@@ -288,17 +296,23 @@ const AnalyticsPage = () => {
                 const total = p.totalTasks ?? 0;
                 const done = p.completedTasks ?? 0;
                 const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-                return [p.name ?? "", PROJECT_STATUS_LABELS[p.status], p.priority ?? "", `${pct}%`, `${done}/${total}`].join(",");
+                return [
+                  csvSafe(p.name ?? ""),
+                  csvSafe(PROJECT_STATUS_LABELS[p.status]),
+                  csvSafe(p.priority ?? ""),
+                  csvSafe(`${pct}%`),
+                  csvSafe(`${done}/${total}`),
+                ].join(",");
               }),
               "",
               "Overdue Tasks",
               "Task,Due Date,Status,Project",
               ...overdueTasks.slice(0, 50).map((t) =>
                 [
-                  (t.title ?? "").replace(/"/g, '""'),
-                  t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "",
-                  TASK_STATUS_LABELS[t.status],
-                  typeof t.projectId === "object" && t.projectId?.name ? (t.projectId.name ?? "").replace(/"/g, '""') : "",
+                  csvSafe(t.title ?? ""),
+                  csvSafe(t.dueDate ? new Date(t.dueDate).toLocaleDateString() : ""),
+                  csvSafe(TASK_STATUS_LABELS[t.status]),
+                  csvSafe(typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name ?? "" : ""),
                 ].join(",")
               ),
               "",
@@ -306,9 +320,9 @@ const AnalyticsPage = () => {
               "Project,End Date,Status",
               ...atRiskProjects.slice(0, 50).map((p) =>
                 [
-                  (p.name ?? "").replace(/"/g, '""'),
-                  p.endDate ? new Date(p.endDate).toLocaleDateString() : "",
-                  PROJECT_STATUS_LABELS[p.status],
+                  csvSafe(p.name ?? ""),
+                  csvSafe(p.endDate ? new Date(p.endDate).toLocaleDateString() : ""),
+                  csvSafe(PROJECT_STATUS_LABELS[p.status]),
                 ].join(",")
               ),
             ];
@@ -319,20 +333,37 @@ const AnalyticsPage = () => {
             a.click();
             URL.revokeObjectURL(a.href);
           }}
-          title="Export to CSV"
-        >
-          <i className="ri-file-download-line me-1" /> Export
-        </button>
-        <button
-          type="button"
-          className="ti-btn ti-btn-sm ti-btn-light"
-          onClick={fetchData}
-          title="Refresh"
-        >
-          <i className="ri-refresh-line" />
-        </button>
+                title="Export to CSV"
+              >
+                <i className="ri-file-download-line me-1" /> Export
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-light !mb-0 shrink-0 whitespace-nowrap !px-2.5"
+                onClick={fetchData}
+                title="Refresh"
+              >
+                <i className="ri-refresh-line" />
+              </button>
+            </div>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 font-medium text-primary ring-1 ring-primary/15">
+              <i className="ri-folder-chart-line" aria-hidden />
+              {kpis.totalProjects} projects
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-info/10 px-2.5 py-0.5 font-medium text-info ring-1 ring-info/15">
+              <i className="ri-task-line" aria-hidden />
+              {kpis.totalTasks} tasks
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2.5 py-0.5 font-medium text-warning ring-1 ring-warning/15">
+              <i className="ri-alarm-warning-line" aria-hidden />
+              {overdueTasks.length} overdue
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="grid grid-cols-12 gap-6">
+      <div className="grid grid-cols-12 gap-x-2 gap-y-6">
         <StatCard
           title="Total Projects"
           value={kpis.totalProjects}
@@ -359,10 +390,10 @@ const AnalyticsPage = () => {
         />
       </div>
 
-      <div className="grid grid-cols-12 gap-6 mt-6">
+      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
         <div className="xl:col-span-6 col-span-12">
-          <div className="box">
-            <div className="box-header">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
               <h5 className="box-title">Tasks by status</h5>
             </div>
             <div className="box-body">
@@ -382,8 +413,8 @@ const AnalyticsPage = () => {
           </div>
         </div>
         <div className="xl:col-span-6 col-span-12">
-          <div className="box">
-            <div className="box-header">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
               <h5 className="box-title">Projects by status</h5>
             </div>
             <div className="box-body">
@@ -404,14 +435,14 @@ const AnalyticsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 mt-6">
+      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
         <div className="col-span-12">
-          <div className="box">
-            <div className="box-header">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="box-header !py-2.5 sm:!py-3 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
               <h5 className="box-title">Projects overview</h5>
               <Link
                 href="/apps/projects/project-list"
-                className="ti-btn ti-btn-sm ti-btn-primary"
+                className="ti-btn ti-btn-primary !mb-0 whitespace-nowrap !px-3 !py-1"
               >
                 View all
               </Link>
@@ -423,7 +454,7 @@ const AnalyticsPage = () => {
                 </p>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-bordered whitespace-nowrap mb-0">
+                  <table className="table whitespace-nowrap mb-0">
                     <thead>
                       <tr>
                         <th>Project</th>
@@ -500,14 +531,14 @@ const AnalyticsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-6 mt-6">
+      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
         <div className="xl:col-span-6 col-span-12">
-          <div className="box">
-            <div className="box-header">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
               <h5 className="box-title">Overdue tasks</h5>
               <Link
                 href="/task/kanban-board"
-                className="ti-btn ti-btn-sm ti-btn-outline-secondary"
+                className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
               >
                 View board
               </Link>
@@ -519,7 +550,7 @@ const AnalyticsPage = () => {
                 </p>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-bordered whitespace-nowrap mb-0">
+                  <table className="table whitespace-nowrap mb-0">
                     <thead>
                       <tr>
                         <th>Task</th>
@@ -564,12 +595,12 @@ const AnalyticsPage = () => {
           </div>
         </div>
         <div className="xl:col-span-6 col-span-12">
-          <div className="box">
-            <div className="box-header">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
               <h5 className="box-title">At-risk projects</h5>
               <Link
                 href="/apps/projects/project-list"
-                className="ti-btn ti-btn-sm ti-btn-outline-secondary"
+                className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
               >
                 View all
               </Link>
@@ -581,7 +612,7 @@ const AnalyticsPage = () => {
                 </p>
               ) : (
                 <div className="table-responsive">
-                  <table className="table table-bordered whitespace-nowrap mb-0">
+                  <table className="table whitespace-nowrap mb-0">
                     <thead>
                       <tr>
                         <th>Project</th>

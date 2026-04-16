@@ -1,5 +1,4 @@
 "use client"
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
@@ -714,7 +713,7 @@ const Recruiters = () => {
   return (
     <Fragment>
   
-      <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
+      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
             <div className="box-header flex items-center justify-between flex-wrap gap-4">

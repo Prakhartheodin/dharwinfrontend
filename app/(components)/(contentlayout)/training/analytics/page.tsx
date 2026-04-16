@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
@@ -176,13 +175,7 @@ const TrainingAnalytics = () => {
   return (
     <Fragment>
       <Seo title="Training Analytics" />
-      <Pageheader
-        currentpage="Analytics"
-        activepage="Training Management"
-        mainpage="Analytics"
-      />
-
-      <div className="container w-full max-w-full mx-auto">
+      <div className="container mx-auto mt-5 w-full max-w-full sm:mt-6">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[0.8125rem] text-defaulttextcolor/70">Period:</label>

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { Fragment, useState, useEffect, useCallback } from "react";
-import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
+import { usePmRefetchOnFocus, PM_DATA_MUTATED_EVENT } from "@/shared/hooks/usePmRefetchOnFocus";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
 import Swal from "sweetalert2";
@@ -331,6 +331,14 @@ export default function MyTasksPage() {
   }, [fetchTasks, page, sortBy, statusFilter]);
 
   usePmRefetchOnFocus(refetchVisible);
+
+  useEffect(() => {
+    const onPmMutate = () => {
+      refetchVisible();
+    };
+    window.addEventListener(PM_DATA_MUTATED_EVENT, onPmMutate);
+    return () => window.removeEventListener(PM_DATA_MUTATED_EVENT, onPmMutate);
+  }, [refetchVisible]);
 
   const handleStatusChange = useCallback(
     async (taskId: string, status: TaskStatus) => {

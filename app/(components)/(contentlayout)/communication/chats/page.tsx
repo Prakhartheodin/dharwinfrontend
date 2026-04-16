@@ -1416,7 +1416,7 @@ const Chat = () => {
   };
 
   return (
-    <div className={chatStyles.shell}>
+    <div className={`mt-5 sm:mt-6 ${chatStyles.shell}`}>
       <Seo title="Chat" />
       {showCallNotificationBanner && (
         <div className={chatStyles.notifBanner}>

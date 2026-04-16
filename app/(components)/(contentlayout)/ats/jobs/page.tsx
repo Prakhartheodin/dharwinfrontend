@@ -1,5 +1,4 @@
 "use client"
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useCallback, useMemo, useState, useEffect, useRef } from 'react'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
@@ -992,7 +991,7 @@ const Jobs = () => {
     return (
       <Fragment>
         <Seo title="Jobs" />
-        <div className="container-fluid pt-6">
+        <div className="container-fluid mt-5 pt-2 sm:mt-6">
           <div className="flex items-center justify-center py-16">
             <div className="text-center">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent mx-auto mb-3" />
@@ -1007,7 +1006,7 @@ const Jobs = () => {
   return (
     <Fragment>
   
-      <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
+      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
             <div className="box-header flex items-center justify-between flex-wrap gap-4">

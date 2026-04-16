@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
@@ -1385,7 +1384,7 @@ const TrainingModules = () => {
   return (
     <Fragment>
       <Seo title="Training Modules" />
-      <div className="grid grid-cols-12 gap-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-12 col-span-12">
           <div className="box custom-box">
             <div className="box-body p-4">

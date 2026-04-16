@@ -1670,7 +1670,7 @@ const Mailapp = () => {
   return (
     <Fragment>
       <Seo title="Mail App" />
-      <div className={`container-fluid ${mailBody.className} ${mailStyles.mailRoot}`}>
+      <div className={`container-fluid mt-5 sm:mt-6 ${mailBody.className} ${mailStyles.mailRoot}`}>
         {!loading && accounts.length === 0 ? (
           <div className={mailStyles.mailEmptyStage}>
             <div className={mailStyles.mailEmptyBg} aria-hidden />

@@ -1,11 +1,10 @@
 "use client";
 
-import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
+import { Plus_Jakarta_Sans, Syne } from "next/font/google";
 import Seo from "@/shared/layout-components/seo/seo";
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import Swal from "sweetalert2";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
@@ -25,7 +24,20 @@ import { listProjects } from "@/shared/lib/api/projects";
 import { listUsers } from "@/shared/lib/api/users";
 import { KanbanTaskCard } from "./KanbanTaskCard";
 import { TaskDetailModal } from "./TaskDetailModal";
-import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
+import { usePmRefetchOnFocus, PM_DATA_MUTATED_EVENT } from "@/shared/hooks/usePmRefetchOnFocus";
+import styles from "./kanban-board.module.css";
+
+const kbSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--kb-font-body",
+  display: "swap",
+});
+const kbDisplay = Syne({
+  subsets: ["latin"],
+  variable: "--kb-font-display",
+  weight: ["600", "700", "800"],
+  display: "swap",
+});
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 const DatePicker = dynamic(() => import("react-datepicker"), { ssr: false });
@@ -37,6 +49,14 @@ const STATUS_COLUMNS: { status: TaskStatus; label: string; className: string }[]
   { status: "in_review", label: "IN REVIEW", className: "inreview" },
   { status: "completed", label: "COMPLETED", className: "completed" },
 ];
+
+const COLUMN_TOP: Record<TaskStatus, string> = {
+  new: styles.kbColumnAccentNew,
+  todo: styles.kbColumnAccentTodo,
+  on_going: styles.kbColumnAccentGoing,
+  in_review: styles.kbColumnAccentReview,
+  completed: styles.kbColumnAccentDone,
+};
 
 const Kanbanboard = () => {
   const searchParams = useSearchParams();
@@ -72,6 +92,8 @@ const Kanbanboard = () => {
   const [editAssignedCandidateIds, setEditAssignedCandidateIds] = useState<string[]>([]);
 
   const columnRefs = useRef<(HTMLDivElement | null)[]>([]);
+  /** Perfect Scrollbar mounts on this node — it is the real scroll container (not SimpleBar). */
+  const scrollHostRefs = useRef<(HTMLElement | null)[]>([]);
   const dragulaRef = useRef<{ destroy: () => void } | null>(null);
 
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -125,7 +147,23 @@ const Kanbanboard = () => {
     fetchTasks();
   }, [fetchTasks]);
 
+  useEffect(() => {
+    const onPmMutate = () => {
+      fetchTasks();
+    };
+    window.addEventListener(PM_DATA_MUTATED_EVENT, onPmMutate);
+    return () => window.removeEventListener(PM_DATA_MUTATED_EVENT, onPmMutate);
+  }, [fetchTasks]);
+
   usePmRefetchOnFocus(fetchTasks);
+
+  const scrollColumnToEnd = useCallback((colIndex: number) => {
+    const el = scrollHostRefs.current[colIndex];
+    if (!el) return;
+    const maxScroll = el.scrollHeight - el.clientHeight;
+    const top = Math.max(0, maxScroll);
+    el.scrollTo({ top, behavior: "smooth" });
+  }, []);
 
   const tasksByStatus = useMemo(() => {
     const map: Record<TaskStatus, Task[]> = {
@@ -384,25 +422,26 @@ const Kanbanboard = () => {
   }, [loading, tasks, fetchTasks]);
 
   return (
-    <div>
+    <div className={`${kbSans.variable} ${kbDisplay.variable} ${styles.kbRoot}`}>
       <Seo title="Kanban Board" />
-      <Pageheader currentpage="Kanban Board" activepage="Task" mainpage="Kanban Board" />
-      <div className="grid grid-cols-12 gap-x-6">
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box">
-            <div className="box-body p-4">
-              <div className="md:flex items-center justify-between flex-wrap gap-4">
-                <div className="grid grid-cols-12 gap-2 md:w-[40%]">
-                  <div className="xl:col-span-5 col-span-12">
-                    <button
-                      type="button"
-                      className="ti-btn bg-primary text-white !font-medium !py-1"
-                      onClick={() => openAddTask("new")}
-                    >
-                      <i className="ri-add-line !text-[1rem]" /> New Task
-                    </button>
-                  </div>
-                  <div className="xl:col-span-7 col-span-12 flex items-center gap-3">
+      <h1 className="sr-only">Kanban Board</h1>
+
+      {/* Match apps/projects/project-list: outer grid + toolbar card */}
+      <div className="mt-5 grid grid-cols-12 gap-x-6 gap-y-3 sm:mt-6">
+        <div className="col-span-12 xl:col-span-12">
+          <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
+            <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="newproject flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full !mb-0 shadow-sm transition-transform duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+                    onClick={() => openAddTask("new")}
+                  >
+                    <i className="ri-add-line me-1 align-middle font-semibold" />
+                    New task
+                  </button>
+                  <div className="min-w-[12rem] max-w-[20rem] flex-1 rounded-xl border border-defaultborder/70 bg-white/90 shadow-sm dark:border-white/10 dark:bg-white/[0.04] sm:min-w-[14rem] sm:max-w-none sm:flex-none sm:min-w-[12rem]">
                     <Select
                       name="project"
                       placeholder="All projects"
@@ -412,128 +451,178 @@ const Kanbanboard = () => {
                       ]}
                       value={
                         projectFilterId
-                          ? { value: projectFilterId, label: projects.find((p) => p.id === projectFilterId)?.name ?? projectFilterId }
+                          ? {
+                              value: projectFilterId,
+                              label: projects.find((p) => p.id === projectFilterId)?.name ?? projectFilterId,
+                            }
                           : { value: "", label: "All projects" }
                       }
-                      onChange={(opt) =>
-                        setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")
-                      }
-                      className="flex-1 !rounded-md"
+                      onChange={(opt) => setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")}
+                      className="w-full !rounded-xl"
                       menuPlacement="auto"
                       classNamePrefix="Select2"
                     />
-                    <label className="flex items-center gap-1.5 cursor-pointer shrink-0 text-[0.8125rem]">
-                      <input
-                        type="checkbox"
-                        className="form-check-input"
-                        checked={assignedToMe}
-                        onChange={(e) => setAssignedToMe(e.target.checked)}
-                      />
-                      Assigned to me
-                    </label>
                   </div>
                 </div>
-                <div className="avatar-list-stacked my-3 md:my-0">
-                  <span className="avatar avatar-rounded bg-primary/10 text-primary text-xs">+</span>
-                </div>
-                <div className="flex gap-2" role="search">
-                  <input
-                    className="form-control flex-1 !rounded-sm min-w-0"
-                    type="search"
-                    placeholder="Search (debounced)"
-                    aria-label="Search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
+                <div
+                  className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch lg:max-w-xl"
+                  role="search"
+                >
+                  <div className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/15 dark:bg-black/20">
+                    <span
+                      className="flex items-center border-e border-defaultborder/60 bg-defaultbackground/40 px-3 text-muted dark:border-white/10 dark:bg-white/[0.03]"
+                      aria-hidden
+                    >
+                      <i className="ri-search-line text-base" />
+                    </span>
+                    <input
+                      className="form-control !rounded-none border-0 shadow-none focus:ring-0"
+                      type="search"
+                      placeholder="Search tasks"
+                      aria-label="Search tasks"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !mb-0 shrink-0"
+                    className="ti-btn ti-btn-light !mb-0 shrink-0 border border-defaultborder/80 dark:border-white/15"
                     onClick={() => fetchTasks()}
                     disabled={loading}
-                    title="Refresh"
+                    title="Refresh board"
+                    aria-busy={loading}
                   >
-                    <i className="ri-refresh-line" />
+                    <i className="ri-refresh-line text-lg" aria-hidden />
+                    <span className="sr-only">Refresh</span>
                   </button>
                 </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
+                <label className="mb-0 inline-flex cursor-pointer items-center gap-2 text-defaulttextcolor dark:text-white/80">
+                  <input
+                    type="checkbox"
+                    className="form-check-input !m-0"
+                    checked={assignedToMe}
+                    onChange={(e) => setAssignedToMe(e.target.checked)}
+                  />
+                  <span>Assigned to me</span>
+                </label>
+                <span className={`${styles.kbDragHint} !m-0 border-0 bg-transparent px-0 py-0 shadow-none`}>
+                  <i className="ri-drag-move-2-line text-base shrink-0" aria-hidden />
+                  <span>Drag cards between columns to update status</span>
+                </span>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {loading ? (
-        <div className="box py-12 text-center text-[#8c9097] dark:text-white/50">
-          Loading tasks...
-        </div>
-      ) : (
-        <div className="dharwin-kanban-board text-defaulttextcolor dark:text-defaulttextcolor/70 text-defaultsize">
-          {STATUS_COLUMNS.map((col, colIndex) => (
-            <div key={col.status} className={`kanban-tasks-type ${col.className}`}>
-              <div className="mb-4">
-                <div className="flex justify-between items-center">
-                  <span className="block font-semibold text-[.9375rem]">
-                    {col.label} - {(tasksByStatus[col.status] ?? []).length}
-                  </span>
-                  <div>
-                    <button
-                      type="button"
-                      className="ti-btn !py-1 !px-2 !font-medium !text-[0.75rem] bg-white dark:bg-bodybg text-default border-0"
-                      onClick={() => openAddTask(col.status)}
-                    >
-                      <i className="ri-add-line" /> Add Task
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <div className="kanban-tasks" id={`${col.status}-tasks`}>
-                <PerfectScrollbar style={{ height: "560px" }}>
-                  <div
-                    ref={(el) => {
-                      columnRefs.current[colIndex] = el;
-                    }}
-                    className="firstdrag min-h-[120px]"
-                    data-status={col.status}
-                    data-view-btn={`${col.status}-tasks`}
-                  >
-                    {(tasksByStatus[col.status] ?? []).length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-12 px-4 text-center text-[#8c9097] dark:text-white/50 min-w-0">
-                        <p className="text-[0.8125rem] mb-3 whitespace-nowrap">No tasks in this column</p>
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-sm ti-btn-primary !min-w-[7.5rem] !px-4 whitespace-nowrap shrink-0 inline-flex items-center justify-center"
-                          onClick={() => openAddTask(col.status)}
-                        >
-                          <i className="ri-add-line me-1 shrink-0" /> <span>Add Task</span>
-                        </button>
-                      </div>
-                    ) : (
-                      (tasksByStatus[col.status] ?? []).map((task) => (
-                        <KanbanTaskCard
-                          key={getTaskId(task)}
-                          task={task}
-                          onView={handleView}
-                          onEdit={(id) => {
-                            const t = tasks.find((x) => getTaskId(x) === id);
-                            if (t) openEditModal(t);
-                          }}
-                          onDelete={handleDelete}
-                          allCandidates={users}
-                          projectsMap={projects}
-                        />
-                      ))
-                    )}
-                  </div>
-                </PerfectScrollbar>
-              </div>
-              <div className="grid mt-4">
-                <button type="button" className="ti-btn ti-btn-primary view-more-button">
-                  View More
-                </button>
-              </div>
+        {loading ? (
+        <div
+          className={`col-span-12 ${styles.kbSkeletonBoard}`}
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          aria-label="Loading tasks"
+        >
+          {STATUS_COLUMNS.map((col) => (
+            <div key={col.status} className={styles.kbSkeletonCol}>
+              <div className={styles.kbSkeletonLine} style={{ width: "42%" }} />
+              <div className={styles.kbSkeletonLine} style={{ width: "28%" }} />
+              <div className={styles.kbSkeletonCard} />
+              <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.12s" }} />
+              <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.24s" }} />
             </div>
           ))}
         </div>
+      ) : (
+        <div
+          className={`col-span-12 dharwin-kanban-board text-defaulttextcolor dark:text-defaulttextcolor/70 text-defaultsize ${styles.kbBoard}`}
+        >
+          {STATUS_COLUMNS.map((col, colIndex) => {
+            const count = (tasksByStatus[col.status] ?? []).length;
+            return (
+              <div
+                key={col.status}
+                className={`kanban-tasks-type ${col.className} ${styles.kbColumn} ${COLUMN_TOP[col.status]}`}
+                role="region"
+                aria-label={`${col.label} column, ${count} tasks`}
+              >
+                <div className={styles.kbColumnHeader}>
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="truncate">{col.label}</span>
+                    <span className={styles.kbCount} aria-hidden>
+                      {count}
+                    </span>
+                  </span>
+                  <button type="button" className={styles.kbBtnGhost} onClick={() => openAddTask(col.status)}>
+                    <i className="ri-add-line align-middle" /> <span className="align-middle">Add</span>
+                  </button>
+                </div>
+                <div className={`kanban-tasks ${styles.kbColumnBody}`} id={`${col.status}-tasks`}>
+                  <PerfectScrollbar
+                    className={styles.kbScrollHost}
+                    style={{ height: "100%" }}
+                    containerRef={(el) => {
+                      scrollHostRefs.current[colIndex] = el;
+                    }}
+                  >
+                    <div
+                      ref={(el) => {
+                        columnRefs.current[colIndex] = el;
+                      }}
+                      className={`firstdrag flex flex-col ${styles.kbFirstDrag}`}
+                      data-status={col.status}
+                      data-view-btn={`${col.status}-tasks`}
+                    >
+                      {count === 0 ? (
+                        <div
+                          className={`flex min-h-full flex-1 flex-col items-center justify-center px-4 py-8 text-center min-w-0 ${styles.kbEmpty}`}
+                        >
+                          <p className="text-[0.8125rem] mb-3 max-w-[14rem] leading-relaxed">
+                            No tasks here yet — add one or drag a card from another column.
+                          </p>
+                          <button
+                            type="button"
+                            className={`${styles.kbBtnPrimary} !text-[0.8125rem] !py-2 inline-flex items-center justify-center gap-1`}
+                            onClick={() => openAddTask(col.status)}
+                          >
+                            <i className="ri-add-line shrink-0" aria-hidden />
+                            <span>Add task</span>
+                          </button>
+                        </div>
+                      ) : (
+                        (tasksByStatus[col.status] ?? []).map((task) => (
+                          <KanbanTaskCard
+                            key={getTaskId(task)}
+                            task={task}
+                            onView={handleView}
+                            onEdit={(id) => {
+                              const t = tasks.find((x) => getTaskId(x) === id);
+                              if (t) openEditModal(t);
+                            }}
+                            onDelete={handleDelete}
+                            allCandidates={users}
+                            projectsMap={projects}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </PerfectScrollbar>
+                </div>
+                <button
+                  type="button"
+                  className={styles.kbViewMore}
+                  onClick={() => scrollColumnToEnd(colIndex)}
+                  aria-label={`Scroll ${col.label} column to the bottom`}
+                >
+                  View more
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
+      </div>
 
       <TaskDetailModal
         open={detailOpen}
@@ -552,13 +641,13 @@ const Kanbanboard = () => {
       />
 
       {addModalOpen && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px] motion-safe:transition-opacity motion-reduce:backdrop-blur-none">
           <div
-            className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-[96vw] max-w-md"
+            className="w-[96vw] max-w-md overflow-hidden rounded-2xl border border-defaultborder/80 bg-bodybg shadow-2xl motion-safe:animate-pm-panel-in motion-reduce:animate-none dark:border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-defaultborder">
-              <h6 className="font-semibold mb-0">Add Task</h6>
+            <div className="flex items-center justify-between border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 to-white px-4 py-4 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent">
+              <h6 className="mb-0 font-semibold">Add Task</h6>
               <button
                 type="button"
                 className="ti-btn ti-btn-light !py-1 !px-2"
@@ -654,7 +743,7 @@ const Kanbanboard = () => {
                 </span>
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-defaultborder">
+            <div className="flex justify-end gap-2 border-t border-defaultborder/60 bg-gradient-to-r from-transparent to-slate-50/80 p-4 dark:border-white/10 dark:to-white/[0.02]">
               <button
                 type="button"
                 className="ti-btn ti-btn-light"
@@ -676,13 +765,13 @@ const Kanbanboard = () => {
       )}
 
       {editOpen && editTask && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4 backdrop-blur-[2px] motion-safe:transition-opacity motion-reduce:backdrop-blur-none">
           <div
-            className="bg-bodybg border border-defaultborder rounded-lg shadow-xl w-[96vw] max-w-lg max-h-[92vh] flex flex-col"
+            className="flex max-h-[92vh] w-[96vw] max-w-lg flex-col overflow-hidden rounded-2xl border border-defaultborder/80 bg-bodybg shadow-2xl motion-safe:animate-pm-panel-in motion-reduce:animate-none dark:border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-defaultborder">
-              <h6 className="font-semibold mb-0">Edit Task</h6>
+            <div className="flex items-center justify-between border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 to-white px-4 py-4 dark:border-white/10 dark:from-white/[0.04] dark:to-transparent">
+              <h6 className="mb-0 font-semibold">Edit Task</h6>
               <button
                 type="button"
                 className="ti-btn ti-btn-light !py-1 !px-2"
@@ -793,7 +882,7 @@ const Kanbanboard = () => {
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-4 border-t border-defaultborder">
+            <div className="flex justify-end gap-2 border-t border-defaultborder/60 bg-gradient-to-r from-transparent to-slate-50/80 p-4 dark:border-white/10 dark:to-white/[0.02]">
               <button
                 type="button"
                 className="ti-btn ti-btn-light"

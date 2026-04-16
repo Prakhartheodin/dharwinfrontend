@@ -1,6 +1,5 @@
 "use client"
 
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Link from 'next/link'
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect } from 'react'
@@ -44,8 +43,7 @@ const Onboarding = () => {
     return (
       <Fragment>
         <Seo title="Onboarding" />
-        <Pageheader currentpage="Onboarding" activepage="ATS" mainpage="Onboarding" />
-        <div className="grid grid-cols-12 gap-6">
+        <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
           <div className="col-span-12 p-6 rounded-lg border border-danger/20 bg-danger/5 text-danger">
             You do not have permission to view Onboarding.
           </div>
@@ -57,9 +55,7 @@ const Onboarding = () => {
   return (
     <Fragment>
       <Seo title="Onboarding" />
-      <Pageheader currentpage="Onboarding" activepage="ATS" mainpage="Onboarding" />
-
-      <div className="grid grid-cols-12 gap-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="col-span-12">
           <div className="box">
             <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
