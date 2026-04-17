@@ -86,6 +86,11 @@ const OUTLOOK_BASE = "/outlook";
 
 export type MailProvider = "gmail" | "outlook";
 
+/** GET /v1/email/connection-policy — company mailbox hard-lock when hub + assignment are active. */
+export type EmailConnectionPolicy =
+  | { hardLockActive: false }
+  | { hardLockActive: true; expectedEmail: string; allowedProviders: MailProvider[] };
+
 function mailBase(provider?: string): string {
   return provider === "outlook" ? OUTLOOK_BASE : EMAIL_BASE;
 }
@@ -99,6 +104,12 @@ export async function getEmailAccounts(): Promise<EmailAccount[]> {
   const gmail = gmailRes.status === "fulfilled" ? gmailRes.value.data : [];
   const outlook = outlookRes.status === "fulfilled" ? outlookRes.value.data : [];
   return [...(gmail || []), ...(outlook || [])];
+}
+
+/** Company-assigned mailbox policy for Communication → Email (requires emails.read or emails.manage). */
+export async function getEmailConnectionPolicy(): Promise<EmailConnectionPolicy> {
+  const { data } = await apiClient.get<EmailConnectionPolicy>(`${EMAIL_BASE}/connection-policy`);
+  return data;
 }
 
 export async function getGoogleAuthUrl(): Promise<{ url: string }> {

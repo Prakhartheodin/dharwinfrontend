@@ -445,7 +445,21 @@ export const Basicwizard = ({
 
   const [formData, setFormData] = useState({ 
     fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
+    companyAssignedEmail: "",
+    companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
   });
+  const [userRole, setUserRole] = useState<string>("user");
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const userData = localStorage.getItem("user");
+    if (!userData) return;
+    try {
+      const parsedUser = JSON.parse(userData);
+      setUserRole(parsedUser.role || "user");
+    } catch {
+      setUserRole("user");
+    }
+  }, []);
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
   const [profilePictureRemoved, setProfilePictureRemoved] = useState<boolean>(false);
@@ -734,6 +748,12 @@ export const Basicwizard = ({
         } else if (!validateEmail(formData.email)) {
           errors.push('Please enter a valid email address');
           newFieldErrors['email'] = 'Please enter a valid email address';
+        }
+        if (userRole !== "user" && formData.companyAssignedEmail?.trim()) {
+          if (!validateEmail(formData.companyAssignedEmail.trim())) {
+            errors.push("Please enter a valid company work email");
+            newFieldErrors.companyAssignedEmail = "Please enter a valid company work email";
+          }
         }
         if (!validateRequired(formData.phoneNumber)) {
           errors.push('Phone Number is required');
@@ -1560,6 +1580,9 @@ export const Basicwizard = ({
         return validateRequired(formData.fullName) && 
                validateRequired(formData.email) && 
                validateEmail(formData.email) &&
+               (userRole === "user" ||
+                 !formData.companyAssignedEmail?.trim() ||
+                 validateEmail(formData.companyAssignedEmail.trim())) &&
                validateRequired(formData.phoneNumber) && 
                validatePhone(formData.phoneNumber, formData.countryCode) &&
                validateRequired(formData.visaType) &&
@@ -1629,25 +1652,6 @@ export const Basicwizard = ({
     return true;
   };
 
-  // ------------------------------- User Role Check -------------------------------
-  const [userRole, setUserRole] = useState<string>('user');
-  
-  React.useEffect(() => {
-    // Get user role from localStorage
-    if (typeof window !== 'undefined') {
-      const userData = localStorage.getItem('user');
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          setUserRole(parsedUser.role || 'user');
-        } catch (error) {
-          console.error('Error parsing user data:', error);
-          setUserRole('user');
-        }
-      }
-    }
-  }, []);
-
   // ------------------------------- Prefill on Edit -------------------------------
   React.useEffect(() => {
     // Initialize documentsList as empty for new candidates (optional)
@@ -1690,6 +1694,13 @@ export const Basicwizard = ({
         zipCode: initialData.address?.zipCode || initialData.zipCode || "",
         country: initialData.address?.country || initialData.country || "",
         password: initialData ? "" : "",
+        companyAssignedEmail: (initialData as { companyAssignedEmail?: string })?.companyAssignedEmail || "",
+        companyEmailProvider:
+          ((initialData as { companyEmailProvider?: string })?.companyEmailProvider as
+            | ""
+            | "gmail"
+            | "outlook"
+            | "unknown") || "",
       });
       
       // Set profile picture preview if exists
@@ -1990,7 +2001,15 @@ export const Basicwizard = ({
         })),
         documents: [...existingDocs, ...uploadedDocs],
         salarySlips: [...existingSalarySlips, ...uploadedSalarySlips],
-      } as any;
+      } as Record<string, unknown>;
+
+      if (userRole !== "user") {
+        const ce = (formData.companyAssignedEmail || "").trim();
+        Object.assign(payload, {
+          companyAssignedEmail: ce || "",
+          companyEmailProvider: ce ? formData.companyEmailProvider || undefined : "",
+        });
+      }
 
       console.log('Final payload profilePicture:', payload.profilePicture);
 
@@ -2000,9 +2019,9 @@ export const Basicwizard = ({
         const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
         const user = userData ? JSON.parse(userData) : null;
         if (user?.role === 'user') {
-          res = await updateMyCandidate(payload);
+          res = await updateMyCandidate(payload as any);
         } else {
-          res = await updateCandidate(String(initialData.id || initialData._id), payload);
+          res = await updateCandidate(String(initialData.id || initialData._id), payload as any);
         }
         
         // Success alert for editing
@@ -2015,7 +2034,7 @@ export const Basicwizard = ({
           timerProgressBar: true
         });
       } else {
-        res = await createCandidate(payload);
+        res = await createCandidate(payload as any);
         
         // Success alert for adding new candidate
         await Swal.fire({
@@ -2288,6 +2307,48 @@ export const Basicwizard = ({
                   <div className="text-red-500 text-sm mt-1">{fieldErrors['email']}</div>
                 )}
             </div>
+            {userRole !== "user" && (
+              <>
+                <div className="xl:col-span-6 col-span-12">
+                  <label htmlFor="companyAssignedEmail" className="form-label">
+                    Company / work email <span className="text-textmuted font-normal text-xs">(optional)</span>
+                  </label>
+                  <input
+                    type="email"
+                    name="companyAssignedEmail"
+                    id="companyAssignedEmail"
+                    value={formData.companyAssignedEmail}
+                    onChange={handleFormChange}
+                    className={`form-control w-full !rounded-md ${fieldErrors.companyAssignedEmail ? "border-red-500" : ""}`}
+                    placeholder="name@yourcompany.com"
+                  />
+                  {fieldErrors.companyAssignedEmail ? (
+                    <div className="text-red-500 text-sm mt-1">{fieldErrors.companyAssignedEmail}</div>
+                  ) : (
+                    <small className="text-gray-500 text-xs mt-1 block">
+                      Google Workspace or Microsoft 365 mailbox — separate from login email above.
+                    </small>
+                  )}
+                </div>
+                <div className="xl:col-span-6 col-span-12">
+                  <label htmlFor="companyEmailProvider" className="form-label">
+                    Mailbox provider
+                  </label>
+                  <select
+                    name="companyEmailProvider"
+                    id="companyEmailProvider"
+                    value={formData.companyEmailProvider}
+                    onChange={handleFormChange}
+                    className="form-control w-full !rounded-md"
+                  >
+                    <option value="">Auto-detect from address</option>
+                    <option value="gmail">Google / Gmail</option>
+                    <option value="outlook">Microsoft / Outlook</option>
+                    <option value="unknown">Other / unknown</option>
+                  </select>
+                </div>
+              </>
+            )}
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="phone" className="form-label">Phone Number <span className="text-red-500">*</span></label>
                 <div className="flex gap-2">
