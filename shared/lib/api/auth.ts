@@ -121,6 +121,8 @@ export interface CandidateWithProfile {
   salarySlips?: Array<{ month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string }>;
   /** Same shape as candidate wizard / PATCH candidates — kept in sync via me/with-candidate and candidate edit. */
   socialLinks?: Array<{ platform?: string; url?: string }>;
+  companyAssignedEmail?: string;
+  companyEmailProvider?: string;
   [key: string]: unknown;
 }
 

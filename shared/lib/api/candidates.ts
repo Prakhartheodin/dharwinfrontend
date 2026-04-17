@@ -42,6 +42,9 @@ export interface CandidateListItem {
   assignedProjects?: { id: string; name: string; status?: string }[];
   documents?: CandidateDocument[];
   socialLinks?: Array<{ platform?: string; url?: string }>;
+  /** Company-provided work mailbox (admin); distinct from login email. */
+  companyAssignedEmail?: string;
+  companyEmailProvider?: "gmail" | "outlook" | "unknown" | "" | string;
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
@@ -136,6 +139,48 @@ export async function getCandidateFilterAgents(): Promise<{ agents: AgentOption[
 
 export async function assignAgentToStudent(candidateId: string, agentId: string | null): Promise<unknown> {
   const { data } = await apiClient.post(`/candidates/${candidateId}/assign-agent`, { agentId });
+  return data;
+}
+
+/** Settings → Company work email roster — requires `candidates.manage`. */
+export interface CompanyEmailAssignmentRow {
+  id: string;
+  fullName: string;
+  email: string;
+  employeeId: string | null;
+  ownerId: string;
+  ownerRoleLabel: string;
+  studentId: string | null;
+  companyAssignedEmail: string;
+  companyEmailProvider: string;
+  assignedAgent: { id: string; name: string; email: string } | null;
+}
+
+export async function getCompanyEmailAssignments(): Promise<{ students: CompanyEmailAssignmentRow[] }> {
+  const { data } = await apiClient.get<{ students: CompanyEmailAssignmentRow[] }>("/candidates/company-email-assignments");
+  return data;
+}
+
+export async function getCompanyEmailSettings(): Promise<{ companyEmailAssignmentEnabled: boolean }> {
+  const { data } = await apiClient.get<{ companyEmailAssignmentEnabled: boolean }>("/candidates/company-email-settings");
+  return data;
+}
+
+export async function patchCompanyEmailSettings(
+  companyEmailAssignmentEnabled: boolean
+): Promise<{ companyEmailAssignmentEnabled: boolean }> {
+  const { data } = await apiClient.patch<{ companyEmailAssignmentEnabled: boolean }>(
+    "/candidates/company-email-settings",
+    { companyEmailAssignmentEnabled }
+  );
+  return data;
+}
+
+export async function assignCompanyAssignedEmail(
+  candidateId: string,
+  body: { companyAssignedEmail: string | null; companyEmailProvider?: string | null }
+): Promise<CandidateListItem> {
+  const { data } = await apiClient.post<CandidateListItem>(`/candidates/${candidateId}/company-assigned-email`, body);
   return data;
 }
 

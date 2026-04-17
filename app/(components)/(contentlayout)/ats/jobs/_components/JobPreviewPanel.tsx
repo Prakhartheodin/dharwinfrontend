@@ -28,6 +28,67 @@ interface JobPreviewPanelProps {
   handleApplyClick: (job: any) => void
 }
 
+const APPLICANT_SKELETON_ROW_COUNT = 4
+
+/** Applicants tab: skeleton + staged motion (reduced-motion → static placeholders). */
+function ApplicantsLoadingState() {
+  return (
+    <div
+      className="rounded-xl border border-gray-200/90 bg-gradient-to-b from-slate-50/95 via-white to-primary/[0.04] p-4 shadow-inner dark:border-defaultborder/20 dark:from-black/35 dark:via-black/18 dark:to-primary/[0.06]"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading applicants for this job</span>
+      <div className="mb-4 flex flex-col items-center gap-1.5 text-center" aria-hidden>
+        <div className="flex items-end justify-center gap-1.5 py-1">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="block h-2 w-2 rounded-full bg-primary/85 motion-safe:animate-[bounce_0.55s_ease-in-out_infinite] motion-reduce:animate-none motion-reduce:opacity-70"
+              style={{ animationDelay: `${i * 140}ms` } as React.CSSProperties}
+            />
+          ))}
+        </div>
+        <p className="text-sm font-semibold text-primary">Syncing applications…</p>
+        <p className="max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+          Pulling the latest applicant list for this role
+        </p>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-gray-100 dark:border-white/10" aria-hidden>
+        <div className="grid grid-cols-[2.25rem_minmax(0,1.2fr)_minmax(0,1fr)_5.5rem_7rem] items-center gap-2 bg-gray-50/95 px-2.5 py-2 dark:bg-black/30">
+          <div className="h-3 w-3 rounded-sm bg-gray-200 dark:bg-white/15" />
+          <div className="h-2.5 rounded bg-gray-300/90 dark:bg-white/20 motion-safe:animate-pulse motion-reduce:animate-none" />
+          <div className="h-2.5 rounded bg-gray-300/90 dark:bg-white/20 motion-safe:animate-pulse motion-reduce:animate-none motion-safe:[animation-delay:120ms]" />
+          <div className="h-2.5 rounded bg-gray-200/80 dark:bg-white/12 motion-safe:animate-pulse motion-reduce:animate-none motion-safe:[animation-delay:200ms]" />
+          <div className="h-2.5 rounded bg-gray-200/80 dark:bg-white/12 motion-safe:animate-pulse motion-reduce:animate-none motion-safe:[animation-delay:280ms]" />
+        </div>
+        {Array.from({ length: APPLICANT_SKELETON_ROW_COUNT }).map((_, i) => (
+          <div
+            key={i}
+            className="grid grid-cols-[2.25rem_minmax(0,1.2fr)_minmax(0,1fr)_5.5rem_7rem] items-center gap-2 border-t border-gray-100/90 bg-white/75 px-2.5 py-2.5 dark:border-white/5 dark:bg-white/[0.04]"
+          >
+            <div className="h-3.5 w-3.5 rounded border border-gray-200/90 bg-gray-100 dark:border-white/10 dark:bg-white/[0.08]" />
+            <div
+              className="h-3 self-center rounded-md bg-gray-200/90 dark:bg-white/15 motion-safe:animate-pulse motion-reduce:animate-none"
+              style={{ animationDelay: `${i * 100}ms` } as React.CSSProperties}
+            />
+            <div
+              className="h-3 self-center rounded-md bg-gray-200/75 dark:bg-white/12 motion-safe:animate-pulse motion-reduce:animate-none"
+              style={{ animationDelay: `${i * 100 + 60}ms` } as React.CSSProperties}
+            />
+            <div className="h-6 self-center rounded-md bg-gray-100 dark:bg-white/10" />
+            <div className="flex flex-wrap items-center justify-center gap-1">
+              <div className="h-6 w-[4.75rem] rounded-md bg-primary/15 dark:bg-primary/25" />
+              <div className="h-6 w-[3.35rem] rounded-md bg-gray-200/85 dark:bg-white/12" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   previewJob,
   setPreviewJob,
@@ -345,8 +406,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       )}
                     </h6>
                     {previewJobApplicationsLoading ? (
-                      <div className="flex justify-center py-4">
-                        <div className="ti-btn ti-btn-primary ti-btn-loading ti-btn-sm">Loading...</div>
+                      <div className="py-1">
+                        <ApplicantsLoadingState />
                       </div>
                     ) : previewJobApplications.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400 py-2">No applicants yet.</p>
@@ -454,11 +515,25 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           type="button"
                           className="ti-btn ti-btn-success flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4 disabled:opacity-50 disabled:cursor-not-allowed"
                           onClick={handleInitiateCandidateCall}
-                          disabled={selectedCandidates.size === 0 || callingCandidates.size > 0}
+                          disabled={
+                            previewJobApplicationsLoading ||
+                            selectedCandidates.size === 0 ||
+                            callingCandidates.size > 0
+                          }
                           title="Applicant verification: uses candidate Bolna agent (not job-post verification)"
                           aria-label="Call selected applicants for application verification"
                         >
-                          {callingCandidates.size > 0 ? 'Calling Candidates...' : `Call Selected (${selectedCandidates.size})`}
+                          {callingCandidates.size > 0 ? (
+                            <span className="inline-flex items-center justify-center gap-2">
+                              <span
+                                className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none motion-reduce:rounded-sm motion-reduce:border-0 motion-reduce:bg-current/30"
+                                aria-hidden
+                              />
+                              Calling…
+                            </span>
+                          ) : (
+                            `Call Selected (${selectedCandidates.size})`
+                          )}
                         </button>
                       ) : previewJob.jobOrigin !== 'external' ? (
                         <button

@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
 import { hasEmailReadAccess, hasSettingsUsersManage } from "@/shared/lib/permissions";
+import { canAssignCandidateAgent } from "@/shared/lib/candidate-permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import type { Role } from "@/shared/lib/types";
@@ -21,11 +22,13 @@ function getActiveTab(
   | "email-templates"
   | "email-templates-admin"
   | "bolna-voice-agent"
+  | "company-email"
   | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
   if (pathname.startsWith("/settings/users")) return "users";
   if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/agents")) return "agents";
+  if (pathname.startsWith("/settings/company-email")) return "company-email";
   if (pathname.startsWith("/settings/bolna-voice-agent")) return "bolna-voice-agent";
   if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
@@ -47,6 +50,7 @@ export default function SettingsLayout({
   const [hasUsersAccess, setHasUsersAccess] = useState<boolean | null>(null);
   const [hasAttendanceAccess, setHasAttendanceAccess] = useState<boolean | null>(null);
   const [hasCandidateSopAccess, setHasCandidateSopAccess] = useState<boolean | null>(null);
+  const [hasCompanyEmailHubAccess, setHasCompanyEmailHubAccess] = useState<boolean | null>(null);
 
   // Determine admin (Roles only), users access (Admin or Agent), and attendance access
   useEffect(() => {
@@ -57,6 +61,7 @@ export default function SettingsLayout({
           setHasUsersAccess(true);
           setHasAttendanceAccess(true);
           setHasCandidateSopAccess(true);
+          setHasCompanyEmailHubAccess(true);
           return;
         }
         if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
@@ -64,6 +69,7 @@ export default function SettingsLayout({
           setHasUsersAccess(false);
           setHasAttendanceAccess(false);
           setHasCandidateSopAccess(false);
+          setHasCompanyEmailHubAccess(false);
           return;
         }
         const res = await rolesApi.listRoles({ limit: 100 });
@@ -99,11 +105,14 @@ export default function SettingsLayout({
             (p.includes("create") || p.includes("edit") || p.includes("delete"))
         );
         setHasCandidateSopAccess(admin || hasAtsCandidatesManage);
+        const rawPerms = Array.from(perms);
+        setHasCompanyEmailHubAccess(canAssignCandidateAgent(rawPerms, isPlatformSuperUser));
       } catch {
         setIsAdmin(false);
         setHasUsersAccess(false);
         setHasAttendanceAccess(false);
         setHasCandidateSopAccess(false);
+        setHasCompanyEmailHubAccess(false);
       }
     };
     check();
@@ -115,7 +124,8 @@ export default function SettingsLayout({
       isAdmin === null ||
       hasUsersAccess === null ||
       hasAttendanceAccess === null ||
-      hasCandidateSopAccess === null
+      hasCandidateSopAccess === null ||
+      hasCompanyEmailHubAccess === null
     )
       return;
     if (activeTab === "roles") {
@@ -138,12 +148,15 @@ export default function SettingsLayout({
         isAdministrator ||
         (permissionsLoaded && hasSettingsUsersManage(permissions));
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "company-email") {
+      if (!hasCompanyEmailHubAccess) router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [
     isAdmin,
     hasUsersAccess,
     hasAttendanceAccess,
     hasCandidateSopAccess,
+    hasCompanyEmailHubAccess,
     activeTab,
     router,
     roleNames,
@@ -164,6 +177,7 @@ export default function SettingsLayout({
       | "email-templates"
       | "email-templates-admin"
       | "bolna-voice-agent"
+      | "company-email"
   ) =>
     `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
@@ -216,6 +230,15 @@ export default function SettingsLayout({
                     aria-current={activeTab === "agents" ? "page" : undefined}
                   >
                     Agents
+                  </Link>
+                )}
+                {hasCompanyEmailHubAccess && (
+                  <Link
+                    href={ROUTES.settingsCompanyEmail}
+                    className={tabClass("company-email")}
+                    aria-current={activeTab === "company-email" ? "page" : undefined}
+                  >
+                    Company work email
                   </Link>
                 )}
                 {hasCandidateSopAccess && (

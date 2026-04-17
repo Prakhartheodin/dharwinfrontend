@@ -1,6 +1,6 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect, useCallback } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
@@ -119,6 +119,8 @@ const Interviews = () => {
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>('')
+  const [isExcelMenuOpen, setIsExcelMenuOpen] = useState(false)
+  const excelDropdownRef = useRef<HTMLDivElement | null>(null)
   
   const [filters, setFilters] = useState<FilterState>({
     candidate: [],
@@ -233,6 +235,60 @@ const Interviews = () => {
     setEditLoading(true)
     ;(window as any).HSOverlay?.open(document.querySelector('#edit-interview-modal'))
   }, [])
+
+  /** Preline binds overlays/dropdowns during autoInit; client pages that mount toolbars after layout need a refresh. */
+  const refreshPrelineDom = useCallback(() => {
+    try {
+      ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const ensurePrelineLoaded = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    if ((window as unknown as { HSOverlay?: unknown }).HSOverlay) return
+    try {
+      await import('preline/preline')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const openHsOverlay = useCallback(
+    (selector: string) => {
+      const el = document.querySelector(selector)
+      if (!el) return
+      const run = () => {
+        refreshPrelineDom()
+        requestAnimationFrame(() => {
+          ;(window as unknown as { HSOverlay?: { open: (n: Element | string) => void } }).HSOverlay?.open(el)
+        })
+      }
+      if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
+        run()
+        return
+      }
+      void ensurePrelineLoaded().then(run)
+    },
+    [ensurePrelineLoaded, refreshPrelineDom]
+  )
+
+  // Re-init Preline so toolbar overlays/dropdowns work (same issue as ATS Offers placement / Jobs listings).
+  useEffect(() => {
+    void ensurePrelineLoaded().then(() => {
+      requestAnimationFrame(() => {
+        refreshPrelineDom()
+      })
+    })
+  }, [ensurePrelineLoaded, refreshPrelineDom])
+
+  useEffect(() => {
+    if (meetingsLoading) return
+    requestAnimationFrame(() => {
+      refreshPrelineDom()
+    })
+  }, [meetingsLoading, refreshPrelineDom])
 
   const closeEditModal = useCallback(() => {
     setEditMeetingId(null)
@@ -430,6 +486,17 @@ const Interviews = () => {
       ;(footer ?? top)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     })
   }, [formError])
+
+  useEffect(() => {
+    if (!isExcelMenuOpen) return
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!excelDropdownRef.current?.contains(event.target as Node)) {
+        setIsExcelMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick)
+    return () => document.removeEventListener('mousedown', handleOutsideClick)
+  }, [isExcelMenuOpen])
 
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
@@ -1031,7 +1098,7 @@ const Interviews = () => {
       <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
-            <div className="box-header flex items-center justify-between flex-wrap gap-4">
+            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-4">
               <div className="box-title">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
@@ -1163,52 +1230,71 @@ const Interviews = () => {
                 </div>
                 <button
                   type="button"
-                  className="hs-dropdown-toggle ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#create-interview-modal"
+                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  onClick={() => openHsOverlay('#create-interview-modal')}
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Schedule Interview
                 </button>
-                <div className="hs-dropdown ti-dropdown me-2">
+                {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
+                <div ref={excelDropdownRef} className="relative me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
                     id="excel-dropdown-button"
-                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    aria-expanded={isExcelMenuOpen}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setIsExcelMenuOpen((prev) => !prev)
+                    }}
                   >
                     <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                  </ul>
+                  {isExcelMenuOpen && (
+                    <ul
+                      className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg"
+                      role="menu"
+                      aria-labelledby="excel-dropdown-button"
+                    >
+                      <li role="none">
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          role="menuitem"
+                          onClick={() => setIsExcelMenuOpen(false)}
+                        >
+                          <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          role="menuitem"
+                          onClick={() => setIsExcelMenuOpen(false)}
+                        >
+                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
+                        </button>
+                      </li>
+                      <li role="none">
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          role="menuitem"
+                          onClick={() => setIsExcelMenuOpen(false)}
+                        >
+                          <i className="ri-download-line me-2 align-middle inline-block"></i>Template
+                        </button>
+                      </li>
+                    </ul>
+                  )}
                 </div>
                 <button
                   type="button"
                   className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#interviews-filter-panel"
+                  onClick={() => openHsOverlay('#interviews-filter-panel')}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
                   {hasActiveFilters && (
@@ -1226,7 +1312,7 @@ const Interviews = () => {
                 </button>
               </div>
             </div>
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+            <div className="box-body relative z-0 !p-0 flex-1 flex flex-col overflow-hidden">
               {meetingsLoading ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
                   <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"></div>

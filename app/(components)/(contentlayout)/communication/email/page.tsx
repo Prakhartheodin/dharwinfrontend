@@ -7,6 +7,7 @@ import * as emailApi from "@/shared/lib/api/email";
 import mailStyles from "./mail-app.module.css";
 import type {
   EmailAccount,
+  EmailConnectionPolicy,
   EmailDraftLength,
   EmailDraftOption,
   EmailDraftTone,
@@ -25,7 +26,6 @@ import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
 import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
-import SimpleBar from "simplebar-react";
 
 type ComposeMode = "new" | "reply" | "replyAll" | "forward";
 type ComposeAttachment = {
@@ -229,6 +229,8 @@ const Mailapp = () => {
   const { permissions, permissionsLoaded } = useAuth();
   const canUseEmailPreferences = hasEmailReadAccess(permissions ?? []);
   const canManageEmail = hasEmailManageAccess(permissions ?? []);
+  const canSeeEmailPolicy =
+    permissionsLoaded && (hasEmailReadAccess(permissions ?? []) || hasEmailManageAccess(permissions ?? []));
   const isAgentRef = useRef(canUseEmailPreferences);
   useEffect(() => {
     isAgentRef.current = canUseEmailPreferences;
@@ -302,6 +304,29 @@ const Mailapp = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthSuccess, setOauthSuccess] = useState(false);
+  const [mailboxPolicy, setMailboxPolicy] = useState<EmailConnectionPolicy | null>(null);
+  const [policyTick, setPolicyTick] = useState(0);
+
+  const workLock =
+    mailboxPolicy !== null &&
+    mailboxPolicy.hardLockActive === true &&
+    "expectedEmail" in mailboxPolicy &&
+    String((mailboxPolicy as Extract<EmailConnectionPolicy, { hardLockActive: true }>).expectedEmail || "").trim() !== "";
+  const expectedWorkEmail = workLock
+    ? String((mailboxPolicy as Extract<EmailConnectionPolicy, { hardLockActive: true }>).expectedEmail).toLowerCase().trim()
+    : "";
+  const lockAllowedProviders: ("gmail" | "outlook")[] = workLock
+    ? (mailboxPolicy as Extract<EmailConnectionPolicy, { hardLockActive: true }>).allowedProviders
+    : [];
+
+  const navMailboxAccounts = useMemo(() => {
+    if (!workLock) return accounts;
+    return accounts.filter((a) => (a.email || "").toLowerCase() === expectedWorkEmail);
+  }, [accounts, workLock, expectedWorkEmail]);
+
+  /** Locked org with assignment but no connected mailbox matching the assignment (wrong or zero accounts). */
+  const needsCompanyMailboxConnect = workLock && navMailboxAccounts.length === 0;
+  const showMailEmptyStage = !loading && (accounts.length === 0 || needsCompanyMailboxConnect);
 
   const mailProvider =
     accounts.find((a) => a.id === selectedAccountId)?.provider === "outlook" ? "outlook" : "gmail";
@@ -458,9 +483,33 @@ const Mailapp = () => {
   useEffect(() => {
     const connected = searchParams.get("connected");
     const error = searchParams.get("error");
-    if (error) setOauthError(decodeURIComponent(error));
+    if (error) {
+      const dec = decodeURIComponent(error);
+      const friendly: Record<string, string> = {
+        MAILBOX_MISMATCH:
+          "That sign-in does not match your company-assigned mailbox. Use the exact address your administrator set, then try again.",
+        POLICY_CHANGED:
+          "Your company mailbox assignment changed while you were signing in. Please try connecting again.",
+        WRONG_PROVIDER: "Use the email provider (Gmail or Outlook) your organization selected for this mailbox.",
+      };
+      setOauthError(friendly[dec] ?? dec);
+    }
     if (connected === "gmail" || connected === "outlook") setOauthSuccess(true);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!canSeeEmailPolicy) return;
+    const bump = () => setPolicyTick((t) => t + 1);
+    const onVis = () => {
+      if (document.visibilityState === "visible") bump();
+    };
+    window.addEventListener("focus", bump);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", bump);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [canSeeEmailPolicy]);
 
   useEffect(() => {
     if (mailProvider !== "gmail") {
@@ -513,8 +562,18 @@ const Mailapp = () => {
           (new URLSearchParams(window.location.search).get("connected") === "gmail" ||
             new URLSearchParams(window.location.search).get("connected") === "outlook");
 
-        const list = await emailApi.getEmailAccounts();
+        const [pol, list] = await Promise.all([
+          canSeeEmailPolicy
+            ? emailApi.getEmailConnectionPolicy().catch(() => ({ hardLockActive: false } as EmailConnectionPolicy))
+            : Promise.resolve({ hardLockActive: false } as EmailConnectionPolicy),
+          emailApi.getEmailAccounts(),
+        ]);
         if (cancelled) return;
+
+        setMailboxPolicy(pol);
+        const polLock =
+          pol.hardLockActive === true && "expectedEmail" in pol && String(pol.expectedEmail || "").trim() !== "";
+        const exp = polLock ? String(pol.expectedEmail).toLowerCase().trim() : "";
 
         let preferredId: string | null = null;
         if (oauthReturn) {
@@ -532,7 +591,16 @@ const Mailapp = () => {
         }
 
         setAccounts(list);
-        if (preferredId && list.some((a) => a.id === preferredId)) {
+        if (polLock) {
+          const compliant = list.find((a) => (a.email || "").toLowerCase() === exp);
+          if (preferredId && list.some((a) => a.id === preferredId) && list.find((a) => a.id === preferredId)?.email?.toLowerCase() === exp) {
+            setSelectedAccountId(preferredId);
+          } else if (compliant) {
+            setSelectedAccountId(compliant.id);
+          } else {
+            setSelectedAccountId(null);
+          }
+        } else if (preferredId && list.some((a) => a.id === preferredId)) {
           setSelectedAccountId(preferredId);
         } else if (list.length > 0) {
           setSelectedAccountId((prev) =>
@@ -545,6 +613,7 @@ const Mailapp = () => {
         if (!cancelled) {
           setAccounts([]);
           setSelectedAccountId(null);
+          setMailboxPolicy({ hardLockActive: false });
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -554,7 +623,7 @@ const Mailapp = () => {
     return () => {
       cancelled = true;
     };
-  }, [oauthSuccess]);
+  }, [oauthSuccess, policyTick, canSeeEmailPolicy]);
 
   useEffect(() => {
     const accountId = selectedAccountId;
@@ -687,7 +756,9 @@ const Mailapp = () => {
   }, [selectedAccountId, selectedThreadId, accounts]);
 
   const handleConnectGmail = useCallback(async () => {
-    if (gmailAccountCount >= MAX_GMAIL_ACCOUNTS) {
+    const bypassGmailCap =
+      workLock && lockAllowedProviders.includes("gmail") && !accounts.some((a) => (a.email || "").toLowerCase() === expectedWorkEmail);
+    if (!bypassGmailCap && gmailAccountCount >= MAX_GMAIL_ACCOUNTS) {
       setOauthError(
         `Maximum of ${MAX_GMAIL_ACCOUNTS} Gmail accounts allowed. Disconnect one to add another.`
       );
@@ -704,13 +775,19 @@ const Mailapp = () => {
       }
       const { url } = await emailApi.getGoogleAuthUrl();
       window.location.href = url;
-    } catch (err) {
-      setOauthError("Failed to get Google auth URL");
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; code?: string } } };
+      const msg = ax.response?.data?.message || ax.response?.data?.code;
+      setOauthError(msg ? String(msg) : "Failed to get Google auth URL");
     }
-  }, [gmailAccountCount, accounts]);
+  }, [gmailAccountCount, accounts, workLock, lockAllowedProviders, expectedWorkEmail]);
 
   const handleConnectOutlook = useCallback(async () => {
-    if (outlookAccountCount >= MAX_OUTLOOK_ACCOUNTS) {
+    const bypassOutlookCap =
+      workLock &&
+      lockAllowedProviders.includes("outlook") &&
+      !accounts.some((a) => (a.email || "").toLowerCase() === expectedWorkEmail);
+    if (!bypassOutlookCap && outlookAccountCount >= MAX_OUTLOOK_ACCOUNTS) {
       setOauthError(
         "Only one Outlook account is allowed. Disconnect it to connect a different mailbox."
       );
@@ -727,10 +804,12 @@ const Mailapp = () => {
       }
       const { url } = await emailApi.getMicrosoftAuthUrl();
       window.location.href = url;
-    } catch (err) {
-      setOauthError("Failed to get Microsoft auth URL");
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; code?: string } } };
+      const msg = ax.response?.data?.message || ax.response?.data?.code;
+      setOauthError(msg ? String(msg) : "Failed to get Microsoft auth URL");
     }
-  }, [outlookAccountCount, accounts]);
+  }, [outlookAccountCount, accounts, workLock, lockAllowedProviders, expectedWorkEmail]);
 
   const handleDisconnect = useCallback(
     async (accountId: string) => {
@@ -743,8 +822,11 @@ const Mailapp = () => {
         if (selectedAccountId === accountId) {
           setSelectedAccountId(remaining.length > 0 ? remaining[0].id : null);
         }
-      } catch {
-        // ignore
+      } catch (err: unknown) {
+        const ax = err as { response?: { status?: number; data?: { code?: string; message?: string } } };
+        if (ax.response?.status === 403 && ax.response?.data?.code === "MAILBOX_LOCKED") {
+          setOauthError("This mailbox is locked to your company assignment. Your administrator must clear it before you can disconnect.");
+        }
       }
     },
     [accounts, selectedAccountId]
@@ -1671,7 +1753,7 @@ const Mailapp = () => {
     <Fragment>
       <Seo title="Mail App" />
       <div className={`container-fluid mt-5 sm:mt-6 ${mailBody.className} ${mailStyles.mailRoot}`}>
-        {!loading && accounts.length === 0 ? (
+        {!loading && showMailEmptyStage ? (
           <div className={mailStyles.mailEmptyStage}>
             <div className={mailStyles.mailEmptyBg} aria-hidden />
             <div className={mailStyles.mailEmptyMesh} aria-hidden />
@@ -1686,35 +1768,46 @@ const Mailapp = () => {
                   <h2
                     className={`${mailDisplay.className} text-2xl sm:text-3xl font-semibold text-stone-900 dark:text-stone-100 mb-3 tracking-tight`}
                   >
-                    Your correspondence, one place
+                    {needsCompanyMailboxConnect
+                      ? "Connect your company mailbox"
+                      : "Your correspondence, one place"}
                   </h2>
                   <p
                     className={`${mailBody.className} text-stone-600 dark:text-stone-400 text-sm leading-relaxed mb-8 max-w-md mx-auto lg:mx-0`}
                   >
-                    Link Gmail or Outlook to read threads, compose, and reply—without leaving Dharwin.
+                    {needsCompanyMailboxConnect
+                      ? `Sign in with ${expectedWorkEmail} using the provider your organization selected. Other linked mailboxes stay in Dharwin until you complete this step; they are removed once the correct mailbox is connected.`
+                      : "Link Gmail or Outlook to read threads, compose, and reply—without leaving Dharwin."}
                   </p>
                   {oauthError && (
-                    <div className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-sm text-left border border-red-100 dark:border-red-900/50">
+                    <div
+                      className="mb-6 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-sm text-left border border-red-100 dark:border-red-900/50"
+                      role="status"
+                      aria-live="polite"
+                    >
                       {oauthError}
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center lg:justify-start gap-3">
-                    <button
-                      type="button"
-                      onClick={handleConnectGmail}
-                      className={`ti-btn px-6 py-3 flex items-center justify-center gap-2 ${mailStyles.connectBtnGmail}`}
-                    >
-                      <i className="ri-google-fill text-lg"></i>
-                      Connect Gmail
-                    </button>
-                    {canAddOutlookMailbox && (
+                    {(!workLock || lockAllowedProviders.includes("gmail")) && (
+                      <button
+                        type="button"
+                        onClick={handleConnectGmail}
+                        className={`ti-btn px-6 py-3 flex items-center justify-center gap-2 ${mailStyles.connectBtnGmail}`}
+                      >
+                        <i className="ri-google-fill text-lg"></i>
+                        {workLock ? `Connect Gmail (${expectedWorkEmail})` : "Connect Gmail"}
+                      </button>
+                    )}
+                    {(!workLock || lockAllowedProviders.includes("outlook")) &&
+                      (!workLock ? canAddOutlookMailbox : true) && (
                       <button
                         type="button"
                         onClick={handleConnectOutlook}
                         className={`ti-btn px-6 py-3 flex items-center justify-center gap-2 ${mailStyles.connectBtnOutlook}`}
                       >
                         <i className="ri-microsoft-fill text-lg"></i>
-                        Connect Outlook
+                        {workLock ? `Connect Outlook (${expectedWorkEmail})` : "Connect Outlook"}
                       </button>
                     )}
                   </div>
@@ -1828,26 +1921,28 @@ const Mailapp = () => {
                       <p className="text-white/70 text-[0.7rem] mb-0 truncate font-mono">
                         {accounts.find((a) => a.id === selectedAccountId)?.email ?? ""}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => selectedAccountId && handleDisconnect(selectedAccountId)}
-                        className="text-white/60 hover:text-white text-[0.65rem] mt-1.5 underline underline-offset-2"
-                      >
-                        Sign out mailbox
-                      </button>
+                      {!workLock && (
+                        <button
+                          type="button"
+                          onClick={() => selectedAccountId && handleDisconnect(selectedAccountId)}
+                          className="text-white/60 hover:text-white text-[0.65rem] mt-1.5 underline underline-offset-2"
+                        >
+                          Sign out mailbox
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div>
                     <PerfectScrollbar>
                       <ul className="list-none mail-main-nav !text-[0.813rem]">
-                        {accounts.length > 1 && (
+                        {navMailboxAccounts.length > 1 && (
                           <>
                             <li className="!px-4 !pt-3 !pb-1">
                               <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
                                 MAILBOXES
                               </span>
                             </li>
-                            {accounts.map((acc) => {
+                            {navMailboxAccounts.map((acc) => {
                               const activeMb = acc.id === selectedAccountId;
                               return (
                                 <li key={`mb-${acc.id}`} className="!px-2 !py-0.5">
@@ -1979,17 +2074,18 @@ const Mailapp = () => {
                             );
                           })()}
                         </li>
-                        {(canAddMoreGmail ||
-                          canAddOutlookMailbox ||
-                          hasGmailAccount ||
-                          hasOutlookAccount) && (
+                        {!workLock &&
+                          (canAddMoreGmail ||
+                            canAddOutlookMailbox ||
+                            hasGmailAccount ||
+                            hasOutlookAccount) && (
                           <li className="!px-4 !pt-4 !pb-1">
                             <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] font-semibold">
                               ADD ACCOUNT
                             </span>
                           </li>
                         )}
-                        {canAddMoreGmail && (
+                        {!workLock && canAddMoreGmail && (
                           <li
                             className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
                             onClick={handleConnectGmail}
@@ -2002,12 +2098,14 @@ const Mailapp = () => {
                             </div>
                           </li>
                         )}
-                        {!canAddMoreGmail && accounts.some((a) => a.provider === "gmail") && (
+                        {!workLock &&
+                          !canAddMoreGmail &&
+                          accounts.some((a) => a.provider === "gmail") && (
                           <li className="!px-4 !py-2 text-[#8c9097] dark:text-white/45 text-[0.75rem]">
                             Maximum {MAX_GMAIL_ACCOUNTS} Gmail accounts (disconnect one to add another)
                           </li>
                         )}
-                        {canAddOutlookMailbox && (
+                        {!workLock && canAddOutlookMailbox && (
                           <li
                             className="cursor-pointer !px-4 !py-2 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
                             onClick={handleConnectOutlook}
@@ -2018,7 +2116,9 @@ const Mailapp = () => {
                             </div>
                           </li>
                         )}
-                        {!canAddOutlookMailbox && accounts.some((a) => a.provider === "outlook") && (
+                        {!workLock &&
+                          !canAddOutlookMailbox &&
+                          accounts.some((a) => a.provider === "outlook") && (
                           <li className="!px-4 !py-2 text-[#8c9097] dark:text-white/45 text-[0.75rem]">
                             One Outlook account connected (disconnect to use a different mailbox)
                           </li>
@@ -2065,7 +2165,7 @@ const Mailapp = () => {
             </div>
 
             <div
-              className={`total-mails ${mailStyles.threadListPane} ${isTotalMailsVisible ? "!block" : ""} ${isTotalMailsHidden ? "!hidden" : ""} border dark:border-defaultborder/10`}
+              className={`total-mails ${mailStyles.threadListPane} ${isTotalMailsVisible ? "!flex" : ""} ${isTotalMailsHidden ? "!hidden" : ""} border dark:border-defaultborder/10`}
             >
               <div className="!p-4 flex items-center gap-2 border-b dark:border-defaultborder/10">
                 <input
@@ -2220,7 +2320,7 @@ const Mailapp = () => {
                   </button>
                 </div>
               </div>
-              <SimpleBar className={mailStyles.threadListScroll}>
+              <div className={mailStyles.threadListScroll}>
                 <div className={`mail-messages ${mailStyles.threadListMessages}`}>
                   <ul className="list-none mb-0 mail-messages-container text-defaulttextcolor text-defaultsize w-full">
                     {loadingMessages ? (
@@ -2313,7 +2413,7 @@ const Mailapp = () => {
                     )}
                   </ul>
                 </div>
-              </SimpleBar>
+              </div>
             </div>
 
             <div
@@ -2818,7 +2918,7 @@ const Mailapp = () => {
                 >
                   <i className="ri-add-line text-lg"></i>
                 </button>
-                {accounts.map((acc, idx) => {
+                {navMailboxAccounts.map((acc, idx) => {
                   const active = acc.id === selectedAccountId;
                   const initial =
                     (emailToDisplayName(acc.email || "")[0] || acc.email?.[0] || "?").toUpperCase();

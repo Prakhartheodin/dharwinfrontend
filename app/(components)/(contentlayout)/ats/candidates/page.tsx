@@ -2313,6 +2313,19 @@ const Candidates = () => {
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.email || '-'}</p>
                         </div>
                         <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Company work email
+                          </label>
+                          <p className="mt-1 text-sm text-gray-900 dark:text-white">
+                            {(previewCandidate._raw?.companyAssignedEmail as string | undefined)?.trim() || "—"}
+                          </p>
+                          {(previewCandidate._raw?.companyEmailProvider as string | undefined) ? (
+                            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                              Provider: {String(previewCandidate._raw.companyEmailProvider)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Phone Number</label>
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{previewCandidate.phone || '-'}</p>
                         </div>

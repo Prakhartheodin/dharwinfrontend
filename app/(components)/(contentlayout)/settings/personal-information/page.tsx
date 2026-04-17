@@ -776,6 +776,23 @@ export default function PersonalInformationPage() {
                 <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Email</dt>
                 <dd className="text-[0.9375rem]">{user?.email ?? "—"}</dd>
               </div>
+              {hasCandidateProfile ? (
+                <div className="sm:col-span-2">
+                  <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
+                    Company work email
+                  </dt>
+                  <dd className="text-[0.9375rem]">
+                    {candidate?.companyAssignedEmail && String(candidate.companyAssignedEmail).trim()
+                      ? String(candidate.companyAssignedEmail).trim()
+                      : "—"}
+                  </dd>
+                  <p className="text-xs text-textmuted dark:text-white/50 mt-1 mb-0 max-w-xl">
+                    This is the company mailbox your employer assigned (for example Google Workspace or Microsoft 365). It
+                    may differ from your login email. Connect it under Communication → Email. Only an administrator can
+                    change this field.
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Username</dt>
                 <dd className="text-[0.9375rem]">{user?.username ?? user?.email ?? "—"}</dd>
