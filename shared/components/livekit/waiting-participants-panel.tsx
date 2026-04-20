@@ -80,13 +80,13 @@ export function WaitingParticipantsPanel({
     try {
       setAdmitting(participant.identity);
       setError(null);
-      if (hostEmail) {
+      if (hostEmail?.trim()) {
         await livekitApi.admitParticipantPublic(
           roomName,
           participant.identity,
           participant.name,
           undefined,
-          hostEmail
+          hostEmail.trim()
         );
       } else {
         await livekitApi.admitParticipant(roomName, participant.identity, participant.name);
@@ -112,8 +112,8 @@ export function WaitingParticipantsPanel({
       setAdmittingAll(true);
       setError(null);
       for (const p of [...waitingParticipants]) {
-        if (hostEmail) {
-          await livekitApi.admitParticipantPublic(roomName, p.identity, p.name, undefined, hostEmail);
+        if (hostEmail?.trim()) {
+          await livekitApi.admitParticipantPublic(roomName, p.identity, p.name, undefined, hostEmail.trim());
         } else {
           await livekitApi.admitParticipant(roomName, p.identity, p.name);
         }
@@ -134,8 +134,8 @@ export function WaitingParticipantsPanel({
     try {
       setRemoving(participant.identity);
       setError(null);
-      if (hostEmail) {
-        await livekitApi.removeParticipantPublic(roomName, participant.identity, hostEmail);
+      if (hostEmail?.trim()) {
+        await livekitApi.removeParticipantPublic(roomName, participant.identity, hostEmail.trim());
       } else {
         await livekitApi.removeParticipant(roomName, participant.identity);
       }

@@ -33,10 +33,10 @@ export interface Session {
   expires: string;
 }
 
-/** Auth API response; frontend ignores tokens and uses cookies. */
+/** Auth API response; tokens omitted when backend uses cookie-only JSON (production default). */
 export interface AuthResponse {
   user: User;
-  tokens: {
+  tokens?: {
     access: { token: string; expires: string };
     refresh: { token: string; expires: string };
   };

@@ -12,6 +12,7 @@ import * as categoriesApi from '@/shared/lib/api/categories'
 import type { TrainingModule as ApiTrainingModule, PlaylistItem } from '@/shared/lib/api/training-modules'
 import type { Category as ApiCategory } from '@/shared/lib/api/categories'
 import type { MultiValue } from 'react-select'
+import { sanitizeRichHtml } from '@/shared/lib/sanitize-html'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -529,7 +530,7 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
                                 {item.contentType === 'blog' && item.blogContent && (
                                   <div
                                     className="prose prose-sm max-w-none dark:prose-invert mt-2"
-                                    dangerouslySetInnerHTML={{ __html: item.blogContent }}
+                                    dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(item.blogContent) }}
                                   />
                                 )}
                                 {item.contentType === 'quiz' && (

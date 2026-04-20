@@ -20,6 +20,7 @@ import {
 } from "@/shared/lib/api/projects";
 import { listTeamMembers, type TeamMember } from "@/shared/lib/api/teams";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { sanitizeRichHtml } from "@/shared/lib/sanitize-html";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -225,7 +226,7 @@ function ProjectDetailModal({
                   </div>
                   <div
                     className="box-body prose prose-sm max-w-none dark:prose-invert"
-                    dangerouslySetInnerHTML={{ __html: projectData.description }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(projectData.description) }}
                   />
                 </div>
               ) : null}

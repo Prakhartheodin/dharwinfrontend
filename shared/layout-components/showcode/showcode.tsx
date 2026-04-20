@@ -1,4 +1,5 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState } from "react";
+import { escapeHtmlForTextNode } from "@/shared/lib/sanitize-html";
 
 const Showcode = ({ title,code,children, customCardClass, customCardHeaderClass, customCardBodyClass, customCardFooterClass }:any) => {
 
@@ -18,7 +19,7 @@ const Showcode = ({ title,code,children, customCardClass, customCardHeaderClass,
   return (
     <div className={`box ${customCardClass}`}>
       <div className={`box-header justify-content-between ${customCardHeaderClass}`}>
-        <div className="box-title" dangerouslySetInnerHTML={{ __html: title }}></div>
+        <div className="box-title" dangerouslySetInnerHTML={{ __html: escapeHtmlForTextNode(String(title ?? "")) }} />
         <div className="prism-toggle">
           <button type="button" className="ti-btn !py-1 !px-2 ti-btn-primary !text-[0.75rem] !font-medium"  onClick={toggleCode}>Show
                                     Code  <i className={`${showCode ? 'ri-code-s-slash-line' : 'ri-code-line'} ms-2 align-middle inline-block`}></i></button>

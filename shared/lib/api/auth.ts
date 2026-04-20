@@ -14,10 +14,11 @@ export async function login(payload: LoginPayload): Promise<AuthResponse> {
   return data;
 }
 
-/** Refresh tokens – no body; backend reads refreshToken from HttpOnly cookie. */
-export async function refreshTokens(): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>(AUTH_ENDPOINTS.refreshTokens, {});
-  return data;
+/** Refresh tokens – no body; backend reads refreshToken from HttpOnly cookie. Returns body only when server includes JSON (dev); production often returns 204 with cookies only. */
+export async function refreshTokens(): Promise<AuthResponse | undefined> {
+  const { status, data } = await apiClient.post<AuthResponse>(AUTH_ENDPOINTS.refreshTokens, {});
+  if (status === 204) return undefined;
+  return data ?? undefined;
 }
 
 /** Logout – no body; backend reads refreshToken from HttpOnly cookie, then clears cookies. */

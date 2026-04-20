@@ -24,6 +24,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
 import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
+import { escapeHtmlForTextNode, sanitizeRichHtml } from "@/shared/lib/sanitize-html";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
 
@@ -2744,9 +2745,11 @@ const Mailapp = () => {
                             className="main-mail-content prose dark:prose-invert max-w-none mail-html-body text-sm text-stone-800 dark:text-stone-100"
                             dangerouslySetInnerHTML={{
                               __html:
-                                (msg.htmlBody && msg.htmlBody.trim()) ||
+                                (msg.htmlBody && msg.htmlBody.trim()
+                                  ? sanitizeRichHtml(msg.htmlBody)
+                                  : null) ||
                                 (msg.textBody
-                                  ? `<pre class="whitespace-pre-wrap">${msg.textBody}</pre>`
+                                  ? `<pre class="whitespace-pre-wrap">${escapeHtmlForTextNode(msg.textBody)}</pre>`
                                   : "<p>No content</p>"),
                             }}
                           />
