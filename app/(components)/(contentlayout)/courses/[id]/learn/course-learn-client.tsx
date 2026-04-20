@@ -17,6 +17,7 @@ import {
   type QuizSubmitAnswer,
   type QuizResultsResponse,
 } from "@/shared/lib/api/student-courses"
+import { sanitizeRichHtml } from "@/shared/lib/sanitize-html"
 
 function sectionDurationMin(lectures: CourseLesson[]): number {
   let total = 0
@@ -1112,7 +1113,7 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                   </div>
                 </div>
                 {selectedItem.blogContent ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none text-[0.9375rem] text-[#1c1d1f] dark:text-white/90" dangerouslySetInnerHTML={{ __html: selectedItem.blogContent }} />
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-[0.9375rem] text-[#1c1d1f] dark:text-white/90" dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(selectedItem.blogContent) }} />
                 ) : (
                   <p className="text-[#6a6f73] dark:text-white/60">No content available.</p>
                 )}
@@ -1392,7 +1393,7 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                           <div className="min-w-0 flex-1">
                             <p className="font-medium text-[0.875rem] text-[#1c1d1f] dark:text-white mb-1 group-hover:text-primary transition-colors">{item.title}</p>
                             {item.blogContent ? (
-                              <div className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 leading-relaxed line-clamp-2" dangerouslySetInnerHTML={{ __html: item.blogContent.replace(/<[^>]+>/g, "").slice(0, 150) + (item.blogContent.length > 150 ? "…" : "") }} />
+                              <div className="text-[0.8125rem] text-[#6a6f73] dark:text-white/60 leading-relaxed line-clamp-2" dangerouslySetInnerHTML={{ __html: sanitizeRichHtml(item.blogContent).replace(/<[^>]+>/g, "").slice(0, 150) + (item.blogContent.length > 150 ? "…" : "") }} />
                             ) : (
                               <p className="text-[0.75rem] text-[#6a6f73] dark:text-white/50">Read article</p>
                             )}

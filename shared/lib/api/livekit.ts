@@ -253,10 +253,13 @@ export async function getWaitingParticipantsPublic(
 export async function admitParticipantPublic(
   roomName: string,
   participantIdentity: string,
-  participantName?: string,
-  participantEmail?: string,
-  hostEmail?: string
+  participantName: string | undefined,
+  participantEmail: string | undefined,
+  hostEmail: string
 ): Promise<AdmitParticipantResponse> {
+  if (!hostEmail?.trim()) {
+    throw new Error("hostEmail is required for public admit-participant");
+  }
   const response = await apiClient.post<AdmitParticipantResponse>(
     "/public/admit-participant",
     {
@@ -264,7 +267,7 @@ export async function admitParticipantPublic(
       participantIdentity,
       participantName,
       participantEmail,
-      hostEmail,
+      hostEmail: hostEmail.trim(),
     }
   );
   return response.data;
@@ -277,14 +280,17 @@ export async function admitParticipantPublic(
 export async function removeParticipantPublic(
   roomName: string,
   participantIdentity: string,
-  hostEmail?: string
+  hostEmail: string
 ): Promise<RemoveParticipantResponse> {
+  if (!hostEmail?.trim()) {
+    throw new Error("hostEmail is required for public remove-participant");
+  }
   const response = await apiClient.post<RemoveParticipantResponse>(
     "/public/remove-participant",
     {
       roomName,
       participantIdentity,
-      hostEmail,
+      hostEmail: hostEmail.trim(),
     }
   );
   return response.data;

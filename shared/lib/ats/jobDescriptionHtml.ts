@@ -1,7 +1,8 @@
 /**
  * Job descriptions may be rich HTML (Tiptap) or plain text (imports, external APIs).
- * Use formatJobDescriptionForDisplay() before dangerouslySetInnerHTML.
+ * Use formatJobDescriptionForDisplay() before dangerouslySetInnerHTML (output is sanitized).
  */
+import { sanitizeRichHtml } from "@/shared/lib/sanitize-html";
 
 /** Decode HTML entities (e.g. &lt; → <). Backend xss-clean may store entity-encoded rich text. */
 export function decodeHtmlEntities(html: string): string {
@@ -377,17 +378,18 @@ export function formatJobDescriptionForDisplay(raw: string): string {
   if (!normalized) return "";
 
   if (RICH_TEXT_MARKERS.test(normalized)) {
-    return normalized;
+    return sanitizeRichHtml(normalized);
   }
 
   const blocks = normalized.split(/\n{2,}/);
-  return blocks
+  const built = blocks
     .map((block) => {
       const lines = block.split("\n");
       const inner = lines.map((ln) => formatPlainTextLineWithSectionEmphasis(ln)).join("<br />");
       return `<p>${inner}</p>`;
     })
     .join("");
+  return sanitizeRichHtml(built);
 }
 
 /** Tailwind Typography classes for job / company long-form text */

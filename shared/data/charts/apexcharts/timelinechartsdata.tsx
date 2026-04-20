@@ -1,4 +1,4 @@
-import moment from "moment";
+import { differenceInDays } from 'date-fns';
 import { ApexOptions } from 'apexcharts';
 
 interface spark3 {
@@ -167,9 +167,7 @@ export const Multiplecolored: spark3 ={
             enabled: true,
             formatter: (val: [number, number], opts:any) => {
                 const label = opts.w.globals.labels[opts.dataPointIndex];
-                const a = moment(val[0]);
-                const b = moment(val[1]);
-                const diff = b.diff(a, 'days');
+                const diff = differenceInDays(new Date(val[1]), new Date(val[0]));
                 return label + ': ' + diff + (diff > 1 ? ' days' : ' day');
             },
             style: {
@@ -462,9 +460,7 @@ export const Timelinemulti: spark3 ={
             enabled: true,
             formatter: (val: [number, number], opts: any) => {
                 const label = opts.w.globals.labels[opts.dataPointIndex];
-                const a = moment(val[0]);
-                const b = moment(val[1]);
-                const diff = b.diff(a, 'days');
+                const diff = differenceInDays(new Date(val[1]), new Date(val[0]));
                 return label + ': ' + diff + (diff > 1 ? ' days' : ' day');
             },
         },

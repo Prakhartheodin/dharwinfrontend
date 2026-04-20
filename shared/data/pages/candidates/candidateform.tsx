@@ -300,10 +300,8 @@ const getFileThumbnail = (file: File) => {
 
 // Function to get clickable document thumbnail for existing files (JPG, JPEG, PNG, PDF only)
 const getExistingFileThumbnail = (url: string, label: string) => {
-  // Append token to API endpoint URLs for direct browser access
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-  const isApiEndpoint = url && (url.includes('/candidates/documents/') || url.includes('/download'));
-  const finalUrl = isApiEndpoint && token && !url.includes('?token=') ? `${url}?token=${token}` : url;
+  // Use cookie-auth same-origin URLs or presigned S3 URLs only — do not put JWTs in query strings.
+  const finalUrl = url;
   
   const fileName = url.toLowerCase();
   const docLabel = (label || '').toLowerCase();
