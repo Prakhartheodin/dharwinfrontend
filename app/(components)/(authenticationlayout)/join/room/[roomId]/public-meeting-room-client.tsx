@@ -716,7 +716,8 @@ function PublicRoomContent({
       <div className="room-meeting-container relative flex flex-col h-full min-h-0 w-full">
         <VideoConference />
         <RoomAudioRenderer />
-        {recordingSlot &&
+        {isHost &&
+          recordingSlot &&
           createPortal(
             <RecordingButton
               roomName={roomName}
@@ -785,7 +786,7 @@ function PublicRoomContent({
   );
 }
 
-function tokenGrantsPublishAccess(data: { isHost?: boolean; canPublish?: boolean }): boolean {
+function tokenAllowsRoomJoin(data: { isHost?: boolean; canPublish?: boolean }): boolean {
   return data.isHost === true || data.canPublish === true;
 }
 
@@ -1067,8 +1068,8 @@ export default function PublicMeetingRoomClient() {
       const pid = data.participantIdentity ?? null;
       setParticipantIdentity(pid);
       participantIdentityRef.current = pid;
-      setIsHost(tokenGrantsPublishAccess(data));
-      if (tokenGrantsPublishAccess(data)) {
+      setIsHost(data.isHost === true);
+      if (tokenAllowsRoomJoin(data)) {
         setWaitingForAdmission(false);
         setShowRoom(true);
       } else {
@@ -1121,7 +1122,7 @@ export default function PublicMeetingRoomClient() {
           identity
         );
 
-        if (tokenGrantsPublishAccess(data)) {
+        if (tokenAllowsRoomJoin(data)) {
           if (admissionPollRef.current) {
             clearInterval(admissionPollRef.current);
             admissionPollRef.current = null;
@@ -1131,7 +1132,7 @@ export default function PublicMeetingRoomClient() {
             setParticipantIdentity(data.participantIdentity);
             participantIdentityRef.current = data.participantIdentity;
           }
-          setIsHost(true);
+          setIsHost(data.isHost === true);
           setWaitingForAdmission(false);
           setShowRoom(true);
           setReconnectKey((k) => k + 1);

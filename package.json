@@ -8,7 +8,7 @@
     "build": "next build",
     "postbuild": "node scripts/prune-next-build.js",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "audit:ci": "npm audit --audit-level=high",
     "postcss": "sass ./public/assets/scss/style.scss ./public/assets/css/style.css && postcss ./public/assets/css/style.css -o ./public/assets/css/style.css",
     "sass": "sass ./public/assets/scss/:./public/assets/css/",

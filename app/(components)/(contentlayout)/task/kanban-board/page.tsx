@@ -90,6 +90,17 @@ const Kanbanboard = () => {
   const [editTags, setEditTags] = useState<string[]>([]);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editAssignedCandidateIds, setEditAssignedCandidateIds] = useState<string[]>([]);
+  const selectMenuPortalTarget = useMemo(
+    () => (typeof window === "undefined" ? null : document.body),
+    []
+  );
+  const selectMenuLayerStyles = useMemo(
+    () => ({
+      menuPortal: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 }),
+      menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 }),
+    }),
+    []
+  );
 
   const columnRefs = useRef<(HTMLDivElement | null)[]>([]);
   /** Perfect Scrollbar mounts on this node — it is the real scroll container (not SimpleBar). */
@@ -106,7 +117,7 @@ const Kanbanboard = () => {
     setLoading(true);
     try {
       const res = await listTasks({
-        limit: 500,
+        limit: 200,
         ...(debouncedSearch && { search: debouncedSearch }),
         ...(projectFilterId && { projectId: projectFilterId }),
         ...(assignedToMe && { assignedToMe: true }),
@@ -460,6 +471,9 @@ const Kanbanboard = () => {
                       onChange={(opt) => setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")}
                       className="w-full !rounded-xl"
                       menuPlacement="auto"
+                      menuPosition="fixed"
+                      menuPortalTarget={selectMenuPortalTarget}
+                      styles={selectMenuLayerStyles}
                       classNamePrefix="Select2"
                     />
                   </div>

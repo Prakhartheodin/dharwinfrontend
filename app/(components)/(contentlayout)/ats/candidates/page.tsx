@@ -40,6 +40,7 @@ import {
   type CandidateDocument,
   type AgentOption,
 } from '@/shared/lib/api/candidates'
+import { resolveDownloadUrlForBrowser } from '@/shared/lib/api/client'
 import { listUsers } from '@/shared/lib/api/users'
 import { getAllShifts } from '@/shared/lib/api/shifts'
 import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
@@ -53,6 +54,14 @@ import { canEditCandidateJoiningDate, canEditCandidateResignDate } from '@/share
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
+
+/** True if the row has an S3 key or a usable HTTPS S3 URL (not localhost-only placeholder). */
+function candidateDocumentCanView(doc: { key?: string; url?: string } | null | undefined): boolean {
+  if (!doc) return false
+  if (doc.key && String(doc.key).trim()) return true
+  const u = String(doc.url || '')
+  return /amazonaws\.com|\.s3[.-]/i.test(u)
+}
 
 /** Resigned = resign date set and on or before today (matches API “employmentStatus: resigned”). */
 function isCandidateResigned(candidate: CandidateDisplay): boolean {
@@ -301,6 +310,8 @@ const Candidates = () => {
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [candidateNotes, setCandidateNotes] = useState<CandidateNote[]>([])
   const [previewCandidate, setPreviewCandidate] = useState<any>(null)
+  const [previewPanelDocuments, setPreviewPanelDocuments] = useState<CandidateDocument[] | null>(null)
+  const [previewPanelDocumentsLoading, setPreviewPanelDocumentsLoading] = useState(false)
   const [viewDetailTab, setViewDetailTab] = useState<string>('personal')
   const [notesCandidateId, setNotesCandidateId] = useState<string | null>(null)
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
@@ -567,6 +578,8 @@ const Candidates = () => {
   /** Open preview panel and fetch full candidate (including documents & salarySlips) for display. */
   const openCandidatePreview = useCallback((c: CandidateDisplay) => {
     setPreviewCandidate(c)
+    setPreviewPanelDocuments(null)
+    setPreviewPanelDocumentsLoading(false)
     setViewDetailTab('personal')
     setActionError(null)
     setTimeout(() => {
@@ -711,6 +724,59 @@ const Candidates = () => {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Download failed')
     }
   }
+
+  useEffect(() => {
+    if (!previewCandidate) {
+      setPreviewPanelDocuments(null)
+      setPreviewPanelDocumentsLoading(false)
+    }
+  }, [previewCandidate])
+
+  useEffect(() => {
+    const id = previewCandidate?.id
+    if (!id || viewDetailTab !== 'documents') return
+    let cancelled = false
+    setPreviewPanelDocumentsLoading(true)
+    getCandidateDocuments(id)
+      .then((docs) => {
+        if (!cancelled) setPreviewPanelDocuments(docs)
+      })
+      .catch(() => {
+        if (!cancelled) setPreviewPanelDocuments(null)
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewPanelDocumentsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [previewCandidate?.id, viewDetailTab])
+
+  const handlePreviewPanelDocumentView = useCallback(
+    async (index: number) => {
+      const cid = previewCandidate?.id ?? previewCandidate?._raw?._id
+      if (!cid) return
+      setActionError(null)
+      const row = previewPanelDocuments?.[index]
+      if (row?.url && /amazonaws\.com|\.s3[.-]/i.test(row.url)) {
+        window.open(resolveDownloadUrlForBrowser(row.url), '_blank', 'noopener,noreferrer')
+        return
+      }
+      if (candidateDocumentCanView(row)) {
+        try {
+          const { url } = await getDocumentDownloadUrl(cid, index)
+          window.open(url, '_blank', 'noopener,noreferrer')
+        } catch (err: any) {
+          setActionError(err?.response?.data?.message ?? err?.message ?? 'Could not open document')
+        }
+        return
+      }
+      setActionError(
+        'This document is not linked to file storage (missing S3 key). The candidate should re-upload it under Personal Information → Documents.'
+      )
+    },
+    [previewCandidate, previewPanelDocuments]
+  )
 
   const handleSalarySlipView = async (candidateId: string, salarySlipIndex: number) => {
     try {
@@ -2458,30 +2524,47 @@ const Candidates = () => {
                           <button type="button" onClick={() => setActionError(null)} className="shrink-0 ml-2 text-danger/80 hover:text-danger">×</button>
                         </div>
                       )}
-                      {Array.isArray(previewCandidate._raw?.documents) && previewCandidate._raw.documents.length > 0 ? (
+                      {previewPanelDocumentsLoading ? (
+                        <div className="flex items-center gap-2 py-6 text-sm text-gray-500 dark:text-gray-400">
+                          <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                          Loading documents…
+                        </div>
+                      ) : (() => {
+                        const docsList =
+                          previewPanelDocuments ??
+                          (Array.isArray(previewCandidate._raw?.documents) ? previewCandidate._raw.documents : [])
+                        return Array.isArray(docsList) && docsList.length > 0 ? (
                         <div className="space-y-3">
-                          {previewCandidate._raw.documents.map((doc: any, index: number) => (
+                          {docsList.map((doc: CandidateDocument & { label?: string; originalName?: string }, index: number) => {
+                            const label = doc?.label || doc?.originalName || `Document ${index + 1}`
+                            const viewable = candidateDocumentCanView(doc)
+                            return (
                             <div key={index} className="flex items-center justify-between gap-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                              <p className="font-medium text-gray-900 dark:text-white truncate min-w-0 flex-1">{doc?.label || doc?.originalName || `Document ${index + 1}`}</p>
+                              <p className="font-medium text-gray-900 dark:text-white truncate min-w-0 flex-1">{label}</p>
                               <button
                                 type="button"
-                                className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 shrink-0 whitespace-nowrap"
+                                disabled={!viewable}
+                                title={!viewable ? 'File is not linked to storage — re-upload required' : 'Open document'}
+                                className={`ti-btn ti-btn-sm !w-auto !h-auto !min-h-[1.75rem] py-1.5 px-3 shrink-0 whitespace-nowrap ${
+                                  viewable ? 'ti-btn-primary' : 'ti-btn-outline text-gray-400 border-gray-300 dark:border-gray-600 cursor-not-allowed'
+                                }`}
                                 onClick={() => {
-                                  const cid = previewCandidate?.id ?? previewCandidate?._raw?._id
-                                  if (cid) handleDocumentDownload(cid, index)
+                                  if (viewable) handlePreviewPanelDocumentView(index)
                                 }}
                               >
                                 <i className="ri-external-link-line me-1"></i>View
                               </button>
                             </div>
-                          ))}
+                            )
+                          })}
                         </div>
                       ) : (
                         <div className="text-center py-8">
                           <i className="ri-file-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
                           <p className="text-gray-500 dark:text-gray-400">No documents uploaded.</p>
                         </div>
-                      )}
+                      )
+                      })()}
                     </div>
                   )}
 
