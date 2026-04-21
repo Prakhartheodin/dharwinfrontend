@@ -61,13 +61,16 @@ function formatMeetingDate(iso: string): string {
 
 /** Build ISO string for API from date + time inputs (handles HH:mm and HH:mm:ss). */
 function buildScheduledAtFromForm(dateStr: string, timeStr: string): string {
+  const [year, month, day] = dateStr.split('-').map((v) => parseInt(v, 10))
   const t = timeStr.trim()
   const parts = t.split(':').filter((p) => p !== '')
-  const h = String(parts[0] ?? '0').padStart(2, '0').slice(-2)
-  const m = String(parts[1] ?? '00').padStart(2, '0').slice(0, 2)
+  const h = parseInt(String(parts[0] ?? '0').replace(/\D/g, ''), 10) || 0
+  const m = parseInt(String(parts[1] ?? '00').replace(/\D/g, ''), 10) || 0
   const secRaw = String(parts[2] ?? '00').replace(/\D/g, '')
-  const s = secRaw.padStart(2, '0').slice(0, 2)
-  return `${dateStr}T${h}:${m}:${s}.000Z`
+  const s = parseInt(secRaw, 10) || 0
+  // Convert local date/time input into UTC ISO so backend schedule checks align with user-selected local time.
+  const localDate = new Date(year, (month || 1) - 1, day || 1, h, m, s, 0)
+  return localDate.toISOString()
 }
 
 function meetingToTableRow(m: Meeting): InterviewTableRow {
@@ -334,7 +337,7 @@ export default function InterviewsClient() {
     const recruiterId = (form.querySelector('#edit-recruiter') as HTMLSelectElement)?.value
     const candidate = candidateId ? candidates.find((c) => (c.id ?? c._id) === candidateId) : null
     const recruiter = recruiterId ? recruiters.find((r) => r.id === recruiterId) : null
-    const scheduledAt = date && time ? `${date}T${time}:00.000Z` : editMeeting.scheduledAt
+    const scheduledAt = date && time ? buildScheduledAtFromForm(date, time) : editMeeting.scheduledAt
     const payload: UpdateMeetingPayload = {
       title: title || editMeeting.title,
       description: description || undefined,

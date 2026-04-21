@@ -66,9 +66,10 @@ function participantsSummary(m: InternalMeeting): string {
   return (hostPart || "—") + extra
 }
 
-function meetingToRow(m: InternalMeeting): InternalMeetingRow {
+function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
+  const baseId = (m._id != null ? String(m._id) : m.meetingId) || ""
   return {
-    id: (m._id != null ? String(m._id) : m.meetingId) || "",
+    id: baseId || `meeting-${index}`,
     title: m.title || "Meeting",
     date: formatMeetingDate(m.scheduledAt),
     time: formatMeetingTime(m.scheduledAt),
@@ -429,7 +430,7 @@ export default function InternalMeetingsClient() {
     })
   }
 
-  const tableData = useMemo(() => meetings.map(meetingToRow), [meetings])
+  const tableData = useMemo(() => meetings.map((m, i) => meetingToRow(m, i)), [meetings])
 
   const columns = useMemo(
     () => [

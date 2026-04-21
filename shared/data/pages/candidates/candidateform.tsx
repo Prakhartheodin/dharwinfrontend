@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
 import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
+import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import Swal from "sweetalert2";
@@ -298,10 +299,21 @@ const getFileThumbnail = (file: File) => {
   );
 };
 
+type ExistingDocRow = {
+  type?: string;
+  label?: string;
+  url: string;
+  key?: string;
+  originalName?: string;
+  size?: number;
+  mimeType?: string;
+  status?: number;
+};
+
 // Function to get clickable document thumbnail for existing files (JPG, JPEG, PNG, PDF only)
 const getExistingFileThumbnail = (url: string, label: string) => {
-  // Use cookie-auth same-origin URLs or presigned S3 URLs only — do not put JWTs in query strings.
-  const finalUrl = url;
+  // Rewrite dev localhost API URLs to same-origin /api/v1/... so previews work in UAT/prod.
+  const finalUrl = typeof window !== "undefined" ? resolveDownloadUrlForBrowser(url) : url;
   
   const fileName = url.toLowerCase();
   const docLabel = (label || '').toLowerCase();
@@ -628,7 +640,7 @@ export const Basicwizard = ({
 
   const [documentsList, setDocumentsList] = useState<{id: number, name: string, customName: string, file: File | null}[]>([]);
 
-  const [existingDocs, setExistingDocs] = useState<{ label: string; url: string }[]>([]);
+  const [existingDocs, setExistingDocs] = useState<ExistingDocRow[]>([]);
 
   const [documents, setDocuments] = useState<{
     cv?: File;
@@ -640,7 +652,9 @@ export const Basicwizard = ({
 
   // ------------------------------- State: Salary Slips -------------------------------
   const [salarySlips, setSalarySlips] = useState<{id: number, month: string, year: string, file: File | null, documentUrl: string}[]>([]);
-  const [existingSalarySlips, setExistingSalarySlips] = useState<{ month: string; year: string; documentUrl: string }[]>([]);
+  const [existingSalarySlips, setExistingSalarySlips] = useState<
+    { month: string; year: string; documentUrl: string; key?: string; originalName?: string; size?: number; mimeType?: string }[]
+  >([]);
 
   // ------------------------------- Step Control -------------------------------
   const [step, setStep] = useState(0);
@@ -1731,14 +1745,31 @@ export const Basicwizard = ({
         })));
       }
       if (Array.isArray(initialData.documents)) {
-        setExistingDocs(initialData.documents.map((d: any) => ({ label: d.label, url: d.url })));
+        setExistingDocs(
+          initialData.documents.map((d: any) => ({
+            type: d.type,
+            label: d.label ?? "",
+            url: d.url ?? "",
+            key: d.key,
+            originalName: d.originalName,
+            size: d.size,
+            mimeType: d.mimeType,
+            status: d.status,
+          }))
+        );
       }
       if (Array.isArray(initialData.salarySlips) && initialData.salarySlips.length) {
-        setExistingSalarySlips(initialData.salarySlips.map((s: any) => ({
-          month: s.month || "",
-          year: s.year || "",
-          documentUrl: s.documentUrl || "",
-        })));
+        setExistingSalarySlips(
+          initialData.salarySlips.map((s: any) => ({
+            month: s.month || "",
+            year: s.year != null ? String(s.year) : "",
+            documentUrl: s.documentUrl || "",
+            key: s.key,
+            originalName: s.originalName,
+            size: s.size,
+            mimeType: s.mimeType,
+          }))
+        );
         // Clear the default blank entry when editing existing profile with salary slips
         setSalarySlips([]);
       }
@@ -3055,7 +3086,7 @@ export const Basicwizard = ({
                   <div className="xl:col-span-4 col-span-12">
                     <label className="form-label">Current File</label>
                     <div className="flex items-center">
-                      {getExistingFileThumbnail(doc.url, doc.label)}
+                      {getExistingFileThumbnail(doc.url, doc.label || 'Document')}
                       <div className="ml-2 text-sm text-gray-600 dark:text-gray-400">
                         <div className="text-xs">{doc.label || 'Document'}</div>
                       </div>
@@ -3073,7 +3104,7 @@ export const Basicwizard = ({
                           const updated = [...documentsList];
                           updated.push({ 
                             id: Date.now() + index, 
-                            name: doc.label, 
+                            name: doc.label || 'Document',
                             customName: "",
                             file: e.target.files[0] 
                           });

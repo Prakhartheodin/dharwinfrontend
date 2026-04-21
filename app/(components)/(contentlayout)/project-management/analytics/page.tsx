@@ -88,8 +88,8 @@ const AnalyticsPage = () => {
   const fetchData = useCallback(() => {
     setLoading(true);
     Promise.all([
-      listProjects({ limit: 500 }),
-      listTasks({ limit: 2000 }),
+      listProjects({ limit: 200 }),
+      listTasks({ limit: 200 }),
       listTeamGroups({ limit: 200 }),
     ])
       .then(([projRes, taskRes, teamRes]) => {
