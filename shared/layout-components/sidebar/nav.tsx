@@ -19,6 +19,7 @@ const AnalyticsIcon = <i className="bx bx-bar-chart-alt-2 side-menu__icon"></i>;
 // Communication Icons
 const EmailIcon = <i className="bx bx-envelope side-menu__icon"></i>;
 const ChatsIcon = <i className="bx bx-message-rounded-dots side-menu__icon"></i>;
+const MeetingsCommIcon = <i className="bx bx-calendar side-menu__icon"></i>;
 const CallingIcon = <i className="bx bx-phone-call side-menu__icon"></i>;
 const RecordingsIcon = <i className="bx bx-video-recording side-menu__icon"></i>;
 const FilesStorageIcon = <i className="bx bx-folder side-menu__icon"></i>;
@@ -230,6 +231,16 @@ export const MenuItems: any = [
         selected: false,
         dirchange: false, 
       },
+
+  {
+    icon: MeetingsCommIcon,
+    title: "Meetings",
+    type: "link",
+    path: "/communication/meetings",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
 
       {
     icon: CallingIcon,

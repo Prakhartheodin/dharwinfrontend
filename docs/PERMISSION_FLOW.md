@@ -43,6 +43,7 @@
 | /courses | candidate.courses: |
 | /communication/email | communication.emails: |
 | /communication/chats | communication.chats: |
+| /communication/meetings | communication.meetings: |
 | /communication/calling | communication.calling: |
 | /communication/recordings | communication.meetings: |
 | /communication/filemanager | communication.files-storage: |
