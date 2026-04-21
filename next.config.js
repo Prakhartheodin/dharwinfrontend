@@ -3,6 +3,12 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+  /** Keep production artifacts smaller (no client .map in deploy bundle). */
+  productionBrowserSourceMaps: false,
+  experimental: {
+    /** Avoid emitting server-side .map files (can add 50–100MB+ to `.next`). */
+    serverSourceMaps: false,
+  },
   // basePath: isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
   // assetPrefix : isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
   basePath: "",
