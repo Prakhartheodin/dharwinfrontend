@@ -6,6 +6,7 @@
     "generate-templates": "node scripts/generate-templates.js",
     "dev": "next dev -p 3001",
     "build": "next build",
+    "postbuild": "node scripts/prune-next-build.js",
     "start": "next start",
     "lint": "next lint",
     "audit:ci": "npm audit --audit-level=high",

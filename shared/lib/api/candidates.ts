@@ -1,6 +1,6 @@
 "use client";
 
-import { apiClient } from "@/shared/lib/api/client";
+import { apiClient, resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 
 export interface CandidateListItem {
   id?: string;
@@ -238,7 +238,7 @@ export async function getDocumentDownloadUrl(
     headers: { Accept: "application/json" },
   });
   if (!data?.success || !data?.data) throw new Error("Failed to get download URL");
-  return data.data;
+  return { ...data.data, url: resolveDownloadUrlForBrowser(data.data.url) };
 }
 
 /** Get fresh download URL for a salary slip (presigned URLs expire after 7 days). */
@@ -253,7 +253,7 @@ export async function getSalarySlipDownloadUrl(
     headers: { Accept: "application/json" },
   });
   if (!data?.success || !data?.data) throw new Error("Failed to get salary slip URL");
-  return data.data;
+  return { ...data.data, url: resolveDownloadUrlForBrowser(data.data.url) };
 }
 
 export async function addSalarySlipToCandidate(

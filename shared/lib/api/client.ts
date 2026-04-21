@@ -16,6 +16,33 @@ export function normalizeApiBase(): string {
   return "http://127.0.0.1:3000/v1";
 }
 
+/**
+ * Backend sometimes returns absolute URLs pointing at a dev API host (e.g. http://localhost:3002/v1/...).
+ * End users' browsers cannot reach that host — they get ERR_CONNECTION_REFUSED.
+ * Rewrite those to the same-origin Next proxy (`/api` + `/v1/...`) so cookies and rewrites work.
+ * Presigned S3 URLs (amazonaws.com, etc.) are left unchanged.
+ */
+export function resolveDownloadUrlForBrowser(url: string): string {
+  if (typeof window === "undefined" || !url || typeof url !== "string") return url;
+  try {
+    const u = new URL(url);
+    const isLoopback =
+      u.hostname === "localhost" ||
+      u.hostname === "127.0.0.1" ||
+      u.hostname === "[::1]";
+    if (!isLoopback) return url;
+    const path = u.pathname.replace(/\/$/, "") || "/";
+    const isCandidateDocDownload = /^\/v1\/candidates\/documents\/[^/]+\/\d+\/download$/i.test(path);
+    const isSalarySlip = /^\/v1\/candidates\/salary-slips\/[^/]+\/\d+$/i.test(path);
+    if (isCandidateDocDownload || isSalarySlip) {
+      return `${window.location.origin}/api${path}${u.search}`;
+    }
+  } catch {
+    return url;
+  }
+  return url;
+}
+
 export const apiClient = axios.create({
   baseURL: normalizeApiBase(),
   withCredentials: true,

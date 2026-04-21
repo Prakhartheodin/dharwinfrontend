@@ -173,6 +173,53 @@ const Calling = () => {
   const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
+  /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
+  const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
+
+  const PANEL_TRANSITION_MS = 320;
+
+  const openCallDetails = useCallback((u: UnifiedCall) => {
+    setSelectedCall(u);
+    setDetailsPanelOpen(true);
+  }, []);
+
+  const closeCallDetails = useCallback(() => {
+    setDetailsPanelOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!detailsPanelOpen && selectedCall) {
+      const id = window.setTimeout(() => setSelectedCall(null), PANEL_TRANSITION_MS);
+      return () => window.clearTimeout(id);
+    }
+  }, [detailsPanelOpen, selectedCall]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const mq = window.matchMedia("(max-width: 1279px)");
+    const applyOverflow = () => {
+      if (!detailsPanelOpen) {
+        document.body.style.overflow = "";
+        return;
+      }
+      document.body.style.overflow = mq.matches ? "hidden" : "";
+    };
+    applyOverflow();
+    mq.addEventListener("change", applyOverflow);
+    return () => {
+      mq.removeEventListener("change", applyOverflow);
+      document.body.style.overflow = "";
+    };
+  }, [detailsPanelOpen]);
+
+  useEffect(() => {
+    if (!detailsPanelOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeCallDetails();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [detailsPanelOpen, closeCallDetails]);
 
   const fetchTelephony = useCallback(async () => {
     const data = await getBolnaCallRecords({
@@ -322,8 +369,10 @@ const Calling = () => {
     setDeletingId(id);
     try {
       await deleteBolnaCallRecord(id);
-      if (selectedCall?.source === "telephony" && (selectedCall.data._id || selectedCall.data.id) === id)
+      if (selectedCall?.source === "telephony" && (selectedCall.data._id || selectedCall.data.id) === id) {
+        setDetailsPanelOpen(false);
         setSelectedCall(null);
+      }
       await fetchRecords();
     } catch (e) {
       const msg =
@@ -339,9 +388,13 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
-      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
-        <div className="xl:col-span-8 col-span-12">
-          <div className="box custom-box">
+      {/*
+        Desktop (xl+): flex row — details column animates width 0→28rem so the main table eases into
+        the freed space (no overlap). Mobile: main stays full width; details stays fixed slide-over.
+      */}
+      <div className="mt-5 flex w-full min-w-0 flex-col gap-6 sm:mt-6 xl:flex-row xl:items-stretch xl:gap-6">
+        <div className="w-full min-w-0 max-w-full flex-1 basis-full xl:min-w-0">
+          <div className="box custom-box w-full max-w-full min-w-0">
             <div className="box-header justify-between flex-wrap gap-3">
               <div className="box-title">Call Records</div>
               <div className="flex items-center gap-2">
@@ -480,8 +533,12 @@ const Calling = () => {
               ) : paginatedCalls.length === 0 ? (
                 <div className="py-10 text-center text-defaulttextcolor/70">No call records found</div>
               ) : (
-                <div className="table-responsive">
-                  <table className="table min-w-[1180px] align-middle">
+                <div className="table-responsive w-full min-w-0">
+                  {/*
+                    w-full: stretch the table to the card width when viewport > min-width; without it,
+                    the table stays ~1180px and leaves empty space on the right.
+                  */}
+                  <table className="table w-full min-w-[1180px] align-middle">
                     <thead>
                       <tr>
                         <th className="text-nowrap">Source</th>
@@ -593,7 +650,15 @@ const Calling = () => {
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-sm ti-btn-outline-primary !py-1 !px-2 !w-auto !min-w-fit whitespace-nowrap overflow-visible"
-                                  onClick={() => setSelectedCall(u)}
+                                  aria-controls="call-details-panel"
+                                  aria-expanded={
+                                    Boolean(
+                                      detailsPanelOpen &&
+                                        selectedCall &&
+                                        getUnifiedId(selectedCall) === id
+                                    )
+                                  }
+                                  onClick={() => openCallDetails(u)}
                                 >
                                   Details
                                 </button>
@@ -746,12 +811,49 @@ const Calling = () => {
           </div>
         </div>
 
-        <div className="xl:col-span-4 col-span-12">
-          <div className="box custom-box">
-            <div className="box-header">
-              <div className="box-title">Call Details</div>
+        {/* Mobile: dim + dismiss; desktop uses in-flow width animation instead */}
+        <div
+          className={`fixed inset-0 z-[95] bg-black/25 backdrop-blur-[1px] transition-opacity duration-300 ease-out motion-reduce:transition-none md:bg-black/20 xl:hidden ${
+            detailsPanelOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          }`}
+          aria-hidden={!detailsPanelOpen}
+          onClick={closeCallDetails}
+        />
+        <aside
+          id="call-details-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="call-details-title"
+          aria-hidden={!detailsPanelOpen}
+          className={[
+            "flex min-h-0 flex-col overflow-hidden border-defaultborder/80 bg-white dark:bg-bodybg",
+            /* Mobile / tablet: fixed drawer — transform slide */
+            "max-xl:fixed max-xl:right-0 max-xl:top-[3.75rem] max-xl:z-[100] max-xl:h-[calc(100vh-3.75rem)] max-xl:w-full max-xl:max-w-md max-xl:border-l max-xl:shadow-[-12px_0_40px_rgba(15,23,42,0.12)] dark:max-xl:shadow-[-12px_0_40px_rgba(0,0,0,0.45)]",
+            "max-xl:transition-transform max-xl:duration-300 max-xl:ease-[cubic-bezier(0.32,0.72,0,1)] max-xl:motion-reduce:transition-none",
+            detailsPanelOpen
+              ? "max-xl:translate-x-0"
+              : "max-xl:pointer-events-none max-xl:translate-x-full",
+            /* Desktop: when closed, remove panel from layout entirely (w-0 still left a gutter in flex). When open, fixed 28rem column. */
+            detailsPanelOpen
+              ? "xl:relative xl:top-auto xl:z-auto xl:mt-0 xl:flex xl:w-[28rem] xl:max-w-[28rem] xl:min-w-0 xl:shrink-0 xl:self-stretch xl:rounded-xl xl:border xl:border-defaultborder/80 xl:shadow-[-8px_0_28px_rgba(15,23,42,0.07)] dark:xl:shadow-[-8px_0_28px_rgba(0,0,0,0.35)]"
+              : "xl:hidden",
+          ].join(" ")}
+        >
+          <div className="box custom-box mb-0 flex h-full max-h-[calc(100vh-3.75rem)] min-h-0 w-full min-w-0 max-w-full flex-1 flex-col border-0 shadow-none max-xl:max-w-md xl:max-h-[calc(100vh-6rem)]">
+            <div className="box-header shrink-0 justify-between gap-2 !flex-row">
+              <div className="box-title mb-0" id="call-details-title">
+                Call Details
+              </div>
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-ghost text-defaulttextcolor/70 hover:text-danger"
+                aria-label="Close call details"
+                onClick={closeCallDetails}
+              >
+                <i className="ri-close-line text-lg" aria-hidden />
+              </button>
             </div>
-            <div className="box-body">
+            <div className="box-body min-h-0 flex-1 overflow-y-auto overscroll-contain">
               {!selectedCall ? (
                 <div className="text-center py-8 text-defaulttextcolor/60">
                   Select a record to view details
@@ -867,7 +969,7 @@ const Calling = () => {
               )}
             </div>
           </div>
-        </div>
+        </aside>
       </div>
     </Fragment>
   );
