@@ -1,5 +1,6 @@
 "use client";
 
+/** ATS screening interviews only. API: `GET|POST /meetings`. Communication internal meetings use `internal-meetings.ts` → `/internal-meetings`. */
 import { apiClient } from "@/shared/lib/api/client";
 
 export interface MeetingHost {

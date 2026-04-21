@@ -6,7 +6,6 @@ import type { Meeting } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import type { User } from '@/shared/lib/types'
-
 export interface CreateInterviewModalProps {
   createdMeeting: Meeting | null
   resetCreateMeetingForm: () => void

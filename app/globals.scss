@@ -5,8 +5,6 @@
 @use "filepond-plugin-image-preview/dist/filepond-plugin-image-preview.css" as *; // dependencies plugin css for react file pond package
 @use "react-datepicker/dist/react-datepicker.css" as *; // (datepicker)
 
-@use "react-range-slider-input/dist/style.css" as *; // (rangeslider)
-
 @use "@simonwep/pickr/dist/themes/classic.min.css" as *;
 @use "@simonwep/pickr/dist/themes/monolith.min.css" as *;
 @use "@simonwep/pickr/dist/themes/nano.min.css" as *;

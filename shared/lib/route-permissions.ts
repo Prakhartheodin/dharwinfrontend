@@ -47,6 +47,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // Communication (app routes under /communication/...)
   "/communication/email": "communication.emails:",
   "/communication/chats": "communication.chats:",
+  "/communication/meetings": "communication.meetings:",
   "/communication/filemanager": "communication.files-storage:",
   "/communication/recordings": "communication.meetings:",
   "/support-tickets": "support.tickets:",

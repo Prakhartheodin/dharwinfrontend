@@ -1,11 +1,20 @@
 "use client"
 import React from 'react'
-import type { MeetingRecording } from '@/shared/lib/api/meetings'
+
+/** Shared shape for interview + internal meeting recordings from `/recordings` APIs */
+export interface RecordingListItem {
+  id: string
+  startedAt: string
+  completedAt: string | null
+  status: string
+  playbackUrl?: string | null
+  playbackError?: string
+}
 
 export interface RecordingsModalProps {
   recordingsLoading: boolean
   recordingsError: string | null
-  recordingsList: MeetingRecording[]
+  recordingsList: RecordingListItem[]
   onClose: () => void
 }
 
