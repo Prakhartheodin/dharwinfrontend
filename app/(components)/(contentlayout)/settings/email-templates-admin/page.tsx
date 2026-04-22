@@ -199,7 +199,7 @@ export default function SettingsEmailTemplatesAdminPage() {
   if (!permissionsLoaded || !isAdministrator) {
     return (
       <Fragment>
-        <Seo title="Email templates (admin)" />
+        <Seo title="All agents' email templates (admin)" />
         <div className="p-4 text-[#8c9097]">Loading…</div>
       </Fragment>
     );
@@ -207,7 +207,7 @@ export default function SettingsEmailTemplatesAdminPage() {
 
   return (
     <Fragment>
-      <Seo title="Email templates — all agents" />
+      <Seo title="All agents' email templates & signatures (admin)" />
       <div className="p-4 space-y-8">
         <div>
           <label className="form-label">Agent</label>

@@ -104,9 +104,13 @@ export default function RolesPage() {
             {totalResults}
           </span>
         </h5>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="roles-page-size" className="sr-only">
+            Rows per page
+          </label>
           <select
-            className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+            id="roles-page-size"
+            className="form-control select-show-page-size !w-auto !py-1.5 !text-[0.75rem] leading-tight me-0"
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
           >

@@ -8,9 +8,11 @@ role: master-index
 aggregates:
   - docs/plans/2026-04-22-001-refactor-ats-candidate-employee-rename-program-plan.md
   - .cursor/plans/ats_candidate_to_employee_rename.plan.md
+  - docs/plans/2026-04-22-003-snapshot-ats-revised-flow-review-plan.md
+  - docs/plans/2026-04-22-004-snapshot-candidate-field-feasibility-note.md
   - "User Cursor: ats_candidate_employee_rename_4f74180a.plan.md (executive one-pager)"
-  - "User Cursor: ats_revised_flow_review_d632da97.plan.md (PDF review; summarized below)"
-  - "User Cursor: candidate_field_feasibility_note_96bbc731.plan.md (summarized below)"
+  - "User Cursor: ats_revised_flow_review_d632da97.plan.md (PDF review; summarized below; see 003 for full snapshot)"
+  - "User Cursor: candidate_field_feasibility_note_96bbc731.plan.md (summarized below; see 004 for full snapshot)"
 depth: deep
 ---
 
@@ -31,7 +33,20 @@ This file is the **single entry point** for stakeholders and implementers. It **
 | **Data model** — profile fields unchanged; work is `ref` / collection / `ref: 'Candidate'` | [§ Data model (profile fields vs. cross-collection refs)](#data-model-profile-fields-vs-cross-collection-refs) |
 | **PDF roadmap** — apply P0, screening, offer doc, dashboard | [§ Related program: ATS revised flow (PDF)](#related-program-ats-revised-flow-pdf) |
 | **Cursor** one-pager + todos | [§ Cursor rename snapshot](#cursor-rename-snapshot) (or your local `ats_candidate_employee_rename_4f74180a.plan.md`) |
+| **PDF review (full text in repo)** | [`2026-04-22-003-snapshot-ats-revised-flow-review-plan.md`](2026-04-22-003-snapshot-ats-revised-flow-review-plan.md) |
+| **Field feasibility (full text in repo)** | [`2026-04-22-004-snapshot-candidate-field-feasibility-note.md`](2026-04-22-004-snapshot-candidate-field-feasibility-note.md) |
 | **This master** — prioritization, checklist, research | This file |
+
+---
+
+## Execution tranche: no database mutations
+
+This tranche is **code and config only**—**no** `renameCollection`, **no** permission/role **document** backfills in Mongo, **no** mass `User.roleIds` updates, **no** migration scripts that write to the database. Defer **Phase C** and **001 Units 6–7** until a separate, explicitly approved “DB + permissions” window.
+
+- **In scope for this tranche:** Phase **A** (UI copy, `ROUTES`, Next redirects, App Router moves) and Phase **B** (Express mount alias for `/v1/employees`, client path updates, published deprecation *documentation*). Treat **B** as routing + application code; if any step would require **storing** new permission slugs in roles, skip it here or keep dual acceptance **only in code** without persisting new role documents.
+- **Out of scope until DB approval:** `candidate.model` / collection rename, `ref: 'Candidate'` string updates that ship **with** a coordinated DB op, `permissions.js` slug migration with DB writes, `Role` seed changes that hit production data.
+
+**Note:** A later tranche that includes Phase C is required for full **G1** (R4–R5) as defined in 001; this tranche is still valid for **R1–R2–R3**-oriented work (labels, redirects, API alias) without touching the database.
 
 ---
 
@@ -269,7 +284,7 @@ Each phase lists **5–10** concrete items. **Checkbox ownership** should map to
 
 - **001 technical plan (rename, units 1–7):** [`2026-04-22-001-refactor-ats-candidate-employee-rename-program-plan.md`](2026-04-22-001-refactor-ats-candidate-employee-rename-program-plan.md)
 - **Origin brief (monorepo):** [`.cursor/plans/ats_candidate_to_employee_rename.plan.md`](../../../.cursor/plans/ats_candidate_to_employee_rename.plan.md)
-- **Cursor (user `plans` dir, if present):** `ats_candidate_employee_rename_4f74180a.plan.md`, `candidate_field_feasibility_note_96bbc731.plan.md`, `ats_revised_flow_review_d632da97.plan.md` — content summarized in this **002** for repo portability
+- **Cursor (user `plans` dir, if present):** `ats_candidate_employee_rename_4f74180a.plan.md`, `candidate_field_feasibility_note_96bbc731.plan.md`, `ats_revised_flow_review_d632da97.plan.md` — content summarized in this **002**; **byte-stable backups** in repo: [`2026-04-22-003-snapshot-ats-revised-flow-review-plan.md`](2026-04-22-003-snapshot-ats-revised-flow-review-plan.md), [`2026-04-22-004-snapshot-candidate-field-feasibility-note.md`](2026-04-22-004-snapshot-candidate-field-feasibility-note.md)
 - **Strangler fig:** [AWS](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-decomposing-monoliths/strangler-fig.html)
 - **API deprecation:** [Codelit](https://codelit.io/blog/api-deprecation-strategy), [Nordic APIs](https://nordicapis.com/how-to-manage-breaking-changes-throughout-an-apis-lifecycle/)
 - **HR terminology:** [Predictive Index — applicant vs candidate](https://predictiveindex.com/blog/applicant-vs-candidate-best-practices), [Tribepad glossary](https://tribepad.com/glossary/)

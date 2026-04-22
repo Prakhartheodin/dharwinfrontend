@@ -5,9 +5,12 @@ import Swal from "sweetalert2";
 import { AxiosError } from "axios";
 import {
   previewTaskBreakdown,
+  refineTaskBreakdown,
   applyTaskBreakdown,
   type TaskBreakdownPreviewTask,
 } from "@/shared/lib/api/pmAssistant";
+import type { BreakdownContext } from "@/shared/types/pmAssistant";
+import { BreakdownContextForm, getDefaultBreakdownContext } from "./BreakdownContextForm";
 import styles from "./aiTaskBreakdownModal.module.css";
 
 const TASK_STATUSES = ["new", "todo", "on_going", "in_review", "completed"] as const;
@@ -189,6 +192,10 @@ function TokenChipField({
 type EditableRow = TaskBreakdownPreviewTask & {
   clientKey: string;
   include: boolean;
+  /** When set, server preview id for /refine lock list */
+  previewTaskId?: string;
+  /** Locked rows are kept verbatim on "Regenerate with feedback" (uses /refine). */
+  locked: boolean;
 };
 
 function newClientKey(): string {
@@ -197,14 +204,20 @@ function newClientKey(): string {
 }
 
 function toEditableRows(tasks: TaskBreakdownPreviewTask[]): EditableRow[] {
-  return tasks.map((t) => ({
-    ...t,
-    tags: normalizeStringArray(t.tags, 20) ?? [],
-    requiredSkills: normalizeStringArray(t.requiredSkills, 15) ?? [],
-    order: normalizeOrder(t.order),
-    clientKey: newClientKey(),
-    include: true,
-  }));
+  return tasks.map((t) => {
+    const id = typeof t.id === "string" && t.id ? t.id : undefined;
+    return {
+      ...t,
+      id: id ?? t.id,
+      tags: normalizeStringArray(t.tags, 20) ?? [],
+      requiredSkills: normalizeStringArray(t.requiredSkills, 15) ?? [],
+      order: normalizeOrder(t.order),
+      clientKey: id || newClientKey(),
+      previewTaskId: id,
+      include: true,
+      locked: false,
+    };
+  });
 }
 
 function normalizeStringArray(val: unknown, max: number): string[] | undefined {
@@ -244,6 +257,7 @@ function toPayload(rows: EditableRow[]): TaskBreakdownPreviewTask[] {
       if (tags?.length) out.tags = tags;
       if (requiredSkills?.length) out.requiredSkills = requiredSkills;
       if (order !== undefined) out.order = order;
+      // Never send preview ids to apply
       return out;
     });
 }
@@ -297,19 +311,25 @@ export function AiTaskBreakdownModal({
   onClose,
   onApplied,
 }: AiTaskBreakdownModalProps) {
+  const [breakdownContext, setBreakdownContext] = useState<BreakdownContext>(() => getDefaultBreakdownContext());
   const [extraBrief, setExtraBrief] = useState("");
   const [feedback, setFeedback] = useState("");
   const [rows, setRows] = useState<EditableRow[] | null>(null);
   const [applyIdempotencyKey, setApplyIdempotencyKey] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [confidenceScore, setConfidenceScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [loadingHintIdx, setLoadingHintIdx] = useState(0);
 
   const resetState = useCallback(() => {
+    setBreakdownContext(getDefaultBreakdownContext());
     setExtraBrief("");
     setFeedback("");
     setRows(null);
     setApplyIdempotencyKey(null);
+    setPreviewId(null);
+    setConfidenceScore(null);
   }, []);
 
   useEffect(() => {
@@ -327,21 +347,55 @@ export function AiTaskBreakdownModal({
 
   if (!open) return null;
 
-  const runPreview = async (opts: { feedback?: string; priorTasks?: Pick<TaskBreakdownPreviewTask, "title" | "description">[] }) => {
+  const runPreview = async (opts: {
+    feedback?: string;
+    priorTasks?: (Pick<TaskBreakdownPreviewTask, "title" | "description" | "status"> & { id?: string })[];
+  }) => {
     setLoading(true);
     try {
       const res = await previewTaskBreakdown(projectId, {
-        extraBrief,
+        breakdownContext,
+        extraBrief: extraBrief.trim() || undefined,
         feedback: opts.feedback,
         priorTasks: opts.priorTasks,
       });
       setRows(toEditableRows(res.tasks ?? []));
       setApplyIdempotencyKey(newClientKey());
+      setPreviewId(res.previewId ?? null);
+      setConfidenceScore(typeof res.confidenceScore === "number" ? res.confidenceScore : null);
       if (!res.tasks?.length) {
         Swal.fire("No tasks", "The model returned no tasks. Try adding more context.", "info");
       }
     } catch {
       Swal.fire("Error", "Could not generate a preview. Check PM assistant and OpenAI configuration.", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const runRefine = async () => {
+    if (!previewId) return;
+    const lockedTaskIds = (rows ?? [])
+      .filter((r) => r.locked && r.previewTaskId)
+      .map((r) => r.previewTaskId as string);
+    const fb = feedback.trim();
+    if (!fb) {
+      Swal.fire("Feedback needed", "Describe what should change for unlocked rows, or clear locks to regenerate everything.", "info");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await refineTaskBreakdown(projectId, {
+        previousPreviewId: previewId,
+        feedback: fb,
+        lockedTaskIds,
+      });
+      setRows(toEditableRows(res.tasks ?? []));
+      setApplyIdempotencyKey(newClientKey());
+      setPreviewId(res.previewId ?? null);
+      setConfidenceScore(typeof res.confidenceScore === "number" ? res.confidenceScore : null);
+    } catch {
+      Swal.fire("Error", "Refine failed. Your preview may have expired—run Preview again.", "error");
     } finally {
       setLoading(false);
     }
@@ -354,9 +408,15 @@ export function AiTaskBreakdownModal({
       void handlePreview();
       return;
     }
+    if (previewId) {
+      void runRefine();
+      return;
+    }
     const priorTasks = rows.map((r) => ({
+      id: r.previewTaskId,
       title: r.title,
       description: r.description || "",
+      status: r.status,
     }));
     void runPreview({ feedback: feedback.trim() || undefined, priorTasks });
   };
@@ -390,7 +450,10 @@ export function AiTaskBreakdownModal({
     }
     setApplying(true);
     try {
-      await applyTaskBreakdown(projectId, payload, { idempotencyKey: applyIdempotencyKey });
+      await applyTaskBreakdown(projectId, payload, {
+        idempotencyKey: applyIdempotencyKey,
+        previewId: previewId ?? undefined,
+      });
       await Swal.fire("Done", "Tasks were created.", "success");
       await Promise.resolve(onApplied?.());
       onClose();
@@ -508,17 +571,32 @@ export function AiTaskBreakdownModal({
             Preview runs on the server with GPT. Review and edit the draft, then create tasks — nothing is written
             until you confirm.
           </p>
+          <BreakdownContextForm
+            value={breakdownContext}
+            onChange={setBreakdownContext}
+            disabled={loading || applying}
+          />
           <label className="form-label" htmlFor="pm-extra-brief">
-            Extra context (optional)
+            Freeform context (optional, legacy)
           </label>
           <textarea
             id="pm-extra-brief"
-            className="form-control w-full min-h-[72px] transition-opacity duration-200"
-            placeholder="Goals, milestones, tech stack, constraints…"
+            className="form-control w-full min-h-[56px] transition-opacity duration-200"
+            placeholder="Merged with structured fields when the model runs…"
             value={extraBrief}
             onChange={(e) => setExtraBrief(e.target.value)}
             disabled={loading || applying}
           />
+          {confidenceScore != null ? (
+            <p
+              className={`text-[0.8rem] mb-0 ${confidenceScore >= 0.75 ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-300"}`}
+            >
+              <strong>Context score:</strong> {(confidenceScore * 100).toFixed(0)}%
+              {confidenceScore < 0.75
+                ? " — add deadline, team size, deliverables, or constraints to raise confidence (used for create-project auto-chain gating)."
+                : " — strong enough for guided automation flows."}
+            </p>
+          ) : null}
           <div className={`flex flex-wrap gap-2 ${styles.actionBar}`}>
             <button
               type="button"
@@ -544,6 +622,11 @@ export function AiTaskBreakdownModal({
                 className={`ti-btn ti-btn-outline-primary !mb-0 ${styles.btnPress}`}
                 onClick={() => void handleRegenerate()}
                 disabled={loading || applying}
+                title={
+                  previewId
+                    ? "Uses /refine: locked rows stay fixed; feedback applies to the rest."
+                    : "Sends your draft back with feedback (full preview)."
+                }
               >
                 {loading ? (
                   <span className="inline-flex items-center gap-2">
@@ -553,7 +636,7 @@ export function AiTaskBreakdownModal({
                 ) : (
                   <span className="inline-flex items-center gap-1.5">
                     <i className="ri-refresh-line" aria-hidden />
-                    Regenerate with feedback
+                    {previewId ? "Regenerate (refine)" : "Regenerate with feedback"}
                   </span>
                 )}
               </button>
@@ -579,19 +662,30 @@ export function AiTaskBreakdownModal({
               </button>
             ) : null}
           </div>
-          {rows && rows.length > 0 ? (
+            {rows && rows.length > 0 ? (
             <div className="space-y-2">
               <label className="form-label mb-0" htmlFor="pm-regenerate-feedback">
-                Feedback for regenerate (optional)
+                {previewId
+                  ? "Refine instructions (required for regenerate)"
+                  : "Feedback for regenerate (optional)"}
               </label>
               <textarea
                 id="pm-regenerate-feedback"
                 className="form-control w-full min-h-[64px]"
-                placeholder="What should change in the next draft?"
+                placeholder={
+                  previewId
+                    ? "e.g. split backend work, add a QA pass, adjust skill hints for unlocked rows…"
+                    : "What should change in the next draft?"
+                }
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
                 disabled={loading || applying}
               />
+              {previewId ? (
+                <p className="text-[0.75rem] text-[#8c9097] dark:text-white/45 mb-0">
+                  Check <strong>Lock</strong> on rows to keep them unchanged; only unlocked rows are rewritten.
+                </p>
+              ) : null}
             </div>
           ) : null}
           {loading ? (
@@ -618,6 +712,17 @@ export function AiTaskBreakdownModal({
                         />
                         <span>Include</span>
                       </label>
+                      {previewId && r.previewTaskId ? (
+                        <label className={styles.includeToggle} title="Keep this row when using Regenerate (refine)">
+                          <input
+                            type="checkbox"
+                            checked={r.locked}
+                            onChange={(e) => updateRow(r.clientKey, { locked: e.target.checked })}
+                            disabled={applying || loading}
+                          />
+                          <span>Lock</span>
+                        </label>
+                      ) : null}
                       <span className={styles.taskIndex} title="Row order in this list">
                         #{rowIndex + 1}
                       </span>

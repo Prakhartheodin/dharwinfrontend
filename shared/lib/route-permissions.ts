@@ -8,6 +8,9 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/logs/logs-activity": "logs.activity:",
   // ATS
   "/ats/jobs": "ats.jobs:",
+  "/ats/employees": "ats.candidates:",
+  "/ats/referral-leads": "ats.candidates:",
+  /** Legacy path (Next redirects to /ats/employees); keep for any client-side guard before redirect. */
   "/ats/candidates": "ats.candidates:",
   "/ats/share-candidate-form": "ats.share-candidate-form:",
   // Browse Jobs and My Applications are public - no permission required

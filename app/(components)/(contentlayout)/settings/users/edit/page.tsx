@@ -10,6 +10,10 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
 import { useAuth } from "@/shared/contexts/auth-context";
+import {
+  hasAnySettingsModulePermission,
+  hasSettingsFeatureAction,
+} from "@/shared/lib/permissions";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
@@ -17,7 +21,14 @@ import Swal from "sweetalert2";
 const AGENT_ASSIGNABLE_ROLE_NAMES = ["Candidate", "Student", "Mentor"];
 
 export default function SettingsUsersEditPage() {
-  const { user: currentUser, isAdministrator, isPlatformSuperUser, isDesignatedSuperadmin } = useAuth();
+  const {
+    user: currentUser,
+    isAdministrator,
+    isPlatformSuperUser,
+    isDesignatedSuperadmin,
+    permissions,
+    permissionsLoaded,
+  } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const userId = searchParams.get("id") ?? "";
@@ -47,6 +58,15 @@ export default function SettingsUsersEditPage() {
 
   /** Same tier as HRM WebRTC Feed In — platform super user or designated superadmin only. */
   const canEditHrmDeviceId = Boolean(isPlatformSuperUser || isDesignatedSuperadmin);
+
+  useEffect(() => {
+    if (!permissionsLoaded) return;
+    if (isPlatformSuperUser) return;
+    const raw = permissions ?? [];
+    if (hasAnySettingsModulePermission(raw) && !hasSettingsFeatureAction(raw, "users", "edit")) {
+      router.replace(ROUTES.settingsUsers);
+    }
+  }, [permissionsLoaded, permissions, isPlatformSuperUser, router]);
 
   useEffect(() => {
     if (!userId) {

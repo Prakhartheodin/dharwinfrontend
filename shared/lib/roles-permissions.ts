@@ -13,6 +13,14 @@ export const PERMISSION_SECTIONS: {
     features: [
       { id: "roles", label: "User Roles" },
       { id: "users", label: "Users" },
+      { id: "personal-information", label: "Personal Information" },
+      { id: "attendance", label: "Attendance" },
+      { id: "agents", label: "Agents" },
+      { id: "company-email", label: "Company work email" },
+      { id: "candidate-sop", label: "Employee SOP" },
+      { id: "email-templates", label: "My email templates" },
+      { id: "email-templates-admin", label: "All agents' email templates (admin)" },
+      { id: "bolna-voice-agent", label: "Bolna voice agent" },
     ],
   },
   {

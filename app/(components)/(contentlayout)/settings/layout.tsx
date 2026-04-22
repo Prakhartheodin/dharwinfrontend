@@ -4,7 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
-import { hasEmailReadAccess, hasSettingsUsersManage } from "@/shared/lib/permissions";
+import {
+  hasAnySettingsModulePermission,
+  hasEmailReadAccess,
+  hasSettingsFeatureAccess,
+  hasSettingsUsersManage,
+  userCanListRoles,
+} from "@/shared/lib/permissions";
 import { canAssignCandidateAgent } from "@/shared/lib/candidate-permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
@@ -118,7 +124,7 @@ export default function SettingsLayout({
     check();
   }, [user, isPlatformSuperUser]);
 
-  // Redirect: roles = admin only; users = admin or agent; attendance = hasAttendanceAccess
+  // Redirect: when `settings.*` matrix permissions exist, enforce those; else legacy rules.
   useEffect(() => {
     if (
       isAdmin === null ||
@@ -128,28 +134,56 @@ export default function SettingsLayout({
       hasCompanyEmailHubAccess === null
     )
       return;
+    const raw = permissions ?? [];
+    const matrixMode = !isPlatformSuperUser && hasAnySettingsModulePermission(raw);
     if (activeTab === "roles") {
-      if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? userCanListRoles(raw)
+        : isAdmin || userCanListRoles(raw);
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "users") {
-      if (!hasUsersAccess) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "users")
+        : hasUsersAccess || hasSettingsFeatureAccess(raw, "users");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "attendance") {
-      if (!hasAttendanceAccess) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "attendance")
+        : hasAttendanceAccess || hasSettingsFeatureAccess(raw, "attendance");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "agents") {
-      if (!isAdmin) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "agents")
+        : isAdmin || hasSettingsFeatureAccess(raw, "agents");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "candidate-sop") {
-      if (!hasCandidateSopAccess) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "candidate-sop")
+        : hasCandidateSopAccess || hasSettingsFeatureAccess(raw, "candidate-sop");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates") {
-      if (!hasEmailReadAccess(permissions ?? [])) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "email-templates")
+        : hasEmailReadAccess(raw) || hasSettingsFeatureAccess(raw, "email-templates");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
-      if (!isAdministrator) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "email-templates-admin")
+        : isAdministrator || hasSettingsFeatureAccess(raw, "email-templates-admin");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "bolna-voice-agent") {
-      const can =
-        isPlatformSuperUser ||
-        isAdministrator ||
-        (permissionsLoaded && hasSettingsUsersManage(permissions));
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "bolna-voice-agent")
+        : isPlatformSuperUser ||
+          isAdministrator ||
+          (permissionsLoaded && hasSettingsUsersManage(permissions)) ||
+          hasSettingsFeatureAccess(raw, "bolna-voice-agent");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "company-email") {
-      if (!hasCompanyEmailHubAccess) router.replace(ROUTES.settingsPersonalInfo);
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "company-email")
+        : hasCompanyEmailHubAccess || hasSettingsFeatureAccess(raw, "company-email");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [
     isAdmin,
@@ -185,6 +219,34 @@ export default function SettingsLayout({
         : "text-defaulttextcolor dark:text-defaulttextcolor/70"
     }`;
 
+  const rawPerms = permissions ?? [];
+  /** When the token includes any `settings.*` string, tab strip follows the role matrix, not heuristics. */
+  const settingsMatrixMode = !isPlatformSuperUser && hasAnySettingsModulePermission(rawPerms);
+  const showRolesTab = settingsMatrixMode
+    ? userCanListRoles(rawPerms)
+    : isAdmin === true || userCanListRoles(rawPerms);
+  const showUsersTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "users")
+    : hasUsersAccess === true || hasSettingsFeatureAccess(rawPerms, "users");
+  const showAttendanceTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "attendance")
+    : hasAttendanceAccess === true || hasSettingsFeatureAccess(rawPerms, "attendance");
+  const showAgentsTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "agents")
+    : isAdmin === true || hasSettingsFeatureAccess(rawPerms, "agents");
+  const showCompanyEmailTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "company-email")
+    : hasCompanyEmailHubAccess === true || hasSettingsFeatureAccess(rawPerms, "company-email");
+  const showCandidateSopTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "candidate-sop")
+    : hasCandidateSopAccess === true || hasSettingsFeatureAccess(rawPerms, "candidate-sop");
+  const showEmailTemplatesTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "email-templates")
+    : hasEmailReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "email-templates");
+  const showEmailTemplatesAdminTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "email-templates-admin")
+    : isAdministrator || hasSettingsFeatureAccess(rawPerms, "email-templates-admin");
+
   return (
     <div className="container w-full max-w-full mx-auto">
       <div className="grid grid-cols-12 gap-6 mb-[3rem]">
@@ -196,7 +258,7 @@ export default function SettingsLayout({
                 className="md:flex block !justify-start whitespace-nowrap"
                 role="tablist"
               >
-                {isAdmin && (
+                {showRolesTab && (
                   <Link
                     href={ROUTES.settingsRoles}
                     className={tabClass("roles")}
@@ -205,7 +267,7 @@ export default function SettingsLayout({
                     User Roles
                   </Link>
                 )}
-                {hasUsersAccess && (
+                {showUsersTab && (
                   <Link
                     href={ROUTES.settingsUsers}
                     className={tabClass("users")}
@@ -214,7 +276,7 @@ export default function SettingsLayout({
                     Users
                   </Link>
                 )}
-                {hasAttendanceAccess && (
+                {showAttendanceTab && (
                   <Link
                     href={ROUTES.settingsAttendance}
                     className={tabClass("attendance")}
@@ -223,7 +285,7 @@ export default function SettingsLayout({
                     Attendance
                   </Link>
                 )}
-                {isAdmin && (
+                {showAgentsTab && (
                   <Link
                     href={ROUTES.settingsAgents}
                     className={tabClass("agents")}
@@ -232,7 +294,7 @@ export default function SettingsLayout({
                     Agents
                   </Link>
                 )}
-                {hasCompanyEmailHubAccess && (
+                {showCompanyEmailTab && (
                   <Link
                     href={ROUTES.settingsCompanyEmail}
                     className={tabClass("company-email")}
@@ -241,31 +303,33 @@ export default function SettingsLayout({
                     Company work email
                   </Link>
                 )}
-                {hasCandidateSopAccess && (
+                {showCandidateSopTab && (
                   <Link
                     href={ROUTES.settingsCandidateSop}
                     className={tabClass("candidate-sop")}
                     aria-current={activeTab === "candidate-sop" ? "page" : undefined}
                   >
-                    Candidate SOP
+                    Employee SOP
                   </Link>
                 )}
-                {hasEmailReadAccess(permissions ?? []) && (
+                {showEmailTemplatesTab && (
                   <Link
                     href={ROUTES.settingsEmailTemplates}
                     className={tabClass("email-templates")}
                     aria-current={activeTab === "email-templates" ? "page" : undefined}
+                    title="Your own templates and signature for Communication → Email"
                   >
-                    Email templates
+                    My email templates
                   </Link>
                 )}
-                {isAdministrator && (
+                {showEmailTemplatesAdminTab && (
                   <Link
                     href={ROUTES.settingsEmailTemplatesAdmin}
                     className={tabClass("email-templates-admin")}
                     aria-current={activeTab === "email-templates-admin" ? "page" : undefined}
+                    title="Administrator: edit templates and signatures for any agent"
                   >
-                    Email templates (agents)
+                    All agents&apos; email templates (admin)
                   </Link>
                 )}
                 <Link

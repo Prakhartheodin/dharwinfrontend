@@ -6,7 +6,7 @@ import { components as RSComponents, type MultiValue, type OptionProps } from "r
 import Seo from "@/shared/layout-components/seo/seo";
 import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { AgentOption, StudentAgentAssignmentRow } from "@/shared/lib/api/candidates";
-import AssignAgentSopModal from "../../ats/candidates/_components/AssignAgentSopModal";
+import AssignAgentSopModal from "../../ats/employees/_components/AssignAgentSopModal";
 import { AxiosError } from "axios";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -50,7 +50,8 @@ export default function SettingsAgentsPage() {
   const [bulkTargetAgentId, setBulkTargetAgentId] = useState("");
   const [reassignModal, setReassignModal] = useState<StudentAgentAssignmentRow | null>(null);
   const [showUnassignedList, setShowUnassignedList] = useState(false);
-  const [collapsedAgentIds, setCollapsedAgentIds] = useState<string[]>([]);
+  /** Agent rows in this list are expanded; default empty = all folded on load. */
+  const [expandedAgentIds, setExpandedAgentIds] = useState<string[]>([]);
   const agentCardsRef = useRef<HTMLDivElement | null>(null);
   const unassignedSectionRef = useRef<HTMLDivElement | null>(null);
 
@@ -237,7 +238,7 @@ export default function SettingsAgentsPage() {
   }, [unassignedStudents.length]);
 
   const toggleAgentFold = useCallback((agentId: string) => {
-    setCollapsedAgentIds((prev) =>
+    setExpandedAgentIds((prev) =>
       prev.includes(agentId) ? prev.filter((id) => id !== agentId) : [...prev, agentId]
     );
   }, []);
@@ -507,7 +508,7 @@ export default function SettingsAgentsPage() {
                 const assigned = studentsByAgentId.get(agentKey) ?? [];
                 const pending = pendingByAgent[agentKey] ?? [];
                 const busy = savingKey !== null;
-                const isCollapsed = collapsedAgentIds.includes(agentKey);
+                const isCollapsed = !expandedAgentIds.includes(agentKey);
 
                 return (
                   <article

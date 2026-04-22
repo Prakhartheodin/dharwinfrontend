@@ -32,8 +32,10 @@ export function resolveDownloadUrlForBrowser(url: string): string {
       u.hostname === "[::1]";
     if (!isLoopback) return url;
     const path = u.pathname.replace(/\/$/, "") || "/";
-    const isCandidateDocDownload = /^\/v1\/candidates\/documents\/[^/]+\/\d+\/download$/i.test(path);
-    const isSalarySlip = /^\/v1\/candidates\/salary-slips\/[^/]+\/\d+$/i.test(path);
+    const isCandidateDocDownload = /^\/v1\/(?:candidates|employees)\/documents\/[^/]+\/\d+\/download$/i.test(
+      path
+    );
+    const isSalarySlip = /^\/v1\/(?:candidates|employees)\/salary-slips\/[^/]+\/\d+$/i.test(path);
     if (isCandidateDocDownload || isSalarySlip) {
       return `${window.location.origin}/api${path}${u.search}`;
     }

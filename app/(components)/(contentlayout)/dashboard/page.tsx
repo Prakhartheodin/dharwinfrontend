@@ -696,12 +696,12 @@ export default function DashboardPage() {
       </div>
 
       {/* Layout from dharwinone_frontend reference: xxl:9 | xxl:3, then full-width Projects Summary */}
-      <div className="grid grid-cols-12 gap-x-6">
+      <div className="grid grid-cols-12 gap-6">
         <div className="xxl:col-span-9 col-span-12">
-          <div className="grid grid-cols-12 gap-x-6 xxl:min-h-[55vh]">
+          <div className="grid grid-cols-12 gap-6 xxl:min-h-[55vh]">
             {/* LEFT: 4 stat cards + Project Analysis (directly under stats) */}
             <div className="xxl:col-span-5 col-span-12">
-              <div className="grid grid-cols-12 gap-x-6">
+              <div className="grid grid-cols-12 gap-6">
                 <div className="sm:col-span-6 col-span-12">
                   <Link
                     href="/ats/jobs"
@@ -824,12 +824,12 @@ export default function DashboardPage() {
             </div>
             {/* MIDDLE: Candidate List + Main Tasks (Main Tasks directly under Candidate List) */}
             <div className="xxl:col-span-4 col-span-12 flex flex-col min-h-0">
-              <div className="flex flex-col gap-x-6 flex-1 min-h-0">
+              <div className="flex flex-col gap-6 flex-1 min-h-0">
                 <div className="xl:col-span-12 col-span-12 flex-shrink-0">
                   <div className="box">
                     <div className="box-header justify-between">
                       <div className="box-title">Candidate List</div>
-                      <Link href="/ats/candidates" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View All" aria-label="View All">
+                      <Link href="/ats/employees" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View All" aria-label="View All">
                         <i className="ri-external-link-line text-[1rem]" />
                       </Link>
                     </div>
@@ -990,7 +990,7 @@ export default function DashboardPage() {
         </div>
         {/* RIGHT COLUMN: Track CTA + Recent Jobs */}
         <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
-          <div className="flex flex-col gap-x-6 flex-1 min-h-0">
+          <div className="flex flex-col gap-6 flex-1 min-h-0">
             <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
               <div className="box shadow-none projects-tracking-card overflow-hidden text-center">
                 <div className="box-body">
@@ -1321,7 +1321,7 @@ export default function DashboardPage() {
             </div>
             <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
               <Link
-                href={statBoxModal === "candidates" ? "/ats/candidates" : "/ats/jobs"}
+                href={statBoxModal === "candidates" ? "/ats/employees" : "/ats/jobs"}
                 className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
                 onClick={() => setStatBoxModal(null)}
                 title="View All"
@@ -1408,7 +1408,7 @@ export default function DashboardPage() {
               </div>
               <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
                 <Link
-                  href={`/ats/candidates/edit/?id=${cId}`}
+                  href={`/ats/employees/edit/?id=${cId}`}
                   className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
                   onClick={() => setSelectedTeamMember(null)}
                   title="View full profile"
@@ -1423,7 +1423,7 @@ export default function DashboardPage() {
       })()}
 
       {/* Projects Summary - full width */}
-      <div className="grid grid-cols-12 gap-x-6">
+      <div className="grid grid-cols-12 gap-6">
         <div className="xxl:col-span-12 col-span-12">
           <div className="box">
             <div className="box-header justify-between flex-wrap gap-2">

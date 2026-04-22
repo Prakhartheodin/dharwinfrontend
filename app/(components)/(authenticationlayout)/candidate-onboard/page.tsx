@@ -52,8 +52,12 @@ export default function CandidateOnboardPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [adminId, setAdminId] = useState("");
   const [isValidToken, setIsValidToken] = useState(false);
+  const [referralRef, setReferralRef] = useState<string | null>(null);
 
   useEffect(() => {
+    const refParam = searchParams.get("ref");
+    setReferralRef(refParam && refParam.trim() ? refParam.trim() : null);
+
     const token = searchParams.get("token");
     const emailParam = searchParams.get("email");
     const expiresParam = searchParams.get("expires");
@@ -169,6 +173,7 @@ export default function CandidateOnboardPage() {
           email: em,
           password,
           phoneNumber: formatPhoneForApi(phone, countryCode),
+          ...(referralRef ? { ref: referralRef } : {}),
         });
         router.push(
           `${ROUTES.signIn}?registered=1&message=${encodeURIComponent(res.message ?? "Registration successful. You can sign in.")}`

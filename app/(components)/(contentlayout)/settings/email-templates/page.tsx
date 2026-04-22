@@ -168,7 +168,7 @@ export default function SettingsEmailTemplatesPage() {
   if (!permissionsLoaded || !canReadEmailPreferences) {
     return (
       <Fragment>
-        <Seo title="Email templates" />
+        <Seo title="My email templates" />
         <div className="p-4 text-[#8c9097]">Loading…</div>
       </Fragment>
     );
@@ -176,7 +176,7 @@ export default function SettingsEmailTemplatesPage() {
 
   return (
     <Fragment>
-      <Seo title="Email templates & signatures" />
+      <Seo title="My email templates & signatures" />
       <div className="p-4 space-y-8">
         <div>
           <h5 className="font-semibold text-lg mb-1">Email signature</h5>

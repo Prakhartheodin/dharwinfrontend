@@ -143,8 +143,11 @@ export interface BrowseApplyResponse {
   candidateId: string;
 }
 
-export async function browseApplyToJob(jobId: string): Promise<BrowseApplyResponse> {
-  const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`);
+export async function browseApplyToJob(
+  jobId: string,
+  body?: { ref?: string }
+): Promise<BrowseApplyResponse> {
+  const { data } = await apiClient.post<BrowseApplyResponse>(`/jobs/browse/${jobId}/apply`, body ?? {});
   return data;
 }
 
@@ -274,6 +277,8 @@ export interface PublicApplyPayload {
   phoneNumber: string;
   countryCode: string;
   coverLetter?: string;
+  /** Signed referral token from job URL `?ref=`; must match candidate email in token. */
+  ref?: string;
 }
 
 export interface PublicApplyResponse {
@@ -281,7 +286,7 @@ export interface PublicApplyResponse {
     id: string;
     name: string;
     email: string;
-    role: string;
+    status?: string;
   };
   candidate: {
     id: string;
@@ -292,10 +297,8 @@ export interface PublicApplyResponse {
     status: string;
     jobTitle?: string;
   };
-  tokens: {
-    access: { token: string; expires: string };
-    refresh: { token: string; expires: string };
-  };
+  /** Present when the flow created a new account: pending, verify email, then admin activation (no session). */
+  message?: string;
 }
 
 export async function publicApplyToJob(
@@ -314,6 +317,9 @@ export async function publicApplyToJob(
   formData.append("countryCode", payload.countryCode);
   if (payload.coverLetter) {
     formData.append("coverLetter", payload.coverLetter);
+  }
+  if (payload.ref && payload.ref.trim()) {
+    formData.append("ref", payload.ref.trim());
   }
 
   // Add resume file

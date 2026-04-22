@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { IBM_Plex_Sans } from "next/font/google";
 import Seo from "@/shared/layout-components/seo/seo";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import {
   listCandidateSopTemplates,
   getActiveCandidateSopTemplate,
@@ -24,8 +23,8 @@ import { getCandidate, listCandidates, type CandidateListItem } from "@/shared/l
 import { AxiosError } from "axios";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { canAssignCandidateAgent, canAssignTrainingCourseFromSop } from "@/shared/lib/candidate-permissions";
-import AssignAgentSopModal from "../../../ats/candidates/_components/AssignAgentSopModal";
-import AssignTrainingCourseSopModal from "../../../ats/candidates/_components/AssignTrainingCourseSopModal";
+import AssignAgentSopModal from "../../../ats/employees/_components/AssignAgentSopModal";
+import AssignTrainingCourseSopModal from "../../../ats/employees/_components/AssignTrainingCourseSopModal";
 
 /** Accent for preview panel title only — matches candidate edit “Next step” strip direction. */
 const sopPreviewHeadline = IBM_Plex_Sans({
@@ -271,15 +270,15 @@ const CHECKER_LABELS: Record<string, string> = {
 
 /** Default deep-link per rule (matches backend DEFAULT_SOP_STEPS); used when checker changes or new step added. */
 const DEFAULT_LINK_TEMPLATE_BY_CHECKER: Record<string, string> = {
-  profile_complete: "/ats/candidates/edit?id={{candidateId}}",
-  agent_assigned: "/ats/candidates/edit?id={{candidateId}}&assignAgent=1",
+  profile_complete: "/ats/employees/edit?id={{candidateId}}",
+  agent_assigned: "/ats/employees/edit?id={{candidateId}}&assignAgent=1",
   shift_assigned:
     "/settings/attendance/assign-shift?candidateId={{candidateId}}&candidateName={{candidateName}}&studentId={{studentId}}",
   weekoff_assigned:
     "/settings/attendance/week-off?candidateId={{candidateId}}&candidateName={{candidateName}}&studentId={{studentId}}",
   holiday_assigned:
     "/settings/attendance/assign-holidays?candidateId={{candidateId}}&candidateName={{candidateName}}&studentId={{studentId}}",
-  training_assigned: "/ats/candidates/edit?id={{candidateId}}&assignCourse=1",
+  training_assigned: "/ats/employees/edit?id={{candidateId}}&assignCourse=1",
   project_assigned: "/projects",
 };
 
@@ -576,15 +575,10 @@ export default function SettingsCandidateSopPage() {
 
   return (
     <>
-      <Seo title="Candidate onboarding SOP" />
-      <Pageheader
-        currentpage="Candidate SOP"
-        activepage="Settings"
-        mainpage="Candidate onboarding checklist"
-      />
-      <div className="grid grid-cols-12 gap-6">
+      <Seo title="Employee onboarding SOP" />
+      <div className="grid grid-cols-12 gap-6 pt-6 sm:pt-8">
         <div className="xl:col-span-12 col-span-12">
-          <div className="mx-auto w-full max-w-6xl space-y-6">
+          <div className="w-full max-w-none space-y-6">
           {error ? (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
               {error}
@@ -595,7 +589,7 @@ export default function SettingsCandidateSopPage() {
             className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bgdark/40 dark:ring-white/[0.05]"
             aria-labelledby="sop-versions-heading"
           >
-            <div className="flex flex-col gap-4 border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 py-4 dark:border-defaultborder/20 dark:from-bgdark dark:via-bgdark/95 dark:to-bgdark/80 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-4 border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 pt-5 pb-7 dark:border-defaultborder/20 dark:from-bgdark dark:via-bgdark/95 dark:to-bgdark/80 sm:flex-row sm:items-center sm:justify-between sm:pt-6 sm:pb-8">
               <div className="flex min-w-0 items-start gap-3">
                 <div
                   className="mt-0.5 h-10 w-1 shrink-0 rounded-full bg-gradient-to-b from-teal-600 via-primary to-primary/70"
@@ -628,7 +622,7 @@ export default function SettingsCandidateSopPage() {
                 <span className="whitespace-nowrap">New draft</span>
               </button>
             </div>
-            <div className="p-4 sm:p-5">
+            <div className="px-4 pb-5 pt-12 sm:px-5 sm:pb-6 sm:pt-16">
               {loading ? (
                 <div className="flex items-center gap-3 py-8 text-sm text-gray-500">
                   <span
@@ -900,7 +894,7 @@ export default function SettingsCandidateSopPage() {
                                   key === prev
                                     ? row.linkTemplate
                                     : DEFAULT_LINK_TEMPLATE_BY_CHECKER[key] ??
-                                      "/ats/candidates/edit?id={{candidateId}}",
+                                      "/ats/employees/edit?id={{candidateId}}",
                               });
                             }}
                           >
@@ -1231,7 +1225,7 @@ export default function SettingsCandidateSopPage() {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <Link
-                                    href={`/ats/candidates/edit?id=${encodeURIComponent(row.candidateId)}`}
+                                    href={`/ats/employees/edit?id=${encodeURIComponent(row.candidateId)}`}
                                     className={`${sopOpenTasksFont.className} text-base font-semibold text-gray-900 hover:text-primary dark:text-white dark:hover:text-primary`}
                                   >
                                     {row.fullName || "Unnamed candidate"}

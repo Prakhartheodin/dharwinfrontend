@@ -47,8 +47,13 @@ export const ROUTES = {
   verifyEmail: "/authentication/verify-email/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
-  /** ATS — candidate list (admin); used as return URL after exit impersonation when started from here. */
-  atsCandidates: "/ats/candidates/",
+  /** ATS — person list (admin); canonical path after rename. */
+  atsEmployees: "/ats/employees/",
+  /**
+   * Same URL as `atsEmployees` (legacy name). Used for exit-impersonation return and older call sites.
+   * @deprecated Prefer `atsEmployees` in new code.
+   */
+  atsCandidates: "/ats/employees/",
   /** Candidate profile (for users with role 'user' from share-candidate-form). Redirects to edit form. */
   candidateProfile: "/ats/my-profile/",
   roles: "/roles/",
@@ -69,7 +74,7 @@ export const ROUTES = {
   settingsCompanyEmail: "/settings/company-email/",
   /** Voice agent (Bolna) + per-agent knowledge base — users.manage / Administrator */
   settingsBolnaVoiceAgent: "/settings/bolna-voice-agent/",
-  /** Administrator — candidate onboarding checklist (SOP) template */
+  /** Administrator — employee onboarding checklist (SOP) template */
   settingsCandidateSop: "/settings/candidates/sop/",
   /** Agent only — email templates & signatures for Communication → Email */
   settingsEmailTemplates: "/settings/email-templates/",

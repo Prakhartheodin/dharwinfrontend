@@ -68,13 +68,13 @@ export interface SopOpenOverview {
 }
 
 export async function getCandidateSopStatus(candidateId: string): Promise<CandidateSopStatus> {
-  const { data } = await apiClient.get<CandidateSopStatus>(`/candidates/${candidateId}/sop-status`);
+  const { data } = await apiClient.get<CandidateSopStatus>(`/employees/${candidateId}/sop-status`);
   return data;
 }
 
 /** candidates.manage — current candidates with at least one incomplete active-SOP step */
 export async function getSopOpenOverview(params?: { limit?: number }): Promise<SopOpenOverview> {
-  const { data } = await apiClient.get<SopOpenOverview>("/candidates/sop-open-overview", {
+  const { data } = await apiClient.get<SopOpenOverview>("/employees/sop-open-overview", {
     params: params?.limit != null ? { limit: params.limit } : undefined,
   });
   return data;
@@ -90,7 +90,7 @@ export type SopRemindersDispatchResult = {
 
 /** Queue in-app SOP notifications for candidates with open steps (candidates.manage). */
 export async function postSopRemindersDispatch(body?: { limit?: number }): Promise<SopRemindersDispatchResult> {
-  const { data } = await apiClient.post<SopRemindersDispatchResult>("/candidates/sop-reminders/dispatch", body ?? {});
+  const { data } = await apiClient.post<SopRemindersDispatchResult>("/employees/sop-reminders/dispatch", body ?? {});
   return data;
 }
 

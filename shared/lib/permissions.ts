@@ -51,3 +51,52 @@ export function hasEmailManageAccess(rawPermissions: string[]): boolean {
     return actions.some((x) => x === "create" || x === "edit" || x === "delete");
   });
 }
+
+/**
+ * Raw `settings.<featureId>:view,...` — any view or write action grants access to that Settings tab.
+ * Feature id matches `roles-permissions` (e.g. `personal-information`, `email-templates-admin`).
+ */
+export function hasSettingsFeatureAccess(rawPermissions: string[], featureId: string): boolean {
+  const prefix = `settings.${featureId}:`;
+  return rawPermissions.some((p) => {
+    if (typeof p !== "string" || !p.startsWith(prefix)) return false;
+    const colon = p.indexOf(":");
+    const actionsPart = colon >= 0 ? p.slice(colon + 1) : "";
+    const actions = actionsPart
+      .split(",")
+      .map((a) => a.trim().toLowerCase())
+      .filter(Boolean);
+    return (
+      actions.includes("view") ||
+      actions.some((a) => a === "create" || a === "edit" || a === "delete")
+    );
+  });
+}
+
+/** True when the role matrix grants a specific action on `settings.<featureId>`. */
+export function hasSettingsFeatureAction(
+  rawPermissions: string[],
+  featureId: string,
+  action: "view" | "create" | "edit" | "delete"
+): boolean {
+  const prefix = `settings.${featureId}:`;
+  return rawPermissions.some((p) => {
+    if (typeof p !== "string" || !p.startsWith(prefix)) return false;
+    const colon = p.indexOf(":");
+    const actionsPart = colon >= 0 ? p.slice(colon + 1) : "";
+    return actionsPart
+      .split(",")
+      .map((a) => a.trim().toLowerCase())
+      .filter(Boolean)
+      .includes(action);
+  });
+}
+
+/**
+ * True if any role permission uses the Settings matrix prefix (`settings.<feature>:`).
+ * When true, Settings sub-tab visibility should follow those strings only (plus super-user
+ * bypass), not legacy heuristics like role name "Administrator" or `students.manage`.
+ */
+export function hasAnySettingsModulePermission(rawPermissions: string[]): boolean {
+  return rawPermissions.some((p) => typeof p === "string" && p.startsWith("settings."));
+}

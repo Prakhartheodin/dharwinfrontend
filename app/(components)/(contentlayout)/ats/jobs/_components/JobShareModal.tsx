@@ -14,6 +14,9 @@ interface JobShareModalProps {
   handleShareWhatsApp: (job: any) => void
   handleSendEmail: () => void
   shareEmailSending: boolean
+  /** True while HMAC `?ref=` is being fetched (URL unique to you + this job) */
+  personalLinkLoading?: boolean
+  onCloseShareModal?: () => void
 }
 
 const JobShareModal: React.FC<JobShareModalProps> = ({
@@ -29,6 +32,8 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
   handleShareWhatsApp,
   handleSendEmail,
   shareEmailSending,
+  personalLinkLoading = false,
+  onCloseShareModal,
 }) => {
   return (
       <div 
@@ -50,6 +55,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                   setShareJob(null)
                   setShowEmailInput(false)
                   setShareEmail('')
+                  onCloseShareModal?.()
                 }}
               >
                 <span className="sr-only">Close</span>
@@ -74,6 +80,10 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                     <label className="form-label mb-2 font-semibold text-sm text-gray-800 dark:text-white">
                       Public URL
                     </label>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                      Includes a personal <code className="text-[0.7rem]">?ref=</code> so referrals credit your account
+                      (differs for each person who shares this job).
+                    </p>
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -84,6 +94,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                       <button
                         type="button"
                         className={`ti-btn ${copied ? 'ti-btn-success' : 'ti-btn-primary'}`}
+                        disabled={personalLinkLoading}
                         onClick={() => handleCopyUrl(getJobPublicUrl(shareJob.id))}
                       >
                         <i className={`ri-${copied ? 'check' : 'file-copy'}-line me-1`}></i>
@@ -101,6 +112,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                       <button
                         type="button"
                         className="ti-btn ti-btn-success w-full flex items-center justify-center gap-2"
+                        disabled={personalLinkLoading}
                         onClick={() => handleShareWhatsApp(shareJob)}
                       >
                         <i className="ri-whatsapp-line text-xl"></i>
@@ -169,6 +181,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                   setShareJob(null)
                   setShowEmailInput(false)
                   setShareEmail('')
+                  onCloseShareModal?.()
                 }}
               >
                 Close

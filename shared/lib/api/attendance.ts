@@ -213,7 +213,7 @@ export async function listAttendanceByCandidate(
   candidateId: string,
   params?: ListAttendanceParams
 ): Promise<ListAttendanceResponse> {
-  const { data } = await apiClient.get<ListAttendanceResponse>(`/candidates/${candidateId}/attendance`, {
+  const { data } = await apiClient.get<ListAttendanceResponse>(`/employees/${candidateId}/attendance`, {
     params,
   });
   return data;

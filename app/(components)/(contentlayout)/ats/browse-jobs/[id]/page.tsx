@@ -2,7 +2,7 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import React, { Fragment, useState, useEffect } from "react";
 import { getPublicJobById, browseApplyToJob, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
 import { getMyApplications, withdrawMyApplication, type JobApplication } from "@/shared/lib/api/jobApplications";
@@ -37,7 +37,9 @@ function GlanceRow({ icon, label, children }: { icon: string; label: string; chi
 
 export default function BrowseJobDetailsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const jobId = typeof params?.id === "string" ? params.id : "";
+  const referralRefFromUrl = searchParams.get("ref")?.trim() || null;
   const { user } = useAuth();
 
   const [job, setJob] = useState<PublicJob | null>(null);
@@ -96,7 +98,10 @@ export default function BrowseJobDetailsPage() {
     setApplySubmitting(true);
     setMessage(null);
     try {
-      await browseApplyToJob(jobId);
+      await browseApplyToJob(
+        jobId,
+        referralRefFromUrl ? { ref: referralRefFromUrl } : undefined
+      );
       setMessage({ type: "success", text: "Application submitted successfully." });
       const res = await getMyApplications({ limit: 500 });
       const forThisJob = (res.results ?? []).find(
@@ -481,6 +486,7 @@ export default function BrowseJobDetailsPage() {
             onClose={() => setApplyModalOpen(false)}
             jobId={jobId}
             jobTitle={job.title}
+            referralRef={referralRefFromUrl}
           />
         ) : null}
       </div>
