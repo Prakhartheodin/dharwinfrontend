@@ -144,6 +144,8 @@ export default function InterviewsClient() {
   const [emailInvites, setEmailInvites] = useState<string[]>([''])
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  /** Combined local date+time for Schedule Interview (react-datepicker). */
+  const [scheduledInterviewAt, setScheduledInterviewAt] = useState<Date | null>(null)
 
   // Dynamic dropdown data for Schedule Interview modal
   const [jobs, setJobs] = useState<Job[]>([])
@@ -517,6 +519,7 @@ export default function InterviewsClient() {
   const resetCreateMeetingForm = useCallback(() => {
     setCreatedMeeting(null)
     setFormError(null)
+    setScheduledInterviewAt(null)
     setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([''])
   }, [defaultScheduleHosts])
@@ -1117,19 +1120,19 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
+      <div className="mt-5 grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
-            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-4">
+          <div className="box custom-box h-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
+            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-3 border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-4 py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
               <div className="box-title">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem]"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -1139,10 +1142,10 @@ export default function InterviewsClient() {
                     </option>
                   ))}
                 </select>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div className="hs-dropdown ti-dropdown">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem] ti-dropdown-toggle"
                     id="sort-dropdown-button"
                     aria-expanded="false"
                   >
@@ -1234,35 +1237,35 @@ export default function InterviewsClient() {
                     </li>
                   </ul>
                 </div>
-                <div className="flex items-center rounded-lg border border-defaultborder dark:border-defaultborder/20 p-0.5 me-2">
+                <div className="flex items-center rounded-lg border border-defaultborder dark:border-defaultborder/20 p-0.5 bg-white dark:bg-black/10">
                   <button
                     type="button"
                     onClick={() => setViewMode('table')}
-                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'table' ? 'ti-btn-primary' : 'ti-btn-light'}`}
+                    className={`ti-btn !py-1.5 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'table' ? 'ti-btn-primary' : 'ti-btn-light'}`}
                   >
                     <i className="ri-list-check-2 align-middle me-1"></i>Table
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('week')}
-                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'week' ? 'ti-btn-primary' : 'ti-btn-light'}`}
+                    className={`ti-btn !py-1.5 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'week' ? 'ti-btn-primary' : 'ti-btn-light'}`}
                   >
                     <i className="ri-calendar-week-line align-middle me-1"></i>Week
                   </button>
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem]"
                   onClick={() => openHsOverlay('#create-interview-modal')}
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>
                   Schedule Interview
                 </button>
                 {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
-                <div ref={excelDropdownRef} className="relative me-2">
+                <div ref={excelDropdownRef} className="relative">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+                    className="ti-btn ti-btn-primary !py-1.5 !px-2.5 !text-[0.75rem]"
                     id="excel-dropdown-button"
                     aria-haspopup="menu"
                     aria-expanded={isExcelMenuOpen}
@@ -1316,7 +1319,7 @@ export default function InterviewsClient() {
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
+                  className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem]"
                   onClick={() => openHsOverlay('#interviews-filter-panel')}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
@@ -1328,19 +1331,35 @@ export default function InterviewsClient() {
                 </button>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                  className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem]"
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
                 </button>
               </div>
             </div>
-            <div className="box-body relative z-0 !p-0 flex-1 flex flex-col overflow-hidden">
+            <div className="box-body relative z-0 !p-0 flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
               {meetingsLoading ? (
-                <div className="flex flex-col items-center justify-center py-16 px-4">
-                  <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"></div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Loading interviews...
-                  </p>
+                <div className="flex-1 px-4 py-4">
+                  <div className="rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/90 dark:bg-black/20 p-4 sm:p-5">
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="h-4 w-40 rounded bg-gray-200/80 dark:bg-white/10 animate-pulse" />
+                      <div className="h-4 w-24 rounded bg-gray-200/70 dark:bg-white/10 animate-pulse" />
+                    </div>
+                    <div className="space-y-2">
+                      {Array.from({ length: 6 }).map((_, idx) => (
+                        <div
+                          key={`meeting-skeleton-${idx}`}
+                          className="grid grid-cols-12 gap-3 rounded-lg border border-defaultborder/50 dark:border-defaultborder/10 px-3 py-3 bg-gray-50/70 dark:bg-white/[0.03] animate-pulse"
+                        >
+                          <div className="col-span-3 h-3.5 rounded bg-gray-200/80 dark:bg-white/10" />
+                          <div className="col-span-3 h-3.5 rounded bg-gray-200/70 dark:bg-white/10" />
+                          <div className="col-span-2 h-3.5 rounded bg-gray-200/70 dark:bg-white/10" />
+                          <div className="col-span-2 h-3.5 rounded bg-gray-200/70 dark:bg-white/10" />
+                          <div className="col-span-2 h-3.5 rounded bg-gray-200/70 dark:bg-white/10" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : meetingsError ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
@@ -1427,8 +1446,37 @@ export default function InterviewsClient() {
                   ))}
                 </div>
               </div>
+              ) : filteredData.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center p-6">
+                <div className="w-full max-w-xl rounded-2xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 p-8 text-center shadow-sm">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <i className="ri-calendar-event-line text-2xl" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-defaulttextcolor dark:text-white">No interviews found</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Try changing your filters, or create an instant interview to get started.
+                  </p>
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-light !py-2 !px-4 !text-sm"
+                      onClick={handleResetFilters}
+                    >
+                      <i className="ri-refresh-line me-1.5"></i>Reset filters
+                    </button>
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
+                      onClick={() => openHsOverlay('#create-interview-modal')}
+                    >
+                      <i className="ri-add-line me-1.5"></i>Schedule interview
+                    </button>
+                  </div>
+                </div>
+              </div>
               ) : (
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              <div className="table-responsive flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
+                <div className="overflow-hidden rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 shadow-sm">
                 <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
@@ -1494,60 +1542,62 @@ export default function InterviewsClient() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
               )}
             </div>
             {!meetingsLoading && !meetingsError && viewMode === 'table' && (
-            <div className="box-footer !border-t-0">
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
+            <div className="box-footer border-t border-defaultborder/70 dark:border-defaultborder/20 bg-gray-50/90 dark:bg-black/25 px-4 py-3">
+              <div className="flex items-center flex-wrap gap-3">
+                <div className="text-sm text-defaulttextcolor/80 dark:text-white/70">
                   Showing {data.length === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
                 <div className="ms-auto">
-                  <nav aria-label="Page navigation" className="pagination-style-4">
-                    <ul className="ti-pagination mb-0">
-                      <li className={`page-item ${!canPreviousPage ? 'disabled' : ''}`}>
+                  <nav aria-label="Page navigation" className="w-full">
+                    <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
+                      <span className={`${!canPreviousPage ? 'opacity-50' : ''}`}>
                         <button
-                          className="page-link px-3 py-[0.375rem]"
+                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
                           onClick={() => previousPage()}
                           disabled={!canPreviousPage}
                         >
                           Prev
                         </button>
-                      </li>
+                      </span>
                       {pageOptions.length <= 7 ? (
                         // Show all pages if 7 or fewer
                         pageOptions.map((page: number) => (
-                          <li
-                            key={page}
-                            className={`page-item ${pageIndex === page ? 'active' : ''}`}
-                          >
+                          <span key={page}>
                             <button
-                              className="page-link px-3 py-[0.375rem]"
+                              className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                                pageIndex === page
+                                  ? 'bg-primary text-white shadow-sm'
+                                  : 'text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10'
+                              }`}
                               onClick={() => gotoPage(page)}
                             >
                               {page + 1}
                             </button>
-                          </li>
+                          </span>
                         ))
                       ) : (
                         // Show smart pagination for more pages
                         <>
                           {pageIndex > 2 && (
                             <>
-                              <li className="page-item">
+                              <span>
                                 <button
-                                  className="page-link px-3 py-[0.375rem]"
+                                  className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold text-defaulttextcolor transition-colors hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
                                   onClick={() => gotoPage(0)}
                                 >
                                   1
                                 </button>
-                              </li>
+                              </span>
                               {pageIndex > 3 && (
-                                <li className="page-item disabled">
-                                  <span className="page-link px-3 py-[0.375rem]">...</span>
-                                </li>
+                                <span className="opacity-60">
+                                  <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-1.5 text-xs">...</span>
+                                </span>
                               )}
                             </>
                           )}
@@ -1561,48 +1611,49 @@ export default function InterviewsClient() {
                               pageNum = pageIndex - 2 + i
                             }
                             return (
-                              <li
-                                key={pageNum}
-                                className={`page-item ${pageIndex === pageNum ? 'active' : ''}`}
-                              >
+                              <span key={pageNum}>
                                 <button
-                                  className="page-link px-3 py-[0.375rem]"
+                                  className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                                    pageIndex === pageNum
+                                      ? 'bg-primary text-white shadow-sm'
+                                      : 'text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10'
+                                  }`}
                                   onClick={() => gotoPage(pageNum)}
                                 >
                                   {pageNum + 1}
                                 </button>
-                              </li>
+                              </span>
                             )
                           })}
                           {pageIndex < pageCount - 3 && (
                             <>
                               {pageIndex < pageCount - 4 && (
-                                <li className="page-item disabled">
-                                  <span className="page-link px-3 py-[0.375rem]">...</span>
-                                </li>
+                                <span className="opacity-60">
+                                  <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-1.5 text-xs">...</span>
+                                </span>
                               )}
-                              <li className="page-item">
+                              <span>
                                 <button
-                                  className="page-link px-3 py-[0.375rem]"
+                                  className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold text-defaulttextcolor transition-colors hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
                                   onClick={() => gotoPage(pageCount - 1)}
                                 >
                                   {pageCount}
                                 </button>
-                              </li>
+                              </span>
                             </>
                           )}
                         </>
                       )}
-                      <li className={`page-item ${!canNextPage ? 'disabled' : ''}`}>
+                      <span className={`${!canNextPage ? 'opacity-50' : ''}`}>
                         <button
-                          className="page-link px-3 py-[0.375rem] text-primary"
+                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
                           onClick={() => nextPage()}
                           disabled={!canNextPage}
                         >
                           Next
                         </button>
-                      </li>
-                    </ul>
+                      </span>
+                    </div>
                   </nav>
                 </div>
               </div>
@@ -1627,6 +1678,8 @@ export default function InterviewsClient() {
         setHosts={setHosts}
         emailInvites={emailInvites}
         setEmailInvites={setEmailInvites}
+        scheduledInterviewAt={scheduledInterviewAt}
+        onScheduledInterviewAtChange={setScheduledInterviewAt}
       />
 
       {/* View recordings modal */}

@@ -291,6 +291,32 @@ export function storeActivityLogClientGeo(input: {
   }
 }
 
+/**
+ * Browsers reject `setRequestHeader` values containing code points outside ISO-8859-1.
+ * `JSON.stringify` emits raw UTF-16 for non-ASCII (e.g. Devanagari in OSM place names), which breaks XHR.
+ * Escape to ASCII-only JSON; `JSON.parse` on the server restores Unicode.
+ */
+function jsonStringifyIso8859SafeForHeader(value: object): string {
+  const raw = JSON.stringify(value);
+  let out = "";
+  for (let i = 0; i < raw.length; ) {
+    const code = raw.codePointAt(i)!;
+    if (code <= 0x7f) {
+      out += raw[i];
+      i += 1;
+    } else if (code <= 0xffff) {
+      out += "\\u" + code.toString(16).padStart(4, "0");
+      i += 1;
+    } else {
+      const u = code - 0x10000;
+      out += "\\u" + (0xd800 + (u >> 10)).toString(16).padStart(4, "0");
+      out += "\\u" + (0xdc00 + (u & 0x3ff)).toString(16).padStart(4, "0");
+      i += 2;
+    }
+  }
+  return out;
+}
+
 /** JSON (preferred) or legacy CSV for the backend parser. */
 export function getActivityLogClientGeoHeaderValue(): string | null {
   if (typeof window === "undefined") return null;
@@ -306,7 +332,7 @@ export function getActivityLogClientGeoHeaderValue(): string | null {
     const region = trimPlace(o.region ?? null);
     const country = trimPlace(o.country ?? null);
     if (city || region || country) {
-      return JSON.stringify({
+      return jsonStringifyIso8859SafeForHeader({
         ts: o.ts,
         accuracy,
         city: city ?? undefined,
@@ -321,7 +347,7 @@ export function getActivityLogClientGeoHeaderValue(): string | null {
       Number.isFinite(o.lat) &&
       Number.isFinite(o.lng)
     ) {
-      return JSON.stringify({
+      return jsonStringifyIso8859SafeForHeader({
         ts: o.ts,
         accuracy,
         lat: o.lat,

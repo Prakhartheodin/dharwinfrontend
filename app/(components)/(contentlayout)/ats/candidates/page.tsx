@@ -45,12 +45,14 @@ import { listUsers } from '@/shared/lib/api/users'
 import { getAllShifts } from '@/shared/lib/api/shifts'
 import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
 import Swal from 'sweetalert2'
+import { AxiosError } from 'axios'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
 import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
 import { canEditCandidateJoiningDate, canEditCandidateResignDate } from '@/shared/lib/candidate-permissions'
+import { ROUTES } from '@/shared/lib/constants'
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
@@ -295,7 +297,7 @@ interface CandidateNote {
 
 const Candidates = () => {
   const router = useRouter()
-  const { isAdministrator, permissions } = useAuth()
+  const { isAdministrator, permissions, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
   const canEditJoiningDate = useMemo(
     () => canEditCandidateJoiningDate(permissions ?? [], isAdministrator),
     [permissions, isAdministrator]
@@ -305,6 +307,7 @@ const Candidates = () => {
     [permissions, isAdministrator]
   )
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
+  const [impersonatingOwnerUserId, setImpersonatingOwnerUserId] = useState<string | null>(null)
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
@@ -1208,6 +1211,45 @@ const Candidates = () => {
     }
   }
 
+  const handleImpersonateFromCandidate = useCallback(
+    async (candidate: CandidateDisplay) => {
+      const targetUserId = candidate.ownerUserId
+      if (!targetUserId || !authUser?.id) return
+      if (String(authUser.id) === String(targetUserId)) {
+        void Swal.fire('Cannot impersonate', 'You are already logged in as this candidate’s account.', 'info')
+        return
+      }
+      const nameOrEmail = candidate.name?.trim() || candidate.email?.trim() || 'this user'
+      const result = await Swal.fire({
+        title: 'Login as user?',
+        text: `You will temporarily enter the system as \"${nameOrEmail}\". You will only have this user’s permissions and can exit impersonation at any time.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Confirm',
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: '#0d9488',
+        cancelButtonColor: '#6c757d',
+        reverseButtons: true,
+      })
+      if (!result.isConfirmed) return
+
+      setImpersonatingOwnerUserId(targetUserId)
+      try {
+        await startImpersonation(targetUserId, nameOrEmail, { returnPathAfterStop: ROUTES.atsCandidates })
+      } catch (err) {
+        setImpersonatingOwnerUserId(null)
+        const msg =
+          err instanceof AxiosError && err.response?.data?.message
+            ? String(err.response.data.message)
+            : 'Failed to start impersonation.'
+        await Swal.fire('Impersonation failed', msg, 'error')
+      } finally {
+        setImpersonatingOwnerUserId(null)
+      }
+    },
+    [authUser?.id, startImpersonation]
+  )
+
   // Define columns
   const columns = useMemo(
     () => [
@@ -1358,6 +1400,26 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Details</span>
                 </button>
               </div>
+              {isAdministrator && c.ownerUserId && authUser?.id && String(authUser.id) !== String(c.ownerUserId) && (
+                <div className="hs-tooltip ti-main-tooltip">
+                  <button
+                    type="button"
+                    onClick={() => handleImpersonateFromCandidate(c)}
+                    disabled={authLoading || impersonatingOwnerUserId === c.ownerUserId}
+                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-600 hover:bg-teal-600 hover:text-white disabled:opacity-70 disabled:cursor-not-allowed dark:text-teal-400 dark:hover:bg-teal-600"
+                    title="Login as this candidate (impersonate)"
+                    aria-label={`Login as ${c.name}`}
+                  >
+                    <i className="ri-login-box-line"></i>
+                    <span
+                      className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white"
+                      role="tooltip"
+                    >
+                      Login as
+                    </span>
+                  </button>
+                </div>
+              )}
               <div className="hs-tooltip ti-main-tooltip">
                 <Link href={`/ats/candidates/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
                   <i className="ri-pencil-line"></i>
@@ -1459,7 +1521,18 @@ const Candidates = () => {
         },
       },
     ],
-    [selectedRows, moreMenuState, deletingCandidateId, openAttendanceOverlay, canEditJoiningDate]
+    [
+      selectedRows,
+      moreMenuState,
+      deletingCandidateId,
+      openAttendanceOverlay,
+      canEditJoiningDate,
+      isAdministrator,
+      authUser?.id,
+      authLoading,
+      impersonatingOwnerUserId,
+      handleImpersonateFromCandidate,
+    ]
   )
 
   // Server-side filtering: API returns filtered results, no client-side filter

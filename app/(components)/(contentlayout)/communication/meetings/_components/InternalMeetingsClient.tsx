@@ -103,6 +103,7 @@ export default function InternalMeetingsClient() {
   const [emailInvites, setEmailInvites] = useState<string[]>([""])
   const [formLoading, setFormLoading] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [scheduledInternalMeetingAt, setScheduledInternalMeetingAt] = useState<Date | null>(null)
 
   const [meetings, setMeetings] = useState<InternalMeeting[]>([])
   const [meetingsLoading, setMeetingsLoading] = useState(true)
@@ -254,6 +255,7 @@ export default function InternalMeetingsClient() {
   const resetCreateMeetingForm = useCallback(() => {
     setCreatedMeeting(null)
     setFormError(null)
+    setScheduledInternalMeetingAt(null)
     setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([""])
   }, [defaultScheduleHosts])
@@ -806,70 +808,90 @@ export default function InternalMeetingsClient() {
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 overflow-auto" style={{ minHeight: 0 }}>
-                  <div className="table-responsive">
-                    <table {...getTableProps()} className="table table-hover whitespace-nowrap min-w-full">
-                      <thead>
-                        {headerGroups.map((headerGroup: any) => (
-                          <tr {...headerGroup.getHeaderGroupProps()} key={headerGroup.id}>
-                            {headerGroup.headers.map((column: any) => (
-                              <th {...column.getHeaderProps(column.getSortByToggleProps?.())} key={column.id} className="!text-[0.75rem]">
-                                {column.id === "checkbox" ? (
-                                  <input
-                                    type="checkbox"
-                                    className="form-check-input"
-                                    checked={isAllSelected}
-                                    onChange={handleSelectAll}
-                                    aria-label="Select all"
-                                  />
-                                ) : (
-                                  column.render("Header")
-                                )}
-                              </th>
-                            ))}
-                          </tr>
-                        ))}
-                      </thead>
-                      <tbody {...getTableBodyProps()}>
-                        {page.map((row: any) => {
-                          prepareRow(row)
-                          return (
-                            <tr {...row.getRowProps()} key={row.id}>
-                              {row.cells.map((cell: any) => (
-                                <td {...cell.getCellProps()} key={cell.column.id} className="!text-[0.8125rem] align-middle">
-                                  {cell.render("Cell")}
-                                </td>
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    <div className="table-responsive">
+                      <table {...getTableProps()} className="table table-hover whitespace-nowrap min-w-full">
+                        <thead>
+                          {headerGroups.map((headerGroup: any) => (
+                            <tr {...headerGroup.getHeaderGroupProps()} key={headerGroup.id}>
+                              {headerGroup.headers.map((column: any) => (
+                                <th {...column.getHeaderProps(column.getSortByToggleProps?.())} key={column.id} className="!text-[0.75rem]">
+                                  {column.id === "checkbox" ? (
+                                    <input
+                                      type="checkbox"
+                                      className="form-check-input"
+                                      checked={isAllSelected}
+                                      onChange={handleSelectAll}
+                                      aria-label="Select all"
+                                    />
+                                  ) : (
+                                    column.render("Header")
+                                  )}
+                                </th>
                               ))}
                             </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </thead>
+                        <tbody {...getTableBodyProps()}>
+                          {page.map((row: any) => {
+                            prepareRow(row)
+                            return (
+                              <tr {...row.getRowProps()} key={row.id}>
+                                {row.cells.map((cell: any) => (
+                                  <td {...cell.getCellProps()} key={cell.column.id} className="!text-[0.8125rem] align-middle">
+                                    {cell.render("Cell")}
+                                  </td>
+                                ))}
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-defaultborder dark:border-defaultborder/10">
+                  <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-defaultborder px-4 py-3 dark:border-defaultborder/10">
                     <span className="text-xs text-defaulttextcolor/70">
                       Page {pageIndex + 1} of {pageCount || 1}
                     </span>
-                    <nav>
-                      <ul className="pagination mb-0">
-                        <li className={`page-item ${!canPreviousPage ? "disabled" : ""}`}>
-                          <button className="page-link px-3 py-[0.375rem]" onClick={() => previousPage()} disabled={!canPreviousPage}>
+                    <nav aria-label="Page navigation" className="shrink-0">
+                      <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
+                        <span className={!canPreviousPage ? "opacity-50" : ""}>
+                          <button
+                            type="button"
+                            className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
+                            onClick={() => previousPage()}
+                            disabled={!canPreviousPage}
+                          >
                             Prev
                           </button>
-                        </li>
+                        </span>
                         {pageOptions.map((p: number) => (
-                          <li key={p} className={`page-item ${pageIndex === p ? "active" : ""}`}>
-                            <button className="page-link px-3 py-[0.375rem]" onClick={() => gotoPage(p)}>
+                          <span key={p}>
+                            <button
+                              type="button"
+                              className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                                pageIndex === p
+                                  ? "bg-primary text-white shadow-sm"
+                                  : "text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
+                              }`}
+                              onClick={() => gotoPage(p)}
+                            >
                               {p + 1}
                             </button>
-                          </li>
+                          </span>
                         ))}
-                        <li className={`page-item ${!canNextPage ? "disabled" : ""}`}>
-                          <button className="page-link px-3 py-[0.375rem]" onClick={() => nextPage()} disabled={!canNextPage}>
+                        <span className={!canNextPage ? "opacity-50" : ""}>
+                          <button
+                            type="button"
+                            className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
+                            onClick={() => nextPage()}
+                            disabled={!canNextPage}
+                          >
                             Next
                           </button>
-                        </li>
-                      </ul>
+                        </span>
+                      </div>
                     </nav>
                   </div>
                 </div>
@@ -889,6 +911,8 @@ export default function InternalMeetingsClient() {
         setHosts={setHosts}
         emailInvites={emailInvites}
         setEmailInvites={setEmailInvites}
+        scheduledInternalMeetingAt={scheduledInternalMeetingAt}
+        onScheduledInternalMeetingAtChange={setScheduledInternalMeetingAt}
       />
 
       <RecordingsModal

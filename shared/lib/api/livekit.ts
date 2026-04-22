@@ -10,6 +10,8 @@ export interface LiveKitTokenResponse {
   isHost?: boolean;
   /** Same as isHost for public join — true when user may publish (host or admitted from waiting room) */
   canPublish?: boolean;
+  /** ISO end time for scheduled interviews (scheduledAt + durationMinutes); absent for non-calendar rooms. */
+  meetingEndAt?: string | null;
 }
 
 export interface StartRecordingResponse {
