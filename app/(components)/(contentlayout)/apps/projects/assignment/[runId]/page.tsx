@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -11,10 +11,12 @@ import {
   patchAssignmentRun,
   approveAssignmentRun,
   applyAssignmentRun,
+  submitAssignmentRunFeedback,
   type AssignmentGenerationMeta,
   type AssignmentApplyTeamSync,
   type RecommendedJobDraft,
 } from "@/shared/lib/api/pmAssistant";
+import type { AssignmentFeedbackItem } from "@/shared/types/pmAssistant";
 import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { JobFromAssignmentGapModal } from "@/shared/components/pm/JobFromAssignmentGapModal";
@@ -52,6 +54,20 @@ function formatRunStatus(status?: string): string {
   return status
     .replace(/_/g, " ")
     .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function taskIdFromRow(r: Row): string | null {
+  const t = r.taskId;
+  if (t && typeof t === "object") {
+    const raw = (t as { _id?: unknown; id?: unknown })._id ?? (t as { id?: unknown }).id;
+    if (raw != null) {
+      if (typeof raw === "object" && raw !== null && "$oid" in (raw as object)) {
+        return String((raw as { $oid: string }).$oid);
+      }
+      return String(raw);
+    }
+  }
+  return null;
 }
 
 function candidateIdFromRow(r: Row): string | null {
@@ -152,6 +168,11 @@ export default function AssignmentRunPage() {
     taskTitle: string;
   } | null>(null);
 
+  /** First-load snapshot to compute apply-time feedback (approve / replace / reject). */
+  const assignmentFeedbackBaseline = useRef<Map<string, { taskId: string; suggestedId: string | null }> | null>(
+    null
+  );
+
   const hasJobsManage = useMemo(() => {
     if (isAdministrator || isPlatformSuperUser) return true;
     return permissions.some((p) => {
@@ -211,6 +232,13 @@ export default function AssignmentRunPage() {
       setRun(runObj);
       setRows(nextRows);
       setBaseline(serializeRowsSnapshot(nextRows));
+      const m = new Map<string, { taskId: string; suggestedId: string | null }>();
+      for (const r of nextRows) {
+        const tid = taskIdFromRow(r);
+        if (!tid) continue;
+        m.set(rowKey(r), { taskId: tid, suggestedId: candidateIdFromRow(r) });
+      }
+      assignmentFeedbackBaseline.current = m;
       if (runObj?.status === "ready_for_review") {
         void loadCandidateOptions();
       }
@@ -231,6 +259,14 @@ export default function AssignmentRunPage() {
     if (!baseline) return false;
     return serializeRowsSnapshot(rows) !== baseline;
   }, [rows, baseline]);
+
+  /** Task-level counts: total vs staffed (not gap, has a candidate) vs remaining. */
+  const taskRunMetrics = useMemo(() => {
+    const total = rows.length;
+    const assignedToEmployees = rows.filter((r) => !r.gap && candidateIdFromRow(r)).length;
+    const gaps = total - assignedToEmployees;
+    return { total, assignedToEmployees, gaps };
+  }, [rows]);
 
   /** Includes assignees on this run who are outside the paginated shortlist — required for react-select controlled value. */
   const mergedCandidateOptions = useMemo(() => {
@@ -310,8 +346,51 @@ export default function AssignmentRunPage() {
       confirmButtonText: "Apply",
     });
     if (!ok.isConfirmed) return;
+    const projectIdForFeedback =
+      run?.projectId && typeof run.projectId === "object"
+        ? String((run.projectId as { _id?: string })._id ?? "")
+        : "";
     setSaving(true);
     try {
+      const feedbackItems: AssignmentFeedbackItem[] = [];
+      for (const r of rows) {
+        const key = rowKey(r);
+        const base = assignmentFeedbackBaseline.current?.get(key);
+        const taskId = base?.taskId || taskIdFromRow(r);
+        const original = base?.suggestedId ?? null;
+        const current = candidateIdFromRow(r);
+        if (!taskId || !original) continue;
+        if (original === current) {
+          feedbackItems.push({
+            taskId,
+            suggestedEmployeeId: original,
+            outcome: "approved",
+          });
+        } else if (!current && original) {
+          feedbackItems.push({
+            taskId,
+            suggestedEmployeeId: original,
+            outcome: "rejected",
+          });
+        } else if (current && original && current !== original) {
+          feedbackItems.push({
+            taskId,
+            suggestedEmployeeId: original,
+            outcome: "replaced",
+            replacedWithEmployeeId: current,
+          });
+        }
+      }
+      if (feedbackItems.length > 0 && projectIdForFeedback) {
+        try {
+          await submitAssignmentRunFeedback(projectIdForFeedback, runId, {
+            items: feedbackItems,
+            submittedAt: new Date().toISOString(),
+          });
+        } catch {
+          /* non-fatal: apply still runs */
+        }
+      }
       const applyRes = (await applyAssignmentRun(runId)) as {
         teamSync?: AssignmentApplyTeamSync;
       };
@@ -443,6 +522,29 @@ export default function AssignmentRunPage() {
               </span>
             </div>
             <div className={styles.cardBody}>
+              {taskRunMetrics.total > 0 ? (
+                <div className={styles.taskRunStats} role="status" aria-label="Task assignment summary">
+                  <div className={styles.statsLabel}>Tasks (this run)</div>
+                  <p className={`${styles.hint} mb-2`}>
+                    Total project tasks in this table, and how many have an <strong>employee</strong> (ATS candidate) selected
+                    for the row. Remaining rows are gaps or unassigned.
+                  </p>
+                  <div className={styles.taskRunStatsGrid}>
+                    <div className={styles.stat}>
+                      <div className={styles.statK}>Total tasks</div>
+                      <div className={styles.statV}>{taskRunMetrics.total}</div>
+                    </div>
+                    <div className={styles.stat}>
+                      <div className={styles.statK}>Assigned to employees</div>
+                      <div className={styles.statVAccent}>{taskRunMetrics.assignedToEmployees}</div>
+                    </div>
+                    <div className={styles.stat}>
+                      <div className={styles.statK}>Gaps / unassigned</div>
+                      <div className={styles.statV}>{taskRunMetrics.gaps}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               {run.generationMeta?.rosterFetched != null ? (
                 <div className={styles.stats} role="status">
                   <div className={styles.statsLabel}>Roster screening (this run)</div>

@@ -22,7 +22,7 @@ export default function TrainingCoursesLegacyRedirectPage() {
       q.set(key, value);
     });
     if (cid) {
-      router.replace(`/ats/candidates/edit?${q.toString()}`);
+      router.replace(`/ats/employees/edit?${q.toString()}`);
     } else {
       router.replace("/training/curriculum/modules");
     }

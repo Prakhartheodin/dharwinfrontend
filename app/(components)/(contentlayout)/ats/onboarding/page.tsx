@@ -100,7 +100,7 @@ const Onboarding = () => {
                       <tr key={p._id}>
                         <td>
                           <div>
-                            <Link href={`/ats/candidates?candidateId=${p.candidate?._id}`} className="font-medium text-primary hover:underline">
+                            <Link href={`/ats/employees?candidateId=${p.candidate?._id}`} className="font-medium text-primary hover:underline">
                               {p.candidate?.fullName || '-'}
                             </Link>
                             <span className="text-xs text-gray-500 block">{p.candidate?.email || ''}</span>
@@ -122,7 +122,7 @@ const Onboarding = () => {
                                 </Link>
                               ) : null
                             })()}
-                            <Link href={`/ats/candidates?candidateId=${(p.candidate as { _id?: string })?._id ?? (typeof p.candidate === 'string' ? p.candidate : '')}`} className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
+                            <Link href={`/ats/employees?candidateId=${(p.candidate as { _id?: string })?._id ?? (typeof p.candidate === 'string' ? p.candidate : '')}`} className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
                               Profile
                             </Link>
                           </div>

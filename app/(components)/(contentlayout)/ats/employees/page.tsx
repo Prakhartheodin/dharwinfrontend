@@ -600,9 +600,9 @@ const Candidates = () => {
   // Generate public URL for candidate
   const getCandidatePublicUrl = (candidateId: string) => {
     if (typeof window !== 'undefined') {
-      return `${window.location.origin}/ats/candidates/${candidateId}`
+      return `${window.location.origin}/ats/employees/${candidateId}`
     }
-    return `https://example.com/ats/candidates/${candidateId}`
+    return `https://example.com/ats/employees/${candidateId}`
   }
 
   const [exportCandidate, setExportCandidate] = useState<CandidateDisplay | null>(null)
@@ -1235,7 +1235,7 @@ const Candidates = () => {
 
       setImpersonatingOwnerUserId(targetUserId)
       try {
-        await startImpersonation(targetUserId, nameOrEmail, { returnPathAfterStop: ROUTES.atsCandidates })
+        await startImpersonation(targetUserId, nameOrEmail, { returnPathAfterStop: ROUTES.atsEmployees })
       } catch (err) {
         setImpersonatingOwnerUserId(null)
         const msg =
@@ -1421,7 +1421,7 @@ const Candidates = () => {
                 </div>
               )}
               <div className="hs-tooltip ti-main-tooltip">
-                <Link href={`/ats/candidates/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
+                <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
                   <i className="ri-pencil-line"></i>
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit Candidate</span>
                 </Link>
@@ -1717,7 +1717,7 @@ const Candidates = () => {
 
   return (
     <Fragment>
-      <Seo title="Candidates" />
+      <Seo title="Employees" />
       <div className="container-fluid pt-6 pb-8">
       {!candidatesLoading && candidatesError && (
         <div
@@ -1772,7 +1772,7 @@ const Candidates = () => {
                 <div className="min-w-0 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="box-title !mb-0 text-xl font-semibold tracking-tight text-defaulttextcolor dark:text-white sm:text-2xl">
-                      Candidates
+                      Employees
                     </h1>
                     <span
                       className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
@@ -1900,10 +1900,10 @@ const Candidates = () => {
                   </ul>
                 </div>
                 <Link
-                  href="/ats/candidates/add"
+                  href="/ats/employees/add"
                   className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
                 >
-                  <i className="ri-add-line font-semibold align-middle"></i>Add Candidate
+                  <i className="ri-add-line font-semibold align-middle"></i>Add employee
                 </Link>
                 <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
                   <button
@@ -1920,7 +1920,7 @@ const Candidates = () => {
                       <button
                         type="button"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => router.push('/ats/candidates/import')}
+                        onClick={() => router.push('/ats/employees/import')}
                       >
                         <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
                       </button>

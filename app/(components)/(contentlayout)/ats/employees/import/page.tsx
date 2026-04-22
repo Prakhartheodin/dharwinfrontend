@@ -8,7 +8,7 @@ import React, { Fragment } from "react";
 /**
  * Dedicated Excel Import page.
  * Navigate here from Candidates list → Excel → Import.
- * Back button returns to /ats/candidates (not to Add Candidate manual form).
+ * Back button returns to /ats/employees (not to Add Candidate manual form).
  */
 const ImportCandidates = () => {
   return (

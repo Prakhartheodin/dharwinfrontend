@@ -170,3 +170,12 @@ th.text-center{
   vertical-align: middle !important;
   background-color: rgb(var(--primary) / 1) !important;
 }
+
+/* "Show 10/100" page-size native selects: reserve space for the dropdown chevron (avoids overlap on Windows/Chrome) */
+select.select-show-page-size {
+  min-width: 9.5rem !important;
+  width: auto !important;
+  padding-inline-end: 2.5rem !important;
+  padding-inline-start: 0.75rem !important;
+  text-align: start;
+}

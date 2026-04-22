@@ -13,6 +13,10 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import type { User, Role } from "@/shared/lib/types";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
+import {
+  hasAnySettingsModulePermission,
+  hasSettingsFeatureAction,
+} from "@/shared/lib/permissions";
 
 function formatDate(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -50,6 +54,7 @@ export default function SettingsUsersPage() {
     isAdministrator: authIsAdministrator,
     isPlatformSuperUser,
     isDesignatedSuperadmin,
+    permissions,
   } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -99,6 +104,26 @@ export default function SettingsUsersPage() {
     const ids = currentUser.roleIds ?? [];
     return ids.some((id) => rolesById.get(id)?.name === "Agent");
   }, [currentUser, rolesById]);
+
+  const { canCreateUsers, canEditUsers, canDeleteUsers } = useMemo(() => {
+    const raw = permissions ?? [];
+    const matrixMode = !isPlatformSuperUser && hasAnySettingsModulePermission(raw);
+    if (isPlatformSuperUser) {
+      return { canCreateUsers: true, canEditUsers: true, canDeleteUsers: true };
+    }
+    if (matrixMode) {
+      return {
+        canCreateUsers: hasSettingsFeatureAction(raw, "users", "create"),
+        canEditUsers: hasSettingsFeatureAction(raw, "users", "edit"),
+        canDeleteUsers: hasSettingsFeatureAction(raw, "users", "delete"),
+      };
+    }
+    return {
+      canCreateUsers: isAdministrator || isAgent,
+      canEditUsers: isAdministrator || isAgent,
+      canDeleteUsers: isAdministrator || isAgent,
+    };
+  }, [permissions, isPlatformSuperUser, isAdministrator, isAgent]);
 
   /** True if user has Administrator, Agent, or Manager role. Agents cannot edit these users. */
   const userHasRestrictedRole = (user: User): boolean => {
@@ -461,9 +486,13 @@ export default function SettingsUsersPage() {
             {totalResults}
           </span>
         </h5>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <label htmlFor="users-page-size" className="sr-only">
+            Rows per page
+          </label>
           <select
-            className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+            id="users-page-size"
+            className="form-control select-show-page-size !w-auto !py-1.5 !text-[0.75rem] leading-tight"
             value={limit}
             onChange={(e) => setLimit(Number(e.target.value))}
           >
@@ -473,12 +502,14 @@ export default function SettingsUsersPage() {
               </option>
             ))}
           </select>
-          <Link
-            href={ROUTES.settingsUsersAdd}
-            className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem]"
-          >
-            <i className="ri-add-line me-1 align-middle"></i>Add User
-          </Link>
+          {canCreateUsers && (
+            <Link
+              href={ROUTES.settingsUsersAdd}
+              className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] shrink-0"
+            >
+              <i className="ri-add-line me-1 align-middle"></i>Add User
+            </Link>
+          )}
         </div>
       </div>
       <div className="box-body px-4 pb-4">
@@ -684,7 +715,7 @@ export default function SettingsUsersPage() {
                             )}
                           {!isPrimaryAdmin && (
                             <>
-                              {(!isAgent || !userHasRestrictedRole(user)) && (
+                              {canEditUsers && (!isAgent || !userHasRestrictedRole(user)) && (
                                 <div className="hs-tooltip ti-main-tooltip">
                                   <Link
                                     href={ROUTES.settingsUsersEdit(user.id)}
@@ -698,19 +729,21 @@ export default function SettingsUsersPage() {
                                   </Link>
                                 </div>
                               )}
-                              <div className="hs-tooltip ti-main-tooltip">
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(user)}
-                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
-                                  aria-label={`Delete ${user.name ?? user.email}`}
-                                >
-                                  <i className="ri-delete-bin-line"></i>
-                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                    Delete User
-                                  </span>
-                                </button>
-                              </div>
+                              {canDeleteUsers && (
+                                <div className="hs-tooltip ti-main-tooltip">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDelete(user)}
+                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                                    aria-label={`Delete ${user.name ?? user.email}`}
+                                  >
+                                    <i className="ri-delete-bin-line"></i>
+                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
+                                      Delete User
+                                    </span>
+                                  </button>
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -857,7 +890,7 @@ export default function SettingsUsersPage() {
                 >
                   Close
                 </button>
-                {(!isAgent || !userHasRestrictedRole(viewUser)) && (
+                {canEditUsers && (!isAgent || !userHasRestrictedRole(viewUser)) && (
                   <Link
                     href={ROUTES.settingsUsersEdit(viewUser.id)}
                     className="ti-btn ti-btn-primary"

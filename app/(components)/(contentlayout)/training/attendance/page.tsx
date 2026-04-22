@@ -689,7 +689,7 @@ export default function AttendanceTracking() {
 
       {/* Sticky Active Banner */}
       {canPunch && status?.isPunchedIn && (
-        <div className="sticky top-0 z-10 mx-4 mb-4">
+        <div className="sticky top-0 z-10 mx-4 mb-5 sm:mb-6">
           <div className="flex items-center gap-3 rounded-md bg-success/10 border border-success/20 px-4 py-2.5">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5">
@@ -733,7 +733,7 @@ export default function AttendanceTracking() {
           <>
             {/* Summary Stats */}
             {summaryStats && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 mb-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-5 sm:gap-6 mb-6">
                 {[
                   { label: "Total Days", value: String(summaryStats.totalDays), icon: "ri-calendar-check-line", color: "primary" },
                   { label: "Total Hours", value: String(summaryStats.totalHours), icon: "ri-time-line", color: "secondary" },

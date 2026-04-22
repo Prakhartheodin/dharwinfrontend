@@ -12,6 +12,10 @@ import type { Role } from "@/shared/lib/types";
 import { RolesDropdown } from "@/shared/components/roles-dropdown";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { useAuth } from "@/shared/contexts/auth-context";
+import {
+  hasAnySettingsModulePermission,
+  hasSettingsFeatureAction,
+} from "@/shared/lib/permissions";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
@@ -32,7 +36,13 @@ function getErrorMessage(err: any): string {
 
 export default function SettingsUsersAddPage() {
   const router = useRouter();
-  const { user: currentUser, isAdministrator: authIsAdministrator, isPlatformSuperUser } = useAuth();
+  const {
+    user: currentUser,
+    isAdministrator: authIsAdministrator,
+    isPlatformSuperUser,
+    permissions,
+    permissionsLoaded,
+  } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -106,6 +116,16 @@ export default function SettingsUsersAddPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!permissionsLoaded) return;
+    if (isPlatformSuperUser) return;
+    const raw = permissions ?? [];
+    if (!hasAnySettingsModulePermission(raw)) return;
+    if (!hasSettingsFeatureAction(raw, "users", "create")) {
+      router.replace(ROUTES.settingsUsers);
+    }
+  }, [permissionsLoaded, permissions, isPlatformSuperUser, router]);
 
   const handleRoleToggle = (roleId: string) => {
     setRoleIds((prev: string[]) =>

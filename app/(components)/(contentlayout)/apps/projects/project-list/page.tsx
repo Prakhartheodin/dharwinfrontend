@@ -535,7 +535,7 @@ function ProjectCard({
                       onAiCandidateAssignment(project);
                     }}
                   >
-                    <i className="ri-user-shared-line align-middle me-1 inline-flex" /> AI candidate assignment
+                    <i className="ri-user-shared-line align-middle me-1 inline-flex" /> AI employee assignment
                   </button>
                 </li>
               ) : null}
@@ -726,7 +726,7 @@ const Projectlist = () => {
       if (!id) {
         await Swal.fire({
           icon: "warning",
-          title: "AI candidate assignment",
+          title: "AI employee assignment",
           text: "Could not read this project’s id from the list. Refresh the page or open the project from Edit and try again.",
         });
         return;

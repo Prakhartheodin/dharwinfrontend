@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { isAxiosError } from "axios";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
@@ -12,6 +12,7 @@ import {
   PublicJob,
   PublicApplyPayload,
 } from "@/shared/lib/api/jobs";
+import { ROUTES } from "@/shared/lib/constants";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCountries";
 import {
@@ -49,7 +50,9 @@ function getApplySubmissionErrorMessage(error: unknown): string {
 export default function PublicJobDetailsPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const jobId = params.jobId as string;
+  const referralRefFromUrl = searchParams.get("ref")?.trim() || null;
 
   const [job, setJob] = useState<PublicJob | null>(null);
   const [otherJobs, setOtherJobs] = useState<PublicJob[]>([]);
@@ -208,22 +211,26 @@ export default function PublicJobDetailsPage() {
         phoneNumber: formatPhoneForApi(phoneNumber, countryCode),
         countryCode,
         coverLetter: coverLetter.trim(),
+        ...(referralRefFromUrl ? { ref: referralRefFromUrl } : {}),
       };
 
       const result = await publicApplyToJob(jobId, payload, resume!, documents);
 
-      // Tokens are set as httpOnly cookies by the backend automatically
-      // The user is now logged in via the cookies
+      const detail =
+        result?.message ||
+        "Your application is saved. Your account is pending—check your email to verify, then an administrator can activate your access. You can sign in once your account is active.";
 
       await Swal.fire({
         icon: "success",
-        title: "Application Submitted!",
-        text: "Your application has been submitted successfully. You are now logged in. Complete your profile to increase your chances.",
-        confirmButtonText: "Complete Profile",
+        title: "Application submitted",
+        text: detail,
+        confirmButtonText: "Go to sign in",
+        width: 560,
       });
 
-      // Redirect to profile page
-      router.push("/ats/my-profile");
+      router.push(
+        `${ROUTES.signIn}?registered=1&message=${encodeURIComponent("Application submitted. Account pending—verify your email, then sign in when an administrator has activated your account.")}`
+      );
     } catch (error: unknown) {
       const errorMessage = getApplySubmissionErrorMessage(error);
 
@@ -477,16 +484,19 @@ export default function PublicJobDetailsPage() {
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                      className="w-full py-2 pl-4 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                       placeholder="Min 8 characters"
+                      autoComplete="new-password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                      className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      title={showPassword ? "Hide password" : "Show password"}
                     >
-                      {showPassword ? "🙈" : "👁️"}
+                      <i className={`text-xl ${showPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
                     </button>
                   </div>
                 </div>
@@ -500,16 +510,19 @@ export default function PublicJobDetailsPage() {
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                      className="w-full py-2 pl-4 pr-11 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                       placeholder="Re-enter password"
+                      autoComplete="new-password"
                       required
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
+                      className="absolute right-1.5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:hover:bg-white/10 dark:hover:text-gray-200"
+                      aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                      title={showConfirmPassword ? "Hide password" : "Show password"}
                     >
-                      {showConfirmPassword ? "🙈" : "👁️"}
+                      <i className={`text-xl ${showConfirmPassword ? "ri-eye-off-line" : "ri-eye-line"}`} aria-hidden />
                     </button>
                   </div>
                 </div>

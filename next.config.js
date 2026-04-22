@@ -13,6 +13,14 @@ const nextConfig = {
   // assetPrefix : isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
   basePath: "",
   assetPrefix: "",
+  /** Legacy bookmarks → canonical ATS list (Phase A; permanent redirect). */
+  async redirects() {
+    return [
+      { source: "/ats/candidates", destination: "/ats/employees/", permanent: true },
+      { source: "/ats/candidates/", destination: "/ats/employees/", permanent: true },
+      { source: "/ats/candidates/:path*", destination: "/ats/employees/:path*", permanent: true },
+    ];
+  },
   images: {
     loader: "imgix",
     path: "/",

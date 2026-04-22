@@ -479,7 +479,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       </Link>
                                       {candidateId && (
                                         <Link
-                                          href={`/ats/candidates/edit/?id=${candidateId}`}
+                                          href={`/ats/employees/edit/?id=${candidateId}`}
                                           className="ti-btn ti-btn-sm ti-btn-light inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[5.5rem] overflow-visible"
                                           target="_blank"
                                           rel="noopener noreferrer"

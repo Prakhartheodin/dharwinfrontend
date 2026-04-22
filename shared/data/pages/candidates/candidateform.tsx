@@ -1536,7 +1536,7 @@ export const Basicwizard = ({
           text: `Successfully imported ${result.summary.successful} candidates.`,
           confirmButtonText: 'OK'
         });
-        router.push("/ats/candidates");
+        router.push("/ats/employees");
       } else if (result.summary.successful === 0) {
         await Swal.fire({
           icon: 'error',
@@ -1551,7 +1551,7 @@ export const Basicwizard = ({
           html: `Imported ${result.summary.successful} candidates successfully.<br>${result.summary.failed} candidates failed.<br><br>First few errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
           confirmButtonText: 'OK'
         });
-        router.push("/ats/candidates");
+        router.push("/ats/employees");
       }
 
       // Reset
@@ -2079,7 +2079,7 @@ export const Basicwizard = ({
       // Redirect after successful operation – candidates (role user) go to profile
       const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
       const user = userData ? JSON.parse(userData) : null;
-      router.push(user?.role === 'user' ? ROUTES.candidateProfile : "/ats/candidates");
+      router.push(user?.role === 'user' ? ROUTES.candidateProfile : "/ats/employees");
     } catch (err: any) {
       setError("Failed to add candidate");
       await Swal.fire({
@@ -2103,7 +2103,7 @@ export const Basicwizard = ({
             <button
               onClick={() =>
                 returnToCandidatesOnBack
-                  ? router.push("/ats/candidates")
+                  ? router.push("/ats/employees")
                   : setExcelImportMode(false)
               }
               className="ti-btn ti-btn-secondary"

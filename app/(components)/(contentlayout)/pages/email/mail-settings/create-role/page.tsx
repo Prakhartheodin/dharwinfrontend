@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
+import { PERMISSION_SECTIONS } from '@/shared/lib/roles-permissions'
 
 interface FeaturePermissions {
   view: boolean
@@ -20,47 +21,6 @@ interface SectionPermissions {
 interface RolePermissions {
   [section: string]: SectionPermissions
 }
-
-const PERMISSION_SECTIONS: { id: string; label: string; features: { id: string; label: string }[] }[] = [
-  {
-    id: 'ats',
-    label: 'ATS',
-    features: [
-      { id: 'jobs', label: 'Jobs' },
-      { id: 'candidates', label: 'Candidates' },
-      { id: 'recruiters', label: 'Recruiters' },
-      { id: 'interviews', label: 'Interviews' },
-      { id: 'offers', label: 'Offers' },
-    ],
-  },
-  {
-    id: 'communication',
-    label: 'Communication',
-    features: [
-      { id: 'emails', label: 'Emails' },
-      { id: 'templates', label: 'Templates' },
-      { id: 'campaigns', label: 'Campaigns' },
-    ],
-  },
-  {
-    id: 'training',
-    label: 'Training Management',
-    features: [
-      { id: 'courses', label: 'Courses' },
-      { id: 'modules', label: 'Modules' },
-      { id: 'assessments', label: 'Assessments' },
-    ],
-  },
-  {
-    id: 'project',
-    label: 'Project Management',
-    features: [
-      { id: 'projects', label: 'Projects' },
-      { id: 'tasks', label: 'Tasks' },
-      { id: 'milestones', label: 'Milestones' },
-    ],
-  },
-]
 
 const getInitialPermissions = (): RolePermissions => {
   const permissions: RolePermissions = {}
@@ -201,9 +161,9 @@ const CreateRolePage = () => {
                           </div>
                         </div>
                         <div
-                          className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[500px]' : 'max-h-0'}`}
+                          className={`overflow-hidden transition-all duration-300 ${isExpanded ? 'max-h-[80vh]' : 'max-h-0'}`}
                         >
-                          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-bodybg">
+                          <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-bodybg max-h-[75vh] overflow-y-auto">
                             <div className="table-responsive overflow-x-auto">
                               <table className="table min-w-full table-bordered border-gray-200 dark:border-gray-700">
                                 <thead>

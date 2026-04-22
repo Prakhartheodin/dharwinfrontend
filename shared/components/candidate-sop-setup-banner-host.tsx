@@ -2,14 +2,14 @@
 
 import { useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import CandidateNextActionsStrip from "@/app/(components)/(contentlayout)/ats/candidates/_components/CandidateNextActionsStrip";
+import CandidateNextActionsStrip from "@/app/(components)/(contentlayout)/ats/employees/_components/CandidateNextActionsStrip";
 
 /** Resolve candidate id from common SOP deep-link query shapes. */
 export function candidateIdFromUrl(pathname: string | null, searchString: string): string | null {
   const sp = new URLSearchParams(searchString);
   const cid = sp.get("candidateId")?.trim();
   if (cid) return cid;
-  if (pathname?.includes("/ats/candidates/edit")) {
+  if (pathname?.includes("/ats/employees/edit")) {
     const id = sp.get("id")?.trim();
     if (id) return id;
   }

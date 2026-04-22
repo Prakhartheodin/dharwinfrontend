@@ -453,7 +453,7 @@ export async function runAssignmentGenerationWithUi(
   };
 
   Swal.fire({
-    title: "AI candidate assignment",
+    title: "AI employee assignment",
     html: assignmentProgressModalHtml(),
     width: 520,
     padding: "1.35rem",
@@ -516,7 +516,7 @@ export async function runAssignmentGenerationWithUi(
         ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
         : undefined) ??
       "Could not start assignment. The project needs at least one task, and your role needs candidates.read (and project access).";
-    await Swal.fire({ icon: "warning", title: "AI candidate assignment", text: message });
+    await Swal.fire({ icon: "warning", title: "AI employee assignment", text: message });
     options?.afterError?.();
   }
 }

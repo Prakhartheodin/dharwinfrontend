@@ -98,7 +98,7 @@ export interface ListCandidatesParams {
 }
 
 export async function listCandidates(params?: ListCandidatesParams): Promise<CandidatesListResponse> {
-  const { data } = await apiClient.get<CandidatesListResponse>("/candidates", { params });
+  const { data } = await apiClient.get<CandidatesListResponse>("/employees", { params });
   return data;
 }
 
@@ -126,19 +126,19 @@ export async function getStudentAgentAssignments(): Promise<{
   agents: AgentOption[];
 }> {
   const { data } = await apiClient.get<{ students: StudentAgentAssignmentRow[]; agents: AgentOption[] }>(
-    "/candidates/student-agent-assignments"
+    "/employees/student-agent-assignments"
   );
   return data;
 }
 
 /** All Agent-role users for ATS filter checklist — requires `candidates.read`. */
 export async function getCandidateFilterAgents(): Promise<{ agents: AgentOption[] }> {
-  const { data } = await apiClient.get<{ agents: AgentOption[] }>("/candidates/agents");
+  const { data } = await apiClient.get<{ agents: AgentOption[] }>("/employees/agents");
   return data;
 }
 
 export async function assignAgentToStudent(candidateId: string, agentId: string | null): Promise<unknown> {
-  const { data } = await apiClient.post(`/candidates/${candidateId}/assign-agent`, { agentId });
+  const { data } = await apiClient.post(`/employees/${candidateId}/assign-agent`, { agentId });
   return data;
 }
 
@@ -157,12 +157,12 @@ export interface CompanyEmailAssignmentRow {
 }
 
 export async function getCompanyEmailAssignments(): Promise<{ students: CompanyEmailAssignmentRow[] }> {
-  const { data } = await apiClient.get<{ students: CompanyEmailAssignmentRow[] }>("/candidates/company-email-assignments");
+  const { data } = await apiClient.get<{ students: CompanyEmailAssignmentRow[] }>("/employees/company-email-assignments");
   return data;
 }
 
 export async function getCompanyEmailSettings(): Promise<{ companyEmailAssignmentEnabled: boolean }> {
-  const { data } = await apiClient.get<{ companyEmailAssignmentEnabled: boolean }>("/candidates/company-email-settings");
+  const { data } = await apiClient.get<{ companyEmailAssignmentEnabled: boolean }>("/employees/company-email-settings");
   return data;
 }
 
@@ -170,7 +170,7 @@ export async function patchCompanyEmailSettings(
   companyEmailAssignmentEnabled: boolean
 ): Promise<{ companyEmailAssignmentEnabled: boolean }> {
   const { data } = await apiClient.patch<{ companyEmailAssignmentEnabled: boolean }>(
-    "/candidates/company-email-settings",
+    "/employees/company-email-settings",
     { companyEmailAssignmentEnabled }
   );
   return data;
@@ -180,44 +180,44 @@ export async function assignCompanyAssignedEmail(
   candidateId: string,
   body: { companyAssignedEmail: string | null; companyEmailProvider?: string | null }
 ): Promise<CandidateListItem> {
-  const { data } = await apiClient.post<CandidateListItem>(`/candidates/${candidateId}/company-assigned-email`, body);
+  const { data } = await apiClient.post<CandidateListItem>(`/employees/${candidateId}/company-assigned-email`, body);
   return data;
 }
 
 export async function getCandidate(candidateId: string): Promise<CandidateListItem> {
-  const { data } = await apiClient.get<CandidateListItem>(`/candidates/${candidateId}`);
+  const { data } = await apiClient.get<CandidateListItem>(`/employees/${candidateId}`);
   return data;
 }
 
 /** Get current user's own candidate (auth only, no candidates.read). For role 'user' from share-candidate-form. */
 export async function getMyCandidate(): Promise<CandidateListItem> {
-  const { data } = await apiClient.get<CandidateListItem>("/candidates/me");
+  const { data } = await apiClient.get<CandidateListItem>("/employees/me");
   return data;
 }
 
 /** Update current user's own candidate (auth only). For role 'user' from share-candidate-form. */
 export async function updateMyCandidate(payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
-  const { data } = await apiClient.patch<CandidateListItem>("/candidates/me", payload);
+  const { data } = await apiClient.patch<CandidateListItem>("/employees/me", payload);
   return data;
 }
 
 export async function createCandidate(payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
-  const { data } = await apiClient.post<CandidateListItem>("/candidates", payload);
+  const { data } = await apiClient.post<CandidateListItem>("/employees", payload);
   return data;
 }
 
 export async function updateCandidate(candidateId: string, payload: Partial<CandidateListItem>): Promise<CandidateListItem> {
-  const { data } = await apiClient.patch<CandidateListItem>(`/candidates/${candidateId}`, payload);
+  const { data } = await apiClient.patch<CandidateListItem>(`/employees/${candidateId}`, payload);
   return data;
 }
 
 export async function deleteCandidate(candidateId: string): Promise<void> {
-  await apiClient.delete(`/candidates/${candidateId}`);
+  await apiClient.delete(`/employees/${candidateId}`);
 }
 
 export async function getCandidateDocuments(candidateId: string): Promise<CandidateDocument[]> {
   const res = await apiClient.get<{ success?: boolean; data?: CandidateDocument[] | { documents?: CandidateDocument[] } }>(
-    `/candidates/documents/${candidateId}`
+    `/employees/documents/${candidateId}`
   );
   const raw = res.data?.data;
   if (Array.isArray(raw)) return raw;
@@ -234,7 +234,7 @@ export async function getDocumentDownloadUrl(
   const { data } = await apiClient.get<{
     success: boolean;
     data: { url: string; fileName: string; mimeType: string; size: number };
-  }>(`/candidates/documents/${candidateId}/${documentIndex}/download`, {
+  }>(`/employees/documents/${candidateId}/${documentIndex}/download`, {
     headers: { Accept: "application/json" },
   });
   if (!data?.success || !data?.data) throw new Error("Failed to get download URL");
@@ -249,7 +249,7 @@ export async function getSalarySlipDownloadUrl(
   const { data } = await apiClient.get<{
     success: boolean;
     data: { url: string; fileName: string; mimeType: string; size: number };
-  }>(`/candidates/salary-slips/${candidateId}/${salarySlipIndex}`, {
+  }>(`/employees/salary-slips/${candidateId}/${salarySlipIndex}`, {
     headers: { Accept: "application/json" },
   });
   if (!data?.success || !data?.data) throw new Error("Failed to get salary slip URL");
@@ -260,7 +260,7 @@ export async function addSalarySlipToCandidate(
   candidateId: string,
   payload: { month: string; year: number; documentUrl: string; key: string; originalName: string; size: number; mimeType: string }
 ): Promise<CandidateListItem> {
-  const { data } = await apiClient.post<CandidateListItem>(`/candidates/salary-slips/${candidateId}`, payload);
+  const { data } = await apiClient.post<CandidateListItem>(`/employees/salary-slips/${candidateId}`, payload);
   return data;
 }
 
@@ -269,14 +269,14 @@ export async function shareCandidateProfile(
   body: { email: string; withDoc?: boolean }
 ): Promise<{ publicUrl?: string }> {
   const { data } = await apiClient.post<{ success: boolean; data?: { publicUrl?: string } }>(
-    `/candidates/share/${candidateId}`,
+    `/employees/share/${candidateId}`,
     { withDoc: body.withDoc ?? false, email: body.email }
   );
   return data?.data ?? {};
 }
 
 export async function exportCandidateProfile(candidateId: string, email: string): Promise<void> {
-  await apiClient.post(`/candidates/${candidateId}/export`, { email });
+  await apiClient.post(`/employees/${candidateId}/export`, { email });
 }
 
 export interface ResendCandidateVerificationResponse {
@@ -293,13 +293,13 @@ export async function resendVerificationEmail(
   candidateId: string
 ): Promise<ResendCandidateVerificationResponse> {
   const { data } = await apiClient.post<ResendCandidateVerificationResponse>(
-    `/candidates/${candidateId}/resend-verification-email`
+    `/employees/${candidateId}/resend-verification-email`
   );
   return data ?? {};
 }
 
 export async function addNoteToCandidate(candidateId: string, note: string): Promise<void> {
-  await apiClient.post(`/candidates/${candidateId}/notes`, { note });
+  await apiClient.post(`/employees/${candidateId}/notes`, { note });
 }
 
 export async function addFeedbackToCandidate(
@@ -307,7 +307,7 @@ export async function addFeedbackToCandidate(
   feedback: string,
   rating?: number
 ): Promise<void> {
-  await apiClient.post(`/candidates/${candidateId}/feedback`, { feedback, rating });
+  await apiClient.post(`/employees/${candidateId}/feedback`, { feedback, rating });
 }
 
 /** Same filter shape as list; page/limit/includeOpenSopCount are ignored by export. */
@@ -325,7 +325,7 @@ export async function exportAllCandidates(
   body?: { email?: string }
 ): Promise<Blob | void> {
   const sendBlob = !body?.email;
-  const res = await apiClient.post("/candidates/export", body ?? {}, {
+  const res = await apiClient.post("/employees/export", body ?? {}, {
     params,
     ...(sendBlob ? { responseType: "blob" as const } : {}),
   });
@@ -350,35 +350,35 @@ export async function getAgentAssignmentSummary(params?: {
   employmentStatus?: "current" | "resigned" | "all" | "";
 }): Promise<AgentAssignmentSummaryResponse> {
   const { data } = await apiClient.get<AgentAssignmentSummaryResponse>(
-    "/candidates/agent-assignment-summary",
+    "/employees/agent-assignment-summary",
     { params }
   );
   return data;
 }
 
 export async function assignRecruiterToCandidate(candidateId: string, recruiterId: string): Promise<void> {
-  await apiClient.post(`/candidates/${candidateId}/assign-recruiter`, { recruiterId });
+  await apiClient.post(`/employees/${candidateId}/assign-recruiter`, { recruiterId });
 }
 
 export async function updateJoiningDate(candidateId: string, joiningDate: string): Promise<void> {
-  await apiClient.patch(`/candidates/${candidateId}/joining-date`, { joiningDate });
+  await apiClient.patch(`/employees/${candidateId}/joining-date`, { joiningDate });
 }
 
 export async function updateResignDate(candidateId: string, resignDate: string | null): Promise<void> {
-  await apiClient.patch(`/candidates/${candidateId}/resign-date`, { resignDate });
+  await apiClient.patch(`/employees/${candidateId}/resign-date`, { resignDate });
 }
 
 export async function updateWeekOff(candidateIds: string[], weekOff: string[]): Promise<void> {
-  await apiClient.post("/candidates/week-off", { candidateIds, weekOff });
+  await apiClient.post("/employees/week-off", { candidateIds, weekOff });
 }
 
 export async function getCandidateWeekOff(candidateId: string): Promise<{ weekOff?: string[] }> {
-  const { data } = await apiClient.get<{ success?: boolean; data?: { weekOff?: string[] } }>(`/candidates/${candidateId}/week-off`);
+  const { data } = await apiClient.get<{ success?: boolean; data?: { weekOff?: string[] } }>(`/employees/${candidateId}/week-off`);
   return (data as any)?.data ?? (data as any) ?? {};
 }
 
 export async function assignShiftToCandidates(candidateIds: string[], shiftId: string): Promise<void> {
-  await apiClient.post("/candidates/assign-shift", { candidateIds, shiftId });
+  await apiClient.post("/employees/assign-shift", { candidateIds, shiftId });
 }
 
 export interface DocumentStatusItem {
@@ -388,7 +388,7 @@ export interface DocumentStatusItem {
 }
 export async function getDocumentStatus(candidateId: string): Promise<{ documents?: DocumentStatusItem[] }> {
   const { data } = await apiClient.get<{ success?: boolean; data?: { documents?: DocumentStatusItem[] } }>(
-    `/candidates/documents/status/${candidateId}`
+    `/employees/documents/status/${candidateId}`
   );
   return (data as any)?.data ?? (data as any) ?? {};
 }
@@ -399,7 +399,7 @@ export async function verifyDocument(
   status: number,
   adminNotes?: string
 ): Promise<void> {
-  await apiClient.patch(`/candidates/documents/verify/${candidateId}/${documentIndex}`, { status, adminNotes });
+  await apiClient.patch(`/employees/documents/verify/${candidateId}/${documentIndex}`, { status, adminNotes });
 }
 
 export async function updateSalarySlip(
@@ -408,14 +408,14 @@ export async function updateSalarySlip(
   payload: { month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string; size?: number; mimeType?: string }
 ): Promise<CandidateListItem> {
   const { data } = await apiClient.patch<CandidateListItem>(
-    `/candidates/salary-slips/${candidateId}/${salarySlipIndex}`,
+    `/employees/salary-slips/${candidateId}/${salarySlipIndex}`,
     payload
   );
   return data;
 }
 
 export async function deleteSalarySlip(candidateId: string, salarySlipIndex: number): Promise<void> {
-  await apiClient.delete(`/candidates/salary-slips/${candidateId}/${salarySlipIndex}`);
+  await apiClient.delete(`/employees/salary-slips/${candidateId}/${salarySlipIndex}`);
 }
 
 /** Single file upload; returns URL and metadata for use in candidate documents/salarySlips/profilePicture */
@@ -481,7 +481,7 @@ export async function importCandidatesFromExcel(file: File): Promise<ImportExcel
   const formData = new FormData();
   formData.append("file", file);
   
-  const { data } = await apiClient.post<ImportExcelResult>("/candidates/import/excel", formData, {
+  const { data } = await apiClient.post<ImportExcelResult>("/employees/import/excel", formData, {
     transformRequest: [
       (data: unknown, headers: Record<string, string>) => {
         delete headers["Content-Type"];

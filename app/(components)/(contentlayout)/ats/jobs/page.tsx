@@ -11,6 +11,7 @@ import { listJobs, deleteJob, exportJobsToExcel, importJobsFromExcel, downloadJo
 import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
+import { createJobShareReferralLink } from '@/shared/lib/api/referralLeads'
 import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
 import {
   formatJobDescriptionForDisplay,
@@ -100,6 +101,9 @@ const Jobs = () => {
   const [bookmarkNotes, setBookmarkNotes] = useState<BookmarkNote[]>([])
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareJob, setShareJob] = useState<any>(null)
+  /** HMAC `ref` for the open share modal — unique to current user + job (30d). */
+  const [jobShareRefToken, setJobShareRefToken] = useState<string | null>(null)
+  const [jobShareRefLoading, setJobShareRefLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
@@ -338,14 +342,19 @@ const Jobs = () => {
     return jobsData.find(job => job.id === bookmarkNotesJobId)
   }
 
-  // Generate public URL for job
+  // Generate public URL for job (with per-sharer `ref` when loaded)
   const getJobPublicUrl = (jobId: string) => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/public-job/${jobId}`
+    const base =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/public-job/${jobId}`
+        : `${process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3001'}/public-job/${jobId}`
+    if (jobShareRefLoading && shareJob?.id === jobId) {
+      return 'Generating your personal tracking link…'
     }
-    // Use environment variable for SSR/build time (deployment-safe)
-    const baseUrl = process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3001'
-    return `${baseUrl}/public-job/${jobId}`
+    if (jobShareRefToken && shareJob?.id === jobId) {
+      return `${base}?ref=${encodeURIComponent(jobShareRefToken)}`
+    }
+    return base
   }
 
   // Copy URL to clipboard
@@ -399,11 +408,17 @@ const Jobs = () => {
     }
   }
 
-  // Handle share button click
+  // Handle share button click — fetch HMAC `ref` so the URL is unique to the logged-in user + job
   const handleShareClick = (job: any) => {
     setShareJob(job)
     setShowEmailInput(false)
     setShareEmail('')
+    setJobShareRefToken(null)
+    setJobShareRefLoading(true)
+    void createJobShareReferralLink(String(job.id))
+      .then(({ ref }) => setJobShareRefToken(ref))
+      .catch(() => setJobShareRefToken(null))
+      .finally(() => setJobShareRefLoading(false))
     setTimeout(() => {
       ;(window as any).HSOverlay?.open(document.querySelector('#share-job-modal'))
     }, 100)
@@ -1834,6 +1849,11 @@ const Jobs = () => {
         handleShareWhatsApp={handleShareWhatsApp}
         handleSendEmail={handleSendEmail}
         shareEmailSending={shareEmailSending}
+        personalLinkLoading={jobShareRefLoading}
+        onCloseShareModal={() => {
+          setJobShareRefToken(null)
+          setJobShareRefLoading(false)
+        }}
       />
 
       {/* Apply Candidate Modal */}

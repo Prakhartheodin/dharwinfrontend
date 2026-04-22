@@ -308,7 +308,7 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
                   onClick={() => void handleStartAssignmentRun()}
                   disabled={submitting || assignmentStarting}
                 >
-                  {assignmentStarting ? "Generating…" : "AI candidate assignment"}
+                  {assignmentStarting ? "Generating…" : "AI employee assignment"}
                 </button>
               )}
               <button

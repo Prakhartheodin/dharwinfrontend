@@ -25,6 +25,7 @@ import { bootstrapSmartTeam } from "@/shared/lib/api/pmAssistant";
 import { runAssignmentGenerationWithUi } from "@/shared/lib/pm/runAssignmentGenerationWithUi";
 import { isPmAssistantUiEnabled } from "@/shared/lib/pm/featureFlags";
 import { composeProjectDescriptionPlainFromParts } from "@/shared/lib/apps/composeProjectDescriptionPlain";
+import type { BreakdownContext } from "@/shared/types/pmAssistant";
 
 type AfterCreateAiMode = "ask" | "smart_team" | "tasks" | "assign";
 
@@ -57,6 +58,29 @@ function stripHtmlToText(html: string): string {
 }
 
 const MONGO_ID_REGEX = /^[0-9a-fA-F]{24}$/;
+
+function buildBootstrapBreakdownFromForm(v: ProjectFormValues): BreakdownContext {
+  const end =
+    v.endDate instanceof Date ? v.endDate : v.endDate ? new Date(v.endDate as string) : null;
+  const deadline =
+    end && !Number.isNaN(end.getTime()) ? end.toISOString().slice(0, 10) : undefined;
+  const milestones = String(v.intakeMilestones ?? "")
+    .split(/[\n,;]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 10)
+    .map((s) => s.slice(0, 80));
+  const parts = [String(v.intakeConstraints ?? "").trim(), String(v.intakeSuccess ?? "").trim()].filter(
+    Boolean
+  );
+  const extraNotes = parts.join("\n\n").slice(0, 500) || undefined;
+  return {
+    projectType: "software",
+    deadline,
+    keyDeliverables: milestones.length ? milestones : undefined,
+    extraNotes,
+  };
+}
 
 /** Read post-create checkboxes from the Swal popup DOM (not document — IDs live inside the modal). */
 function readPostCreateAiChoices(popup: HTMLElement | null): {
@@ -100,15 +124,18 @@ const Createproject = () => {
   const skipNavigateOnModalCloseRef = useRef(false);
   /** Chosen on the form: what to do after a successful create (when PM assistant UI is enabled). */
   const [afterCreateAiMode, setAfterCreateAiMode] = useState<AfterCreateAiMode>("ask");
-  /** When opening task breakdown from the form, optionally chain candidate assignment after apply. */
+  /** When opening task breakdown from the form, optionally chain employee assignment after apply. */
   const [afterTasksOpenAssignment, setAfterTasksOpenAssignment] = useState(false);
   /** Full-screen staged progress while `bootstrapSmartTeam` runs (replaces Swal loading). */
   const [aiBootstrapLoading, setAiBootstrapLoading] = useState(false);
 
-  const runSmartSetupFlow = useCallback(async (projectId: string): Promise<{ openedAssignmentReview: boolean }> => {
+  const runSmartSetupFlow = useCallback(
+    async (projectId: string, formValues: ProjectFormValues): Promise<{ openedAssignmentReview: boolean }> => {
     setAiBootstrapLoading(true);
     try {
-      const result = await bootstrapSmartTeam(projectId, {});
+      const result = await bootstrapSmartTeam(projectId, {
+        breakdownContext: buildBootstrapBreakdownFromForm(formValues),
+      });
       const runId = encodeURIComponent(result.assignmentRunId);
       const reviewUrl = `/apps/projects/assignment/${runId}`;
       const hasMatches =
@@ -119,7 +146,11 @@ const Createproject = () => {
         const r1 = await Swal.fire({
           icon: "info",
           title: "Tasks created — staffing needs review",
-          html: `<p class="text-start text-sm">${result.message ?? "No automatic candidate matches were produced."} Match candidates on the assignment screen, then approve and apply when ready.</p>`,
+          html: `<p class="text-start text-sm">${result.message ?? "No automatic employee matches were produced."} Match people on the assignment screen, then approve and apply when ready.</p>${
+            result.lowConfidence
+              ? `<p class="text-start text-xs mt-2 text-amber-700 dark:text-amber-300">Context score was below the recommended threshold (${Math.round((result.confidenceScore ?? 0) * 100)}%). Add more structured detail next time for stronger automation.</p>`
+              : ""
+          }`,
           confirmButtonText: "Open assignment review",
         });
         if (r1.isConfirmed) {
@@ -132,7 +163,11 @@ const Createproject = () => {
       const r2 = await Swal.fire({
         icon: "success",
         title: "Review AI staffing before apply",
-        html: `<p class="text-start text-sm mb-0">Tasks are saved and AI candidate matches are ready. Open the assignment screen to <strong>review</strong> rows, then <strong>approve and apply</strong> to set task owners and sync the project team — same flow as other PM assistant staffing.</p>`,
+        html: `<p class="text-start text-sm mb-0">Tasks are saved and AI employee matches are ready. Open the assignment screen to <strong>review</strong> rows, then <strong>approve and apply</strong> to set task owners and sync the project team — same flow as other PM assistant staffing.</p>${
+          result.lowConfidence
+            ? `<p class="text-start text-xs mt-2 text-amber-700 dark:text-amber-300">Context score ${Math.round((result.confidenceScore ?? 0) * 100)}% — below the 75% ideal for one-shot automation. You can still proceed.</p>`
+            : ""
+        }`,
         confirmButtonText: "Open assignment review",
         showCancelButton: true,
         cancelButtonText: "Later",
@@ -153,7 +188,9 @@ const Createproject = () => {
     } finally {
       setAiBootstrapLoading(false);
     }
-  }, [router]);
+  },
+  [router]
+  );
 
   useEffect(() => {
     setTeamOptionsError(null);
@@ -323,7 +360,7 @@ const Createproject = () => {
       }
 
       if (afterCreateAiMode === "smart_team") {
-        const { openedAssignmentReview } = await runSmartSetupFlow(projectId);
+        const { openedAssignmentReview } = await runSmartSetupFlow(projectId, values);
         if (!openedAssignmentReview) router.push("/apps/projects/project-list/");
         return;
       }
@@ -432,7 +469,7 @@ const Createproject = () => {
       }
 
       if (smart) {
-        const { openedAssignmentReview } = await runSmartSetupFlow(projectId);
+        const { openedAssignmentReview } = await runSmartSetupFlow(projectId, values);
         if (!openedAssignmentReview) router.push("/apps/projects/project-list/");
         return;
       }
@@ -552,7 +589,7 @@ const Createproject = () => {
                           Ask me first
                         </span>
                         <span className="mt-1 block text-[0.8125rem] leading-snug text-[#8c9097] dark:text-white/50">
-                          Show choices: AI team + assign, task breakdown, or candidate assignment.
+                          Show choices: AI team + assign, task breakdown, or employee assignment.
                         </span>
                       </span>
                     </label>
@@ -632,7 +669,7 @@ const Createproject = () => {
                       <span className="min-w-0">
                         <span className="flex items-center gap-2 font-semibold text-defaulttextcolor">
                           <i className="ri-user-search-line text-indigo-500/90" aria-hidden />
-                          AI candidate assignment
+                          AI employee assignment
                         </span>
                         <span className="mt-1 block text-[0.8125rem] leading-snug text-[#8c9097] dark:text-white/50">
                           Match candidates to tasks — best when the project already has tasks.
@@ -650,7 +687,7 @@ const Createproject = () => {
                         onChange={(e) => setAfterTasksOpenAssignment(e.target.checked)}
                       />
                       <span className="text-[#8c9097] dark:text-white/55">
-                        After tasks are created, open <strong className="text-defaulttextcolor">candidate assignment</strong> review automatically.
+                        After tasks are created, open <strong className="text-defaulttextcolor">employee assignment</strong> review automatically.
                       </span>
                     </label>
                   ) : null}
@@ -712,7 +749,7 @@ const Createproject = () => {
                 void Swal.fire({
                   icon: "info",
                   title: "Tasks saved",
-                  text: "Tasks were created. Starting candidate assignment failed — open the project and use “AI candidate assignment” when ready.",
+                  text: "Tasks were created. Starting employee assignment failed — open the project and use “AI employee assignment” when ready.",
                 });
                 router.push("/apps/projects/project-list/");
               },

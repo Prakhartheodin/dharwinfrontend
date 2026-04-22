@@ -106,6 +106,8 @@ export interface PublicRegisterCandidatePayload {
   email: string;
   password: string;
   phoneNumber?: string;
+  /** HMAC referral token from public share/apply link (?ref=). */
+  ref?: string;
 }
 
 export interface PublicRegisterCandidateResponse {

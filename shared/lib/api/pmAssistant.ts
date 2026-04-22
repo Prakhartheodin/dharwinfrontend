@@ -1,8 +1,13 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import type { AssignmentFeedbackItem, BreakdownContext } from "@/shared/types/pmAssistant";
+
+export type { BreakdownContext, AssignmentFeedbackItem } from "@/shared/types/pmAssistant";
 
 export interface TaskBreakdownPreviewTask {
+  /** Server-assigned preview task id (UUID); omit on apply. */
+  id?: string;
   title: string;
   description?: string;
   status?: string;
@@ -17,28 +22,49 @@ export interface TaskBreakdownPreviewUsage {
   completionTokens?: number;
 }
 
-export async function previewTaskBreakdown(
-  projectId: string,
-  body: {
-    extraBrief?: string;
-    feedback?: string;
-    priorTasks?: Pick<TaskBreakdownPreviewTask, "title" | "description">[];
-  }
-): Promise<{
+export interface TaskBreakdownPreviewResponse {
   projectId: string;
   promptHash: string;
   modelId: string;
   usage?: TaskBreakdownPreviewUsage;
   tasks: TaskBreakdownPreviewTask[];
-}> {
+  previewId: string;
+  confidenceScore: number;
+}
+
+export async function previewTaskBreakdown(
+  projectId: string,
+  body: {
+    breakdownContext?: BreakdownContext;
+    extraBrief?: string;
+    feedback?: string;
+    priorTasks?: (Pick<TaskBreakdownPreviewTask, "title" | "description" | "status"> & { id?: string })[];
+  }
+): Promise<TaskBreakdownPreviewResponse> {
   const { data } = await apiClient.post(`/pm-assistant/projects/${projectId}/task-breakdown/preview`, body);
+  return data;
+}
+
+export async function refineTaskBreakdown(
+  projectId: string,
+  body: {
+    previousPreviewId: string;
+    feedback: string;
+    lockedTaskIds?: string[];
+    breakdownContextOverride?: Partial<BreakdownContext>;
+  }
+): Promise<TaskBreakdownPreviewResponse> {
+  const { data } = await apiClient.post(
+    `/pm-assistant/projects/${projectId}/task-breakdown/refine`,
+    body
+  );
   return data;
 }
 
 export async function applyTaskBreakdown(
   projectId: string,
   tasks: TaskBreakdownPreviewTask[],
-  options?: { idempotencyKey?: string }
+  options?: { idempotencyKey?: string; previewId?: string }
 ): Promise<{ createdCount: number; tasks: unknown[] }> {
   const headers: Record<string, string> = {};
   if (options?.idempotencyKey) {
@@ -46,7 +72,7 @@ export async function applyTaskBreakdown(
   }
   const { data } = await apiClient.post(
     `/pm-assistant/projects/${projectId}/task-breakdown/apply`,
-    { tasks },
+    { tasks, previewId: options?.previewId },
     { headers }
   );
   return data;
@@ -156,6 +182,18 @@ export async function applyAssignmentRun(runId: string): Promise<unknown> {
   return data;
 }
 
+export async function submitAssignmentRunFeedback(
+  projectId: string,
+  runId: string,
+  body: { items: AssignmentFeedbackItem[]; submittedAt?: string }
+): Promise<{ accepted: number }> {
+  const { data } = await apiClient.post(
+    `/pm-assistant/projects/${projectId}/assignment-runs/${runId}/feedback`,
+    body
+  );
+  return data;
+}
+
 export interface AssignmentApplyTeamSync {
   teamGroupId?: string | null;
   membersAdded?: number;
@@ -183,9 +221,11 @@ export interface BootstrapSmartTeamResult {
 /** Requires projects.manage + tasks.manage + teams.manage + candidates.read */
 export async function bootstrapSmartTeam(
   projectId: string,
-  body?: { extraBrief?: string }
-): Promise<BootstrapSmartTeamResult> {
-  const { data } = await apiClient.post<BootstrapSmartTeamResult>(
+  body?: { extraBrief?: string; breakdownContext?: BreakdownContext }
+): Promise<
+  BootstrapSmartTeamResult & { confidenceScore?: number; lowConfidence?: boolean }
+> {
+  const { data } = await apiClient.post(
     `/pm-assistant/projects/${projectId}/bootstrap-smart-team`,
     body ?? {}
   );

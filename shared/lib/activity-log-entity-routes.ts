@@ -17,7 +17,7 @@ export function getActivityLogEntityHref(
 
   switch (entityType) {
     case "Candidate":
-      return `/ats/candidates/edit?id=${encodeURIComponent(id)}`;
+      return `/ats/employees/edit?id=${encodeURIComponent(id)}`;
     case "Job":
       return `/ats/jobs/edit/${encodeURIComponent(id)}`;
     case "User":

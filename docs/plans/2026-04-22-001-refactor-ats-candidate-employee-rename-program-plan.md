@@ -8,7 +8,7 @@ depth: deep
 see_also: docs/plans/2026-04-22-002-refactor-ats-candidate-employee-master-program-plan.md
 ---
 
-> **Master index:** For aggregated narrative (PDF roadmap + data-model note + document map), see [`2026-04-22-002-refactor-ats-candidate-employee-master-program-plan.md`](2026-04-22-002-refactor-ats-candidate-employee-master-program-plan.md). **T5** does *not* require new profile *fields*—the `Candidate` document already includes `employeeId` and neutral keys; the heavy lift is model/collection name and `ref: 'Candidate'` on **other** models.
+> **Master index:** For aggregated narrative (PDF roadmap + data-model note + document map), see [`2026-04-22-002-refactor-ats-candidate-employee-master-program-plan.md`](2026-04-22-002-refactor-ats-candidate-employee-master-program-plan.md). **T5** does *not* require new profile *fields*—the `Candidate` document already includes `employeeId` and neutral keys; the heavy lift is model/collection name and `ref: 'Candidate'` on **other** models. An **execution tranche** that **forbids database mutations** defers R4, R5, and Units 6–7; see 002’s section *Execution tranche: no database mutations*.
 
 # refactor: ATS Candidate → Employee rename (phased program)
 
