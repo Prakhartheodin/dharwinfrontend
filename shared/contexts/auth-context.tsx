@@ -11,6 +11,11 @@ import {
 } from "@/shared/lib/activity-log-client-geo";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
+import {
+  clearImpersonationReturnPath,
+  consumeImpersonationReturnPath,
+  setImpersonationReturnPathForSession,
+} from "@/shared/lib/impersonation-return-path";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import type { ImpersonationInfo, Session, User } from "@/shared/lib/types";
 
@@ -36,7 +41,11 @@ interface AuthContextValue {
   checkAuth: () => Promise<void>;
   /** Refresh only user/impersonation/sessions from getMe (e.g. after profile update). Does not re-fetch permissions. */
   refreshUser: () => Promise<void>;
-  startImpersonation: (userId: string, targetUserName?: string) => Promise<void>;
+  startImpersonation: (
+    userId: string,
+    targetUserName?: string,
+    options?: { returnPathAfterStop?: string }
+  ) => Promise<void>;
   stopImpersonation: () => Promise<void>;
 }
 
@@ -315,6 +324,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsDesignatedSuperadmin(false);
       setPermissionsLoaded(true);
       clearAuthFromLocalStorage();
+      clearImpersonationReturnPath();
       resetActivityLogGeoForSignOut();
       setIsLoading(false);
       router.push(ROUTES.signIn);
@@ -322,7 +332,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const startImpersonation = useCallback(
-    async (userId: string, targetUserName?: string) => {
+    async (userId: string, targetUserName?: string, options?: { returnPathAfterStop?: string }) => {
       const name = targetUserName ?? "user";
       setLoadingMessage(`Logging in as ${name}`);
       setIsLoading(true);
@@ -346,6 +356,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsDesignatedSuperadmin(false);
         }
         setPermissionsLoaded(true);
+        if (options?.returnPathAfterStop) {
+          setImpersonationReturnPathForSession(options.returnPathAfterStop);
+        } else {
+          clearImpersonationReturnPath();
+        }
         router.push(ROUTES.defaultAfterLogin);
       } finally {
         setLoadingMessage(null);
@@ -379,7 +394,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsDesignatedSuperadmin(false);
       }
       setPermissionsLoaded(true);
-      router.refresh();
+      const returnPath = consumeImpersonationReturnPath();
+      if (returnPath) {
+        router.push(returnPath);
+      } else {
+        router.refresh();
+      }
     } finally {
       setLoadingMessage(null);
       setIsLoading(false);

@@ -105,3 +105,68 @@
 th.text-center{
   text-align: center !important;
 }
+
+/* Schedule Interview — portaled react-datepicker (above modal, cohesive tokens) */
+.schedule-interview-dp-cal.react-datepicker {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(226 232 240 / 0.95);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.18);
+  font-family: inherit;
+}
+.dark .schedule-interview-dp-cal.react-datepicker {
+  border-color: rgb(255 255 255 / 0.12);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.55);
+  background: rgb(15 23 42 / 1);
+}
+.schedule-interview-dp-cal .react-datepicker__header {
+  background: linear-gradient(to bottom, rgb(248 250 252 / 1), rgb(255 255 255 / 1));
+  border-bottom: 1px solid rgb(226 232 240 / 0.9);
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+.dark .schedule-interview-dp-cal .react-datepicker__header {
+  background: linear-gradient(to bottom, rgb(0 0 0 / 0.35), rgb(0 0 0 / 0.2));
+  border-bottom-color: rgb(255 255 255 / 0.1);
+}
+.schedule-interview-dp-cal .react-datepicker__day--selected,
+.schedule-interview-dp-cal .react-datepicker__day--keyboard-selected {
+  background-color: rgb(var(--primary) / 1) !important;
+  color: #fff !important;
+}
+.schedule-interview-dp-cal .react-datepicker__day:hover {
+  background-color: rgb(var(--primary) / 0.12) !important;
+}
+.schedule-interview-dp-cal .react-datepicker-time-list-item--selected {
+  background-color: rgb(var(--primary) / 1) !important;
+  color: #fff !important;
+}
+.schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
+  border-color: rgb(100 116 139);
+}
+.dark .schedule-interview-dp-cal .react-datepicker__navigation-icon::before {
+  border-color: rgb(226 232 240 / 0.75);
+}
+
+/* Schedule Interview — custom trigger + isClearable (library defaults overlap the control) */
+.schedule-interview-dp-wrap {
+  position: relative;
+}
+.schedule-interview-dp-wrap .react-datepicker__close-icon {
+  position: absolute !important;
+  right: 0.75rem !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  height: auto !important;
+  max-height: none !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+.schedule-interview-dp-wrap .react-datepicker__close-icon::after {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  vertical-align: middle !important;
+  background-color: rgb(var(--primary) / 1) !important;
+}

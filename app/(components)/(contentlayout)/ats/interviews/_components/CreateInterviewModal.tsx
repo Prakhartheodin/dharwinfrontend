@@ -1,11 +1,46 @@
 "use client"
 import React, { useCallback, useMemo } from 'react'
+import dynamic from 'next/dynamic'
+import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import type { Meeting } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import type { User } from '@/shared/lib/types'
+
+const DatePicker = dynamic(() => import('react-datepicker').then((m) => m.default), { ssr: false })
+
+type WhenTriggerProps = { value?: string; onClick?: () => void; disabled?: boolean }
+
+/** Custom trigger for react-datepicker (must forward ref). */
+const ScheduleInterviewWhenTrigger = React.forwardRef<HTMLButtonElement, WhenTriggerProps>(
+  function ScheduleInterviewWhenTrigger({ value, onClick, disabled }, ref) {
+    return (
+      <button
+        type="button"
+        ref={ref}
+        onClick={onClick}
+        disabled={disabled}
+        id="schedule-when-trigger"
+        className="group flex w-full items-center gap-3 rounded-xl border border-defaultborder bg-white py-2.5 pl-3.5 pr-12 text-left text-sm shadow-sm transition-[border-color,box-shadow,transform] duration-200 ease-out hover:border-primary/35 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 motion-reduce:transition-none dark:border-defaultborder/10 dark:bg-bodybg dark:focus-visible:ring-offset-bodybg active:scale-[0.99] motion-reduce:active:scale-100"
+        aria-haspopup="dialog"
+        aria-expanded={undefined}
+        aria-label={value ? `Interview date and time: ${value}` : 'Choose interview date and time'}
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/[0.08] text-primary transition-transform duration-200 motion-reduce:transition-none group-hover:scale-105 motion-reduce:group-hover:scale-100 dark:bg-primary/15">
+          <i className="ri-calendar-schedule-line text-lg" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1 pr-1">
+          <span className="block text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-textmuted dark:text-white/50">Date and time</span>
+          <span className="block truncate font-medium text-defaulttextcolor dark:text-white">
+            {value || 'Select date & time'}
+          </span>
+        </span>
+      </button>
+    )
+  }
+)
 export interface CreateInterviewModalProps {
   createdMeeting: Meeting | null
   resetCreateMeetingForm: () => void
@@ -20,6 +55,9 @@ export interface CreateInterviewModalProps {
   setHosts: React.Dispatch<React.SetStateAction<{ nameOrRole: string; email: string }[]>>
   emailInvites: string[]
   setEmailInvites: React.Dispatch<React.SetStateAction<string[]>>
+  /** Local combined date+time for the schedule form (owned by parent so reset/close clears reliably). */
+  scheduledInterviewAt: Date | null
+  onScheduledInterviewAtChange: (value: Date | null) => void
 }
 
 export default function CreateInterviewModal({
@@ -36,6 +74,8 @@ export default function CreateInterviewModal({
   setHosts,
   emailInvites,
   setEmailInvites,
+  scheduledInterviewAt,
+  onScheduledInterviewAtChange,
 }: CreateInterviewModalProps) {
   const { user } = useAuth()
   /** Room-only URL safe to share with anyone (no logged-in user name/email). */
@@ -50,10 +90,81 @@ export default function CreateInterviewModal({
     return appendJoinIdentityToUrl(base, joinName, joinEmail)
   }, [shareMeetingUrl, user?.name, user?.email])
 
+  const startOfToday = useMemo(() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    return d
+  }, [])
+
+  const filterTime = useCallback((time: Date) => time.getTime() > Date.now() - 60_000, [])
+
+  const scheduleDateStr = scheduledInterviewAt ? format(scheduledInterviewAt, 'yyyy-MM-dd') : ''
+  const scheduleTimeStr = scheduledInterviewAt ? format(scheduledInterviewAt, 'HH:mm') : ''
+
   const closeCreateInterviewModal = useCallback(() => {
     resetCreateMeetingForm()
     ;(window as any).HSOverlay?.close(document.querySelector('#create-interview-modal'))
   }, [resetCreateMeetingForm])
+
+  /**
+   * Quick-fill schedule form for an "instant interview" flow.
+   * Keeps existing selected values when present, only fills blanks/defaults.
+   */
+  const handleInstantInterviewFill = useCallback(() => {
+    const now = new Date()
+    const rounded = new Date(now)
+    rounded.setSeconds(0, 0)
+    // Start at next 15-minute slot with a small future buffer.
+    const nextQuarter = Math.ceil((rounded.getMinutes() + 2) / 15) * 15
+    rounded.setMinutes(nextQuarter)
+
+    const titleInput = document.querySelector<HTMLInputElement>('#schedule-meeting-title')
+    const descInput = document.querySelector<HTMLTextAreaElement>('#schedule-description')
+    const durationInput = document.querySelector<HTMLInputElement>('#schedule-duration')
+    const maxInput = document.querySelector<HTMLInputElement>('#schedule-max-participants')
+    const jobSelect = document.querySelector<HTMLSelectElement>('#schedule-job')
+    const candidateSelect = document.querySelector<HTMLSelectElement>('#schedule-candidate')
+    const recruiterSelect = document.querySelector<HTMLSelectElement>('#schedule-recruiter')
+    const notesInput = document.querySelector<HTMLTextAreaElement>('#schedule-notes')
+    const allowGuest = document.querySelector<HTMLInputElement>('#schedule-allow-guest')
+    const requireApproval = document.querySelector<HTMLInputElement>('#schedule-require-approval')
+    const videoType = document.querySelector<HTMLInputElement>('input[name="schedule-type"][value="video"]')
+
+    if (titleInput && !titleInput.value.trim()) {
+      titleInput.value = `Instant Interview - ${format(rounded, 'MMM d, h:mm a')}`
+    }
+    if (descInput && !descInput.value.trim()) {
+      descInput.value = 'Auto-filled instant interview details.'
+    }
+    if (durationInput) durationInput.value = '60'
+    if (maxInput) maxInput.value = '10'
+    if (allowGuest) allowGuest.checked = true
+    if (requireApproval) requireApproval.checked = false
+    if (videoType) videoType.checked = true
+    if (notesInput && !notesInput.value.trim()) notesInput.value = 'Instant interview'
+
+    if (jobSelect && !jobSelect.value && jobSelect.options.length > 1) {
+      jobSelect.value = jobSelect.options[1].value
+    }
+    if (candidateSelect && !candidateSelect.value && candidateSelect.options.length > 1) {
+      candidateSelect.value = candidateSelect.options[1].value
+    }
+    if (recruiterSelect && !recruiterSelect.value && recruiterSelect.options.length > 1) {
+      const selfByEmail = recruiters.find((r) => r.email?.toLowerCase() === user?.email?.toLowerCase())
+      recruiterSelect.value = selfByEmail?.id || recruiterSelect.options[1].value
+    }
+
+    if (hosts.length === 0 || !hosts[0]?.email?.trim()) {
+      const fallbackName = user?.name?.trim() || user?.email?.split('@')[0] || 'Host'
+      const fallbackEmail = user?.email?.trim() || ''
+      setHosts([{ nameOrRole: fallbackName, email: fallbackEmail }, ...hosts.slice(1)])
+    }
+    if (emailInvites.length === 1 && !emailInvites[0]?.trim()) {
+      setEmailInvites([''])
+    }
+
+    onScheduledInterviewAtChange(rounded)
+  }, [emailInvites, hosts, onScheduledInterviewAtChange, recruiters, setEmailInvites, setHosts, user?.email, user?.name])
 
   return (
     <div id="create-interview-modal" className="hs-overlay hidden ti-modal size-lg !z-[105]" tabIndex={-1} aria-labelledby="create-interview-modal-label" aria-hidden="true">
@@ -238,27 +349,66 @@ export default function CreateInterviewModal({
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />
                   When
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label htmlFor="schedule-date" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                      Date <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="date"
-                      id="schedule-date"
-                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
+                <div className="relative overflow-visible rounded-xl border border-defaultborder/70 bg-gradient-to-br from-slate-50/90 via-white to-white p-4 shadow-sm ring-1 ring-black/[0.03] dark:from-white/[0.04] dark:via-bodybg dark:to-bodybg dark:border-defaultborder/20 dark:ring-white/[0.04]">
+                  <div className="space-y-3">
+                    <div>
+                      <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white">
+                        Date and start time <span className="text-danger">*</span>
+                      </span>
+                      <span className="mt-0.5 block text-xs text-textmuted dark:text-white/50">
+                        One picker — 15-minute slots, Monday-first week, not clipped by the modal
+                      </span>
+                    </div>
+                    <div className="flex justify-start">
+                      <button
+                        type="button"
+                        onClick={handleInstantInterviewFill}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.06] px-2.5 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.08em] text-primary transition-colors hover:bg-primary/[0.12] dark:border-primary/40 dark:bg-primary/10"
+                      >
+                        <i className="ri-flashlight-line text-sm" />
+                        Instant interview
+                      </button>
+                    </div>
+                    {scheduledInterviewAt ? (
+                      <div className="inline-flex w-full max-w-full" aria-live="polite">
+                        <span className="inline-flex items-center rounded-lg border border-primary/20 bg-primary/[0.06] px-2.5 py-1.5 text-[0.6875rem] font-medium text-primary shadow-sm dark:border-primary/30 dark:bg-primary/10 dark:text-primary">
+                          {format(scheduledInterviewAt, 'MMM d')} · {format(scheduledInterviewAt, 'h:mm a')}
+                        </span>
+                      </div>
+                    ) : null}
+                    <div className="isolate min-h-0 w-full">
+                      <input type="hidden" id="schedule-date" name="schedule-date" value={scheduleDateStr} readOnly tabIndex={-1} aria-hidden />
+                      <input type="hidden" id="schedule-time" name="schedule-time" value={scheduleTimeStr} readOnly tabIndex={-1} aria-hidden />
+                      <DatePicker
+                        selected={scheduledInterviewAt}
+                        onChange={(d: Date | null) => onScheduledInterviewAtChange(d)}
+                        showTimeSelect
+                        timeIntervals={15}
+                        timeCaption="Start"
+                        dateFormat="EEE, MMM d, yyyy h:mm aa"
+                        minDate={startOfToday}
+                        filterTime={filterTime}
+                        withPortal
+                        shouldCloseOnSelect={false}
+                        showMonthDropdown
+                        showYearDropdown
+                        dropdownMode="select"
+                        calendarStartDay={1}
+                        todayButton="Today"
+                        isClearable
+                        disabled={dropdownsLoading || formLoading}
+                        popperClassName="!z-[130]"
+                        popperProps={{ strategy: 'fixed' }}
+                        calendarClassName="schedule-interview-dp-cal"
+                        wrapperClassName="schedule-interview-dp-wrap block w-full"
+                        customInput={<ScheduleInterviewWhenTrigger disabled={dropdownsLoading || formLoading} />}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label htmlFor="schedule-time" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                      Time <span className="text-danger">*</span>
-                    </label>
-                    <input
-                      type="time"
-                      id="schedule-time"
-                      className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    />
-                  </div>
+                  <p className="mt-3 text-[0.8125rem] leading-relaxed text-textmuted dark:text-white/55">
+                    Past times today are hidden. Use <span className="font-medium text-defaulttextcolor/85 dark:text-white/75">Clear</span> on the
+                    calendar to reset.
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>

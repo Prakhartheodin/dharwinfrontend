@@ -47,6 +47,8 @@ export const ROUTES = {
   verifyEmail: "/authentication/verify-email/",
   // After login, send users to the main dashboard, not the CRM dashboard.
   defaultAfterLogin: "/dashboard/",
+  /** ATS — candidate list (admin); used as return URL after exit impersonation when started from here. */
+  atsCandidates: "/ats/candidates/",
   /** Candidate profile (for users with role 'user' from share-candidate-form). Redirects to edit form. */
   candidateProfile: "/ats/my-profile/",
   roles: "/roles/",

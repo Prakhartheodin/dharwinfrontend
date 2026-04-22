@@ -12,6 +12,7 @@ import "@livekit/components-styles";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
+import Swal from "sweetalert2";
 import * as livekitApi from "@/shared/lib/api/livekit";
 import { endMeetingPublic } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -205,6 +206,128 @@ function LobbyDevicePreview({
   );
 }
 
+const MS_15_WARN = 15 * 60 * 1000;
+const MS_5_FINAL = 5 * 60 * 1000;
+
+/**
+ * Calendar end (scheduledAt + duration): host warnings + host-only last-5m timer; all participants leave at endAt.
+ * Server also deletes the LiveKit room when the meeting is marked ended (host action or scheduler).
+ */
+function MeetingScheduleCountdown({
+  meetingEndAtIso,
+  isHost,
+  participantEmail,
+  roomName,
+  onHardEnd,
+}: {
+  meetingEndAtIso: string | null;
+  isHost: boolean;
+  participantEmail?: string;
+  roomName: string;
+  onHardEnd: () => void;
+}) {
+  const room = useRoomContext();
+  const prevRemainingRef = useRef<number | null>(null);
+  const warned15Ref = useRef(false);
+  const warned5ModalRef = useRef(false);
+  const hardEndStartedRef = useRef(false);
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!meetingEndAtIso) return;
+    const endMs = new Date(meetingEndAtIso).getTime();
+    if (Number.isNaN(endMs)) return;
+
+    const tick = () => {
+      if (hardEndStartedRef.current) return;
+      const r = endMs - Date.now();
+      setRemainingMs(r);
+
+      if (r <= 0) {
+        hardEndStartedRef.current = true;
+        void (async () => {
+          try {
+            if (isHost && participantEmail) {
+              await endMeetingPublic(roomName, participantEmail);
+            }
+          } catch {
+            /* still disconnect locally */
+          }
+          try {
+            await room.disconnect();
+          } catch {
+            /* ignore */
+          }
+          onHardEnd();
+        })();
+        return;
+      }
+
+      const prev = prevRemainingRef.current;
+      prevRemainingRef.current = r;
+      if (!isHost || prev === null) return;
+
+      if (prev > MS_15_WARN && r <= MS_15_WARN && r > MS_5_FINAL && !warned15Ref.current) {
+        warned15Ref.current = true;
+        void Swal.fire({
+          toast: true,
+          position: "top-end",
+          icon: "info",
+          title: "About 15 minutes left",
+          text: "This interview will end at the scheduled time.",
+          showConfirmButton: false,
+          timer: 6500,
+          timerProgressBar: true,
+          background: "#1f2937",
+          color: "#f9fafb",
+        });
+      }
+      if (prev > MS_5_FINAL && r <= MS_5_FINAL && r > 0 && !warned5ModalRef.current) {
+        warned5ModalRef.current = true;
+        void Swal.fire({
+          icon: "warning",
+          title: "Meeting is about to end",
+          html: "<p>Less than <strong>5 minutes</strong> remain before this room closes.</p>",
+          confirmButtonText: "OK",
+          allowOutsideClick: true,
+          background: "#111827",
+          color: "#f9fafb",
+          confirmButtonColor: "#6d28d9",
+        });
+      }
+    };
+
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [meetingEndAtIso, isHost, participantEmail, roomName, room, onHardEnd]);
+
+  if (!meetingEndAtIso) return null;
+  if (!isHost || remainingMs === null || remainingMs > MS_5_FINAL || remainingMs <= 0) return null;
+
+  const totalSec = Math.max(0, Math.floor(remainingMs / 1000));
+  const mm = Math.floor(totalSec / 60);
+  const ss = totalSec % 60;
+  const label = `${mm}:${String(ss).padStart(2, "0")}`;
+
+  return createPortal(
+    <div
+      className="pointer-events-none fixed bottom-4 right-4 z-[3000] flex flex-col items-end gap-1"
+      role="status"
+      aria-live="polite"
+      aria-label={`Meeting ends in ${mm} minutes ${ss} seconds`}
+    >
+      <div className="rounded-lg border border-amber-500/40 bg-black/80 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-amber-200 shadow-lg backdrop-blur-sm">
+        Ending soon
+      </div>
+      <div className="rounded-xl border border-primary/50 bg-gray-950/95 px-4 py-3 font-mono text-2xl font-bold tabular-nums text-white shadow-2xl ring-1 ring-white/10 backdrop-blur-md">
+        {label}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function PublicRoomContent({
   onLeave,
   onReconnect,
@@ -215,6 +338,7 @@ function PublicRoomContent({
   isHost,
   participantEmail,
   waitingParticipantIdentities,
+  meetingEndAtIso,
 }: {
   onLeave: () => void;
   onReconnect: () => void | Promise<void>;
@@ -225,6 +349,7 @@ function PublicRoomContent({
   isHost: boolean;
   participantEmail?: string;
   waitingParticipantIdentities?: string[];
+  meetingEndAtIso: string | null;
 }) {
   const room = useRoomContext();
   const [waitingIds, setWaitingIds] = useState<string[]>(waitingParticipantIdentities || []);
@@ -235,6 +360,10 @@ function PublicRoomContent({
   const connectionStateRef = useRef<ConnectionState>(room.state);
   const appliedInitialMediaRef = useRef(false);
   const initialMediaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const participants = useParticipants();
+  const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
+  const [recordingToast, setRecordingToast] = useState(false);
+  const [meetingEndedToast, setMeetingEndedToast] = useState(false);
 
   useEffect(() => {
     const handleDisconnect = (reason?: DisconnectReason) => {
@@ -314,11 +443,6 @@ function PublicRoomContent({
       if (initialMediaTimeoutRef.current) clearTimeout(initialMediaTimeoutRef.current);
     };
   }, [room, initialAudioEnabled, initialVideoEnabled]);
-
-  const participants = useParticipants();
-  const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
-  const [recordingToast, setRecordingToast] = useState(false);
-  const [meetingEndedToast, setMeetingEndedToast] = useState(false);
 
   // Inject recording button into control bar (beside the disconnect/leave button)
   useEffect(() => {
@@ -714,6 +838,13 @@ function PublicRoomContent({
         }
       `}} />
       <div className="room-meeting-container relative flex flex-col h-full min-h-0 w-full">
+        <MeetingScheduleCountdown
+          meetingEndAtIso={meetingEndAtIso}
+          isHost={isHost}
+          participantEmail={participantEmail}
+          roomName={roomName}
+          onHardEnd={onLeave}
+        />
         <VideoConference />
         <RoomAudioRenderer />
         {isHost &&
@@ -835,6 +966,8 @@ export default function PublicMeetingRoomClient() {
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(false);
   const [waitingParticipantIdentities, setWaitingParticipantIdentities] = useState<string[]>([]);
+  /** Calendar end from token API (scheduledAt + duration) for countdown / auto-leave */
+  const [meetingEndAtIso, setMeetingEndAtIso] = useState<string | null>(null);
   const admissionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const participantIdentityRef = useRef<string | null>(null);
 
@@ -1065,6 +1198,7 @@ export default function PublicMeetingRoomClient() {
         participantEmail || undefined
       );
       setToken(data.token);
+      setMeetingEndAtIso(data.meetingEndAt ?? null);
       const pid = data.participantIdentity ?? null;
       setParticipantIdentity(pid);
       participantIdentityRef.current = pid;
@@ -1128,6 +1262,7 @@ export default function PublicMeetingRoomClient() {
             admissionPollRef.current = null;
           }
           setToken(data.token);
+          setMeetingEndAtIso(data.meetingEndAt ?? null);
           if (data.participantIdentity) {
             setParticipantIdentity(data.participantIdentity);
             participantIdentityRef.current = data.participantIdentity;
@@ -1182,6 +1317,7 @@ export default function PublicMeetingRoomClient() {
         participantIdentityRef.current ?? participantIdentity ?? undefined
       );
       setToken(data.token);
+      setMeetingEndAtIso(data.meetingEndAt ?? null);
       if (data.participantIdentity) {
         setParticipantIdentity(data.participantIdentity);
         participantIdentityRef.current = data.participantIdentity;
@@ -1523,6 +1659,7 @@ export default function PublicMeetingRoomClient() {
           roomName={decodeURIComponent(roomId)}
           isHost={isHost}
           participantEmail={participantEmail || undefined}
+          meetingEndAtIso={meetingEndAtIso}
         />
       </LiveKitRoom>
     </div>

@@ -307,7 +307,7 @@ export default function SettingsUsersPage() {
 
     setImpersonatingUserId(targetUser.id);
     try {
-      await startImpersonation(targetUser.id, nameOrEmail);
+      await startImpersonation(targetUser.id, nameOrEmail, { returnPathAfterStop: ROUTES.settingsUsers });
     } catch (err) {
       setImpersonatingUserId(null);
       const msg =
