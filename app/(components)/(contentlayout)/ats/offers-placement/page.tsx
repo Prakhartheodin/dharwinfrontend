@@ -13,6 +13,7 @@ import {
   getOfferById,
   getOfferLetterDefaults,
   generateOfferLetterPdf,
+  formatOfferLetterPdfError,
   downloadOfferLetterFile,
 } from '@/shared/lib/api/offers'
 import type { Offer, OfferLetterJobType } from '@/shared/lib/api/offers'
@@ -656,12 +657,13 @@ const OffersPlacement = () => {
     }
     setLetterBusy(true)
     try {
-      await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as any)
-      const updated = await generateOfferLetterPdf(id)
+      const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as any)
+      const genId = getOfferRecordId(patched) || id
+      const updated = await generateOfferLetterPdf(genId)
       setLetterModalOffer(updated)
       refreshOffers()
     } catch (e: unknown) {
-      alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Could not generate PDF')
+      alert(formatOfferLetterPdfError(e, 'Could not generate PDF'))
     } finally {
       setLetterBusy(false)
     }

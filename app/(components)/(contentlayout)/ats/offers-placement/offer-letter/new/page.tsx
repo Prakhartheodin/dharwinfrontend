@@ -12,6 +12,7 @@ import {
   createOffer,
   downloadOfferLetterFile,
   generateOfferLetterPdf,
+  formatOfferLetterPdfError,
   getOfferById,
   getOfferLetterDefaults,
   updateOffer,
@@ -141,8 +142,9 @@ export default function NewOfferLetterPage() {
       }
       setLetterBusy(true);
       try {
-        await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, linkedOffer));
-        const updated = await generateOfferLetterPdf(id);
+        const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, linkedOffer));
+        const genId = getOfferRecordId(patched) || id;
+        const updated = await generateOfferLetterPdf(genId);
         setLinkedOffer(updated);
         const newId = getOfferRecordId(updated);
         if (newId && (!offerIdParam || offerIdParam !== newId)) {
@@ -151,11 +153,7 @@ export default function NewOfferLetterPage() {
           });
         }
       } catch (e: unknown) {
-        const msg =
-          (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          (e as Error)?.message ||
-          "Could not generate PDF";
-        alert(msg);
+        alert(formatOfferLetterPdfError(e, "Could not generate PDF"));
       } finally {
         setLetterBusy(false);
       }
@@ -175,16 +173,13 @@ export default function NewOfferLetterPage() {
       }
 
       setLinkedOffer(created);
-      await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, created));
-      const updated = await generateOfferLetterPdf(id);
+      const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, created));
+      const genId = getOfferRecordId(patched) || id;
+      const updated = await generateOfferLetterPdf(genId);
       setLinkedOffer(updated);
-      router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, { scroll: false });
+      router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(genId)}`, { scroll: false });
     } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e as Error)?.message ||
-        "Could not create offer or generate PDF";
-      alert(msg);
+      alert(formatOfferLetterPdfError(e, "Could not create offer or generate PDF"));
     } finally {
       setLetterBusy(false);
     }

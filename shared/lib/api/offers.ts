@@ -1,6 +1,10 @@
 "use client";
 
+import { isAxiosError } from "axios";
 import { apiClient } from "@/shared/lib/api/client";
+
+/** Generate/download touch S3 on the server; allow extra time on slow networks. */
+const OFFER_PDF_API_TIMEOUT_MS = 120_000;
 
 export type OfferStatus = "Draft" | "Sent" | "Under Negotiation" | "Accepted" | "Rejected";
 
@@ -189,13 +193,29 @@ export async function getOfferLetterDefaults(positionTitle: string): Promise<Off
 }
 
 export async function generateOfferLetterPdf(offerId: string): Promise<Offer> {
-  const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, {});
+  const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, {}, { timeout: OFFER_PDF_API_TIMEOUT_MS });
   return data;
 }
 
 export async function downloadOfferLetterFile(offerId: string): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>(`/offers/${offerId}/letter-file`, { responseType: "blob" });
+  const { data } = await apiClient.get<Blob>(`/offers/${offerId}/letter-file`, {
+    responseType: "blob",
+    timeout: OFFER_PDF_API_TIMEOUT_MS,
+  });
   return data;
+}
+
+/** User-visible message for failed offer-letter API calls (timeouts, 4xx/5xx, network). */
+export function formatOfferLetterPdfError(err: unknown, fallback: string): string {
+  if (isAxiosError(err) && (err.code === "ECONNABORTED" || err.message?.toLowerCase().includes("timeout"))) {
+    return "The request timed out. Generating a PDF saves to cloud storage; check your connection, or try again. If it keeps happening, verify AWS S3 and API server logs.";
+  }
+  if (isAxiosError(err)) {
+    const msg = (err.response?.data as { message?: string } | undefined)?.message;
+    if (msg && String(msg).trim()) return String(msg).trim();
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
 }
 
 export interface EnhanceOfferLetterRolesResponse {
