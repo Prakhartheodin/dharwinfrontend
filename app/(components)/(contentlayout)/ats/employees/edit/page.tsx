@@ -7,7 +7,7 @@ import React, { Fragment, useCallback, useEffect, useMemo, useState } from "reac
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getCandidate, getMyCandidate } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useIsCandidateForProfile } from "@/shared/hooks/use-is-candidate-for-profile";
+import { useIsEmployeeForProfile } from "@/shared/hooks/use-is-employee-for-profile";
 import AssignAgentSopModal from "../_components/AssignAgentSopModal";
 import AssignTrainingCourseSopModal from "../_components/AssignTrainingCourseSopModal";
 import { canAssignCandidateAgent, canAssignTrainingCourseFromSop } from "@/shared/lib/candidate-permissions";
@@ -19,7 +19,7 @@ const EditCandidate = () => {
   const router = useRouter();
   const id = searchParams.get("id");
   const { user, permissions, permissionsLoaded, isPlatformSuperUser } = useAuth();
-  const { isCandidate, isLoading: rolesLoading } = useIsCandidateForProfile();
+  const { isEmployee, isLoading: rolesLoading } = useIsEmployeeForProfile();
   const [initialData, setInitialData] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const canAssignAgent = useMemo(
@@ -54,7 +54,7 @@ const EditCandidate = () => {
     }
     const load = async () => {
       try {
-        if (isCandidate) {
+        if (isEmployee) {
           const data = await getMyCandidate();
           const dataId = (data as any).id ?? (data as any)._id;
           if (dataId === id) setInitialData(data);
@@ -70,27 +70,27 @@ const EditCandidate = () => {
       }
     };
     void load();
-  }, [id, user, isCandidate, rolesLoading]);
+  }, [id, user, isEmployee, rolesLoading]);
 
   useEffect(() => {
     if (!permissionsLoaded || searchParams.get("assignAgent") !== "1") return;
-    if (isCandidate || !canAssignAgent) {
+    if (isEmployee || !canAssignAgent) {
       stripAssignAgentParam();
     }
-  }, [permissionsLoaded, searchParams, isCandidate, canAssignAgent, stripAssignAgentParam]);
+  }, [permissionsLoaded, searchParams, isEmployee, canAssignAgent, stripAssignAgentParam]);
 
   useEffect(() => {
     if (!permissionsLoaded || searchParams.get("assignCourse") !== "1") return;
-    if (isCandidate || !canAssignCourse) {
+    if (isEmployee || !canAssignCourse) {
       stripAssignCourseParam();
     }
-  }, [permissionsLoaded, searchParams, isCandidate, canAssignCourse, stripAssignCourseParam]);
+  }, [permissionsLoaded, searchParams, isEmployee, canAssignCourse, stripAssignCourseParam]);
 
   const showAssignAgentModal =
     permissionsLoaded &&
     searchParams.get("assignAgent") === "1" &&
     Boolean(id) &&
-    !isCandidate &&
+    !isEmployee &&
     canAssignAgent &&
     Boolean(initialData);
 
@@ -98,12 +98,12 @@ const EditCandidate = () => {
     permissionsLoaded &&
     searchParams.get("assignCourse") === "1" &&
     Boolean(id) &&
-    !isCandidate &&
+    !isEmployee &&
     canAssignCourse &&
     Boolean(initialData);
 
   const handleAgentAssigned = useCallback(async () => {
-    if (!id || isCandidate) return;
+    if (!id || isEmployee) return;
     try {
       const data = await getCandidate(id);
       setInitialData(data);
@@ -111,7 +111,7 @@ const EditCandidate = () => {
     } catch {
       /* keep existing form data */
     }
-  }, [id, isCandidate]);
+  }, [id, isEmployee]);
 
   const handleCourseAssigned = useCallback(async () => {
     dispatchSopStripRefresh();

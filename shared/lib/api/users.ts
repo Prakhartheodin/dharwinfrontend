@@ -76,7 +76,7 @@ export interface RegisterUserPayload {
   /** Saved on User; also used when creating linked Candidate/Student profiles. */
   phoneNumber?: string;
   countryCode?: string;
-  /** Optional — applied to linked Candidate record when Candidate role is assigned. */
+  /** Optional — applied to linked Candidate (ATS) record when Employee user role is assigned. */
   employeeId?: string;
   shortBio?: string;
   /** ISO date string (YYYY-MM-DD) or full ISO datetime */
@@ -106,6 +106,8 @@ export interface PublicRegisterCandidatePayload {
   email: string;
   password: string;
   phoneNumber?: string;
+  /** ISO 3166-1 alpha-2 (e.g. US) — persisted on user + candidate for correct dial code in profile */
+  countryCode?: string;
   /** HMAC referral token from public share/apply link (?ref=). */
   ref?: string;
 }

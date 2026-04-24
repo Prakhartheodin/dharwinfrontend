@@ -25,7 +25,7 @@ export const PERMISSION_SECTIONS: {
   },
   {
     id: "candidate",
-    label: "Candidate",
+    label: "Employee",
     features: [
       { id: "courses", label: "Courses" },
     ],

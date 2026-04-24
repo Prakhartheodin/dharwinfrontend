@@ -4,6 +4,31 @@ import { useState, useEffect, useRef } from "react";
 import { useRoomContext } from "@livekit/components-react";
 import * as livekitApi from "@/shared/lib/api/livekit";
 
+/** Parse API / LiveKit startedAt to epoch ms (handles ns bigint-as-string, ISO, ms). */
+function parseRecordingStartedAtMs(raw: unknown): number | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw > 1e15 ? Math.floor(raw / 1e6) : Math.floor(raw);
+  }
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (/^\d+$/.test(s)) {
+      if (s.length > 15) {
+        try {
+          return Number(BigInt(s) / 1000000n);
+        } catch {
+          return null;
+        }
+      }
+      const ms = Number(s);
+      return Number.isFinite(ms) ? Math.floor(ms) : null;
+    }
+    const t = Date.parse(s);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
 interface RecordingButtonProps {
   roomName: string;
   hostEmail?: string;
@@ -20,6 +45,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
+  const localAnchorRef = useRef<number | null>(null);
 
   const getStatus = () =>
     hostEmail
@@ -33,12 +59,15 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
         setIsRecording(data.isRecording);
         if (data.recordings && data.recordings.length > 0) {
           setEgressId(data.recordings[0].egressId);
-          if (data.recordings[0].startedAt) {
-            const started = new Date(data.recordings[0].startedAt).getTime();
-            setRecordingStartTime(started);
+          const startedMs = parseRecordingStartedAtMs(data.recordings[0].startedAt);
+          if (startedMs != null && Number.isFinite(startedMs)) {
+            setRecordingStartTime(startedMs);
+          } else if (data.isRecording && localAnchorRef.current != null) {
+            setRecordingStartTime(localAnchorRef.current);
           }
         } else {
           setRecordingStartTime(null);
+          localAnchorRef.current = null;
         }
       } catch (err) {
         console.error("Error checking recording status:", err);
@@ -51,19 +80,24 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
   }, [roomName, hostEmail]);
 
   useEffect(() => {
-    if (!isRecording || recordingStartTime === null) {
+    const anchor = recordingStartTime;
+    if (!isRecording || anchor == null || !Number.isFinite(anchor)) {
       setElapsedSeconds(0);
       return;
     }
-    const interval = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - recordingStartTime) / 1000));
-    }, 1000);
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - anchor) / 1000);
+      setElapsedSeconds(Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
   const formatDuration = (totalSeconds: number) => {
-    const m = Math.floor(totalSeconds / 60);
-    const s = totalSeconds % 60;
+    const sec = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
 
@@ -76,7 +110,9 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
         : await livekitApi.startRecording(roomName);
       setIsRecording(true);
       setEgressId(data.egressId);
-      setRecordingStartTime(Date.now());
+      const now = Date.now();
+      localAnchorRef.current = now;
+      setRecordingStartTime(now);
       onRecordingStarted?.();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
@@ -103,6 +139,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       setIsRecording(false);
       setEgressId(null);
       setRecordingStartTime(null);
+      localAnchorRef.current = null;
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setError(e?.response?.data?.message || e?.message || "Failed to stop recording");

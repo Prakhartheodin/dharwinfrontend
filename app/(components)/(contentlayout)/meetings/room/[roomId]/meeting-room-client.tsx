@@ -19,6 +19,7 @@ import * as livekitApi from "@/shared/lib/api/livekit";
 import { updateMeeting } from "@/shared/lib/api/meetings";
 import { endCallByRoom, updateCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 3000;
@@ -724,6 +725,7 @@ function RoomContent({
 }
 
 export default function MeetingRoomClient() {
+  useLiveKitBenignErrorSuppression();
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();

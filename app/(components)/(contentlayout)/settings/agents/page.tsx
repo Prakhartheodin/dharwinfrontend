@@ -13,6 +13,26 @@ const Select = dynamic(() => import("react-select"), { ssr: false });
 
 type AssignOption = { value: string; label: string; row: StudentAgentAssignmentRow };
 
+function normalizeSearchQuery(s: string): string {
+  return s.trim().toLowerCase();
+}
+
+/** Match assignee row by name, email, or employee ID (e.g. DBS12). */
+function assigneeRowMatchesQuery(row: StudentAgentAssignmentRow, q: string): boolean {
+  if (!q) return true;
+  const name = (row.fullName ?? "").toLowerCase();
+  const email = (row.email ?? "").toLowerCase();
+  const emp = (row.employeeId != null && row.employeeId !== "" ? String(row.employeeId) : "").toLowerCase();
+  return name.includes(q) || email.includes(q) || (emp.length > 0 && emp.includes(q));
+}
+
+function agentNameOrEmailMatchesQuery(agent: { name?: string; email?: string }, q: string): boolean {
+  if (!q) return false;
+  const name = (agent.name ?? "").toLowerCase();
+  const email = (agent.email ?? "").toLowerCase();
+  return name.includes(q) || email.includes(q);
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
@@ -94,14 +114,31 @@ export default function SettingsAgentsPage() {
   }, [students]);
 
   const filteredAgents = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearchQuery(search);
     if (!q) return agents;
     return agents.filter((a) => {
-      const name = (a.name ?? "").toLowerCase();
-      const email = (a.email ?? "").toLowerCase();
-      return name.includes(q) || email.includes(q);
+      if (agentNameOrEmailMatchesQuery(a, q)) return true;
+      const assigned = studentsByAgentId.get(String(a.id)) ?? [];
+      return assigned.some((s) => assigneeRowMatchesQuery(s, q));
     });
-  }, [agents, search]);
+  }, [agents, search, studentsByAgentId]);
+
+  /** When the query matches an assignee but not the agent row, open that card so the match is visible. */
+  useEffect(() => {
+    const q = normalizeSearchQuery(search);
+    if (!q) return;
+    setExpandedAgentIds((prev) => {
+      const s = new Set(prev);
+      for (const a of agents) {
+        if (agentNameOrEmailMatchesQuery(a, q)) continue;
+        const assigned = studentsByAgentId.get(String(a.id)) ?? [];
+        if (assigned.some((st) => assigneeRowMatchesQuery(st, q))) {
+          s.add(String(a.id));
+        }
+      }
+      return Array.from(s);
+    });
+  }, [search, agents, studentsByAgentId]);
 
   const unassignedCount = useMemo(() => students.filter((s) => !s.assignedAgent).length, [students]);
 
@@ -341,7 +378,7 @@ export default function SettingsAgentsPage() {
         {/* Search — explicit padding so global .form-control cannot overlap the icon */}
         <div className="relative max-w-lg">
           <label className="sr-only" htmlFor="agents-search">
-            Search agents
+            Search by agent or assignee name, email, or employee ID
           </label>
           <span
             className="pointer-events-none absolute left-3.5 top-1/2 z-[1] flex h-8 w-8 -translate-y-1/2 items-center justify-center text-defaulttextcolor/45"
@@ -352,7 +389,7 @@ export default function SettingsAgentsPage() {
           <input
             id="agents-search"
             type="search"
-            placeholder="Filter agents by name or email…"
+            placeholder="Search agent or assignee — name, email, or employee ID…"
             autoComplete="off"
             className="h-10 w-full rounded-xl border border-defaultborder/80 bg-white py-2 pl-12 pr-3 text-sm text-defaulttextcolor shadow-sm placeholder:text-defaulttextcolor/45 transition-[box-shadow,border-color] focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-white/15 dark:bg-bodybg dark:placeholder:text-white/35"
             value={search}
@@ -445,7 +482,12 @@ export default function SettingsAgentsPage() {
                           {student.ownerRoleLabel ?? "—"}
                         </span>
                       </div>
-                      <p className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50">{student.email}</p>
+                      <p
+                        className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50"
+                        title={student.email || undefined}
+                      >
+                        {student.employeeId ?? "—"}
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -506,6 +548,13 @@ export default function SettingsAgentsPage() {
               {filteredAgents.map((agent) => {
                 const agentKey = String(agent.id);
                 const assigned = studentsByAgentId.get(agentKey) ?? [];
+                const q = normalizeSearchQuery(search);
+                const isAgentNameOrEmailMatch = Boolean(q) && agentNameOrEmailMatchesQuery(agent, q);
+                /** When searching by assignee/ID, only list rows that match; if the query matched the agent, show full list. */
+                const displayedAssignees =
+                  !q || isAgentNameOrEmailMatch
+                    ? assigned
+                    : assigned.filter((s) => assigneeRowMatchesQuery(s, q));
                 const pending = pendingByAgent[agentKey] ?? [];
                 const busy = savingKey !== null;
                 const isCollapsed = !expandedAgentIds.includes(agentKey);
@@ -536,7 +585,9 @@ export default function SettingsAgentsPage() {
                       </button>
                       <div className="flex shrink-0 items-center gap-2">
                         <span className="rounded-full bg-primary/[0.09] px-3 py-1 text-xs font-semibold text-primary ring-1 ring-primary/15">
-                          {assigned.length} assigned
+                          {q && !isAgentNameOrEmailMatch
+                            ? `${displayedAssignees.length} of ${assigned.length} match`
+                            : `${assigned.length} assigned`}
                         </span>
                         <button
                           type="button"
@@ -551,9 +602,9 @@ export default function SettingsAgentsPage() {
 
                     {!isCollapsed && (
                     <div className="px-5 py-4">
-                      {assigned.length > 0 ? (
+                      {displayedAssignees.length > 0 ? (
                         <ul className="mb-0 divide-y divide-defaultborder/35 rounded-xl border border-defaultborder/40 bg-slate-50/30 dark:divide-white/10 dark:border-white/10 dark:bg-white/[0.02]">
-                          {assigned.map((s) => (
+                          {displayedAssignees.map((s) => (
                             <li
                               key={s.id}
                               className="flex flex-col gap-2 py-3 pl-4 pr-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
@@ -574,7 +625,12 @@ export default function SettingsAgentsPage() {
                                     {s.ownerRoleLabel ?? "—"}
                                   </span>
                                   </div>
-                                  <p className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50">{s.email}</p>
+                                  <p
+                                    className="mb-0 mt-0.5 truncate text-xs text-defaulttextcolor/50"
+                                    title={s.email || undefined}
+                                  >
+                                    {s.employeeId ?? "—"}
+                                  </p>
                                 </div>
                               </div>
                               <div className="flex shrink-0 flex-wrap items-center gap-2 self-start sm:self-center">

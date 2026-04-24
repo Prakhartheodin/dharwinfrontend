@@ -22,7 +22,8 @@ import Swal from "sweetalert2";
 const PASSWORD_MIN_LENGTH = 8;
 
 /** Roles that Agents are allowed to assign (no Administrator, Agent, or Manager). */
-const AGENT_ASSIGNABLE_ROLE_NAMES = ["Candidate", "Student", "Mentor"];
+/** Agent may assign these roles. Include legacy "Candidate" until DB role is renamed to Employee. */
+const AGENT_ASSIGNABLE_ROLE_NAMES = ["Employee", "Candidate", "Student", "Mentor"];
 
 function getErrorMessage(err: any): string {
   if (err instanceof AxiosError) {

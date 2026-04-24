@@ -11,9 +11,7 @@ import {
 import { listStudents, type Student } from "@/shared/lib/api/students";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 
 function getStudentName(request: LeaveRequest, studentsList: Student[] = []): string {
   const s = request.student;
@@ -46,9 +44,7 @@ function getStudentEmail(request: LeaveRequest): string {
 }
 
 export default function SettingsAttendanceLeaveRequestsPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
+  const isAdmin = useAttendanceAdminAccess();
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -68,29 +64,6 @@ export default function SettingsAttendanceLeaveRequestsPage() {
     totalResults: 0,
   });
 
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
-
   const fetchStudents = useCallback(async () => {
     if (!isAdmin) return;
     try {
@@ -106,7 +79,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
   }, [isAdmin, fetchStudents]);
 
   const fetchLeaveRequests = useCallback(async () => {
-    if (isAdmin === false) return;
+    if (isAdmin !== true) return;
     setLoadingRequests(true);
     try {
       const params: Record<string, string | number> = {
@@ -132,7 +105,6 @@ export default function SettingsAttendanceLeaveRequestsPage() {
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
       setLoadingRequests(false);
-      setLoading(false);
     }
   }, [isAdmin, filterStatus, filterLeaveType, filterStudent, pagination.page, pagination.limit]);
 
@@ -331,7 +303,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
     return config[type] ?? { badge: "bg-defaultborder/30 text-defaulttextcolor/80 border border-defaultborder", label: type };
   };
 
-  if (isAdmin === null || (isAdmin === true && loading && leaveRequests.length === 0)) {
+  if (isAdmin === null) {
     return (
       <>
         <Seo title="Leave Requests" />

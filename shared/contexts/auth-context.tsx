@@ -17,6 +17,7 @@ import {
   setImpersonationReturnPathForSession,
 } from "@/shared/lib/impersonation-return-path";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
+import { getSafePostLoginPath } from "@/shared/lib/jobReferralRef";
 import type { ImpersonationInfo, Session, User } from "@/shared/lib/types";
 
 interface AuthContextValue {
@@ -36,7 +37,7 @@ interface AuthContextValue {
   /** Shown during impersonation start/stop (e.g. "Logging in as John", "Logging out from John"). */
   loadingMessage: string | null;
   isChecked: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, options?: { redirectTo?: string | null }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   /** Refresh only user/impersonation/sessions from getMe (e.g. after profile update). Does not re-fetch permissions. */
@@ -277,7 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string) => {
+    async (email: string, password: string, options?: { redirectTo?: string | null }) => {
       setIsLoading(true);
       try {
         await Promise.all([captureGeolocationForAudit(10000), fetchAndStoreRealIp()]);
@@ -299,6 +300,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsDesignatedSuperadmin(false);
         }
         setPermissionsLoaded(true);
+        const safeNext = getSafePostLoginPath(options?.redirectTo);
+        if (safeNext) {
+          router.push(safeNext);
+          return;
+        }
         // Candidates (role 'user' from share-candidate-form) go to their profile on first login
         const isCandidate = res.user?.role === "user";
         router.push(isCandidate ? ROUTES.candidateProfile : ROUTES.defaultAfterLogin);

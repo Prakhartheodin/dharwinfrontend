@@ -136,7 +136,7 @@ export interface MeWithCandidateResponse {
 
 /**
  * Get current user + candidate (GET /v1/auth/me/with-candidate).
- * Returns merged User + Candidate when user has Candidate role. Single source for Personal Information and My Profile.
+ * Returns merged User + Candidate (ATS profile) when user has Employee user role (legacy name: Candidate).
  */
 export async function getMeWithCandidate(): Promise<MeWithCandidateResponse | null> {
   try {
@@ -174,7 +174,7 @@ export type UpdateMeWithCandidatePayload = UpdateMyProfilePayload & Partial<{
 
 /**
  * Update User and Candidate atomically (PATCH /v1/auth/me/with-candidate).
- * For users with Candidate role. Updates both in one transaction.
+ * For users with Employee user role. Updates both in one transaction.
  */
 export async function updateMeWithCandidate(payload: UpdateMeWithCandidatePayload): Promise<{ user: User; candidate: CandidateWithProfile }> {
   const { data } = await apiClient.patch<{ user: User; candidate: CandidateWithProfile }>(AUTH_ENDPOINTS.meWithCandidate, payload);

@@ -13,6 +13,7 @@ import {
   formatJobDescriptionForDisplay,
   BROWSE_JOB_DETAIL_PROSE_CLASS,
 } from "@/shared/lib/ats/jobDescriptionHtml";
+import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/jobReferralRef";
 
 const WITHDRAWABLE_STATUSES = ["Applied", "Screening"];
 
@@ -40,6 +41,7 @@ export default function BrowseJobDetailsPage() {
   const searchParams = useSearchParams();
   const jobId = typeof params?.id === "string" ? params.id : "";
   const referralRefFromUrl = searchParams.get("ref")?.trim() || null;
+  const [effectiveReferralRef, setEffectiveReferralRef] = useState<string | null>(null);
   const { user } = useAuth();
 
   const [job, setJob] = useState<PublicJob | null>(null);
@@ -75,6 +77,12 @@ export default function BrowseJobDetailsPage() {
   }, [jobId]);
 
   useEffect(() => {
+    if (!jobId) return;
+    rememberJobReferralRef(jobId, referralRefFromUrl);
+    setEffectiveReferralRef(referralRefFromUrl || readStoredJobReferralRef(jobId) || null);
+  }, [jobId, referralRefFromUrl]);
+
+  useEffect(() => {
     if (!jobId || !user) {
       setExistingApplication(null);
       setApplicationsLoading(false);
@@ -100,7 +108,7 @@ export default function BrowseJobDetailsPage() {
     try {
       await browseApplyToJob(
         jobId,
-        referralRefFromUrl ? { ref: referralRefFromUrl } : undefined
+        effectiveReferralRef ? { ref: effectiveReferralRef } : undefined
       );
       setMessage({ type: "success", text: "Application submitted successfully." });
       const res = await getMyApplications({ limit: 500 });
@@ -486,7 +494,7 @@ export default function BrowseJobDetailsPage() {
             onClose={() => setApplyModalOpen(false)}
             jobId={jobId}
             jobTitle={job.title}
-            referralRef={referralRefFromUrl}
+            referralRef={effectiveReferralRef}
           />
         ) : null}
       </div>

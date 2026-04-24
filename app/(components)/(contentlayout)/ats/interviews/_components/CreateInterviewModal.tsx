@@ -1,5 +1,5 @@
 "use client"
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
@@ -7,7 +7,38 @@ import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import type { Meeting } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
+import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
+
+function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
+  if (!job || typeof job === 'string') return null
+  const raw = job._id ?? (job as { id?: string }).id
+  return raw != null && String(raw) !== '' ? String(raw) : null
+}
+
+function jobOptionsFromApplications(apps: JobApplication[]): Job[] {
+  const m = new Map<string, Job>()
+  for (const app of apps) {
+    const j = app.job
+    const id = jobIdFromAppJob(j)
+    if (!id) continue
+    if (m.has(id)) continue
+    m.set(id, {
+      _id: id,
+      id,
+      title: j.title || 'Position',
+      organisation:
+        j.organisation && typeof j.organisation === 'object' && 'name' in j.organisation
+          ? (j.organisation as Job['organisation'])
+          : { name: '' },
+      jobDescription: '',
+      jobType: '',
+      location: '',
+      status: (j.status as string) || 'Active',
+    })
+  }
+  return [...m.values()]
+}
 
 const DatePicker = dynamic(() => import('react-datepicker').then((m) => m.default), { ssr: false })
 
@@ -48,7 +79,8 @@ export interface CreateInterviewModalProps {
   formLoading: boolean
   onSubmit: (e: React.FormEvent) => void
   dropdownsLoading: boolean
-  jobs: Job[]
+  /** Incremented when the parent clears the form so candidate/job picks reset. */
+  formResetKey?: number
   candidates: CandidateListItem[]
   recruiters: User[]
   hosts: { nameOrRole: string; email: string }[]
@@ -67,7 +99,7 @@ export default function CreateInterviewModal({
   formLoading,
   onSubmit,
   dropdownsLoading,
-  jobs,
+  formResetKey = 0,
   candidates,
   recruiters,
   hosts,
@@ -78,6 +110,43 @@ export default function CreateInterviewModal({
   onScheduledInterviewAtChange,
 }: CreateInterviewModalProps) {
   const { user } = useAuth()
+  const [selectedCandidateId, setSelectedCandidateId] = useState('')
+  const [selectedJobId, setSelectedJobId] = useState('')
+  const [jobsForCandidate, setJobsForCandidate] = useState<Job[]>([])
+  const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
+  const [applicationJobsError, setApplicationJobsError] = useState<string | null>(null)
+
+  const loadApplicationJobs = useCallback(async (candidateId: string) => {
+    if (!candidateId) {
+      setJobsForCandidate([])
+      return
+    }
+    setApplicationJobsLoading(true)
+    setApplicationJobsError(null)
+    try {
+      const res = await listJobApplications({ candidateId, limit: 200 })
+      setJobsForCandidate(jobOptionsFromApplications(res.results))
+    } catch {
+      setApplicationJobsError('Could not load job applications.')
+      setJobsForCandidate([])
+    } finally {
+      setApplicationJobsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    setSelectedCandidateId('')
+    setSelectedJobId('')
+    setJobsForCandidate([])
+    setApplicationJobsError(null)
+  }, [formResetKey])
+
+  const onScheduleCandidateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value
+    setSelectedCandidateId(id)
+    setSelectedJobId('')
+    void loadApplicationJobs(id)
+  }
   /** Room-only URL safe to share with anyone (no logged-in user name/email). */
   const shareMeetingUrl = useMemo(() => (createdMeeting?.publicMeetingUrl || '').trim(), [createdMeeting?.publicMeetingUrl])
 
@@ -107,8 +176,8 @@ export default function CreateInterviewModal({
   }, [resetCreateMeetingForm])
 
   /**
-   * Quick-fill schedule form for an "instant interview" flow.
-   * Keeps existing selected values when present, only fills blanks/defaults.
+   * Quick-fill for instant interview: next time slot, title/description/notes if blank, duration, host defaults.
+   * Does not change candidate or job — those stay as the user selected.
    */
   const handleInstantInterviewFill = useCallback(() => {
     const now = new Date()
@@ -122,8 +191,6 @@ export default function CreateInterviewModal({
     const descInput = document.querySelector<HTMLTextAreaElement>('#schedule-description')
     const durationInput = document.querySelector<HTMLInputElement>('#schedule-duration')
     const maxInput = document.querySelector<HTMLInputElement>('#schedule-max-participants')
-    const jobSelect = document.querySelector<HTMLSelectElement>('#schedule-job')
-    const candidateSelect = document.querySelector<HTMLSelectElement>('#schedule-candidate')
     const recruiterSelect = document.querySelector<HTMLSelectElement>('#schedule-recruiter')
     const notesInput = document.querySelector<HTMLTextAreaElement>('#schedule-notes')
     const allowGuest = document.querySelector<HTMLInputElement>('#schedule-allow-guest')
@@ -143,12 +210,6 @@ export default function CreateInterviewModal({
     if (videoType) videoType.checked = true
     if (notesInput && !notesInput.value.trim()) notesInput.value = 'Instant interview'
 
-    if (jobSelect && !jobSelect.value && jobSelect.options.length > 1) {
-      jobSelect.value = jobSelect.options[1].value
-    }
-    if (candidateSelect && !candidateSelect.value && candidateSelect.options.length > 1) {
-      candidateSelect.value = candidateSelect.options[1].value
-    }
     if (recruiterSelect && !recruiterSelect.value && recruiterSelect.options.length > 1) {
       const selfByEmail = recruiters.find((r) => r.email?.toLowerCase() === user?.email?.toLowerCase())
       recruiterSelect.value = selfByEmail?.id || recruiterSelect.options[1].value
@@ -329,17 +390,52 @@ export default function CreateInterviewModal({
                   />
                 </div>
                 <div>
+                  <label htmlFor="schedule-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                    Candidate <span className="text-xs font-normal text-textmuted dark:text-white/55">(referral leads)</span>
+                  </label>
+                  <select
+                    id="schedule-candidate"
+                    className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    disabled={dropdownsLoading}
+                    value={selectedCandidateId}
+                    onChange={onScheduleCandidateChange}
+                  >
+                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
+                    {candidates.map((c) => (
+                      <option key={c.id ?? c._id} value={c.id ?? c._id}>
+                        {c.fullName} - {c.email}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
                   <label htmlFor="schedule-job" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
                     Job / Position
                   </label>
+                  <p className="text-xs text-textmuted dark:text-white/50 mb-1.5">Shows jobs this candidate has applied to.</p>
+                  {applicationJobsError ? (
+                    <p className="text-xs text-danger mb-1.5" role="alert">
+                      {applicationJobsError}
+                    </p>
+                  ) : null}
                   <select
                     id="schedule-job"
                     className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    disabled={dropdownsLoading}
+                    disabled={dropdownsLoading || !selectedCandidateId || applicationJobsLoading}
+                    value={selectedJobId}
+                    onChange={(e) => setSelectedJobId(e.target.value)}
                   >
-                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select job position'}</option>
-                    {jobs.map((job) => (
-                      <option key={job.id ?? job._id} value={job.id ?? job._id}>
+                    <option value="">
+                      {!selectedCandidateId
+                        ? 'Select a candidate first'
+                        : applicationJobsLoading
+                          ? 'Loading applications...'
+                          : jobsForCandidate.length === 0
+                            ? 'No job applications for this candidate'
+                            : 'Select a position'}
+                    </option>
+                    {jobsForCandidate.map((job) => (
+                      <option key={job.id ?? job._id} value={String(job.id ?? job._id)}>
                         {job.title}
                       </option>
                     ))}
@@ -558,23 +654,6 @@ export default function CreateInterviewModal({
                       </label>
                     ))}
                   </div>
-                </div>
-                <div>
-                  <label htmlFor="schedule-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                    Candidate
-                  </label>
-                  <select
-                    id="schedule-candidate"
-                    className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                    disabled={dropdownsLoading}
-                  >
-                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select candidate'}</option>
-                    {candidates.map((c) => (
-                      <option key={c.id ?? c._id} value={c.id ?? c._id}>
-                        {c.fullName} - {c.email}
-                      </option>
-                    ))}
-                  </select>
                 </div>
                 <div>
                   <label htmlFor="schedule-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">

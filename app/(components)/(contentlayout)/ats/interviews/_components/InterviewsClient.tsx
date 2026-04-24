@@ -6,7 +6,8 @@ import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, moveMeetingToPreboarding, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
-import { listCandidates, type CandidateListItem } from '@/shared/lib/api/candidates'
+import { type CandidateListItem } from '@/shared/lib/api/candidates'
+import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
 import { listRecruiters } from '@/shared/lib/api/users'
 import type { User } from '@/shared/lib/types'
 import CreateInterviewModal from './CreateInterviewModal'
@@ -57,6 +58,30 @@ function formatMeetingDate(iso: string): string {
   } catch {
     return '—'
   }
+}
+
+/** Referral lead rows use the same candidate id as employees — map for schedule/edit dropdowns. */
+function mapReferralLeadsToScheduleCandidates(rows: ReferralLeadRow[]): CandidateListItem[] {
+  return rows.map((lead) => ({
+    id: lead.id,
+    fullName: lead.fullName,
+    email: lead.email,
+    phoneNumber: '',
+    profilePicture: lead.profilePicture,
+  }))
+}
+
+async function fetchReferralLeadsForSchedule(): Promise<CandidateListItem[]> {
+  const aggregated: ReferralLeadRow[] = []
+  let cursor: string | undefined
+  // Backend caps limit at 100 (Joi + service); 200 was rejected and returned no rows.
+  for (let page = 0; page < 15; page++) {
+    const res = await listReferralLeads({ limit: 100, cursor })
+    aggregated.push(...(res.results ?? []))
+    if (!res.hasMore || !res.nextCursor) break
+    cursor = res.nextCursor
+  }
+  return mapReferralLeadsToScheduleCandidates(aggregated)
 }
 
 /** Build ISO string for API from date + time inputs (handles HH:mm and HH:mm:ss). */
@@ -111,7 +136,8 @@ interface FilterState {
 }
 
 export default function InterviewsClient() {
-  const { user: authUser } = useAuth()
+  const { user: authUser, permissionsLoaded } = useAuth()
+  const scheduleDropdownsLoadId = useRef(0)
 
   const defaultScheduleHosts = useMemo(() => {
     const email = authUser?.email?.trim()
@@ -278,6 +304,40 @@ export default function InterviewsClient() {
     },
     [ensurePrelineLoaded, refreshPrelineDom]
   )
+
+  /** Shared by initial mount and "Schedule Interview" so the candidate list is fresh and auth/permissions are ready. */
+  const loadScheduleDropdowns = useCallback(() => {
+    const id = ++scheduleDropdownsLoadId.current
+    setDropdownsLoading(true)
+    return Promise.allSettled([
+      listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
+      fetchReferralLeadsForSchedule(),
+      listRecruiters({ limit: 100 }).then((r) => r.results),
+    ])
+      .then((results) => {
+        if (scheduleDropdownsLoadId.current !== id) return
+        const jobList = results[0].status === 'fulfilled' ? results[0].value || [] : []
+        const candidateList = results[1].status === 'fulfilled' ? results[1].value || [] : []
+        const recruiterList = results[2].status === 'fulfilled' ? results[2].value || [] : []
+        setJobs(jobList)
+        setCandidates(candidateList)
+        setRecruiters(recruiterList)
+        const failed = results
+          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Recruiters'][i] : null))
+          .filter(Boolean) as string[]
+        if (failed.length > 0) {
+          console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
+        }
+      })
+      .finally(() => {
+        if (scheduleDropdownsLoadId.current === id) setDropdownsLoading(false)
+      })
+  }, [])
+
+  const openScheduleInterviewModal = useCallback(() => {
+    void loadScheduleDropdowns()
+    openHsOverlay('#create-interview-modal')
+  }, [loadScheduleDropdowns, openHsOverlay])
 
   // Re-init Preline so toolbar overlays/dropdowns work (same issue as ATS Offers placement / Jobs listings).
   useEffect(() => {
@@ -447,35 +507,9 @@ export default function InterviewsClient() {
   }, [recordingsModalMeetingId])
 
   useEffect(() => {
-    let cancelled = false
-    setDropdownsLoading(true)
-    Promise.allSettled([
-      listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
-      listCandidates({ limit: 100 }).then((r) => r.results),
-      listRecruiters({ limit: 100 }).then((r) => r.results),
-    ])
-      .then((results) => {
-        if (cancelled) return
-        const jobList = results[0].status === 'fulfilled' ? results[0].value || [] : []
-        const candidateList = results[1].status === 'fulfilled' ? results[1].value || [] : []
-        const recruiterList = results[2].status === 'fulfilled' ? results[2].value || [] : []
-        setJobs(jobList)
-        setCandidates(candidateList)
-        setRecruiters(recruiterList)
-        const failed = results
-          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Candidates', 'Recruiters'][i] : null))
-          .filter(Boolean) as string[]
-        if (failed.length > 0) {
-          console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDropdownsLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
+    if (!permissionsLoaded) return
+    void loadScheduleDropdowns()
+  }, [permissionsLoaded, loadScheduleDropdowns])
 
   // Default interview host = signed-in (or impersonated) user so "Schedule" isn't blocked by empty host row.
   useEffect(() => {
@@ -516,12 +550,14 @@ export default function InterviewsClient() {
     setSelectedRows(newSelected)
   }
 
+  const [interviewFormResetKey, setInterviewFormResetKey] = useState(0)
   const resetCreateMeetingForm = useCallback(() => {
     setCreatedMeeting(null)
     setFormError(null)
     setScheduledInterviewAt(null)
     setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([''])
+    setInterviewFormResetKey((k) => k + 1)
   }, [defaultScheduleHosts])
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
@@ -542,7 +578,11 @@ export default function InterviewsClient() {
     const form = e.target as HTMLFormElement
     const getVal = (id: string) => (form.querySelector(`#${id}`) as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)?.value?.trim() ?? ''
     const jobId = getVal('schedule-job')
-    const selectedJob = jobs.find((j) => (j.id ?? j._id) === jobId)
+    const jobSelect = form.querySelector('#schedule-job') as HTMLSelectElement | null
+    const jobOptionText = jobSelect?.selectedOptions?.[0]?.text?.trim() ?? ''
+    const selectedJob =
+      jobs.find((j) => (j.id ?? j._id) === jobId) ||
+      (jobId && jobOptionText ? ({ title: jobOptionText } as Job) : undefined)
     const title = getVal('schedule-meeting-title') || selectedJob?.title || 'Interview'
     const description = getVal('schedule-description')
     const date = getVal('schedule-date')
@@ -555,10 +595,14 @@ export default function InterviewsClient() {
     const maxParticipants = parseInt(getVal('schedule-max-participants') || '10', 10) || 10
     const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? true
     const requireApproval = (form.querySelector('#schedule-require-approval') as HTMLInputElement)?.checked ?? false
-    const jobPosition = jobId || selectedJob?.title
+    const candidateSelect = form.querySelector('#schedule-candidate') as HTMLSelectElement
+    if (candidateSelect?.value && !jobId) {
+      setFormError('Select a job this candidate has applied for.')
+      return
+    }
+    const jobPosition = (selectedJob?.title || jobOptionText) || (jobId || undefined)
     const interviewType = (form.querySelector('input[name="schedule-type"]:checked') as HTMLInputElement)?.value || 'Video'
     const notes = getVal('schedule-notes')
-    const candidateSelect = form.querySelector('#schedule-candidate') as HTMLSelectElement
     const candidateOption = candidateSelect?.selectedOptions?.[0]
     const candidateText = candidateOption?.text?.trim() ?? ''
     const candidateMatch = candidateText.match(/^(.+?)\s*-\s*(.+)$/)
@@ -642,7 +686,7 @@ export default function InterviewsClient() {
         },
       },
       {
-        Header: 'Candidate',
+        Header: 'Employee',
         accessor: 'candidate',
         Cell: ({ row }: any) => {
           const candidate = row.original.candidate
@@ -1250,13 +1294,13 @@ export default function InterviewsClient() {
                     onClick={() => setViewMode('week')}
                     className={`ti-btn !py-1.5 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'week' ? 'ti-btn-primary' : 'ti-btn-light'}`}
                   >
-                    <i className="ri-calendar-week-line align-middle me-1"></i>Week
+                    <i className="ri-calendar-schedule-line align-middle me-1"></i>Week
                   </button>
                 </div>
                 <button
                   type="button"
                   className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem]"
-                  onClick={() => openHsOverlay('#create-interview-modal')}
+                  onClick={() => openScheduleInterviewModal()}
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>
                   Schedule Interview
@@ -1467,7 +1511,7 @@ export default function InterviewsClient() {
                     <button
                       type="button"
                       className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
-                      onClick={() => openHsOverlay('#create-interview-modal')}
+                      onClick={() => openScheduleInterviewModal()}
                     >
                       <i className="ri-add-line me-1.5"></i>Schedule interview
                     </button>
@@ -1671,7 +1715,7 @@ export default function InterviewsClient() {
         formLoading={formLoading}
         onSubmit={handleScheduleInterviewSubmit}
         dropdownsLoading={dropdownsLoading}
-        jobs={jobs}
+        formResetKey={interviewFormResetKey}
         candidates={candidates}
         recruiters={recruiters}
         hosts={hosts}
@@ -1869,9 +1913,9 @@ export default function InterviewsClient() {
                     </div>
                   </div>
                   <div>
-                    <label htmlFor="edit-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Candidate</label>
+                    <label htmlFor="edit-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Candidate <span className="text-xs font-normal text-textmuted dark:text-white/55">(referral leads)</span></label>
                     <select id="edit-candidate" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.candidate?.id ?? ''}>
-                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select candidate'}</option>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
                       {candidates.map((c) => (
                         <option key={c.id ?? c._id} value={c.id ?? c._id}>{c.fullName} - {c.email}</option>
                       ))}

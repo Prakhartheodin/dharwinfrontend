@@ -75,7 +75,7 @@ function SopChecklistPreviewPanel({
             <span className="text-gray-500 dark:text-gray-500"> · {resolved.employeeId}</span>
           ) : null}
         </p>
-        <p className="mt-2">No onboarding checklist for this candidate (inactive or resigned).</p>
+        <p className="mt-2">No onboarding checklist for this employee (inactive or resigned).</p>
       </div>
     );
   }
@@ -211,7 +211,7 @@ function resolveCandidateForPreview(
       return {
         row: null,
         error:
-          "No candidate matches that full name and employee ID together. Check spelling or try only one field.",
+          "No employee matches that full name and employee ID together. Check spelling or try only one field.",
       };
     }
     return { row, error: null };
@@ -220,7 +220,7 @@ function resolveCandidateForPreview(
   if (hasEmp && !hasName) {
     const matches = results.filter((c) => norm(String(c.employeeId ?? "")) === norm(emp));
     if (matches.length === 0) {
-      return { row: null, error: "No candidate found with that employee ID." };
+      return { row: null, error: "No employee found with that employee ID." };
     }
     if (matches.length > 1) {
       return {
@@ -234,12 +234,12 @@ function resolveCandidateForPreview(
   if (hasName && !hasEmp) {
     const matches = results.filter((c) => norm(c.fullName || "") === norm(name));
     if (matches.length === 0) {
-      return { row: null, error: "No candidate found with that exact full name." };
+      return { row: null, error: "No employee found with that exact full name." };
     }
     if (matches.length > 1) {
       return {
         row: null,
-        error: "Several candidates share that name; add employee ID to pick one.",
+        error: "Several employees share that name; add employee ID to pick one.",
       };
     }
     return { row: matches[0], error: null };
@@ -335,7 +335,7 @@ export default function SettingsCandidateSopPage() {
       const c = await getCandidate(row.candidateId);
       setAssignAgentModal({
         candidateId: row.candidateId,
-        candidateName: (row.fullName || row.email || "").trim() || "Candidate",
+        candidateName: (row.fullName || row.email || "").trim() || "Employee",
         currentAgent: c.assignedAgent
           ? {
               id: c.assignedAgent.id,
@@ -354,7 +354,7 @@ export default function SettingsCandidateSopPage() {
   const openAssignCourseFromOverview = useCallback((row: SopOpenOverviewRow) => {
     setAssignCourseModal({
       candidateId: row.candidateId,
-      candidateName: (row.fullName || row.email || "").trim() || "Candidate",
+      candidateName: (row.fullName || row.email || "").trim() || "Employee",
     });
   }, []);
 
@@ -527,14 +527,14 @@ export default function SettingsCandidateSopPage() {
         setPreviewPayload(null);
         setError(
           resolveErr ??
-            "No candidate found. Check spelling and that you can see this person in Candidates (permissions / filters)."
+            "No employee found. Check spelling and that you can see this person in Employees (permissions / filters)."
         );
         return;
       }
       const id = String(row.id ?? row._id ?? "");
       if (!id) {
         setPreviewPayload(null);
-        setError("Candidate record has no id.");
+        setError("Employee record has no id.");
         return;
       }
       const s = await getCandidateSopStatus(id);
@@ -1228,7 +1228,7 @@ export default function SettingsCandidateSopPage() {
                                     href={`/ats/employees/edit?id=${encodeURIComponent(row.candidateId)}`}
                                     className={`${sopOpenTasksFont.className} text-base font-semibold text-gray-900 hover:text-primary dark:text-white dark:hover:text-primary`}
                                   >
-                                    {row.fullName || "Unnamed candidate"}
+                                    {row.fullName || "Unnamed employee"}
                                   </Link>
                                   <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
                                     {row.employeeId ? (

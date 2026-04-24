@@ -18,6 +18,7 @@ import { endMeetingPublic } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
+import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
 const INITIAL_RECONNECT_DELAY = 3000;  // Longer initial delay to let network stabilize
@@ -934,6 +935,7 @@ function displayNameFromUser(user: { name?: string; email?: string } | null): st
 }
 
 export default function PublicMeetingRoomClient() {
+  useLiveKitBenignErrorSuppression();
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();

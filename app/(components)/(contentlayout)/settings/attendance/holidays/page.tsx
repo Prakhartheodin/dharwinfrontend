@@ -10,9 +10,7 @@ import {
 } from "@/shared/lib/api/holidays";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 
 const pageStyles = (
   <style>{`
@@ -29,8 +27,7 @@ const pageStyles = (
 );
 
 export default function SettingsAttendanceHolidaysPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const isAdmin = useAttendanceAdminAccess();
   const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,28 +44,6 @@ export default function SettingsAttendanceHolidaysPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const limit = 10;
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const roleMap = new Map(roles.map((r) => [r.id, r]));
-        const hasAdmin = (user.roleIds as string[]).some((id) => {
-          const name = roleMap.get(id)?.name;
-          return name === "Administrator" || name === "Agent";
-        });
-        setIsAdmin(hasAdmin);
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    checkAdmin();
-  }, [user]);
 
   const fetchHolidays = useCallback(async () => {
     setLoading(true);
@@ -111,7 +86,7 @@ export default function SettingsAttendanceHolidaysPage() {
   }, [currentPage, sortBy, titleFilter, startDateFilter, endDateFilter, activeFilter]);
 
   useEffect(() => {
-    if (isAdmin !== false) fetchHolidays();
+    if (isAdmin === true) fetchHolidays();
   }, [isAdmin, fetchHolidays]);
 
   const resetForm = () => {
