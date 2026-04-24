@@ -1,59 +1,70 @@
 "use client"
 
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useState, useEffect } from 'react'
-import { listPlacements, updatePlacement } from '@/shared/lib/api/placements'
+import React, { Fragment, useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import pipelineStyles from '../ats-pipeline-list.module.css'
+import { useSearchParams, useRouter } from 'next/navigation'
+import { listPlacements, updatePlacement, getPlacementById } from '@/shared/lib/api/placements'
 import type { Placement, PreBoardingStatus, BGVStatus } from '@/shared/lib/api/placements'
+import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Link from 'next/link'
 
 const PRE_BOARDING_OPTIONS: PreBoardingStatus[] = ['Pending', 'In Progress', 'Completed']
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
+/** Not yet Onboarding: placement statuses shown in this queue (API comma-list). */
+const PRE_BOARDING_QUEUE_STATUSES = 'Pending,Deferred,Cancelled' as const
+type PlacementQueueFilter = '' | 'Pending' | 'Deferred' | 'Cancelled'
 
 const PreBoarding = () => {
   const { canView, canEdit } = useFeaturePermissions('ats.pre-boarding')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const deepLinkDone = useRef(false)
   const [placements, setPlacements] = useState<Placement[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [preBoardingFilter, setPreBoardingFilter] = useState<PreBoardingStatus | ''>('')
+  /** Filter by placement status (row-level). Empty = all of Pending, Deferred, Cancelled. */
+  const [placementStatusFilter, setPlacementStatusFilter] = useState<PlacementQueueFilter>('')
+  const [listSearch, setListSearch] = useState('')
   const [editModal, setEditModal] = useState<Placement | null>(null)
   const [editForm, setEditForm] = useState<{
     placementStatus: 'Pending' | 'Joined' | 'Deferred' | 'Cancelled'
     preBoardingStatus: PreBoardingStatus
     bgvStatus: BGVStatus
-    bgvAgency: string
     bgvNotes: string
     assets: { name: string; type: string; serialNumber: string; notes: string }[]
     itAccess: { system: string; accessLevel: string; notes: string }[]
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [preboardingGateBypassAck, setPreboardingGateBypassAck] = useState(false)
 
-  const fetchPlacements = () => {
+  const fetchPlacements = useCallback(() => {
     setLoading(true)
     setError(null)
+    const statusParam = placementStatusFilter === '' ? PRE_BOARDING_QUEUE_STATUSES : placementStatusFilter
     listPlacements({
-      status: 'Pending',
-      preBoardingStatus: preBoardingFilter || undefined,
+      status: statusParam,
       limit: 100,
       page: 1,
     })
       .then((res) => setPlacements(res.results ?? []))
       .catch((err) => setError(err?.response?.data?.message || err?.message || 'Failed to load placements'))
       .finally(() => setLoading(false))
-  }
+  }, [placementStatusFilter])
 
   useEffect(() => {
     if (canView) fetchPlacements()
-  }, [canView, preBoardingFilter])
+  }, [canView, fetchPlacements])
 
-  const openEdit = (p: Placement) => {
+  const openEdit = useCallback((p: Placement) => {
+    setPreboardingGateBypassAck(false)
     setEditModal(p)
     const bv = p.backgroundVerification
     setEditForm({
       placementStatus: (p.status as 'Pending' | 'Joined' | 'Deferred' | 'Cancelled') || 'Pending',
       preBoardingStatus: (p.preBoardingStatus as PreBoardingStatus) || 'Pending',
       bgvStatus: (bv?.status as BGVStatus) || 'Pending',
-      bgvAgency: bv?.agency || '',
       bgvNotes: bv?.notes || '',
       assets: (p.assetAllocation || []).map((a) => ({
         name: a.name,
@@ -67,7 +78,45 @@ const PreBoarding = () => {
         notes: i.notes || '',
       })),
     })
-  }
+  }, [])
+
+  const filteredPlacements = useMemo(() => {
+    const q = listSearch.trim().toLowerCase()
+    if (!q) return placements
+    return placements.filter((p) => {
+      const name = (p.candidate?.fullName || '').toLowerCase()
+      const email = (p.candidate?.email || '').toLowerCase()
+      const job = (p.job?.title || '').toLowerCase()
+      return name.includes(q) || email.includes(q) || job.includes(q)
+    })
+  }, [placements, listSearch])
+
+  useEffect(() => {
+    if (!canView || deepLinkDone.current) return
+    const pid = searchParams.get('placementId')
+    if (!pid) return
+    if (!/^[0-9a-fA-F]{24}$/.test(pid)) {
+      setError('Invalid placement link')
+      deepLinkDone.current = true
+      router.replace('/ats/pre-boarding', { scroll: false })
+      return
+    }
+    deepLinkDone.current = true
+    getPlacementById(pid)
+      .then((p) => {
+        if (p.status !== 'Pending' && p.status !== 'Deferred' && p.status !== 'Cancelled') {
+          setError('This placement is not in this queue (use Pending, Deferred, or Cancelled).')
+          router.replace('/ats/pre-boarding', { scroll: false })
+          return
+        }
+        openEdit(p)
+        router.replace('/ats/pre-boarding', { scroll: false })
+      })
+      .catch(() => {
+        setError('Placement not found or you do not have access.')
+        router.replace('/ats/pre-boarding', { scroll: false })
+      })
+  }, [canView, searchParams, router, openEdit])
 
   const handleSavePreBoarding = async () => {
     if (!editModal || !editForm) return
@@ -76,14 +125,20 @@ const PreBoarding = () => {
       alert('Invalid placement')
       return
     }
+    const needsGateBypass =
+      editForm.placementStatus === 'Joined' && editForm.preBoardingStatus !== 'Completed'
+    if (needsGateBypass && !preboardingGateBypassAck) {
+      alert('Pre-boarding is not Complete. Check "Override pre-boarding gate" below, or set Pre-boarding Status to Completed first.')
+      return
+    }
     setSubmitting(true)
     try {
-      const updated = await updatePlacement(placementId, {
+      await updatePlacement(placementId, {
         status: editForm.placementStatus,
         preBoardingStatus: editForm.preBoardingStatus,
+        ...(needsGateBypass && preboardingGateBypassAck ? { preboardingGateBypass: true } : {}),
         backgroundVerification: {
           status: editForm.bgvStatus,
-          agency: editForm.bgvAgency || undefined,
           notes: editForm.bgvNotes || undefined,
         },
         assetAllocation: editForm.assets.filter((a) => a.name.trim()).map((a) => ({
@@ -98,16 +153,13 @@ const PreBoarding = () => {
           notes: i.notes || undefined,
         })),
       })
-      const updatedId = (updated as { _id?: string; id?: string })._id ?? (updated as { id?: string }).id
-      setPlacements((prev) =>
-        updated.status === 'Joined'
-          ? prev.filter((p) => ((p as { _id?: string; id?: string })._id ?? p.id) !== updatedId)
-          : prev.map((p) => (((p as { _id?: string; id?: string })._id ?? p.id) === updatedId ? updated : p))
-      )
       setEditModal(null)
       setEditForm(null)
+      fetchPlacements()
     } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update pre-boarding')
+      const code = err?.response?.data?.errorCode
+      const msg = err?.response?.data?.message || err?.message || 'Failed to update pre-boarding'
+      alert(code ? `${msg} (${code})` : msg)
     } finally {
       setSubmitting(false)
     }
@@ -163,107 +215,289 @@ const PreBoarding = () => {
   return (
     <Fragment>
       <Seo title="Pre-boarding" />
-      <div className="mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6">
-        <div className="col-span-12 min-w-0">
-          <div className="box min-w-0">
+      <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
+        <div className="col-span-12 min-w-0 flex flex-col">
+          <div className="box min-w-0 flex flex-col">
             <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <h5 className="box-title min-w-0 flex-1 truncate">Pre-boarding (Placements awaiting joining)</h5>
-              <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                <Link href="/ats/onboarding" className="ti-btn ti-btn-sm ti-btn-success shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
-                  <i className="ri-login-circle-line me-1"></i>Onboarding
-                </Link>
-                <select
-                  className="form-control form-control-sm !w-[7rem] shrink-0"
-                  value={preBoardingFilter}
-                  onChange={(e) => setPreBoardingFilter((e.target.value as PreBoardingStatus) || '')}
+              <div className="box-title min-w-0 flex-1">
+                Pre-boarding
+                <span className="ms-1 align-middle text-[0.7rem] font-normal text-slate-500 dark:text-slate-400 sm:text-[0.75rem]">
+                  (Not yet joined: Pending, Deferred, or Cancelled)
+                </span>
+                <span
+                  className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
+                  title="Count after search and filters"
                 >
-                  <option value="">All statuses</option>
-                  {PRE_BOARDING_OPTIONS.map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                </select>
-                <button type="button" className="ti-btn ti-btn-sm ti-btn-secondary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3" onClick={fetchPlacements}>
-                  <i className="ri-refresh-line me-1"></i>Refresh
-                </button>
+                  {filteredPlacements.length}
+                </span>
+              </div>
+              <div
+                className="flex max-w-full flex-col gap-2 sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
+                role="toolbar"
+                aria-label="Pre-boarding list tools"
+              >
+                <div
+                  className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                  aria-label="Pipeline pages"
+                >
+                  <Link
+                    href="/ats/offers-placement"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                  >
+                    <i className="ri-file-paper-2-line me-1 align-middle opacity-80" aria-hidden />
+                    Offers &amp; placement
+                  </Link>
+                  <Link
+                    href="/ats/onboarding"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                  >
+                    <i className="ri-login-circle-line me-1 align-middle opacity-80" aria-hidden />
+                    Onboarding
+                  </Link>
+                </div>
+                <div className="flex min-w-0 flex-wrap items-center gap-2 sm:ms-0 sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10">
+                  <label className="sr-only" htmlFor="preboard-placement-status-filter">
+                    Placement status
+                  </label>
+                  <select
+                    id="preboard-placement-status-filter"
+                    className="form-control !h-8 !w-auto min-w-[7.5rem] !rounded-md !border-slate-200/90 !bg-white !py-0 !pl-2 !pr-7 !text-[0.75rem] !leading-none text-slate-700 dark:!border-white/15 dark:!bg-slate-900/50 dark:text-slate-200"
+                    value={placementStatusFilter}
+                    onChange={(e) => setPlacementStatusFilter((e.target.value as PlacementQueueFilter) || '')}
+                    title="Placement status (before Joined). All = Pending, Deferred, or Cancelled."
+                  >
+                    <option value="">All</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Deferred">Deferred</option>
+                    <option value="Cancelled">Cancelled</option>
+                  </select>
+                  <div className="relative min-w-0 flex-1 sm:w-40 sm:flex-initial">
+                    <i
+                      className="ri-search-line pointer-events-none absolute left-2.5 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
+                      aria-hidden
+                    />
+                    <input
+                      type="search"
+                      className="form-control !h-8 !w-full !rounded-md !border-slate-200/90 !bg-white !py-0 !ps-8 !pe-2.5 !text-[0.75rem] !leading-none placeholder:text-slate-400 dark:!border-white/15 dark:!bg-slate-900/50"
+                      placeholder="Search…"
+                      value={listSearch}
+                      onChange={(e) => setListSearch(e.target.value)}
+                      aria-label="Search this list"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light !mb-0 !h-8 !w-auto !min-w-fit !rounded-md !px-2.5 !py-0 !text-[0.75rem]"
+                    onClick={fetchPlacements}
+                  >
+                    <i className="ri-refresh-line me-1 align-middle text-[0.85rem] opacity-80" aria-hidden />
+                    Refresh
+                  </button>
+                </div>
               </div>
             </div>
-            <div className="box-body overflow-x-auto">
+            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
               {loading ? (
-                <div className="flex justify-center py-12">
-                  <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent" />
-                  <span className="ml-3 text-sm text-gray-500">Loading...</span>
+                <div
+                  className="flex flex-col items-center justify-center gap-4 px-6 py-10"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <div className="flex w-full max-w-md flex-col gap-2">
+                    <div className={`h-3 w-full ${pipelineStyles.skeleton}`} />
+                    <div className={`h-3 w-[92%] ${pipelineStyles.skeleton}`} style={{ animationDelay: '0.08s' }} />
+                    <div className={`h-3 w-[88%] ${pipelineStyles.skeleton}`} style={{ animationDelay: '0.16s' }} />
+                    <div className={`h-3 w-[95%] ${pipelineStyles.skeleton}`} style={{ animationDelay: '0.24s' }} />
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                    <i className="ri-loader-4-line inline-block h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden />
+                    <span>Loading placements&hellip;</span>
+                  </div>
                 </div>
               ) : error ? (
-                <div className="py-8 text-center text-danger">{error}</div>
-              ) : placements.length === 0 ? (
-                <div className="py-12 text-center text-gray-500 dark:text-gray-400">
-                  <i className="ri-inbox-line text-4xl mb-3 block opacity-50"></i>
-                  No placements in pre-boarding. Placements appear here when an offer is accepted (status: Pending).
+                <div className="px-6 py-8 text-center text-danger">{error}</div>
+              ) : filteredPlacements.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500 dark:text-gray-400">
+                  <i className="ri-inbox-line mb-3 block text-4xl opacity-50" aria-hidden />
+                  <p className="mb-1 text-base font-medium text-gray-700 dark:text-gray-200">
+                    {placements.length > 0 ? 'No matches' : 'No placements in pre-boarding'}
+                  </p>
+                  <p className="mb-0 max-w-md text-sm">
+                    {placements.length > 0
+                      ? 'Try a different search, or clear the search box.'
+                      : 'Use the first filter for placement status (Pending, Deferred, Cancelled). The second filter is the pre-boarding workflow (In Progress, etc.). Joined hires appear under Onboarding. If you are not an admin, you only see jobs you created or placements you own.'}
+                  </p>
                 </div>
               ) : (
-                <table className="table whitespace-nowrap min-w-full">
-                  <thead>
-                    <tr>
-                      <th>Candidate</th>
-                      <th>Job</th>
-                      <th>Pre-boarding</th>
-                      <th>BGV</th>
-                      <th>Assets</th>
-                      <th>IT Access</th>
-                      <th className="text-end">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {placements.map((p, index) => {
-                      const placementId =
-                        (p as { _id?: string; id?: string })._id ?? p.id ?? ""
-                      return (
-                      <tr
-                        key={
-                          placementId
-                            ? `${placementId}-${index}`
-                            : `preboarding-placement-${index}`
-                        }
-                      >
-                        <td>
-                          <div>
-                            <Link href={`/ats/employees?candidateId=${p.candidate?._id}`} className="font-medium text-primary hover:underline">
-                              {p.candidate?.fullName || '-'}
-                            </Link>
-                            <span className="text-xs text-gray-500 block">{p.candidate?.email || ''}</span>
-                          </div>
-                        </td>
-                        <td>{p.job?.title || '-'}</td>
-                        <td>
-                          <span className={`badge ${(p.preBoardingStatus || 'Pending') === 'Completed' ? 'bg-success/10 text-success' : (p.preBoardingStatus || 'Pending') === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-gray/10 text-gray'} border px-2 py-1 rounded`}>
-                            {p.preBoardingStatus || 'Pending'}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`badge ${(p.backgroundVerification?.status || 'Pending') === 'Verified' ? 'bg-success/10 text-success' : (p.backgroundVerification?.status || 'Pending') === 'Completed' ? 'bg-success/10 text-success' : (p.backgroundVerification?.status || 'Pending') === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-gray/10 text-gray'} border px-2 py-1 rounded`}>
-                            {p.backgroundVerification?.status || 'Pending'}
-                          </span>
-                        </td>
-                        <td>{(p.assetAllocation || []).length} item(s)</td>
-                        <td>{(p.itAccess || []).length} system(s)</td>
-                        <td className="text-end">
-                          <div className="flex items-center justify-end gap-2 flex-wrap">
-                            {canEdit && (
-                              <button type="button" className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3" onClick={() => openEdit(p)}>
-                                Edit
-                              </button>
-                            )}
-                            <Link href={`/ats/employees?candidateId=${p.candidate?._id}`} className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3">
-                              Documents
-                            </Link>
-                          </div>
-                        </td>
+                <div
+                  className={`table-responsive flex-1 overflow-y-auto ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap}`}
+                  style={{ minHeight: 0 }}
+                >
+                  <table className="table w-full min-w-full whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80">
+                    <thead>
+                      <tr className="border-b border-slate-200/90 dark:border-white/10">
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Candidate
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Job
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Placement
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                          title="Checklist / workflow (see filter: workflow)"
+                        >
+                          Workflow
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          BGV
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Assets
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          IT Access
+                        </th>
+                        <th
+                          scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-end align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Actions
+                        </th>
                       </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {filteredPlacements.map((p, index) => {
+                        const placementId = (p as { _id?: string; id?: string })._id ?? p.id ?? ''
+                        return (
+                          <tr
+                            key={placementId ? `${placementId}-${index}` : `preboarding-placement-${index}`}
+                            className={`border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${pipelineStyles.rowIn}`}
+                            style={{ animationDelay: `${Math.min(index, 16) * 45}ms` }}
+                          >
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              <div>
+                                <Link
+                                  href={`/ats/employees?candidateId=${p.candidate?._id}`}
+                                  className="font-medium text-primary hover:underline"
+                                >
+                                  {p.candidate?.fullName || '-'}
+                                </Link>
+                                <span className="block text-xs text-slate-500 dark:text-slate-400">
+                                  {p.candidate?.email || ''}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              {p.job?.title || '-'}
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              <span
+                                className={`badge ${
+                                  p.status === 'Cancelled'
+                                    ? 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'
+                                    : p.status === 'Deferred'
+                                      ? 'bg-violet-50 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200'
+                                      : 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'
+                                } border rounded px-2 py-1`}
+                              >
+                                {p.status || 'Pending'}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              <span
+                                className={`badge ${
+                                  (p.preBoardingStatus || 'Pending') === 'Completed'
+                                    ? 'bg-success/10 text-success'
+                                    : (p.preBoardingStatus || 'Pending') === 'In Progress'
+                                      ? 'bg-warning/10 text-warning'
+                                      : 'bg-gray/10 text-gray'
+                                } border rounded px-2 py-1`}
+                              >
+                                {p.preBoardingStatus || 'Pending'}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              <span
+                                className={`badge ${
+                                  (p.backgroundVerification?.status || 'Pending') === 'Verified' ||
+                                  (p.backgroundVerification?.status || 'Pending') === 'Completed'
+                                    ? 'bg-success/10 text-success'
+                                    : (p.backgroundVerification?.status || 'Pending') === 'In Progress'
+                                      ? 'bg-warning/10 text-warning'
+                                      : 'bg-gray/10 text-gray'
+                                } border rounded px-2 py-1`}
+                              >
+                                {p.backgroundVerification?.status || 'Pending'}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              {(p.assetAllocation || []).length} item(s)
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
+                              {(p.itAccess || []).length} system(s)
+                            </td>
+                            <td className="whitespace-nowrap px-2.5 py-2 text-end align-middle text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                                    onClick={() => openEdit(p)}
+                                  >
+                                    Edit
+                                  </button>
+                                )}
+                                <Link
+                                  href={`/ats/employees?candidateId=${p.candidate?._id}`}
+                                  className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                                >
+                                  Documents
+                                </Link>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
+            </div>
+            <div className="box-footer border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
+              <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                {loading || error ? null : (
+                  <span>
+                    {filteredPlacements.length} placement{filteredPlacements.length !== 1 ? 's' : ''} shown
+                    {listSearch.trim() && placements.length !== filteredPlacements.length
+                      ? ` (filtered from ${placements.length})`
+                      : ''}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -271,112 +505,307 @@ const PreBoarding = () => {
 
       {/* Edit Pre-boarding Modal - use !opacity-100 !pointer-events-auto so it shows when opened via React state */}
       {editModal && editForm && (
-        <div id="edit-preboarding-modal" className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
-          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg">
-            <div className="ti-modal-content">
-              <div className="ti-modal-header">
-                <h4 className="ti-modal-title">Edit Pre-boarding – {editModal.candidate?.fullName}</h4>
-                <button type="button" className="ti-btn ti-btn-light ti-btn-sm" onClick={() => { setEditModal(null); setEditForm(null); }}>
-                  <i className="ri-close-line"></i>
+        <div
+          id="edit-preboarding-modal"
+          className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
+          tabIndex={-1}
+          style={{ zIndex: 80 }}
+        >
+          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg !max-w-3xl">
+            <div className="ti-modal-content overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-lg dark:border-white/10 dark:bg-slate-950">
+              <div className="ti-modal-header flex items-start gap-3 border-b border-slate-200/80 !py-4 dark:border-white/10 sm:!px-5">
+                <span className="mt-0.5 inline-block h-9 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <h4 className="ti-modal-title mb-0.5 text-base font-semibold text-slate-800 dark:text-slate-100">
+                    Edit Pre-boarding
+                  </h4>
+                  <p className="mb-0 text-sm text-slate-500 dark:text-slate-400">
+                    {editModal.candidate?.fullName}
+                    {editModal.job?.title ? (
+                      <span className="text-slate-400 dark:text-slate-500"> · {editModal.job.title}</span>
+                    ) : null}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light !shrink-0 ti-btn-sm"
+                  onClick={() => {
+                    setEditModal(null)
+                    setEditForm(null)
+                  }}
+                  aria-label="Close"
+                >
+                  <i className="ri-close-line" />
                 </button>
               </div>
-              <div className="ti-modal-body space-y-5">
-                <div>
-                  <label className="form-label">Placement Status (Mark as Joined to move to Onboarding)</label>
-                  <select
-                    className="form-control"
-                    value={editForm.placementStatus}
-                    onChange={(e) => setEditForm({ ...editForm, placementStatus: e.target.value as 'Pending' | 'Joined' | 'Deferred' | 'Cancelled' })}
-                  >
-                    <option value="Pending">Pending</option>
-                    <option value="Joined">Joined</option>
-                    <option value="Deferred">Deferred</option>
-                    <option value="Cancelled">Cancelled</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="form-label">Pre-boarding Status</label>
-                  <select
-                    className="form-control"
-                    value={editForm.preBoardingStatus}
-                    onChange={(e) => setEditForm({ ...editForm, preBoardingStatus: e.target.value as PreBoardingStatus })}
-                  >
-                    {PRE_BOARDING_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="ti-modal-body !p-0">
+                <div className="max-h-[min(70vh,36rem)] space-y-4 overflow-y-auto px-4 py-4 sm:space-y-5 sm:px-6 sm:py-5">
+                  <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
+                    <div className="border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Placement &amp; pre-boarding</h3>
+                      <p className="mb-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Set Joined to move this hire to the Onboarding list when ready.
+                      </p>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
+                        <div className="min-w-0">
+                          <label className="form-label" htmlFor="preb-placement-status">
+                            Placement status
+                          </label>
+                          <select
+                            id="preb-placement-status"
+                            className="form-control"
+                            value={editForm.placementStatus}
+                            onChange={(e) =>
+                              setEditForm({
+                                ...editForm,
+                                placementStatus: e.target.value as 'Pending' | 'Joined' | 'Deferred' | 'Cancelled',
+                              })
+                            }
+                          >
+                            <option value="Pending">Pending</option>
+                            <option value="Joined">Joined</option>
+                            <option value="Deferred">Deferred</option>
+                            <option value="Cancelled">Cancelled</option>
+                          </select>
+                        </div>
+                        <div className="min-w-0">
+                          <label className="form-label" htmlFor="preb-pb-status">
+                            Pre-boarding status
+                          </label>
+                          <select
+                            id="preb-pb-status"
+                            className="form-control"
+                            value={editForm.preBoardingStatus}
+                            onChange={(e) => setEditForm({ ...editForm, preBoardingStatus: e.target.value as PreBoardingStatus })}
+                          >
+                            {PRE_BOARDING_OPTIONS.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {editModal
+                        ? (() => {
+                            const { primary, secondary } = getPlacementStatusActorSummary({
+                              status: editModal.status,
+                              deferredBy: editModal.deferredBy,
+                              deferredAt: editModal.deferredAt,
+                              cancelledBy: editModal.cancelledBy,
+                              cancelledAt: editModal.cancelledAt,
+                            })
+                            if (!primary && !secondary) return null
+                            return (
+                              <div className="mt-3 rounded-lg border border-slate-200/80 bg-slate-50/50 px-3 py-2 text-sm text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300">
+                                {primary ? <p className="mb-0">{primary}</p> : null}
+                                {secondary ? <p className="mb-0 text-xs text-slate-500 dark:text-slate-400">{secondary}</p> : null}
+                              </div>
+                            )
+                          })()
+                        : null}
+                      {editForm.placementStatus === 'Joined' && editForm.preBoardingStatus !== 'Completed' && (
+                        <div className="mt-4 rounded-lg border border-amber-200/90 bg-amber-50/90 p-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+                          <label className="flex cursor-pointer items-start gap-2">
+                            <input
+                              type="checkbox"
+                              className="mt-1"
+                              checked={preboardingGateBypassAck}
+                              onChange={(e) => setPreboardingGateBypassAck(e.target.checked)}
+                            />
+                            <span>
+                              Override pre-boarding gate (requires permission). Use only when pre-boarding is intentionally
+                              incomplete but the hire should still be marked Joined.
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                <div className="border-b border-defaultborder pb-4">
-                  <h6 className="form-label mb-3">Background Verification</h6>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="form-label">Status</label>
-                      <select
-                        className="form-control"
-                        value={editForm.bgvStatus}
-                        onChange={(e) => setEditForm({ ...editForm, bgvStatus: e.target.value as BGVStatus })}
+                  <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
+                    <div className="border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
+                      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Background verification (BGV)</h3>
+                      <p className="mb-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        Track BGV status and notes before join date.
+                      </p>
+                    </div>
+                    <div className="p-4 sm:p-5">
+                      <div className="min-w-0 max-w-sm">
+                        <label className="form-label" htmlFor="preb-bgv-status">
+                          Status
+                        </label>
+                        <select
+                          id="preb-bgv-status"
+                          className="form-control"
+                          value={editForm.bgvStatus}
+                          onChange={(e) => setEditForm({ ...editForm, bgvStatus: e.target.value as BGVStatus })}
+                        >
+                          {BGV_OPTIONS.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="mt-4 min-w-0">
+                        <label className="form-label" htmlFor="preb-bgv-notes">
+                          Notes
+                        </label>
+                        <textarea
+                          id="preb-bgv-notes"
+                          className="form-control"
+                          rows={2}
+                          value={editForm.bgvNotes}
+                          onChange={(e) => setEditForm({ ...editForm, bgvNotes: e.target.value })}
+                          placeholder="BGV notes"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Asset allocation</h3>
+                        <p className="mb-0 text-xs text-slate-500 dark:text-slate-400">Laptops, badges, and hardware.</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-success !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
+                        onClick={addAsset}
                       >
-                        {BGV_OPTIONS.map((s) => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
+                        <i className="ri-add-line" aria-hidden /> Add
+                      </button>
                     </div>
-                    <div>
-                      <label className="form-label">Agency</label>
-                      <input type="text" className="form-control" value={editForm.bgvAgency} onChange={(e) => setEditForm({ ...editForm, bgvAgency: e.target.value })} placeholder="e.g. Background Check Inc" />
+                    <div className="space-y-2.5 p-4 sm:p-5">
+                      {editForm.assets.map((a, idx) => (
+                        <div
+                          key={idx}
+                          className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200/80 bg-slate-50/40 p-3 dark:border-white/10 dark:bg-white/[0.02]"
+                        >
+                          <input
+                            type="text"
+                            className="form-control min-w-[120px] flex-1"
+                            placeholder="Asset name"
+                            value={a.name}
+                            onChange={(e) => updateAsset(idx, 'name', e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="form-control min-w-[80px]"
+                            placeholder="Type"
+                            value={a.type}
+                            onChange={(e) => updateAsset(idx, 'type', e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="form-control min-w-[100px]"
+                            placeholder="Serial #"
+                            value={a.serialNumber}
+                            onChange={(e) => updateAsset(idx, 'serialNumber', e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="form-control min-w-[100px]"
+                            placeholder="Notes"
+                            value={a.notes}
+                            onChange={(e) => updateAsset(idx, 'notes', e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-danger !mb-0 ti-btn-sm shrink-0"
+                            onClick={() => removeAsset(idx)}
+                            aria-label="Remove row"
+                          >
+                            <i className="ri-delete-bin-line" />
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="mt-3">
-                    <label className="form-label">Notes</label>
-                    <textarea className="form-control" rows={2} value={editForm.bgvNotes} onChange={(e) => setEditForm({ ...editForm, bgvNotes: e.target.value })} placeholder="BGV notes" />
-                  </div>
-                </div>
 
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h6 className="form-label mb-0">Asset Allocation</h6>
-                    <button type="button" className="ti-btn ti-btn-sm ti-btn-success" onClick={addAsset}><i className="ri-add-line"></i> Add</button>
-                  </div>
-                  <div className="space-y-2">
-                    {editForm.assets.map((a, idx) => (
-                      <div key={idx} className="flex flex-wrap gap-2 items-end p-2 border border-defaultborder rounded">
-                        <input type="text" className="form-control flex-1 min-w-[120px]" placeholder="Asset name" value={a.name} onChange={(e) => updateAsset(idx, 'name', e.target.value)} />
-                        <input type="text" className="form-control min-w-[80px]" placeholder="Type" value={a.type} onChange={(e) => updateAsset(idx, 'type', e.target.value)} />
-                        <input type="text" className="form-control min-w-[100px]" placeholder="Serial #" value={a.serialNumber} onChange={(e) => updateAsset(idx, 'serialNumber', e.target.value)} />
-                        <input type="text" className="form-control min-w-[100px]" placeholder="Notes" value={a.notes} onChange={(e) => updateAsset(idx, 'notes', e.target.value)} />
-                        <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => removeAsset(idx)}><i className="ri-delete-bin-line"></i></button>
+                  <div className={`overflow-hidden ${pipelineStyles.tableCard}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
+                      <div>
+                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">IT access</h3>
+                        <p className="mb-0 text-xs text-slate-500 dark:text-slate-400">Email, VPN, and internal systems.</p>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <h6 className="form-label mb-0">IT Access</h6>
-                    <button type="button" className="ti-btn ti-btn-sm ti-btn-success" onClick={addItAccess}><i className="ri-add-line"></i> Add</button>
-                  </div>
-                  <div className="space-y-2">
-                    {editForm.itAccess.map((i, idx) => (
-                      <div key={idx} className="flex flex-wrap gap-2 items-end p-2 border border-defaultborder rounded">
-                        <input type="text" className="form-control flex-1 min-w-[120px]" placeholder="System (e.g. Email, Slack)" value={i.system} onChange={(e) => updateItAccess(idx, 'system', e.target.value)} />
-                        <input type="text" className="form-control min-w-[100px]" placeholder="Access level" value={i.accessLevel} onChange={(e) => updateItAccess(idx, 'accessLevel', e.target.value)} />
-                        <input type="text" className="form-control min-w-[100px]" placeholder="Notes" value={i.notes} onChange={(e) => updateItAccess(idx, 'notes', e.target.value)} />
-                        <button type="button" className="ti-btn ti-btn-sm ti-btn-danger" onClick={() => removeItAccess(idx)}><i className="ri-delete-bin-line"></i></button>
-                      </div>
-                    ))}
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-success !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
+                        onClick={addItAccess}
+                      >
+                        <i className="ri-add-line" aria-hidden /> Add
+                      </button>
+                    </div>
+                    <div className="space-y-2.5 p-4 sm:p-5">
+                      {editForm.itAccess.map((i, idx) => (
+                        <div
+                          key={idx}
+                          className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200/80 bg-slate-50/40 p-3 dark:border-white/10 dark:bg-white/[0.02]"
+                        >
+                          <input
+                            type="text"
+                            className="form-control min-w-[120px] flex-1"
+                            placeholder="System (e.g. Email, Slack)"
+                            value={i.system}
+                            onChange={(e) => updateItAccess(idx, 'system', e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="form-control min-w-[100px]"
+                            placeholder="Access level"
+                            value={i.accessLevel}
+                            onChange={(e) => updateItAccess(idx, 'accessLevel', e.target.value)}
+                          />
+                          <input
+                            type="text"
+                            className="form-control min-w-[100px]"
+                            placeholder="Notes"
+                            value={i.notes}
+                            onChange={(e) => updateItAccess(idx, 'notes', e.target.value)}
+                          />
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-danger !mb-0 ti-btn-sm shrink-0"
+                            onClick={() => removeItAccess(idx)}
+                            aria-label="Remove row"
+                          >
+                            <i className="ri-delete-bin-line" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-              <div className="ti-modal-footer">
-                <button type="button" className="ti-btn ti-btn-light" onClick={() => { setEditModal(null); setEditForm(null); }}>Cancel</button>
+              <div className="ti-modal-footer flex flex-wrap items-center justify-end gap-2 border-t border-slate-200/80 !px-4 !py-3 dark:border-white/10 sm:!px-6">
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light"
+                  onClick={() => {
+                    setEditModal(null)
+                    setEditForm(null)
+                  }}
+                >
+                  Cancel
+                </button>
                 <button type="button" className="ti-btn ti-btn-primary" onClick={handleSavePreBoarding} disabled={submitting}>
-                  {submitting ? <i className="ri-loader-4-line animate-spin"></i> : 'Save'}
+                  {submitting ? <i className="ri-loader-4-line animate-spin" aria-hidden /> : 'Save'}
                 </button>
               </div>
             </div>
           </div>
-          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => { setEditModal(null); setEditForm(null); }}></div>
+          <div
+            className="hs-overlay-backdrop ti-modal-backdrop"
+            onClick={() => {
+              setEditModal(null)
+              setEditForm(null)
+            }}
+          />
         </div>
       )}
     </Fragment>

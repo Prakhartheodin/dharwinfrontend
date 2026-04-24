@@ -1,7 +1,7 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
@@ -9,10 +9,14 @@ import {
   getReferralLeadsStats,
   downloadReferralLeadsExport,
   postReferralAttributionOverride,
+  getReferralAttributionOverrideHistory,
+  type ReferralAttributionOverrideHistoryRow,
   type ReferralLeadRow,
   type ReferralLeadsQueryParams,
   type ReferralLeadsStatsResponse,
 } from "@/shared/lib/api/referralLeads";
+import { listUsers } from "@/shared/lib/api/users";
+import type { User } from "@/shared/lib/types";
 import { LINK_TYPE, STATUS_META, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
 
 function canManageCandidatesFromPermissions(permissions: string[]): boolean {
@@ -32,6 +36,15 @@ function fmtDate(iso: string | null | undefined): string {
 function fmtTime(iso: string | null | undefined): string {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+}
+
+function userDisplay(u: { name?: string; email?: string } | null | undefined): string {
+  if (!u) return "—";
+  const n = u.name?.trim();
+  if (n && u.email?.trim()) return `${n} · ${u.email.trim()}`;
+  if (n) return n;
+  if (u.email?.trim()) return u.email.trim();
+  return "—";
 }
 
 type DatePreset = "all" | "week" | "month" | "quarter";
@@ -87,8 +100,21 @@ export default function ReferralLeadsPage() {
   const [selected, setSelected] = useState<ReferralLeadRow | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideUserId, setOverrideUserId] = useState("");
+  const [overrideReferrerLabel, setOverrideReferrerLabel] = useState("");
+  const [referrerSearch, setReferrerSearch] = useState("");
+  const [referrerHits, setReferrerHits] = useState<User[]>([]);
+  const [referrerLoading, setReferrerLoading] = useState(false);
+  const [referrerListError, setReferrerListError] = useState<string | null>(null);
+  const [referrerPickerOpen, setReferrerPickerOpen] = useState(false);
   const [overrideReason, setOverrideReason] = useState("");
+  const [overrideFormError, setOverrideFormError] = useState<string | null>(null);
   const [overrideSaving, setOverrideSaving] = useState(false);
+  const overrideReasonRef = useRef<HTMLTextAreaElement>(null);
+
+  const [overrideHistoryOpen, setOverrideHistoryOpen] = useState(false);
+  const [overrideHistoryRows, setOverrideHistoryRows] = useState<ReferralAttributionOverrideHistoryRow[]>([]);
+  const [overrideHistoryLoading, setOverrideHistoryLoading] = useState(false);
+  const [overrideHistoryError, setOverrideHistoryError] = useState<string | null>(null);
 
   const baseParams = useMemo((): ReferralLeadsQueryParams => {
     const { from, to } =
@@ -153,6 +179,48 @@ export default function ReferralLeadsPage() {
     return () => clearInterval(t);
   }, [permissionsLoaded, baseParams]);
 
+  /** Same user directory as Settings → Users (GET /users). */
+  const fetchReferrerDirectory = useCallback(async (search: string) => {
+    setReferrerLoading(true);
+    setReferrerListError(null);
+    try {
+      const res = await listUsers({
+        search: search.trim() || undefined,
+        limit: 40,
+        page: 1,
+        status: "active",
+      });
+      setReferrerHits(res.results ?? []);
+    } catch (e: unknown) {
+      setReferrerHits([]);
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string }; status?: number } }).response?.data?.message
+          : null;
+      const status =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { status?: number } }).response?.status
+          : undefined;
+      if (status === 403) {
+        setReferrerListError("You need permission to list users (users.read), same as Settings → Users.");
+      } else {
+        setReferrerListError(msg || "Could not load users. Try again.");
+      }
+    } finally {
+      setReferrerLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!overrideOpen) return;
+    const q = referrerSearch;
+    const delay = q.trim() === "" ? 0 : 300;
+    const t = window.setTimeout(() => {
+      void fetchReferrerDirectory(q);
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [overrideOpen, referrerSearch, fetchReferrerDirectory]);
+
   const distinctReferrers = useMemo(() => {
     const m = new Map<string, { id: string; name: string }>();
     for (const r of list) {
@@ -213,7 +281,11 @@ export default function ReferralLeadsPage() {
 
   const onOverrideSubmit = async () => {
     if (!selected?.id) return;
-    if (!overrideUserId.trim() || !overrideReason.trim()) return;
+    setOverrideFormError(null);
+    if (!overrideUserId.trim()) {
+      setOverrideFormError("Select a new referrer from the list.");
+      return;
+    }
     setOverrideSaving(true);
     try {
       await postReferralAttributionOverride(selected.id, {
@@ -222,15 +294,53 @@ export default function ReferralLeadsPage() {
       });
       setOverrideOpen(false);
       setOverrideUserId("");
+      setOverrideReferrerLabel("");
+      setReferrerSearch("");
+      setReferrerHits([]);
+      setReferrerPickerOpen(false);
+      setReferrerListError(null);
       setOverrideReason("");
+      setOverrideFormError(null);
       await refresh();
       setSelected(null);
-    } catch (e) {
-      alert(e instanceof Error ? e.message : "Override failed");
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && e !== null && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      const fallback =
+        e instanceof Error
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : "Override failed. Check permissions and try again.";
+      setOverrideFormError(msg || fallback);
     } finally {
       setOverrideSaving(false);
     }
   };
+
+  const openOverrideHistory = useCallback(async () => {
+    if (!selected?.id) return;
+    setOverrideHistoryOpen(true);
+    setOverrideHistoryError(null);
+    setOverrideHistoryRows([]);
+    setOverrideHistoryLoading(true);
+    try {
+      const res = await getReferralAttributionOverrideHistory(selected.id);
+      setOverrideHistoryRows(res.results ?? []);
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === "object" && e !== null && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      const fallback =
+        e instanceof Error ? e.message : typeof e === "string" ? e : "Could not load history.";
+      setOverrideHistoryError(msg || fallback);
+    } finally {
+      setOverrideHistoryLoading(false);
+    }
+  }, [selected?.id]);
 
   return (
     <React.Fragment>
@@ -609,9 +719,45 @@ export default function ReferralLeadsPage() {
                 )}
 
                 {selected.referralLastOverride?.overriddenAt && (
-                  <div className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm">
-                    <p className="text-xs text-slate-500 mb-1">Last override</p>
-                    <p className="text-slate-700 dark:text-slate-200">{selected.referralLastOverride.reason}</p>
+                  <div className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-slate-500 mb-0">Last override</p>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline shrink-0"
+                        onClick={() => void openOverrideHistory()}
+                      >
+                        View all
+                      </button>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">By</p>
+                      <p className="text-slate-800 dark:text-slate-100">
+                        {userDisplay(selected.referralLastOverride.overriddenByUser)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">When</p>
+                      <p className="text-slate-800 dark:text-slate-100">
+                        {fmtDate(selected.referralLastOverride.overriddenAt ?? undefined)}{" "}
+                        {fmtTime(selected.referralLastOverride.overriddenAt ?? undefined)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Referrer change</p>
+                      <p className="text-slate-800 dark:text-slate-100">
+                        <span className="text-slate-500">From</span>{" "}
+                        {userDisplay(selected.referralLastOverride.previousReferredBy)}
+                        <span className="text-slate-500 mx-1">→</span>
+                        <span className="text-slate-500">to</span> {userDisplay(selected.referralLastOverride.newReferredBy)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500">Reason</p>
+                      <p className="text-slate-700 dark:text-slate-200">
+                        {selected.referralLastOverride.reason?.trim() || "—"}
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -628,7 +774,13 @@ export default function ReferralLeadsPage() {
                       className="ti-btn ti-btn-outline-danger w-full"
                       onClick={() => {
                         setOverrideUserId("");
+                        setOverrideReferrerLabel("");
+                        setReferrerSearch("");
+                        setReferrerHits([]);
+                        setReferrerPickerOpen(false);
+                        setReferrerListError(null);
                         setOverrideReason("");
+                        setOverrideFormError(null);
                         setOverrideOpen(true);
                       }}
                     >
@@ -643,44 +795,206 @@ export default function ReferralLeadsPage() {
 
         {overrideOpen && selected && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setOverrideOpen(false)} />
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => {
+                setOverrideOpen(false);
+                setReferrerPickerOpen(false);
+              }}
+            />
             <div className="relative bg-white dark:bg-bgdark2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Override attribution</h3>
               <p className="text-sm text-slate-500 mt-1">
-                Current: {selected.referredBy?.name || "—"}. Enter the new referrer user ID and a reason.
+                Current: {selected.referredBy?.name || "—"}. Choose the new referrer from your user directory (same as
+                Settings → Users). You can add an optional reason for the audit log.
               </p>
               <div className="mt-4 space-y-3">
-                <div>
-                  <label className="form-label">New referrer user ID</label>
+                <div className="relative">
+                  <label className="form-label" htmlFor="override-referrer-search">
+                    New referrer
+                  </label>
+                  {overrideUserId ? (
+                    <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm dark:border-white/10 dark:bg-white/5">
+                      <span className="min-w-0 truncate text-slate-800 dark:text-slate-100">{overrideReferrerLabel}</span>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-light !shrink-0 ti-btn-sm"
+                        onClick={() => {
+                          setOverrideUserId("");
+                          setOverrideReferrerLabel("");
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : null}
                   <input
+                    id="override-referrer-search"
                     className="form-control w-full"
-                    value={overrideUserId}
-                    onChange={(e) => setOverrideUserId(e.target.value)}
-                    placeholder="Mongo ObjectId"
+                    value={referrerSearch}
+                    onChange={(e) => {
+                      setReferrerSearch(e.target.value);
+                      setReferrerPickerOpen(true);
+                    }}
+                    onFocus={() => setReferrerPickerOpen(true)}
+                    placeholder="Search by name or email…"
+                    autoComplete="off"
+                    disabled={!!overrideUserId}
                   />
+                  {referrerListError && (
+                    <p className="text-xs text-danger mt-1 mb-0">{referrerListError}</p>
+                  )}
+                  {referrerPickerOpen && !overrideUserId && (
+                    <div
+                      className="absolute left-0 right-0 top-full z-10 mt-1 max-h-52 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-slate-900"
+                      role="listbox"
+                      aria-label="Matching users"
+                    >
+                      {referrerLoading ? (
+                        <div className="px-3 py-4 text-center text-sm text-slate-500">Loading users…</div>
+                      ) : referrerHits.length === 0 ? (
+                        <div className="px-3 py-4 text-center text-sm text-slate-500">No matching users.</div>
+                      ) : (
+                        referrerHits.map((u) => {
+                          const name = u.name?.trim() ?? "";
+                          const displayLabel = name && u.email ? `${name} · ${u.email}` : name || u.email || u.id;
+                          return (
+                            <button
+                              key={u.id}
+                              type="button"
+                              role="option"
+                              className="block w-full border-0 bg-transparent px-3 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-white/10"
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setOverrideUserId(u.id);
+                                setOverrideReferrerLabel(displayLabel);
+                                setReferrerSearch("");
+                                setReferrerPickerOpen(false);
+                              }}
+                            >
+                              <span className="font-medium text-slate-800 dark:text-slate-100">
+                                {u.name?.trim() || u.email}
+                              </span>
+                              {u.name?.trim() && u.email ? (
+                                <span className="block text-xs text-slate-500">{u.email}</span>
+                              ) : null}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
-                  <label className="form-label">Reason (required)</label>
+                  <label className="form-label" htmlFor="override-reason">
+                    Reason (optional)
+                  </label>
                   <textarea
+                    ref={overrideReasonRef}
+                    id="override-reason"
                     className="form-control w-full"
                     rows={3}
                     value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
+                    onChange={(e) => {
+                      setOverrideReason(e.target.value);
+                      setOverrideFormError(null);
+                    }}
+                    aria-invalid={Boolean(overrideFormError)}
                   />
                 </div>
+                {overrideFormError && (
+                  <div
+                    className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger"
+                    role="alert"
+                  >
+                    {overrideFormError}
+                  </div>
+                )}
               </div>
-              <div className="mt-6 flex justify-end gap-2">
-                <button type="button" className="ti-btn ti-btn-light" onClick={() => setOverrideOpen(false)}>
+              <div className="mt-6 flex flex-wrap items-center justify-end gap-2">
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light"
+                  onClick={() => {
+                    setOverrideOpen(false);
+                    setReferrerPickerOpen(false);
+                    setOverrideFormError(null);
+                  }}
+                >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-danger"
+                  className="ti-btn ti-btn-danger disabled:opacity-60"
                   disabled={overrideSaving}
                   onClick={() => void onOverrideSubmit()}
                 >
                   {overrideSaving ? "Saving…" : "Confirm override"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {overrideHistoryOpen && selected && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50" onClick={() => setOverrideHistoryOpen(false)} role="presentation" />
+            <div
+              className="relative bg-white dark:bg-bgdark2 rounded-xl border border-slate-200 dark:border-white/10 flex flex-col max-w-lg w-full max-h-[min(90vh,560px)] shadow-xl"
+              role="dialog"
+              aria-labelledby="override-history-title"
+            >
+              <div className="p-4 border-b border-slate-200 dark:border-white/10 flex items-center justify-between gap-2 shrink-0">
+                <h3 id="override-history-title" className="text-lg font-semibold text-slate-900 dark:text-white m-0">
+                  Attribution override history
+                </h3>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light ti-btn-sm"
+                  onClick={() => setOverrideHistoryOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto flex-1 min-h-0">
+                {overrideHistoryLoading && <p className="text-sm text-slate-500 m-0">Loading…</p>}
+                {overrideHistoryError && <p className="text-sm text-danger m-0">{overrideHistoryError}</p>}
+                {!overrideHistoryLoading && !overrideHistoryError && overrideHistoryRows.length === 0 && (
+                  <p className="text-sm text-slate-500 m-0">No override entries in the audit log yet.</p>
+                )}
+                {!overrideHistoryLoading && !overrideHistoryError && overrideHistoryRows.length > 0 && (
+                  <ul className="space-y-3 list-none p-0 m-0">
+                    {overrideHistoryRows.map((row) => (
+                      <li
+                        key={row.id}
+                        className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm space-y-2"
+                      >
+                        <div>
+                          <p className="text-xs text-slate-500 m-0">When</p>
+                          <p className="text-slate-800 dark:text-slate-100 m-0">
+                            {row.createdAt ? `${fmtDate(row.createdAt)} ${fmtTime(row.createdAt)}` : "—"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 m-0">By</p>
+                          <p className="text-slate-800 dark:text-slate-100 m-0">{userDisplay(row.actor)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 m-0">Referrer change</p>
+                          <p className="text-slate-800 dark:text-slate-100 m-0">
+                            <span className="text-slate-500">From</span> {userDisplay(row.previousReferredBy)}
+                            <span className="text-slate-500 mx-1">→</span>
+                            <span className="text-slate-500">to</span> {userDisplay(row.newReferredBy)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 m-0">Reason</p>
+                          <p className="text-slate-700 dark:text-slate-200 m-0">{row.reason?.trim() || "—"}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           </div>

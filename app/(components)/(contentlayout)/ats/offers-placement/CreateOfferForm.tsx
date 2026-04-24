@@ -206,8 +206,9 @@ export function CreateOfferForm({
                 (and templates) in the background.
               </p>
               <p className="text-xs leading-relaxed">
-                <strong>Next:</strong> the <strong>Offer Letter Generator</strong> opens on top so you can edit the letter
-                and run <strong>Generate PDF</strong> (started automatically after create).
+                <strong>Next:</strong> the <strong>Offer Letter Generator</strong> opens on the list so you can edit the
+                letter. <strong>Generate PDF</strong> runs automatically; then <strong>Download</strong> (next to
+                Generate PDF) fetches the same server PDF — it enables after the first successful generate.
               </p>
             </>
           ) : (
@@ -394,12 +395,14 @@ export function CreateOfferForm({
       <div className="border border-gray-200 dark:border-defaultborder/10 rounded-lg p-4 space-y-4 bg-gray-50/80 dark:bg-black/20">
         <h6 className="text-base font-semibold text-gray-800 dark:text-white flex items-center gap-2">
           <i className="ri-file-pdf-2-line text-primary"></i>
-          Offer letter (PDF) — same data as &quot;Generate PDF&quot; on the offers list
+          Offer letter (PDF) — <strong>Generate PDF</strong> + <strong>Download</strong> in the top bar (same as opening
+          from an offer row)
         </h6>
         <p className="text-xs text-gray-600 dark:text-gray-400">
           Pre-filled from the selected application (name, address from profile, job title, suggested roles). After you
-          submit, you&apos;ll return to <strong>Offers &amp; Placement</strong> with the letter workspace open and{" "}
-          <strong>Generate PDF</strong> started for this offer.
+          submit, you&apos;ll return to <strong>Offers &amp; Placement</strong> with the letter workspace open,{" "}
+          <strong>Generate PDF</strong> started, and <strong>Download</strong> enabled once the server PDF is stored
+          (same two buttons as when you open the letter from the table).
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

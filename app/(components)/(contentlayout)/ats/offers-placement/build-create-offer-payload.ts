@@ -25,8 +25,8 @@ export function buildCreateOfferPayloadFromLetterForm(
     letterForm.jobType === "PT_25" ? 25 : letterForm.jobType === "FT_40" ? 40 : (letterForm.weeklyHours as 25 | 40)
   const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""))
 
-  return {
-    jobApplicationId,
+  const trimmedAppId = jobApplicationId?.trim() ?? ""
+  const basePayload: CreateOfferPayload = {
     ctcBreakdown: {
       base: Number.isFinite(base) ? base : 0,
       hra: Number.isFinite(hra) ? hra : 0,
@@ -54,4 +54,8 @@ export function buildCreateOfferPayloadFromLetterForm(
     },
     letterDate: letterForm.letterDate || null,
   }
+  if (trimmedAppId && /^[0-9a-fA-F]{24}$/.test(trimmedAppId)) {
+    return { ...basePayload, jobApplicationId: trimmedAppId }
+  }
+  return basePayload
 }

@@ -23,6 +23,7 @@ import {
 } from './OfferLetterGeneratorWorkspace'
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
+import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 
 function formatCandidateAddress(c: { address?: Offer['candidate']['address'] } | null | undefined) {
   const a = c?.address
@@ -55,8 +56,11 @@ const mapOfferToRow = (o: Offer) => {
     signedStatus: o.status === 'Accepted' ? 'Signed' : o.status === 'Rejected' ? 'Not Sent' : o.status === 'Sent' || o.status === 'Under Negotiation' ? 'Pending' : 'Draft',
     onboardingStatus: o.status === 'Accepted' ? 'Ready' : o.status === 'Rejected' ? 'Not Applicable' : 'Pending',
     placementStatus: (o as { placementStatus?: string }).placementStatus ?? null,
+    placementId: (o as { placementId?: string }).placementId ?? '',
     preBoardingStatus: placement?.preBoardingStatus || null,
     bgvStatus: placement?.backgroundVerification?.status || null,
+    /** Pass-through for UI (e.g. who deferred / cancelled) */
+    placement: o.placement,
     assetCount: Array.isArray(placement?.assetAllocation) ? placement.assetAllocation.length : 0,
     itAccessCount: Array.isArray(placement?.itAccess) ? placement.itAccess.length : 0,
     candidate: {
@@ -475,7 +479,7 @@ const OffersPlacement = () => {
     fetchOffers()
   }, [])
 
-  // Re-init Preline so Sort, Excel dropdowns and Search overlay work (content mounts after layout autoInit)
+  // Re-init Preline so Sort dropdown and search overlay work (content mounts after layout autoInit)
   useEffect(() => {
     const initPreline = () => {
       const win = window as any
@@ -935,10 +939,26 @@ const OffersPlacement = () => {
             )
           }
           if (status === 'Deferred' || status === 'Cancelled') {
+            const { primary, secondary } = getPlacementStatusActorSummary({
+              status,
+              ...(offer.placement || {}),
+            })
             return (
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-300">
-                {status}
-              </span>
+              <div className="flex flex-col gap-0.5">
+                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-300">
+                  {status}
+                </span>
+                {primary ? (
+                  <span className="max-w-[14rem] text-[10px] leading-tight text-slate-500 dark:text-slate-400" title={primary}>
+                    {primary}
+                  </span>
+                ) : null}
+                {secondary ? (
+                  <span className="max-w-[14rem] text-[10px] leading-tight text-slate-500 dark:text-slate-400" title={secondary}>
+                    {secondary}
+                  </span>
+                ) : null}
+              </div>
             )
           }
           return (
@@ -978,7 +998,11 @@ const OffersPlacement = () => {
           const offer = row.original
           const isAccepted = offer.offerStatus === 'Accepted'
           // Pre-boarding shows Pending placements only; Joined placements go to Onboarding
-          const inPreBoarding = isAccepted && offer.placementStatus === 'Pending'
+          const inPreBoarding =
+            isAccepted &&
+            (offer.placementStatus === 'Pending' ||
+              offer.placementStatus === 'Deferred' ||
+              offer.placementStatus === 'Cancelled')
           const inOnboarding = isAccepted && offer.placementStatus === 'Joined'
           const rowAct =
             'hs-tooltip-toggle inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-[0.95rem] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 dark:border-white/15 dark:bg-transparent dark:hover:bg-white/5'
@@ -986,7 +1010,11 @@ const OffersPlacement = () => {
           <div className="flex min-w-0 max-w-[200px] flex-wrap items-center gap-1 sm:max-w-none">
             {inPreBoarding && (
               <Link
-                href="/ats/pre-boarding"
+                href={
+                  offer.placementId && /^[0-9a-fA-F]{24}$/.test(offer.placementId)
+                    ? `/ats/pre-boarding?placementId=${encodeURIComponent(offer.placementId)}`
+                    : '/ats/pre-boarding'
+                }
                 className="mb-0.5 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-emerald-200/90 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-900 hover:bg-emerald-100/90 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
                 title="Go to Pre-boarding"
               >
@@ -1130,7 +1158,13 @@ const OffersPlacement = () => {
       // Step filter (Pre-boarding, Onboarding)
       if (filters.step.length > 0) {
         const step = offer.offerStatus === 'Accepted'
-          ? (offer.placementStatus === 'Pending' ? 'Pre-boarding' : offer.placementStatus === 'Joined' ? 'Onboarding' : null)
+          ? (offer.placementStatus === 'Pending' ||
+              offer.placementStatus === 'Deferred' ||
+              offer.placementStatus === 'Cancelled'
+              ? 'Pre-boarding'
+              : offer.placementStatus === 'Joined'
+                ? 'Onboarding'
+                : null)
           : null
         if (!step || !filters.step.includes(step)) return false
       }
@@ -1158,7 +1192,12 @@ const OffersPlacement = () => {
     const steps = new Set<string>()
     OFFERS_PLACEMENT_DATA.forEach((offer) => {
       if (offer.offerStatus === 'Accepted') {
-        if (offer.placementStatus === 'Pending') steps.add('Pre-boarding')
+        if (
+          offer.placementStatus === 'Pending' ||
+          offer.placementStatus === 'Deferred' ||
+          offer.placementStatus === 'Cancelled'
+        )
+          steps.add('Pre-boarding')
         else if (offer.placementStatus === 'Joined') steps.add('Onboarding')
       }
     })
@@ -1375,46 +1414,6 @@ const OffersPlacement = () => {
                     Create
                   </Link>
                 )}
-                <div className="hs-dropdown ti-dropdown me-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
-                    id="excel-dropdown-button"
-                    aria-expanded="false"
-                    aria-haspopup="true"
-                    aria-label="Excel import and export"
-                  >
-                    <i className="ri-file-excel-2-line me-1 align-middle font-semibold text-emerald-700 dark:text-emerald-400" aria-hidden />
-                    Excel
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block" aria-hidden />
-                  </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                  </ul>
-                </div>
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
@@ -1663,20 +1662,23 @@ const OffersPlacement = () => {
                   <tbody {...getTableBodyProps()}>
                     {page.map((row: any, i: number) => {
                       prepareRow(row)
+                      const rowProps = row.getRowProps({
+                        className: `border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${offersStyles.rowIn}`,
+                        style: { animationDelay: `${Math.min(i, 16) * 45}ms` },
+                      })
+                      const { key: rowKey, ...trProps } = rowProps
                       return (
-                        <tr
-                          {...row.getRowProps({
-                            className: `border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${offersStyles.rowIn}`,
-                            style: { animationDelay: `${Math.min(i, 16) * 45}ms` },
-                          })}
-                        >
-                          {row.cells.map((cell: any, i: number) => {
+                        <tr key={rowKey} {...trProps}>
+                          {row.cells.map((cell: any, cellI: number) => {
+                            const cellProps = cell.getCellProps({
+                              className:
+                                'whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100',
+                            })
+                            const { key: cellKey, ...tdProps } = cellProps
                             return (
                               <td
-                                {...cell.getCellProps({
-                                  className: 'whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100',
-                                })}
-                                key={cell.column.id || `cell-${i}`}
+                                key={String(cellKey ?? cell.column.id ?? `cell-${cellI}`)}
+                                {...tdProps}
                               >
                                 {cell.render('Cell')}
                               </td>
@@ -2199,9 +2201,32 @@ const OffersPlacement = () => {
                     {(viewOfferModal as any).placement && (
                       <div>
                         <h5 className="font-semibold text-gray-800 dark:text-white mb-2">Pre-boarding &amp; Placement</h5>
+                        <p>
+                          <strong>Placement status:</strong> {(viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status || '-'}
+                        </p>
                         <p><strong>Pre-boarding Status:</strong> {(viewOfferModal as any).placement?.preBoardingStatus || '-'}</p>
+                        {(() => {
+                          const { primary, secondary } = getPlacementStatusActorSummary({
+                            status: (viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status,
+                            ...(viewOfferModal as any).placement,
+                          })
+                          return (
+                            <>
+                              {primary ? (
+                                <p className="mb-0 text-slate-600 dark:text-slate-300">
+                                  <strong>Record:</strong> {primary}
+                                </p>
+                              ) : null}
+                              {secondary ? (
+                                <p className="mb-0 text-slate-500 dark:text-slate-400 text-xs">
+                                  {secondary}
+                                </p>
+                              ) : null}
+                            </>
+                          )
+                        })()}
                         {(viewOfferModal as any).placement?.backgroundVerification && (
-                          <p><strong>BGV:</strong> {(viewOfferModal as any).placement.backgroundVerification?.status || '-'} {(viewOfferModal as any).placement.backgroundVerification?.agency ? `(${(viewOfferModal as any).placement.backgroundVerification.agency})` : ''}</p>
+                          <p><strong>BGV:</strong> {(viewOfferModal as any).placement.backgroundVerification?.status || '-'}</p>
                         )}
                         {Array.isArray((viewOfferModal as any).placement?.assetAllocation) && (viewOfferModal as any).placement.assetAllocation.length > 0 && (
                           <p><strong>Assets:</strong> {(viewOfferModal as any).placement.assetAllocation.map((a: any) => a.name || a.type).join(', ') || '-'}</p>
