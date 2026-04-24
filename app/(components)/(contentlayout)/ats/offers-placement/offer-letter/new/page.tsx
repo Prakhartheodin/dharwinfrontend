@@ -21,16 +21,6 @@ import {
 import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-payload";
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
-import { printOfferLetterInIframe, OFFER_LETTER_PREVIEW_ID } from "../../print-offer-letter-iframe";
-
-function printLetterOrPage() {
-  const el = document.getElementById(OFFER_LETTER_PREVIEW_ID);
-  if (el) {
-    printOfferLetterInIframe(el as HTMLElement);
-    return;
-  }
-  window.print();
-}
 
 function formatCandidateAddress(c: { address?: Offer["candidate"]["address"] } | null | undefined) {
   const a = c?.address;
@@ -47,14 +37,13 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
 }
 
 /**
- * Standalone letter draft: server PDF when `?offerId=` is present (or after `?applicationId=` + Generate creates the offer).
- * With no offer context, Generate / Download use the browser print dialog (Save as PDF) — no blocking alert.
+ * Standalone letter: same server PDF flow as Offers & Placement (`generateOfferLetterPdf` / `downloadOfferLetterFile`).
+ * Open with `?offerId=` to continue an offer, or fill the form and use Generate to create an offer and PDF (no job application required).
  */
 export default function NewOfferLetterPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const offerIdParam = searchParams.get("offerId");
-  const applicationIdParam = searchParams.get("applicationId");
 
   const [letterForm, setLetterForm] = useState(() => createEmptyOfferLetterForm());
   const [linkedOffer, setLinkedOffer] = useState<Offer | null>(null);
@@ -147,7 +136,7 @@ export default function NewOfferLetterPage() {
     if (linkedOffer) {
       const id = getOfferRecordId(linkedOffer);
       if (!id) {
-        printLetterOrPage();
+        alert("This offer has no id. Go back to Offers & Placement and open the letter from the list.");
         return;
       }
       setLetterBusy(true);
@@ -173,49 +162,41 @@ export default function NewOfferLetterPage() {
       return;
     }
 
-    if (applicationIdParam && /^[0-9a-fA-F]{24}$/.test(applicationIdParam)) {
-      if (!isIntern && (!Number.isFinite(g) || g <= 0)) {
-        alert("Set annual gross in Compensation before generating a paid offer PDF.");
-        return;
-      }
-      setLetterBusy(true);
-      try {
-        const created = await createOffer(
-          buildCreateOfferPayloadFromLetterForm(applicationIdParam, "", "", 0, 0, letterForm)
-        );
-        const id = getOfferRecordId(created);
-        if (!id) {
-          throw new Error("Create offer returned no id");
-        }
-
-        setLinkedOffer(created);
-        await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, created));
-        const updated = await generateOfferLetterPdf(id);
-        setLinkedOffer(updated);
-        router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, { scroll: false });
-      } catch (e: unknown) {
-        const msg =
-          (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          (e as Error)?.message ||
-          "Could not create offer or generate PDF";
-        alert(msg);
-      } finally {
-        setLetterBusy(false);
-      }
+    if (!isIntern && (!Number.isFinite(g) || g <= 0)) {
+      alert("Set annual gross in Compensation before generating a paid offer PDF.");
       return;
     }
+    setLetterBusy(true);
+    try {
+      const created = await createOffer(buildCreateOfferPayloadFromLetterForm("", "", "", 0, 0, letterForm));
+      const id = getOfferRecordId(created);
+      if (!id) {
+        throw new Error("Create offer returned no id");
+      }
 
-    printLetterOrPage();
-  }, [applicationIdParam, letterForm, linkedOffer, offerIdParam, router]);
+      setLinkedOffer(created);
+      await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, created));
+      const updated = await generateOfferLetterPdf(id);
+      setLinkedOffer(updated);
+      router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, { scroll: false });
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        (e as Error)?.message ||
+        "Could not create offer or generate PDF";
+      alert(msg);
+    } finally {
+      setLetterBusy(false);
+    }
+  }, [letterForm, linkedOffer, offerIdParam, router]);
 
   const handleDownload = useCallback(async () => {
     if (!linkedOffer?.offerLetterKey) {
-      printLetterOrPage();
       return;
     }
     const id = getOfferRecordId(linkedOffer);
     if (!id) {
-      printLetterOrPage();
+      alert("Missing offer id. Return to Offers & Placement and open the letter from the list.");
       return;
     }
     setLetterBusy(true);
@@ -238,17 +219,23 @@ export default function NewOfferLetterPage() {
     }
   }, [linkedOffer]);
 
+  const loadingOfferFromId = Boolean(offerIdParam && letterBusy && !loadError);
+  const formPanelLinkOffer =
+    !linkedOffer && (loadingOfferFromId || (loadError && offerIdParam)) ? (
+      <div className="px-0 pb-1 space-y-2">
+        {loadingOfferFromId ? (
+          <p className="text-sm text-slate-600 dark:text-slate-400">Loading offer…</p>
+        ) : (
+          <p className="text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 rounded p-2">
+            {loadError}
+          </p>
+        )}
+      </div>
+    ) : null;
+
   return (
     <Fragment>
       <Seo fullDocumentTitle="Offer Letter" />
-      {loadError ? (
-        <div className="p-4 text-sm text-danger">
-          {loadError}
-        </div>
-      ) : null}
-      {/*
-        In the app layout, the inner .workspace uses flex-1; the outer height keeps the on-screen layout usable.
-      */}
       <div className="offer-letter-page-shell w-full min-h-[32rem] h-[calc(100dvh-5.5rem)] max-h-[calc(100dvh-3rem)] overflow-hidden [&>div]:h-full [&>div]:min-h-0">
         <OfferLetterGeneratorWorkspace
           offerCode={linkedOffer?.offerCode || "—"}
@@ -266,6 +253,7 @@ export default function NewOfferLetterPage() {
           onClose={() => router.push("/ats/offers-placement")}
           onGeneratePdf={() => void handleGeneratePdf()}
           onDownload={() => void handleDownload()}
+          formPanelTop={formPanelLinkOffer}
         />
       </div>
     </Fragment>

@@ -86,7 +86,7 @@ export function printOfferLetterInIframe(letterElement: HTMLElement | null): voi
     "<!DOCTYPE html><html><head><meta charset=\"utf-8\"/>" +
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"/>" +
       "<title> </title>" +
-      "<style>html,body{margin:0;background:#fff}@page{size:auto;margin:12mm}</style>" +
+      "<style>html,body{margin:0;background:#fff}</style>" +
       "</head><body></body></html>"
   )
   idoc.close()

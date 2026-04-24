@@ -30,6 +30,12 @@ export interface ItAccess {
   notes?: string;
 }
 
+export interface PlacementActorRef {
+  _id?: string;
+  name?: string;
+  email?: string;
+}
+
 export interface Placement {
   _id: string;
   id?: string;
@@ -44,6 +50,12 @@ export interface Placement {
   assetAllocation?: AssetAllocation[];
   itAccess?: ItAccess[];
   notes?: string | null;
+  /** Filled when status was set to Deferred */
+  deferredBy?: PlacementActorRef | null;
+  deferredAt?: string | null;
+  /** Filled when status was set to Cancelled */
+  cancelledBy?: PlacementActorRef | null;
+  cancelledAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -51,7 +63,8 @@ export interface Placement {
 export interface PlacementsListParams {
   jobId?: string;
   candidateId?: string;
-  status?: PlacementStatus;
+  /** One status, or comma-separated (e.g. `Pending,Deferred`) */
+  status?: PlacementStatus | string;
   preBoardingStatus?: PreBoardingStatus;
   sortBy?: string;
   limit?: number;
@@ -81,6 +94,8 @@ export interface UpdatePlacementPayload {
   preBoardingStatus?: PreBoardingStatus;
   joiningDate?: string;
   notes?: string | null;
+  preboardingGateBypass?: boolean;
+  suppressCandidateNotifications?: boolean;
   backgroundVerification?: Partial<BackgroundVerification>;
   assetAllocation?: AssetAllocation[];
   itAccess?: ItAccess[];

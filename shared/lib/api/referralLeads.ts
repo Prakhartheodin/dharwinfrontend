@@ -14,11 +14,13 @@ export interface ReferralLeadJob {
 }
 
 export interface ReferralLastOverride {
-  previousReferredByUserId?: string;
-  newReferredByUserId?: string;
   reason?: string;
-  overriddenBy?: string;
-  overriddenAt?: string;
+  /** ISO 8601 */
+  overriddenAt?: string | null;
+  /** User who applied the override */
+  overriddenByUser?: ReferralLeadReferredBy | null;
+  previousReferredBy?: ReferralLeadReferredBy | null;
+  newReferredBy?: ReferralLeadReferredBy | null;
 }
 
 export interface ReferralLeadRow {
@@ -113,9 +115,27 @@ export async function createJobShareReferralLink(
 
 export async function postReferralAttributionOverride(
   candidateId: string,
-  body: { newReferredByUserId: string; reason: string }
+  body: { newReferredByUserId: string; reason?: string }
 ): Promise<{ success: boolean; lead: ReferralLeadRow }> {
   const { data } = await apiClient.post(`/employees/referral-leads/${candidateId}/override`, body);
+  return data;
+}
+
+export interface ReferralAttributionOverrideHistoryRow {
+  id: string;
+  createdAt: string | null;
+  actor: { id: string; name?: string; email?: string };
+  previousReferredBy: { id: string; name?: string; email?: string } | null;
+  newReferredBy: { id: string; name?: string; email?: string } | null;
+  reason: string;
+}
+
+export async function getReferralAttributionOverrideHistory(
+  candidateId: string
+): Promise<{ results: ReferralAttributionOverrideHistoryRow[] }> {
+  const { data } = await apiClient.get<{ results: ReferralAttributionOverrideHistoryRow[] }>(
+    `/employees/referral-leads/${encodeURIComponent(candidateId)}/attribution-override-history`
+  );
   return data;
 }
 

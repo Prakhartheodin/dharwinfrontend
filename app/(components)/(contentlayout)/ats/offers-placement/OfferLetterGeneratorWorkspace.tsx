@@ -4,7 +4,7 @@ import React, { useMemo, useCallback, useState, useLayoutEffect, useEffect, useR
 import { DM_Sans } from 'next/font/google'
 import { enhanceOfferLetterRoles, type OfferLetterJobType } from '@/shared/lib/api/offers'
 import styles from './offer-letter-generator.module.css'
-import { printOfferLetterInIframe, OFFER_LETTER_PREVIEW_ID } from './print-offer-letter-iframe'
+import { OFFER_LETTER_PREVIEW_ID } from './print-offer-letter-iframe'
 import {
   type EligibilityPresetKey,
   escHtml,
@@ -30,14 +30,26 @@ const dmSans = DM_Sans({
   display: 'swap',
 })
 
-/** Inline SVG for print / HTML preview (matches standalone generator). */
-const LOGO_SVG_HTML = `<svg width="120" height="50" viewBox="0 0 220 90" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <rect x="0" y="5" width="78" height="78" rx="6" fill="#1e4080"/>
-  <rect x="8" y="13" width="62" height="62" rx="4" fill="none" stroke="#4a9e4a" stroke-width="5"/>
-  <rect x="18" y="23" width="42" height="42" rx="3" fill="#fff"/>
-  <text x="88" y="38" font-family="Arial Black, Arial" font-weight="900" font-size="26" fill="#1e4080">Dharwin</text>
-  <text x="88" y="62" font-family="Arial, sans-serif" font-weight="700" font-size="17" fill="#4a9e4a">Business Solutions</text>
-</svg>`
+const OFFER_LETTER_LOGO_PATH = '/assets/images/dharwin-offer-letter-logo.png'
+const OFFER_LETTER_CEO_SIG_PATH = '/assets/images/ceo-signature-harvinder.png'
+
+function offerLetterLogoSrcAbsolute(): string {
+  if (typeof window === 'undefined') return OFFER_LETTER_LOGO_PATH
+  try {
+    return new URL(OFFER_LETTER_LOGO_PATH, window.location.origin).href
+  } catch {
+    return OFFER_LETTER_LOGO_PATH
+  }
+}
+
+function offerLetterCeoSignatureSrcAbsolute(): string {
+  if (typeof window === 'undefined') return OFFER_LETTER_CEO_SIG_PATH
+  try {
+    return new URL(OFFER_LETTER_CEO_SIG_PATH, window.location.origin).href
+  } catch {
+    return OFFER_LETTER_CEO_SIG_PATH
+  }
+}
 
 export type OfferLetterFormFields = {
   letterFullName: string
@@ -98,7 +110,7 @@ type Props = {
   onClose: () => void
   onGeneratePdf: () => void
   onDownload: () => void
-  /** Insert above Candidate Details (e.g. new-offer: job application + record dates). */
+  /** Insert above Candidate Details (e.g. load error from ?offerId= on new-offer). */
   formPanelTop?: React.ReactNode
   /** Insert after the last form section, still inside the left column (e.g. Create offer actions). */
   formPanelFooter?: React.ReactNode
@@ -296,11 +308,27 @@ export function OfferLetterGeneratorWorkspace({
         : getJobHoursLabel(jobUi)
     const jobTypeLabel = getJobTypeLabelUi(jobUi)
 
-    const usePngOfferLetterhead =
-      letterForm.jobType === 'FT_40' || letterForm.jobType === 'INTERN_UNPAID'
-    const letterheadLogoHtml = usePngOfferLetterhead
-      ? `<img class="${styles.letterLogoImg}" src="/assets/images/dharwin-offer-letter-logo.png" alt="Dharwin Business Solutions" />`
-      : LOGO_SVG_HTML
+    /** Same branded PNG as server PDF (`src/assets/offer-letters/dharwin-offer-letter-logo.png`); absolute URL for print iframe. */
+    const letterheadLogoHtml = `<img class="${styles.letterLogoImg}" src="${offerLetterLogoSrcAbsolute()}" alt="Dharwin Business Solutions" />`
+
+    /** Shared letterhead (logo + contact + rule). Duplicated: on-screen in letterPage, print-only in letterPrintHeader. */
+    const letterHeadAndRule = `
+      <div class="${styles.letterHeader}">
+        <div class="${styles.letterLogo}">${letterheadLogoHtml}</div>
+        <div class="${styles.letterContact}">
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">✉</span><span>Support@dharwinbusinesssolutions.com</span></div>
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">📍</span><span>30N Gould St, STE R, Sheridan, WY, 82801</span></div>
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">🌐</span><span>www.dharwinbusinesssolutions.com</span></div>
+        </div>
+      </div>
+      <hr class="${styles.letterDivider}" />
+    `
+
+    const letterFooter3Col = `
+      <div class="${styles.footerItem}">✉ support@dharwinbusinesssolutions.com</div>
+      <div class="${styles.footerItem}">📍 30 N Gould St, STE R Sheridan, WY82801, USA</div>
+      <div class="${styles.footerItem}">🌐 Website: www.dharwinbusinesssolutions.com</div>
+    `
 
     let compSection = ''
     if (isPaid && letterForm.annualGrossCtc) {
@@ -408,8 +436,9 @@ export function OfferLetterGeneratorWorkspace({
       <div class="${styles.sigRow}">
         <div>
           <div class="${styles.sigLabel}">For Dharwin Business Solutions LLC</div>
-          <div class="${styles.sigLine}"></div>
-          <div class="${styles.sigName}">Dhariwal Harvinder Singh<br>CEO &amp; Founder<br>Date: ${escHtml(letterDateStr)}</div>
+          <div class="${styles.sigCeoImageWrap}"><img class="${styles.sigCeoImage}" src="${offerLetterCeoSignatureSrcAbsolute()}" role="presentation" alt="" /></div>
+          <div class="${styles.sigRule}"></div>
+          <div class="${styles.sigNameCeo}">Dhariwal Harvinder Singh<br>CEO &amp; Founder<br>Date: ${escHtml(letterDateStr)}</div>
         </div>
         <div>
           <div class="${styles.sigLabel}">Accepted and Agreed:</div>
@@ -419,16 +448,9 @@ export function OfferLetterGeneratorWorkspace({
       </div>`
 
     return `
+    <div class="${styles.letterPrintHeader}" aria-hidden="true">${letterHeadAndRule}</div>
     <div class="${styles.letterPage}">
-      <div class="${styles.letterHeader}">
-        <div class="${styles.letterLogo}">${letterheadLogoHtml}</div>
-        <div class="${styles.letterContact}">
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">✉</span><span>Support@dharwinbusinesssolutions.com</span></div>
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">📍</span><span>30N Gould St, STE R, Sheridan, WY, 82801</span></div>
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">🌐</span><span>www.dharwinbusinesssolutions.com</span></div>
-        </div>
-      </div>
-      <hr class="${styles.letterDivider}" />
+      ${letterHeadAndRule}
       <div class="${styles.letterSubject}">Sub: Offer Letter</div>
       <div class="${styles.letterDate}">Date: ${escHtml(letterDateStr)}</div>
       <div style="text-align:center;margin-bottom:12px;"><span class="${styles.offerBadge}">Offer of Employment</span></div>
@@ -458,11 +480,10 @@ export function OfferLetterGeneratorWorkspace({
       ${closing ? `<p class="${styles.letterBody}">${closing}</p>` : ''}
       <div class="${styles.sigBlock}">${sigBlock}</div>
     </div>
-    <div class="${styles.letterFooter}">
-      <div class="${styles.footerItem}">✉ support@dharwinbusinesssolutions.com</div>
-      <div class="${styles.footerItem}">📍 30 N Gould St, STE R Sheridan, WY82801, USA</div>
-      <div class="${styles.footerItem}">🌐 Website: www.dharwinbusinesssolutions.com</div>
-    </div>`
+    <div class="${styles.letterPrintFooter}" aria-hidden="true">
+      <div class="${styles.letterFooter}">${letterFooter3Col}</div>
+    </div>
+    <div class="${styles.letterFooter}">${letterFooter3Col}</div>`
   }, [letterForm, isPaid, isInternship, jobUi])
 
   const compPreview = useMemo(() => {
@@ -495,22 +516,6 @@ export function OfferLetterGeneratorWorkspace({
         <div className={styles.topbarActions}>
           <button
             type="button"
-            className={`${styles.btn} ${styles.btnGhost}`}
-            onClick={() => {
-              const el = document.getElementById(OFFER_LETTER_PREVIEW_ID)
-              if (el) {
-                printOfferLetterInIframe(el as HTMLElement)
-                return
-              }
-              window.print()
-            }}
-            disabled={letterBusy}
-            title="Prints the letter in a clean frame (less browser junk than printing the full page). For no date, URL, or page numbers in the margins, turn off Headers and footers in the print dialog. For a server PDF, use Generate PDF then Download."
-          >
-            Print / Save PDF
-          </button>
-          <button
-            type="button"
             className={`${styles.btn} ${styles.btnPrimary}`}
             onClick={onGeneratePdf}
             disabled={letterBusy}
@@ -518,17 +523,23 @@ export function OfferLetterGeneratorWorkspace({
           >
             {letterBusy ? '…' : 'Generate PDF'}
           </button>
-          {hasPdf ? (
-            <button
-              type="button"
-              className={`${styles.btn} ${styles.btnSuccess}`}
-              onClick={onDownload}
-              disabled={letterBusy}
-              title="Fetches the PDF file stored on the server from your last successful Generate PDF. On-screen edits are not in this file until you click Generate PDF again."
-            >
-              Download
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className={
+              hasPdf
+                ? `${styles.btn} ${styles.btnSuccess}`
+                : `${styles.btn} ${styles.btnGhost}`
+            }
+            onClick={onDownload}
+            disabled={letterBusy || !hasPdf}
+            title={
+              hasPdf
+                ? 'Fetches the PDF file stored on the server from your last successful Generate PDF. On-screen edits are not in this file until you click Generate PDF again.'
+                : 'Run Generate PDF first. When the server finishes storing the file, Download fetches that same PDF (identical to using Download from the offers table).'
+            }
+          >
+            Download
+          </button>
           <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={onClose} disabled={letterBusy}>
             Close
           </button>

@@ -74,6 +74,8 @@ export interface Offer {
   createdBy?: { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;
+  /** Mongo id of Placement row (Accepted offers) for deep links */
+  placementId?: string;
   /** Placement status (Accepted offers only): Pending = in Pre-boarding, Joined = in Onboarding */
   placementStatus?: 'Pending' | 'Joined' | 'Deferred' | 'Cancelled' | null;
   /** Placement data (pre-boarding/onboarding) for Accepted offers */
@@ -82,6 +84,10 @@ export interface Offer {
     backgroundVerification?: { status?: string; agency?: string; notes?: string };
     assetAllocation?: { name: string; type?: string; serialNumber?: string }[];
     itAccess?: { system: string; accessLevel?: string }[];
+    deferredBy?: { _id?: string; name?: string; email?: string } | null;
+    deferredAt?: string | null;
+    cancelledBy?: { _id?: string; name?: string; email?: string } | null;
+    cancelledAt?: string | null;
   };
 }
 
@@ -113,7 +119,8 @@ export async function getOfferById(id: string): Promise<Offer> {
 }
 
 export interface CreateOfferPayload {
-  jobApplicationId: string;
+  /** Omit or leave unset to create a shell job + candidate (offer letter from scratch). */
+  jobApplicationId?: string;
   ctcBreakdown?: CtcBreakdown;
   joiningDate?: string | null;
   offerValidityDate?: string | null;
