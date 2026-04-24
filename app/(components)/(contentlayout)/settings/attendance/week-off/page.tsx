@@ -13,6 +13,7 @@ import {
 } from "@/shared/lib/api/students";
 import {
   buildMergedAssignPeopleOptions,
+  filterAssignPersonSelectOption,
   partitionAssignPersonRows,
   type AssignPersonRow,
 } from "@/shared/lib/attendance-assign-people-options";
@@ -207,7 +208,7 @@ export default function SettingsAttendanceWeekOffPage() {
       await Swal.fire({
         icon: "warning",
         title: "No one selected",
-        text: "Select at least one training profile or candidate",
+        text: "Select at least one training profile or employee",
         confirmButtonText: "OK",
       });
       return;
@@ -220,7 +221,7 @@ export default function SettingsAttendanceWeekOffPage() {
         await Swal.fire({
           icon: "warning",
           title: "Nothing to update",
-          text: "Select at least one training profile or candidate",
+          text: "Select at least one training profile or employee",
           confirmButtonText: "OK",
         });
         setUpdating(false);
@@ -238,7 +239,7 @@ export default function SettingsAttendanceWeekOffPage() {
         icon: "success",
         title: "Success",
         text: `Week-off updated for ${studentRows.length} training profile(s)${
-          candidateRows.length ? ` and ${candidateRows.length} candidate(s)` : ""
+          candidateRows.length ? ` and ${candidateRows.length} employee(s)` : ""
         }`,
         confirmButtonText: "OK",
       });
@@ -419,7 +420,7 @@ export default function SettingsAttendanceWeekOffPage() {
                 className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
                 aria-hidden
               >
-                <i className="ri-calendar-week-line text-2xl" />
+                <i className="ri-calendar-schedule-line text-2xl" />
               </span>
               <div className="min-w-0">
                 <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">
@@ -510,7 +511,7 @@ export default function SettingsAttendanceWeekOffPage() {
               {loading ? (
                 <div className="flex items-center gap-2 text-defaulttextcolor/70">
                   <i className="ri-loader-4-line animate-spin" />
-                  <span>Loading training profiles and candidates…</span>
+                  <span>Loading training profiles and employees…</span>
                 </div>
               ) : (
                 <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
@@ -521,10 +522,11 @@ export default function SettingsAttendanceWeekOffPage() {
                     getOptionValue={(o) => (o as AssignPersonRow).value}
                     getOptionLabel={(o) => (o as AssignPersonRow).label}
                     onChange={(v) => handleStudentChange(v as AssignPersonRow[] | null)}
-                    placeholder="Training profiles and candidates…"
+                    placeholder="Training profiles and employees…"
                     classNamePrefix="react-select"
                     isClearable
                     isSearchable
+                    filterOption={filterAssignPersonSelectOption}
                     isLoading={loading}
                     menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                     menuPosition="fixed"

@@ -8,7 +8,12 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
-import { getPhoneValidationError, getPhoneCountry, formatPhoneForApi } from "@/shared/lib/phoneCountries";
+import {
+  getPhoneValidationError,
+  getPhoneCountry,
+  formatPhoneForApi,
+  DEFAULT_PHONE_COUNTRY,
+} from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 
 const PASSWORD_MIN_LENGTH = 8;
@@ -42,7 +47,7 @@ export default function CandidateOnboardPage() {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [countryCode, setCountryCode] = useState("IN");
+  const [countryCode, setCountryCode] = useState<string>(DEFAULT_PHONE_COUNTRY);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -173,6 +178,7 @@ export default function CandidateOnboardPage() {
           email: em,
           password,
           phoneNumber: formatPhoneForApi(phone, countryCode),
+          countryCode,
           ...(referralRef ? { ref: referralRef } : {}),
         });
         router.push(
@@ -239,7 +245,7 @@ export default function CandidateOnboardPage() {
 
   return (
     <Fragment>
-      <Seo title="Candidate Registration" />
+      <Seo title="Employee onboarding" />
       <div className="min-h-screen flex flex-col lg:flex-row">
         {/* Left: Form */}
         <div className="flex-1 bg-white dark:bg-white/5 flex flex-col justify-between items-center p-6 sm:p-8 lg:p-12">

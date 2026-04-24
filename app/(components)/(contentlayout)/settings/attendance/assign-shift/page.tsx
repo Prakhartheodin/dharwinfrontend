@@ -6,6 +6,7 @@ import { assignShiftToCandidates, listCandidates } from "@/shared/lib/api/candid
 import { assignShiftToStudents, listStudents } from "@/shared/lib/api/students";
 import {
   buildMergedAssignPeopleOptions,
+  filterAssignPersonSelectOption,
   partitionAssignPersonRows,
   type AssignPersonRow,
 } from "@/shared/lib/attendance-assign-people-options";
@@ -13,9 +14,7 @@ import { getAllShifts, type Shift } from "@/shared/lib/api/shifts";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
@@ -26,8 +25,7 @@ const SELECT_ALL = "__all_students__";
 export default function SettingsAttendanceAssignShiftPage() {
   const searchParams = useSearchParams();
   const sopQueryString = searchParams.toString();
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const isAdmin = useAttendanceAdminAccess();
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
@@ -35,29 +33,6 @@ export default function SettingsAttendanceAssignShiftPage() {
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
 
   const fetchPeople = useCallback(async () => {
     try {
@@ -97,7 +72,7 @@ export default function SettingsAttendanceAssignShiftPage() {
   useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
 
   const personOptions = people.length
-    ? [{ value: SELECT_ALL, label: "Select all (training + candidates)" } as AssignPersonRow, ...people]
+    ? [{ value: SELECT_ALL, label: "Select all (training + employees)" } as AssignPersonRow, ...people]
     : people;
 
   const handleAssign = async () => {
@@ -105,7 +80,7 @@ export default function SettingsAttendanceAssignShiftPage() {
       await Swal.fire({
         icon: "warning",
         title: "No one selected",
-        text: "Select at least one training profile or candidate",
+        text: "Select at least one training profile or employee",
         confirmButtonText: "OK",
       });
       return;
@@ -125,7 +100,7 @@ export default function SettingsAttendanceAssignShiftPage() {
         await Swal.fire({
           icon: "warning",
           title: "Nothing to assign",
-          text: "Select at least one training profile or candidate",
+          text: "Select at least one training profile or employee",
           confirmButtonText: "OK",
         });
         setAssigning(false);
@@ -144,7 +119,7 @@ export default function SettingsAttendanceAssignShiftPage() {
           candidateRows.map((r) => r.candidateId),
           selectedShiftId
         );
-        parts.push(`${candidateRows.length} candidate(s)`);
+        parts.push(`${candidateRows.length} employee(s)`);
       }
       await Swal.fire({
         icon: "success",
@@ -215,7 +190,7 @@ export default function SettingsAttendanceAssignShiftPage() {
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Shift</h2>
               <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
-                Training profiles use the training roster; candidates without a profile use the candidate record (both stay in sync with attendance where linked).
+                Training profiles use the training roster; employees without a training profile are listed from the employee record (both stay in sync with attendance where linked).
               </p>
             </div>
           </div>
@@ -262,12 +237,13 @@ export default function SettingsAttendanceAssignShiftPage() {
                           setSelectedPeople(value);
                         }
                       }}
-                      placeholder="Training profiles and candidates…"
+                      placeholder="Training profiles and employees…"
                       closeMenuOnSelect={false}
                       className="react-select-container assign-shift-select"
                       classNamePrefix="react-select"
                       isClearable
                       isSearchable
+                      filterOption={filterAssignPersonSelectOption}
                       menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                       menuPosition="fixed"
                     />

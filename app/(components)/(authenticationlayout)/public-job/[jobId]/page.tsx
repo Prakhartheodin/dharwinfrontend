@@ -13,6 +13,7 @@ import {
   PublicApplyPayload,
 } from "@/shared/lib/api/jobs";
 import { ROUTES } from "@/shared/lib/constants";
+import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/jobReferralRef";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCountries";
 import {
@@ -53,6 +54,7 @@ export default function PublicJobDetailsPage() {
   const searchParams = useSearchParams();
   const jobId = params.jobId as string;
   const referralRefFromUrl = searchParams.get("ref")?.trim() || null;
+  const [resolvedReferralRef, setResolvedReferralRef] = useState<string | null>(null);
 
   const [job, setJob] = useState<PublicJob | null>(null);
   const [otherJobs, setOtherJobs] = useState<PublicJob[]>([]);
@@ -80,6 +82,12 @@ export default function PublicJobDetailsPage() {
     loadJobDetails();
     loadOtherJobs();
   }, [jobId]);
+
+  useEffect(() => {
+    if (!jobId) return;
+    rememberJobReferralRef(jobId, referralRefFromUrl);
+    setResolvedReferralRef(referralRefFromUrl || readStoredJobReferralRef(jobId) || null);
+  }, [jobId, referralRefFromUrl]);
 
   const loadJobDetails = async () => {
     try {
@@ -211,7 +219,7 @@ export default function PublicJobDetailsPage() {
         phoneNumber: formatPhoneForApi(phoneNumber, countryCode),
         countryCode,
         coverLetter: coverLetter.trim(),
-        ...(referralRefFromUrl ? { ref: referralRefFromUrl } : {}),
+        ...(resolvedReferralRef ? { ref: resolvedReferralRef } : {}),
       };
 
       const result = await publicApplyToJob(jobId, payload, resume!, documents);
@@ -247,7 +255,14 @@ export default function PublicJobDetailsPage() {
         });
 
         if (result.isConfirmed) {
-          router.push("/authentication/sign-in/");
+          if (jobId) {
+            const applyPath = resolvedReferralRef
+              ? `/ats/browse-jobs/${jobId}?ref=${encodeURIComponent(resolvedReferralRef)}`
+              : `/ats/browse-jobs/${jobId}`;
+            router.push(`${ROUTES.signIn}?next=${encodeURIComponent(applyPath)}`);
+          } else {
+            router.push(ROUTES.signIn);
+          }
         }
       } else {
         await Swal.fire({

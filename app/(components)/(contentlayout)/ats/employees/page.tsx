@@ -428,7 +428,7 @@ const Candidates = () => {
         setTotalPages(res.totalPages ?? 1)
       })
       .catch((err) => {
-        setCandidatesError(err?.message ?? 'Failed to load candidates')
+        setCandidatesError(err?.message ?? 'Failed to load employees')
         setCandidates([])
         setTotalResults(0)
         setTotalPages(0)
@@ -513,7 +513,7 @@ const Candidates = () => {
       const closeBtn = document.querySelector('[data-hs-overlay="#create-candidate-modal"]')
       if (closeBtn instanceof HTMLElement) closeBtn.click()
     } catch (err: any) {
-      setCreateError(err?.response?.data?.message ?? err?.message ?? 'Failed to create candidate')
+      setCreateError(err?.response?.data?.message ?? err?.message ?? 'Failed to create employee')
     } finally {
       setCreateSubmitting(false)
     }
@@ -775,7 +775,7 @@ const Candidates = () => {
         return
       }
       setActionError(
-        'This document is not linked to file storage (missing S3 key). The candidate should re-upload it under Personal Information → Documents.'
+        'This document is not linked to file storage (missing S3 key). The employee should re-upload it under Personal Information → Documents.'
       )
     },
     [previewCandidate, previewPanelDocuments]
@@ -870,7 +870,7 @@ const Candidates = () => {
 
   const handleDeleteCandidate = async (candidate: CandidateDisplay) => {
     const result = await Swal.fire({
-      title: 'Delete candidate?',
+      title: 'Delete employee?',
       html: `<p class="text-gray-600 dark:text-gray-400">This will permanently remove <strong>${candidate.name}</strong>. This action cannot be undone.</p>`,
       icon: 'warning',
       showCancelButton: true,
@@ -907,7 +907,7 @@ const Candidates = () => {
       await Swal.fire({
         icon: 'error',
         title: 'Delete failed',
-        text: err?.response?.data?.message ?? err?.message ?? 'Could not delete candidate. Please try again.',
+        text: err?.response?.data?.message ?? err?.message ?? 'Could not delete this employee. Please try again.',
       })
     } finally {
       setDeletingCandidateId(null)
@@ -928,7 +928,7 @@ const Candidates = () => {
   // Share on WhatsApp – use shareable link with token when available
   const handleShareWhatsApp = (candidate: any) => {
     const url = (sharedPublicUrl && sharedPublicUrlForId === candidate.id) ? sharedPublicUrl : getCandidatePublicUrl(candidate.id)
-    const text = `Check out this candidate: ${candidate.name} - ${url}`
+    const text = `Check out this employee: ${candidate.name} - ${url}`
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
   }
@@ -987,7 +987,7 @@ const Candidates = () => {
         const url = URL.createObjectURL(result as Blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `candidates-export-${new Date().toISOString().split('T')[0]}.xlsx`
+        a.download = `employees-export-${new Date().toISOString().split('T')[0]}.xlsx`
         a.click()
         URL.revokeObjectURL(url)
       }
@@ -1004,7 +1004,7 @@ const Candidates = () => {
 
   const handleBulkDelete = async () => {
     if (selectedRows.size === 0) return
-    if (!confirm(`Delete ${selectedRows.size} selected candidate(s)? This cannot be undone.`)) return
+    if (!confirm(`Delete ${selectedRows.size} selected employee(s)? This cannot be undone.`)) return
     setBulkDeleteSubmitting(true)
     setActionError(null)
     try {
@@ -1012,7 +1012,7 @@ const Candidates = () => {
         await deleteCandidate(id)
       }
       setSelectedRows(new Set())
-      setActionSuccess('Selected candidates deleted')
+      setActionSuccess('Selected employees deleted')
       refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
@@ -1133,7 +1133,7 @@ const Candidates = () => {
     setActionError(null)
     try {
       await updateResignDate(previewCandidate.id, value)
-      setActionSuccess(value ? 'Resign date updated' : 'Resign date cleared. Candidate is now active.')
+      setActionSuccess(value ? 'Resign date updated' : 'Resign date cleared. This employee is now active.')
       setPreviewCandidate((prev: any) =>
         prev ? { ...prev, _raw: { ...prev._raw, resignDate: value } } : null
       )
@@ -1216,7 +1216,7 @@ const Candidates = () => {
       const targetUserId = candidate.ownerUserId
       if (!targetUserId || !authUser?.id) return
       if (String(authUser.id) === String(targetUserId)) {
-        void Swal.fire('Cannot impersonate', 'You are already logged in as this candidate’s account.', 'info')
+        void Swal.fire('Cannot impersonate', 'You are already logged in as this employee’s account.', 'info')
         return
       }
       const nameOrEmail = candidate.name?.trim() || candidate.email?.trim() || 'this user'
@@ -1271,7 +1271,7 @@ const Candidates = () => {
         ),
       },
       {
-        Header: 'Candidate Info',
+        Header: 'Employee info',
         accessor: 'candidateInfo',
         Cell: ({ row }: any) => {
           const candidate = row.original as CandidateDisplay
@@ -1407,7 +1407,7 @@ const Candidates = () => {
                     onClick={() => handleImpersonateFromCandidate(c)}
                     disabled={authLoading || impersonatingOwnerUserId === c.ownerUserId}
                     className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-600 hover:bg-teal-600 hover:text-white disabled:opacity-70 disabled:cursor-not-allowed dark:text-teal-400 dark:hover:bg-teal-600"
-                    title="Login as this candidate (impersonate)"
+                    title="Log in as this employee (impersonate)"
                     aria-label={`Login as ${c.name}`}
                   >
                     <i className="ri-login-box-line"></i>
@@ -1421,9 +1421,9 @@ const Candidates = () => {
                 </div>
               )}
               <div className="hs-tooltip ti-main-tooltip">
-                <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit Candidate">
+                <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
                   <i className="ri-pencil-line"></i>
-                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit Candidate</span>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit employee</span>
                 </Link>
               </div>
               {/* <div className="hs-tooltip ti-main-tooltip">
@@ -1439,9 +1439,9 @@ const Candidates = () => {
                 </button>
               </div> */}
               <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share Candidate">
+                <button type="button" onClick={() => handleShareClick(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Share profile">
                   <i className="ri-share-line"></i>
-                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share Candidate</span>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Share profile</span>
                 </button>
               </div>
               <div className="hs-tooltip ti-main-tooltip">
@@ -1961,7 +1961,7 @@ const Candidates = () => {
                 {selectedRows.size > 0 && (
                   <>
                     <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openWeekOffModal(Array.from(selectedRows))}>
-                      <i className="ri-calendar-week-line font-semibold align-middle me-1"></i>Week-off
+                      <i className="ri-calendar-schedule-line font-semibold align-middle me-1"></i>Week-off
                     </button>
                     <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openAssignShiftModal(Array.from(selectedRows))}>
                       <i className="ri-time-line font-semibold align-middle me-1"></i>Assign shift
@@ -1975,7 +1975,7 @@ const Candidates = () => {
                   title={
                     selectedRows.size === 0 && !bulkDeleteSubmitting
                       ? 'Select one or more rows in the table, then click Delete'
-                      : 'Delete selected candidates'
+                      : 'Delete selected employees'
                   }
                   onClick={handleBulkDelete}
                 >
@@ -1988,7 +1988,7 @@ const Candidates = () => {
                 <div
                   className="relative h-1 w-full shrink-0 overflow-hidden bg-primary/[0.08] dark:bg-primary/[0.12]"
                   role="progressbar"
-                  aria-valuetext="Loading candidates"
+                  aria-valuetext="Loading employees"
                   aria-busy="true"
                 >
                   <div className="absolute inset-y-0 left-0 w-[28%] rounded-e-full bg-gradient-to-r from-primary/30 via-primary to-primary/30 ring-1 ring-primary/25 motion-safe:animate-candidates-load-bar" />
@@ -2129,7 +2129,7 @@ const Candidates = () => {
                           title={
                             resigned
                               ? `Resigned${rdLabel ? ` · ${rdLabel}` : ""}`
-                              : "Active candidate"
+                              : "Active employee"
                           }
                           key={row.id || `row-${i}`}
                         >
@@ -2160,7 +2160,7 @@ const Candidates = () => {
                               <i className="ri-inbox-archive-line text-2xl" aria-hidden />
                             </span>
                             <div className="max-w-md space-y-1">
-                              <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No candidates on this page</p>
+                              <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No employees on this page</p>
                               <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
                                 Try changing employment status, clearing name filters, or widening your search in the panel.
                               </p>
@@ -2331,7 +2331,7 @@ const Candidates = () => {
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
           <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
             <i className="ri-user-line text-primary text-base"></i>
-            {previewCandidate?.name || 'Candidate Preview'}
+            {previewCandidate?.name || 'Employee preview'}
           </h6>
               <button
                 type="button"
@@ -2676,7 +2676,7 @@ const Candidates = () => {
                   {viewDetailTab === 'notes' && (
                     <div className="space-y-4">
                       <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Notes & Feedback</h4>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Use the Add Note and Add Feedback actions from the candidate row to add notes and feedback.</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Use the Add Note and Add Feedback actions from the employee row to add notes and feedback.</p>
                       <button
                         type="button"
                         className="ti-btn ti-btn-primary"
@@ -2710,7 +2710,7 @@ const Candidates = () => {
               </div>
             </>
           ) : (
-            <div className="text-center py-8 text-gray-500 dark:text-gray-400">No candidate selected</div>
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">No employee selected</div>
           )}
             </div>
           </div>
@@ -2724,7 +2724,7 @@ const Candidates = () => {
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
           <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
             <i className="ri-file-add-line text-primary text-base"></i>
-            {getCandidateDetails()?.name || 'Candidate Notes'}
+            {getCandidateDetails()?.name || 'Employee notes'}
           </h6>
           <button 
             type="button" 
@@ -2887,7 +2887,7 @@ const Candidates = () => {
             <div className="ti-modal-header">
               <h6 className="ti-modal-title flex items-center gap-2">
                 <i className="ri-user-add-line text-primary"></i>
-                Add Candidate
+                Add employee
               </h6>
               <button 
                 type="button" 
@@ -2991,7 +2991,7 @@ const Candidates = () => {
                   ) : (
                     <>
                       <i className="ri-add-line me-1"></i>
-                      Add Candidate
+                      Add employee
                     </>
                   )}
                 </button>
@@ -3071,7 +3071,7 @@ const Candidates = () => {
         setActionError={setActionError}
       />
 
-      {/* Share Candidate Modal */}
+      {/* Share employee modal */}
       <CandidateAttendanceOverlay
         open={!!attendanceOverlayCandidate}
         onClose={() => setAttendanceOverlayCandidate(null)}
@@ -3121,7 +3121,7 @@ const Candidates = () => {
             </li>
             )}
             <li>
-              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openWeekOffModal([moreMenuState.candidate.id]) }}><i className="ri-calendar-week-line me-2"></i>Week-off</button>
+              <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openWeekOffModal([moreMenuState.candidate.id]) }}><i className="ri-calendar-schedule-line me-2"></i>Week-off</button>
             </li>
             <li>
               <button type="button" className="block w-full text-left px-4 py-2 text-sm font-medium text-gray-800 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 rounded-none first:rounded-t-lg last:rounded-b-lg border-0 bg-transparent cursor-pointer" onClick={() => { setMoreMenuState(null); openAssignShiftModal([moreMenuState.candidate.id]) }}><i className="ri-time-line me-2"></i>Assign shift</button>

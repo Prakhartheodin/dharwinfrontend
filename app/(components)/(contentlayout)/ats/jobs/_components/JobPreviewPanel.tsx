@@ -145,7 +145,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   /** Applicant verification → POST /bolna/candidate-call → BOLNA_CANDIDATE_AGENT_ID (not job-post agent). */
   const handleInitiateCandidateCall = async () => {
     if (selectedCandidates.size === 0) {
-      alert('Please select at least one candidate to call')
+      alert('Please select at least one applicant to call')
       return
     }
 
@@ -164,7 +164,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
     })
 
     if (candidatesToCall.length === 0) {
-      alert('Selected candidates do not have valid phone numbers. Update their profiles with real numbers first.')
+      alert('Selected applicants do not have valid phone numbers. Update their profiles with real numbers first.')
       return
     }
 
@@ -180,7 +180,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
         try {
           await initiateCandidateVerificationCall({
             candidateId: cId,
-            candidateName: cand.fullName || 'Candidate',
+            candidateName: cand.fullName || 'Applicant',
             email: cand.email || '',
             phoneNumber: cand.phoneNumber || '',
             countryCode: cand.countryCode || '',
@@ -194,7 +194,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
         }
       }
 
-      alert(`Applicant verification call(s) started for ${candidatesToCall.length} candidate(s).`)
+      alert(`Applicant verification call(s) started for ${candidatesToCall.length} applicant(s).`)
       setSelectedCandidates(new Set())
     } catch (error) {
       console.error('Error initiating calls:', error)
@@ -520,7 +520,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                             selectedCandidates.size === 0 ||
                             callingCandidates.size > 0
                           }
-                          title="Applicant verification: uses candidate Bolna agent (not job-post verification)"
+                          title="Applicant verification: uses the employee Bolna agent (not job-post verification)"
                           aria-label="Call selected applicants for application verification"
                         >
                           {callingCandidates.size > 0 ? (

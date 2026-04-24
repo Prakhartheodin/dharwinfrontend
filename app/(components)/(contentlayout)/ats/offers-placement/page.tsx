@@ -1,18 +1,48 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import offersStyles from './offers-placement.module.css'
 import { useSearchParams, useRouter } from 'next/navigation'
-import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
+import { useTable, useSortBy, usePagination } from 'react-table'
 import Link from 'next/link'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
-import { listOffers, createOffer, updateOffer, deleteOffer } from '@/shared/lib/api/offers'
-import type { Offer } from '@/shared/lib/api/offers'
+import {
+  listOffers,
+  updateOffer,
+  deleteOffer,
+  getOfferById,
+  getOfferLetterDefaults,
+  generateOfferLetterPdf,
+  downloadOfferLetterFile,
+} from '@/shared/lib/api/offers'
+import type { Offer, OfferLetterJobType } from '@/shared/lib/api/offers'
+import {
+  OfferLetterGeneratorWorkspace,
+  createEmptyOfferLetterForm,
+  type OfferLetterFormFields,
+} from './OfferLetterGeneratorWorkspace'
+import { detectEligibilityPreset } from './offer-letter-generator-data'
+import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
+
+function formatCandidateAddress(c: { address?: Offer['candidate']['address'] } | null | undefined) {
+  const a = c?.address
+  if (!a || typeof a !== 'object') return ''
+  return [a.streetAddress, a.streetAddress2, a.city, a.state, a.zipCode, a.country].filter(Boolean).join(', ')
+}
+
+/** Backend toJSON plugin exposes `id` (string); some paths still have `_id`. */
+function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): string {
+  const v = o?._id ?? o?.id
+  if (v == null) return ''
+  const s = String(v).trim()
+  if (!s || s === 'undefined' || s === 'null') return ''
+  return s
+}
 
 // Map API offer to table row format (handle both _id and id from API)
-// Includes pre-boarding/onboarding data: placement, candidate HRMS (department, designation)
+// Includes pre-boarding/onboarding data: placement
 const mapOfferToRow = (o: Offer) => {
   const placement = (o as Offer & { placement?: { preBoardingStatus?: string; backgroundVerification?: { status?: string }; assetAllocation?: unknown[]; itAccess?: unknown[] } }).placement
-  const cand = o.candidate as { department?: string; designation?: string } | undefined
   return {
     id: (o as { _id?: string; id?: string })._id ?? (o as { id?: string }).id ?? '',
     offerId: o.offerCode,
@@ -25,8 +55,6 @@ const mapOfferToRow = (o: Offer) => {
     signedStatus: o.status === 'Accepted' ? 'Signed' : o.status === 'Rejected' ? 'Not Sent' : o.status === 'Sent' || o.status === 'Under Negotiation' ? 'Pending' : 'Draft',
     onboardingStatus: o.status === 'Accepted' ? 'Ready' : o.status === 'Rejected' ? 'Not Applicable' : 'Pending',
     placementStatus: (o as { placementStatus?: string }).placementStatus ?? null,
-    department: cand?.department || null,
-    designation: cand?.designation || null,
     preBoardingStatus: placement?.preBoardingStatus || null,
     bgvStatus: placement?.backgroundVerification?.status || null,
     assetCount: Array.isArray(placement?.assetAllocation) ? placement.assetAllocation.length : 0,
@@ -447,21 +475,6 @@ const OffersPlacement = () => {
     fetchOffers()
   }, [])
 
-  // Refetch when returning from Create Offer (has ?refresh= param)
-  useEffect(() => {
-    const refresh = searchParams?.get('refresh')
-    if (refresh) {
-      setOffersLoading(true)
-      listOffers({ limit: 500 })
-        .then((res) => setOffersData(res.results ?? []))
-        .catch(() => {})
-        .finally(() => {
-          setOffersLoading(false)
-          router.replace('/ats/offers-placement')
-        })
-    }
-  }, [searchParams])
-
   // Re-init Preline so Sort, Excel dropdowns and Search overlay work (content mounts after layout autoInit)
   useEffect(() => {
     const initPreline = () => {
@@ -496,11 +509,195 @@ const OffersPlacement = () => {
   const [searchOfferStatus, setSearchOfferStatus] = useState('')
   const [searchStep, setSearchStep] = useState('')
 
+  /** Quick filter across columns (reference: inline toolbar search) */
+  const [listSearch, setListSearch] = useState('')
+
   const [editOfferModal, setEditOfferModal] = useState<Offer | null>(null)
   const [editStatus, setEditStatus] = useState('')
   const [viewOfferModal, setViewOfferModal] = useState<Offer | null>(null)
   const [viewHistoryModal, setViewHistoryModal] = useState<Offer | null>(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
+
+  const [letterModalOffer, setLetterModalOffer] = useState<Offer | null>(null)
+  const [letterForm, setLetterForm] = useState<OfferLetterFormFields>(() => createEmptyOfferLetterForm())
+  const [letterBusy, setLetterBusy] = useState(false)
+
+  /** After Create Offer (modal or /create redirect): run Generate PDF once the workspace is open and form is seeded. */
+  const autoGeneratePdfAfterCreateRef = useRef(false)
+
+  const openOfferLetterModal = useCallback(async (raw: Offer) => {
+    const id = getOfferRecordId(raw)
+    if (!id) {
+      alert(
+        'Could not open the offer letter workspace: this offer has no id yet. Use the document icon on the offer row, or try creating the offer again.'
+      )
+      return
+    }
+    setLetterBusy(true)
+    try {
+      const full = await getOfferById(id)
+      if (typeof window !== 'undefined' && sessionStorage.getItem('dharwin:offerLetterAutoPdfAfterOpen') === '1') {
+        sessionStorage.removeItem('dharwin:offerLetterAutoPdfAfterOpen')
+        autoGeneratePdfAfterCreateRef.current = true
+      }
+      setLetterModalOffer(full)
+    } catch (e: unknown) {
+      alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to load offer')
+    } finally {
+      setLetterBusy(false)
+    }
+  }, [])
+
+  const openLetterParamHandledRef = useRef<string | null>(null)
+
+  /** After Create Offer: ?refresh= refetches list, then ?openLetter= opens generator. Deep links: ?openLetter= only. */
+  useEffect(() => {
+    const refresh = searchParams?.get('refresh')
+    const letterId = searchParams?.get('openLetter')
+
+    if (refresh) {
+      setOffersLoading(true)
+      listOffers({ limit: 500 })
+        .then((res) => setOffersData(res.results ?? []))
+        .catch(() => {})
+        .finally(() => {
+          setOffersLoading(false)
+          const next =
+            letterId && /^[0-9a-fA-F]{24}$/.test(letterId)
+              ? `/ats/offers-placement?openLetter=${encodeURIComponent(letterId)}`
+              : '/ats/offers-placement'
+          router.replace(next, { scroll: false })
+        })
+      return
+    }
+
+    if (letterId && /^[0-9a-fA-F]{24}$/.test(letterId)) {
+      if (openLetterParamHandledRef.current === letterId) return
+      openLetterParamHandledRef.current = letterId
+      void (async () => {
+        try {
+          await openOfferLetterModal({ _id: letterId } as Offer)
+        } finally {
+          router.replace('/ats/offers-placement', { scroll: false })
+        }
+      })()
+    } else {
+      openLetterParamHandledRef.current = null
+    }
+  }, [searchParams, router, openOfferLetterModal])
+
+  useEffect(() => {
+    if (!letterModalOffer) return
+    const o = letterModalOffer
+    const c = o.candidate
+    const addr = formatCandidateAddress(c)
+    const jt = (o.jobType as OfferLetterJobType) || 'FT_40'
+    const isIntern = jt === 'INTERN_UNPAID'
+    const eligLines = o.employmentEligibilityLines || []
+    let eligibilityPreset = detectEligibilityPreset(eligLines, isIntern)
+    if (isIntern && eligibilityPreset === 'none' && eligLines.length === 0) {
+      eligibilityPreset = 'opt_regular'
+    }
+    if (!isIntern && eligibilityPreset === 'none' && eligLines.length === 0) {
+      eligibilityPreset = 'opt_regular'
+    }
+    const eligibilityText = eligibilityPreset === 'custom' ? eligLines.join('\n') : ''
+    const base: OfferLetterFormFields = {
+      letterFullName: o.letterFullName || c?.fullName || '',
+      letterAddress: o.letterAddress || addr || '',
+      positionTitle: o.positionTitle || o.job?.title || '',
+      joiningDate: o.joiningDate ? String(o.joiningDate).slice(0, 10) : '',
+      letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : '',
+      jobType: jt,
+      weeklyHours: (o.weeklyHours === 25 ? 25 : 40) as 25 | 40,
+      workLocation: o.workLocation || 'Remote (USA)',
+      rolesText: (o.roleResponsibilities && o.roleResponsibilities.length) ? o.roleResponsibilities.join('\n') : '',
+      trainingText: (o.trainingOutcomes && o.trainingOutcomes.length) ? o.trainingOutcomes.join('\n') : '',
+      annualGrossCtc:
+        o.ctcBreakdown?.gross != null && Number(o.ctcBreakdown.gross) > 0
+          ? String(o.ctcBreakdown.gross)
+          : '',
+      ctcCurrency: (o.ctcBreakdown?.currency || 'USD').toUpperCase() === 'INR' ? 'INR' : 'USD',
+      academicNote: o.academicAlignmentNote || '',
+      eligibilityPreset,
+      eligibilityText,
+      supFirst: o.supervisor?.firstName || 'Jason',
+      supLast: o.supervisor?.lastName || 'Mendonca',
+      supPhone: o.supervisor?.phone || '+1-307-206-9144',
+      supEmail: o.supervisor?.email || 'jason@dharwinbusinesssolutions.com',
+    }
+    setLetterForm(base)
+    const needRoleDefaults = !base.rolesText.trim()
+    const needTrainingDefaults = isIntern && !base.trainingText.trim()
+    if (needRoleDefaults || needTrainingDefaults) {
+      getOfferLetterDefaults(o.job?.title || '')
+        .then((d) => {
+          setLetterForm((f) => ({
+            ...f,
+            rolesText: f.rolesText.trim() ? f.rolesText : d.roleResponsibilities.join('\n'),
+            trainingText:
+              f.trainingText.trim() ? f.trainingText : isIntern ? d.trainingOutcomes.join('\n') : f.trainingText,
+          }))
+        })
+        .catch(() => {})
+    }
+  }, [letterModalOffer])
+
+  const handleGenerateOfferLetter = async () => {
+    if (!letterModalOffer) return
+    const id = getOfferRecordId(letterModalOffer)
+    if (!id) {
+      alert('Missing offer id. Close and reopen the offer letter from the list.')
+      return
+    }
+    setLetterBusy(true)
+    try {
+      await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as any)
+      const updated = await generateOfferLetterPdf(id)
+      setLetterModalOffer(updated)
+      refreshOffers()
+    } catch (e: unknown) {
+      alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Could not generate PDF')
+    } finally {
+      setLetterBusy(false)
+    }
+  }
+
+  const handleGenerateOfferLetterRef = useRef(handleGenerateOfferLetter)
+  handleGenerateOfferLetterRef.current = handleGenerateOfferLetter
+
+  /** Defer PDF generation so letter form state (and async role defaults) can settle after open. */
+  useEffect(() => {
+    if (!letterModalOffer || !autoGeneratePdfAfterCreateRef.current) return
+    autoGeneratePdfAfterCreateRef.current = false
+    const t = window.setTimeout(() => {
+      void handleGenerateOfferLetterRef.current()
+    }, 1200)
+    return () => window.clearTimeout(t)
+  }, [letterModalOffer])
+
+  const handleDownloadOfferLetter = async () => {
+    if (!letterModalOffer) return
+    const id = getOfferRecordId(letterModalOffer)
+    if (!id) {
+      alert('Missing offer id. Close and reopen the offer letter from the list.')
+      return
+    }
+    setLetterBusy(true)
+    try {
+      const blob = await downloadOfferLetterFile(id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Offer-Letter-${letterModalOffer.offerCode || id}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (e: unknown) {
+      alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Download failed')
+    } finally {
+      setLetterBusy(false)
+    }
+  }
 
   const handleUpdateStatus = async () => {
     if (!editOfferModal || !editStatus) return
@@ -548,7 +745,7 @@ const OffersPlacement = () => {
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <input
-            className="form-check-input"
+            className="form-check-input accent-indigo-600"
             type="checkbox"
             checked={selectedRows.has(row.original.id)}
             onChange={() => handleRowSelect(row.original.id)}
@@ -562,66 +759,36 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const offer = row.original
           return (
-            <div className="flex flex-col gap-1">
-              <div className="font-semibold text-gray-800 dark:text-white">
-                {offer.position}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                <i className="ri-file-text-line text-primary"></i>
-                {offer.offerId}
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                <span className="flex items-center gap-1">
-                  <i className="ri-calendar-line text-primary"></i>
-                  {new Date(offer.offerDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                  <i className="ri-file-paper-2-line text-success"></i>
-                  {offer.templateType}
-                </span>
-                {offer.version > 1 && (
-                  <span className="badge bg-warning/10 text-warning border border-warning/30 px-1.5 py-0.5 rounded text-[0.65rem] font-medium">
-                    v{offer.version}
-                  </span>
-                )}
+            <div className="flex min-w-0 max-w-[200px] flex-col gap-0.5">
+              <div className="text-[13px] font-medium leading-tight text-gray-900 dark:text-white">{offer.position}</div>
+              <div className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                <i className="ri-file-text-line mt-0.5 shrink-0" aria-hidden />
+                <span className="truncate">{offer.offerId}</span>
               </div>
             </div>
           )
         },
       },
       {
-        Header: 'Candidate',
+        Header: 'Employee',
         accessor: 'candidate',
         Cell: ({ row }: any) => {
           const candidate = row.original.candidate
           return (
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
+            <div className="flex min-w-0 max-w-[220px] items-center gap-2.5">
+              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
                 <img
                   src={candidate.displayPicture || '/assets/images/faces/1.jpg'}
                   alt={candidate.name}
-                  className="w-10 h-10 rounded-full object-cover"
+                  className="h-full w-full object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
                   }}
                 />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 dark:text-white truncate">
-                  {candidate.name}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <div className="flex items-center gap-1">
-                    <i className="ri-mail-line"></i>
-                    {candidate.email}
-                  </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <i className="ri-phone-line"></i>
-                    {candidate.phone}
-                  </div>
-                </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-medium text-gray-900 dark:text-white">{candidate.name}</div>
+                <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{candidate.email}</div>
               </div>
             </div>
           )
@@ -633,66 +800,43 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const recruiter = row.original.recruiter
           return (
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0">
+            <div className="flex min-w-0 max-w-[200px] items-center gap-2.5">
+              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
                 <img
                   src={recruiter.displayPicture || '/assets/images/faces/1.jpg'}
                   alt={recruiter.name}
-                  className="w-10 h-10 rounded-full object-cover"
+                  className="h-full w-full object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = '/assets/images/faces/1.jpg'
                   }}
                 />
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 dark:text-white truncate">
-                  {recruiter.name}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <div className="flex items-center gap-1">
-                    <i className="ri-mail-line"></i>
-                    {recruiter.email}
-                  </div>
-                </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-medium text-gray-900 dark:text-white">{recruiter.name}</div>
+                {recruiter.email ? (
+                  <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{recruiter.email}</div>
+                ) : null}
               </div>
             </div>
           )
         },
       },
       {
-        Header: 'Department',
-        accessor: 'department',
-        Cell: ({ row }: any) => {
-          const dept = row.original.department
-          return (
-            <span className="text-sm text-gray-700 dark:text-gray-300">{dept || '-'}</span>
-          )
-        },
-      },
-      {
-        Header: 'Designation',
-        accessor: 'designation',
-        Cell: ({ row }: any) => {
-          const des = row.original.designation
-          return (
-            <span className="text-sm text-gray-700 dark:text-gray-300">{des || '-'}</span>
-          )
-        },
-      },
-      {
-        Header: 'Pre-boarding',
+        Header: 'Pre-board',
         accessor: 'preBoardingStatus',
         Cell: ({ row }: any) => {
           const offer = row.original
-          if (offer.offerStatus !== 'Accepted' || offer.placementStatus !== 'Pending') return <span className="text-gray-400">-</span>
+          if (offer.offerStatus !== 'Accepted' || offer.placementStatus !== 'Pending') return <span className="text-slate-400">—</span>
           const status = offer.preBoardingStatus || 'Not Started'
           const colors: Record<string, string> = {
-            'Not Started': 'bg-gray/10 text-gray border-gray/30',
-            'In Progress': 'bg-info/10 text-info border-info/30',
-            'Completed': 'bg-success/10 text-success border-success/30',
+            'Not Started': 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300',
+            'In Progress': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+            'Completed': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
           }
           return (
-            <span className={`badge ${colors[status] || 'bg-gray/10 text-gray'} border px-2 py-1 rounded-md text-xs font-medium`}>
+            <span
+              className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${colors[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+            >
               {status}
             </span>
           )
@@ -703,17 +847,19 @@ const OffersPlacement = () => {
         accessor: 'bgvStatus',
         Cell: ({ row }: any) => {
           const offer = row.original
-          if (offer.offerStatus !== 'Accepted') return <span className="text-gray-400">-</span>
+          if (offer.offerStatus !== 'Accepted') return <span className="text-slate-400">—</span>
           const status = offer.bgvStatus || 'Pending'
           const colors: Record<string, string> = {
-            'Pending': 'bg-warning/10 text-warning border-warning/30',
-            'In Progress': 'bg-info/10 text-info border-info/30',
-            'Completed': 'bg-success/10 text-success border-success/30',
-            'Verified': 'bg-success/10 text-success border-success/30',
-            'Failed': 'bg-danger/10 text-danger border-danger/30',
+            'Pending': 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
+            'In Progress': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+            'Completed': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+            'Verified': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+            'Failed': 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
           }
           return (
-            <span className={`badge ${colors[status] || 'bg-gray/10 text-gray'} border px-2 py-1 rounded-md text-xs font-medium`}>
+            <span
+              className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${colors[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+            >
               {status}
             </span>
           )
@@ -724,11 +870,13 @@ const OffersPlacement = () => {
         accessor: 'assetsIt',
         Cell: ({ row }: any) => {
           const offer = row.original
-          if (offer.offerStatus !== 'Accepted') return <span className="text-gray-400">-</span>
+          if (offer.offerStatus !== 'Accepted') return <span className="text-slate-400">—</span>
           const assets = offer.assetCount ?? 0
           const it = offer.itAccessCount ?? 0
           return (
-            <span className="text-sm text-gray-700 dark:text-gray-300">{assets} / {it}</span>
+            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300">
+              {assets} / {it}
+            </span>
           )
         },
       },
@@ -738,19 +886,21 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const offer = row.original
           const statusColors: Record<string, string> = {
-            'Accepted': 'bg-success/10 text-success border-success/30',
-            'Pending': 'bg-warning/10 text-warning border-warning/30',
-            'Under Negotiation': 'bg-info/10 text-info border-info/30',
-            'Rejected': 'bg-danger/10 text-danger border-danger/30',
-            'Withdrawn': 'bg-secondary/10 text-secondary border-secondary/30',
+            'Accepted': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
+            'Pending': 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200',
+            'Under Negotiation': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
+            'Rejected': 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200',
+            'Withdrawn': 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300',
           }
           return (
-            <div className="text-sm">
-              <span className={`badge ${statusColors[offer.offerStatus] || 'bg-gray/10 text-gray border-gray/30'} border px-2 py-1 rounded-md text-xs font-medium`}>
+            <div className="min-w-0">
+              <span
+                className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${statusColors[offer.offerStatus] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
+              >
                 {offer.offerStatus}
               </span>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
-                <i className={`ri-${offer.signedStatus === 'Signed' ? 'check' : offer.signedStatus === 'Pending' ? 'time' : 'close'}-line`}></i>
+              <div className="mt-1 flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <i className={`ri-${offer.signedStatus === 'Signed' ? 'check' : offer.signedStatus === 'Pending' ? 'time' : 'close'}-line`} aria-hidden />
                 {offer.signedStatus}
               </div>
             </div>
@@ -764,7 +914,7 @@ const OffersPlacement = () => {
           const offer = row.original
           if (offer.offerStatus !== 'Accepted') {
             return (
-              <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+              <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
                 Offer
               </span>
             )
@@ -772,27 +922,27 @@ const OffersPlacement = () => {
           const status = offer.placementStatus
           if (status === 'Pending') {
             return (
-              <span className="badge bg-warning/10 text-warning border border-warning/30 px-2 py-1 rounded-md text-xs font-medium">
+              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
                 Pre-boarding
               </span>
             )
           }
           if (status === 'Joined') {
             return (
-              <span className="badge bg-success/10 text-success border border-success/30 px-2 py-1 rounded-md text-xs font-medium">
+              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200">
                 Onboarding
               </span>
             )
           }
           if (status === 'Deferred' || status === 'Cancelled') {
             return (
-              <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-300">
                 {status}
               </span>
             )
           }
           return (
-            <span className="badge bg-gray/10 text-gray border border-gray/30 px-2 py-1 rounded-md text-xs font-medium">
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
               Pre-boarding
             </span>
           )
@@ -804,14 +954,17 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const offer = row.original
           return (
-            <div className="text-sm">
+            <div className="text-[12px] text-slate-600 dark:text-slate-300">
               {offer.joiningDate ? (
-                <div className="flex items-center gap-1 text-gray-800 dark:text-white">
-                  <i className="ri-calendar-check-line text-success"></i>
+                <div className="inline-flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" title="Date set" />
                   {new Date(offer.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                 </div>
               ) : (
-                <span className="text-xs text-gray-400 dark:text-gray-500">Not set</span>
+                <span className="inline-flex items-center gap-1.5 text-slate-400">
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
+                  Not set
+                </span>
               )}
             </div>
           )
@@ -827,37 +980,41 @@ const OffersPlacement = () => {
           // Pre-boarding shows Pending placements only; Joined placements go to Onboarding
           const inPreBoarding = isAccepted && offer.placementStatus === 'Pending'
           const inOnboarding = isAccepted && offer.placementStatus === 'Joined'
+          const rowAct =
+            'hs-tooltip-toggle inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-[0.95rem] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 dark:border-white/15 dark:bg-transparent dark:hover:bg-white/5'
           return (
-          <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <div className="flex min-w-0 max-w-[200px] flex-wrap items-center gap-1 sm:max-w-none">
             {inPreBoarding && (
               <Link
                 href="/ats/pre-boarding"
-                className="ti-btn ti-btn-sm ti-btn-success shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                className="mb-0.5 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-emerald-200/90 bg-emerald-50 px-2 text-[11px] font-medium text-emerald-900 hover:bg-emerald-100/90 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-100"
                 title="Go to Pre-boarding"
               >
-                <i className="ri-user-follow-line me-1"></i>Pre-boarding
+                <i className="ri-user-follow-line" aria-hidden />
+                Pre
               </Link>
             )}
             {inOnboarding && (
               <Link
                 href="/ats/onboarding"
-                className="ti-btn ti-btn-sm ti-btn-primary shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                className="mb-0.5 inline-flex h-7 shrink-0 items-center gap-0.5 rounded-md border border-indigo-200/90 bg-indigo-50 px-2 text-[11px] font-medium text-indigo-900 hover:bg-indigo-100/90 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100"
                 title="Go to Onboarding"
               >
-                <i className="ri-login-circle-line me-1"></i>Onboarding
+                <i className="ri-login-circle-line" aria-hidden />
+                Join
               </Link>
             )}
             <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                className={rowAct}
                 title="View Offer"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) setViewOfferModal(raw)
                 }}
               >
-                <i className="ri-file-text-line"></i>
+                <i className="ri-file-text-line" aria-hidden />
                 <span
                   className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                   role="tooltip">
@@ -868,14 +1025,14 @@ const OffersPlacement = () => {
             <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
+                className={rowAct}
                 title="View History"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) setViewHistoryModal(raw)
                 }}
               >
-                <i className="ri-history-line"></i>
+                <i className="ri-history-line" aria-hidden />
                 <span
                   className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                   role="tooltip">
@@ -886,7 +1043,7 @@ const OffersPlacement = () => {
             <div className="hs-tooltip ti-main-tooltip shrink-0">
               <button
                 type="button"
-                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                className={rowAct}
                 title="Edit Offer"
                 onClick={() => {
                   const raw = (row.original as any)._raw
@@ -896,7 +1053,7 @@ const OffersPlacement = () => {
                   }
                 }}
               >
-                <i className="ri-pencil-line"></i>
+                <i className="ri-pencil-line" aria-hidden />
                 <span
                   className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                   role="tooltip">
@@ -904,17 +1061,53 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
+            {canEdit && (
+              <div className="hs-tooltip ti-main-tooltip shrink-0">
+                <button
+                  type="button"
+                  className={rowAct}
+                  title="Generate offer letter (PDF)"
+                  onClick={() => {
+                    const raw = (row.original as any)._raw as Offer | undefined
+                    if (raw) void openOfferLetterModal(raw)
+                  }}
+                >
+                  <i className="ri-article-line" aria-hidden />
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Offer letter
+                  </span>
+                </button>
+              </div>
+            )}
           </div>
         )
         },
       },
     ],
-    [selectedRows]
+    [selectedRows, canEdit, openOfferLetterModal]
   )
 
   // Filter data based on filter state
   const filteredData = useMemo(() => {
     return OFFERS_PLACEMENT_DATA.filter((offer) => {
+      if (listSearch.trim()) {
+        const q = listSearch.trim().toLowerCase()
+        const blob = [
+          offer.position,
+          offer.offerId,
+          offer.candidate?.name,
+          offer.candidate?.email,
+          offer.recruiter?.name,
+          offer.offerStatus,
+          String(offer.placementStatus ?? ''),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+        if (!blob.includes(q)) return false
+      }
       // Candidate filter (array)
       if (filters.candidate.length > 0 && !filters.candidate.some(candidateName => 
         offer.candidate.name.toLowerCase().includes(candidateName.toLowerCase())
@@ -944,7 +1137,7 @@ const OffersPlacement = () => {
       
       return true
     })
-  }, [filters, OFFERS_PLACEMENT_DATA])
+  }, [filters, listSearch, OFFERS_PLACEMENT_DATA])
 
   const data = useMemo(() => filteredData, [filteredData])
 
@@ -1027,19 +1220,15 @@ const OffersPlacement = () => {
     setSearchRecruiter('')
     setSearchOfferStatus('')
     setSearchStep('')
+    setListSearch('')
   }
 
-  const hasActiveFilters = 
-    filters.candidate.length > 0 ||
-    filters.recruiter.length > 0 ||
-    filters.offerStatus.length > 0 ||
-    filters.step.length > 0
-
-  const activeFilterCount = 
+  const panelFilterCount =
     filters.candidate.length +
     filters.recruiter.length +
     filters.offerStatus.length +
     filters.step.length
+  const hasPanelFilters = panelFilterCount > 0
 
   const tableInstance: any = useTable(
     {
@@ -1129,21 +1318,44 @@ const OffersPlacement = () => {
   const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
   const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
 
+  /** Prevent sticky header label collision on narrow viewports */
+  const offerColMinW: Record<string, string> = {
+    checkbox: '2.25rem',
+    offerInfo: '9.5rem',
+    candidate: '11rem',
+    recruiter: '8rem',
+    preBoardingStatus: '6.5rem',
+    bgvStatus: '4rem',
+    assetsIt: '5rem',
+    offerStatus: '6.25rem',
+    step: '4.75rem',
+    joiningDate: '6.75rem',
+    id: '8.5rem',
+  }
+
+  /** Toolbar: match `ats/jobs` — `!py-1 !px-2 !text-[0.75rem]`, never bare `ti-btn-sm` (fixed 28×28 in theme). */
   return (
     <Fragment>
-  
-      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
-            <div className="box-header flex items-center justify-between flex-wrap gap-4">
-              <div className="box-title">
-                Offers & Placement
-                <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
+      <Seo title="Offers & Placement" />
+      <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
+        <div className="col-span-12 min-w-0 flex flex-col">
+          <div className="box min-w-0 flex flex-col">
+            <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
+              <div className="box-title min-w-0 flex-1">
+                Offers &amp; Placement
+                <span
+                  className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
+                  title="Count after search and filters"
+                >
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2 shrink-0" role="toolbar" aria-label="Offer list tools">
+                <label className="sr-only" htmlFor="offers-page-size">
+                  Rows per page
+                </label>
                 <select
+                  id="offers-page-size"
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
@@ -1154,15 +1366,66 @@ const OffersPlacement = () => {
                     </option>
                   ))}
                 </select>
+                {canCreate && (
+                  <Link
+                    href="/ats/offers-placement/offer-letter/new"
+                    className="ti-btn ti-btn-primary-full !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] me-2"
+                  >
+                    <i className="ri-add-line font-semibold align-middle" aria-hidden />
+                    Create
+                  </Link>
+                )}
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
+                    id="excel-dropdown-button"
+                    aria-expanded="false"
+                    aria-haspopup="true"
+                    aria-label="Excel import and export"
+                  >
+                    <i className="ri-file-excel-2-line me-1 align-middle font-semibold text-emerald-700 dark:text-emerald-400" aria-hidden />
+                    Excel
+                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block" aria-hidden />
+                  </button>
+                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
+                    <li>
+                      <button
+                        type="button"
+                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                      >
+                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                      >
+                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        type="button"
+                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                      >
+                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+                <div className="hs-dropdown ti-dropdown me-2">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
                     id="sort-dropdown-button"
                     aria-expanded="false"
+                    aria-haspopup="true"
                   >
-                    <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
+                    <i className="ri-arrow-up-down-line me-1 align-middle font-semibold" aria-hidden />
+                    Sort
+                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block" aria-hidden />
                   </button>
                   <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
                     <li>
@@ -1267,101 +1530,109 @@ const OffersPlacement = () => {
                     </li>
                   </ul>
                 </div>
-                {canCreate && (
-                  <Link
-                    href="/ats/offers-placement/create"
-                    className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
-                  >
-                    <i className="ri-add-line font-semibold align-middle"></i>Create Offer
-                  </Link>
-                )}
-                <div className="hs-dropdown ti-dropdown me-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
-                    id="excel-dropdown-button"
-                    aria-expanded="false"
-                  >
-                    <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                  </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                  </ul>
+                <div className="relative me-2 w-[9.5rem] min-w-0 sm:w-40">
+                  <i
+                    className="ri-search-line pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    className="form-control !w-full !py-1 !ps-7 !pe-2 !text-[0.75rem]"
+                    placeholder="Search…"
+                    value={listSearch}
+                    onChange={(e) => setListSearch(e.target.value)}
+                    aria-label="Search this list"
+                    autoComplete="off"
+                  />
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
+                  className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] me-2"
                   data-hs-overlay="#offers-filter-panel"
+                  aria-expanded="false"
+                  aria-controls="offers-filter-panel"
                 >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
-                  {hasActiveFilters && (
-                    <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
-                      {activeFilterCount}
+                  <i className="ri-filter-3-line me-1 align-middle" aria-hidden />
+                  Filters
+                  {hasPanelFilters && (
+                    <span className="badge bg-primary text-white ms-1 align-middle" style={{ fontSize: '0.65rem' }}>
+                      {panelFilterCount}
                     </span>
                   )}
                 </button>
-              
                 {canDelete && selectedRows.size > 0 && (
                   <button
                     type="button"
-                    className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem]"
+                    className="ti-btn ti-btn-sm ti-btn-danger !mb-0 !w-auto !min-w-fit !h-8 !whitespace-nowrap !py-1.5 !px-3"
                     onClick={handleDeleteSelected}
                   >
-                    <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete ({selectedRows.size})
+                    <i className="ri-delete-bin-line me-1" aria-hidden />
+                    Delete ({selectedRows.size})
                   </button>
                 )}
               </div>
             </div>
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
               {offersLoading ? (
-                <div className="flex items-center justify-center p-12">
-                  <i className="ri-loader-4-line animate-spin text-3xl text-primary"></i>
+                <div
+                  className="flex flex-col items-center justify-center gap-4 px-6 py-10"
+                  role="status"
+                  aria-live="polite"
+                  aria-busy="true"
+                >
+                  <div className="flex w-full max-w-md flex-col gap-2">
+                    <div className={`h-3 w-full ${offersStyles.skeleton}`} />
+                    <div className={`h-3 w-[92%] ${offersStyles.skeleton}`} style={{ animationDelay: '0.08s' }} />
+                    <div className={`h-3 w-[88%] ${offersStyles.skeleton}`} style={{ animationDelay: '0.16s' }} />
+                    <div className={`h-3 w-[95%] ${offersStyles.skeleton}`} style={{ animationDelay: '0.24s' }} />
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
+                    <i className="ri-loader-4-line inline-block h-5 w-5 shrink-0 animate-spin text-primary" aria-hidden />
+                    <span>Loading offers&hellip;</span>
+                  </div>
+                </div>
+              ) : filteredData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-gray-500 dark:text-gray-400">
+                  <i className="ri-file-paper-2-line mb-3 block text-4xl opacity-50" aria-hidden />
+                  <p className="mb-1 text-base font-medium text-gray-700 dark:text-gray-200">No offers to show</p>
+                  <p className="mb-0 max-w-md text-sm">
+                    {offersData.length > 0
+                      ? 'Try relaxing filters, or add offers from a job application.'
+                      : 'Create an offer from an application in pipeline, or use Create Offer to start a letter.'}
+                  </p>
                 </div>
               ) : (
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
+              <div
+                className={`table-responsive flex-1 overflow-y-auto ${offersStyles.tableCard} ${offersStyles.tableWrap}`}
+                style={{ minHeight: 0 }}
+              >
+                <table
+                  {...getTableProps()}
+                  className="table w-full min-w-full whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80"
+                >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
+                        <tr
+                          {...headerGroup.getHeaderGroupProps()}
+                          className="border-b border-slate-200/90 dark:border-white/10"
+                          key={`header-group-${i}`}
+                        >
                         {headerGroup.headers.map((column: any, i: number) => (
                           <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
+                            className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
                             key={column.id || `col-${i}`}
                             style={{ 
                               position: 'sticky', 
                               top: 0, 
-                              zIndex: 10
+                              zIndex: 10,
+                              minWidth: offerColMinW[String(column.id)] ?? undefined,
                             }}
                           >
                             {column.id === 'select' ? (
                               <input
-                                className="form-check-input"
+                                className="form-check-input accent-indigo-600"
                                 type="checkbox"
                                 checked={isAllSelected}
                                 ref={(input) => {
@@ -1371,19 +1642,17 @@ const OffersPlacement = () => {
                                 aria-label="Select all"
                               />
                             ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="tabletitle">{column.render('Header')}</span>
-                              <span>
+                              <div className="tabletitle flex min-w-0 items-start gap-1">
+                                <span className="min-w-0 break-words hyphens-auto">{column.render('Header')}</span>
+                                <span className="shrink-0 pt-0.5">
                                 {column.isSorted ? (
                                   column.isSortedDesc ? (
-                                    <i className="ri-arrow-down-s-line text-[0.875rem]"></i>
+                                    <i className="ri-arrow-down-s-line text-sm opacity-80" aria-hidden />
                                   ) : (
-                                    <i className="ri-arrow-up-s-line text-[0.875rem]"></i>
+                                    <i className="ri-arrow-up-s-line text-sm opacity-80" aria-hidden />
                                   )
-                                ) : (
-                                  ''
-                                )}
-                              </span>
+                                ) : null}
+                                </span>
                               </div>
                             )}
                           </th>
@@ -1395,10 +1664,20 @@ const OffersPlacement = () => {
                     {page.map((row: any, i: number) => {
                       prepareRow(row)
                       return (
-                        <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
+                        <tr
+                          {...row.getRowProps({
+                            className: `border-b border-slate-200/80 transition-colors duration-150 ease-out last:border-b-0 hover:bg-slate-50/90 dark:border-white/10 dark:hover:bg-white/[0.04] ${offersStyles.rowIn}`,
+                            style: { animationDelay: `${Math.min(i, 16) * 45}ms` },
+                          })}
+                        >
                           {row.cells.map((cell: any, i: number) => {
                             return (
-                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
+                              <td
+                                {...cell.getCellProps({
+                                  className: 'whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100',
+                                })}
+                                key={cell.column.id || `cell-${i}`}
+                              >
                                 {cell.render('Cell')}
                               </td>
                             )
@@ -1411,12 +1690,19 @@ const OffersPlacement = () => {
               </div>
               )}
             </div>
-            <div className="box-footer !border-t-0">
-              <div className="flex items-center flex-wrap gap-4">
-                <div>
-                  Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
+            <div className="box-footer border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
+                  {filteredData.length === 0 ? (
+                    <span>0 offers</span>
+                  ) : (
+                    <>
+                      Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
+                      <i className="bi bi-arrow-right ms-2 font-semibold" aria-hidden />
+                    </>
+                  )}
                 </div>
+                {filteredData.length > 0 && (
                 <div className="ms-auto">
                   <nav aria-label="Page navigation" className="pagination-style-4">
                     <ul className="ti-pagination mb-0">
@@ -1518,6 +1804,7 @@ const OffersPlacement = () => {
                     </ul>
                   </nav>
                 </div>
+                )}
               </div>
             </div>
           </div>
@@ -1527,9 +1814,9 @@ const OffersPlacement = () => {
       {/* Filter Panel Offcanvas */}
       <div id="offers-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
-            <i className="ri-search-line text-primary text-base"></i>
-            Search Offers & Placement
+          <h6 className="ti-offcanvas-title flex items-center gap-2 text-base font-semibold">
+            <i className="ri-filter-3-line text-primary text-base" aria-hidden />
+            Filters
           </h6>
           <button 
             type="button" 
@@ -1850,6 +2137,34 @@ const OffersPlacement = () => {
         </div>
       )}
 
+      {/* Offer letter generator (embedded UI — same layout as standalone tool; saves to this offer) */}
+      {letterModalOffer && (
+        <div
+          className="offer-letter-fullscreen fixed inset-0 z-[1060] flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-950 pointer-events-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Offer letter generator"
+        >
+          <OfferLetterGeneratorWorkspace
+            offerCode={letterModalOffer.offerCode || '—'}
+            jobTitle={letterModalOffer.job?.title || ''}
+            candidateName={letterModalOffer.candidate?.fullName || ''}
+            letterForm={letterForm}
+            setLetterForm={setLetterForm}
+            letterBusy={letterBusy}
+            lastGeneratedLabel={
+              letterModalOffer.offerLetterGeneratedAt
+                ? new Date(letterModalOffer.offerLetterGeneratedAt).toLocaleString()
+                : null
+            }
+            hasPdf={Boolean(letterModalOffer.offerLetterKey)}
+            onClose={() => setLetterModalOffer(null)}
+            onGeneratePdf={() => void handleGenerateOfferLetter()}
+            onDownload={() => void handleDownloadOfferLetter()}
+          />
+        </div>
+      )}
+
       {/* View Offer Modal */}
       {viewOfferModal && (
         <div className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
@@ -1879,8 +2194,6 @@ const OffersPlacement = () => {
                   <>
                     <div>
                       <h5 className="font-semibold text-gray-800 dark:text-white mb-2">HRMS (Onboarding)</h5>
-                      <p><strong>Department:</strong> {(viewOfferModal.candidate as any)?.department || '-'}</p>
-                      <p><strong>Designation:</strong> {(viewOfferModal.candidate as any)?.designation || '-'}</p>
                       <p><strong>Reporting Manager:</strong> {typeof (viewOfferModal.candidate as any)?.reportingManager === 'object' ? (viewOfferModal.candidate as any)?.reportingManager?.name : (viewOfferModal.candidate as any)?.reportingManager || '-'}</p>
                     </div>
                     {(viewOfferModal as any).placement && (

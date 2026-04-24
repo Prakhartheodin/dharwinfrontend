@@ -35,7 +35,8 @@ export interface RecordingStatusResponse {
     egressId: string;
     roomName: string;
     status: string;
-    startedAt: string;
+    /** ISO-8601 when known; null if egress sent an unparseable timestamp */
+    startedAt: string | null;
   }>;
 }
 

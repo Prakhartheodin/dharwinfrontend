@@ -6,6 +6,7 @@ import { listCandidates } from "@/shared/lib/api/candidates";
 import { listStudents } from "@/shared/lib/api/students";
 import {
   buildMergedAssignPeopleOptions,
+  filterAssignPersonSelectOption,
   resolveStudentIdsForHolidayAssign,
   type AssignPersonRow,
 } from "@/shared/lib/attendance-assign-people-options";
@@ -23,9 +24,7 @@ import {
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
@@ -38,8 +37,7 @@ type AssignmentMode = "individual" | "group";
 export default function SettingsAttendanceAssignHolidaysPage() {
   const searchParams = useSearchParams();
   const sopQueryString = searchParams.toString();
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const isAdmin = useAttendanceAdminAccess();
   const [assignmentMode, setAssignmentMode] = useState<AssignmentMode>("individual");
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
@@ -76,28 +74,6 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     holidaysRemoved?: number;
     attendanceRecordsDeleted?: number;
   } | null>(null);
-
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const roleMap = new Map(roles.map((r) => [r.id, r]));
-        const hasAdmin = (user.roleIds as string[]).some((id) => {
-          const name = roleMap.get(id)?.name;
-          return name === "Administrator" || name === "Agent";
-        });
-        setIsAdmin(hasAdmin);
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    checkAdmin();
-  }, [user]);
 
   const fetchPeople = useCallback(async () => {
     if (!isAdmin) return;
@@ -206,7 +182,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       await Swal.fire({
         icon: "warning",
         title: "No one selected",
-        text: "Select at least one training profile or candidate",
+        text: "Select at least one training profile or employee",
         confirmButtonText: "OK",
       });
       return;
@@ -273,7 +249,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
       await Swal.fire({
         icon: "warning",
         title: "No one selected",
-        text: "Select at least one training profile or candidate",
+        text: "Select at least one training profile or employee",
         confirmButtonText: "OK",
       });
       return;
@@ -462,7 +438,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
   const personOptionsWithSelectAll =
     people.length > 0
       ? [
-          { value: SELECT_ALL_STUDENTS_VALUE, label: "Select all (training + candidates)" } as AssignPersonRow,
+          { value: SELECT_ALL_STUDENTS_VALUE, label: "Select all (training + employees)" } as AssignPersonRow,
           ...people,
         ]
       : people;
@@ -570,7 +546,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                 {loadingStudents ? (
                   <div className="flex items-center gap-2 text-defaulttextcolor/70">
                     <i className="ri-loader-4-line animate-spin" />
-                    <span>Loading training profiles and candidates…</span>
+                    <span>Loading training profiles and employees…</span>
                   </div>
                 ) : (
                   <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
@@ -598,13 +574,14 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                           setSelectedPeople(selected as AssignPersonRow[]);
                         }
                       }}
-                      placeholder="Training profiles and candidates…"
+                      placeholder="Training profiles and employees…"
                       closeMenuOnSelect={false}
                       hideSelectedOptions={false}
                       className="react-select-container assign-holidays-select"
                       classNamePrefix="react-select"
                       isClearable
                       isSearchable
+                      filterOption={filterAssignPersonSelectOption}
                       menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                       menuPosition="fixed"
                       styles={{ menuPortal: (base) => ({ ...base, zIndex: 10000 }) }}

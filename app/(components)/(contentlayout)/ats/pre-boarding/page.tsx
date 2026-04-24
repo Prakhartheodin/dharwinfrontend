@@ -214,8 +214,17 @@ const PreBoarding = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {placements.map((p) => (
-                      <tr key={p._id}>
+                    {placements.map((p, index) => {
+                      const placementId =
+                        (p as { _id?: string; id?: string })._id ?? p.id ?? ""
+                      return (
+                      <tr
+                        key={
+                          placementId
+                            ? `${placementId}-${index}`
+                            : `preboarding-placement-${index}`
+                        }
+                      >
                         <td>
                           <div>
                             <Link href={`/ats/employees?candidateId=${p.candidate?._id}`} className="font-medium text-primary hover:underline">
@@ -250,7 +259,8 @@ const PreBoarding = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

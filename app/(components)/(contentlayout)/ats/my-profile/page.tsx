@@ -5,7 +5,7 @@ import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Link from "next/link";
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
+import { useHasEmployeeRole } from "@/shared/hooks/use-has-employee-role";
 import { getMeWithCandidate, sendMyVerificationEmail } from "@/shared/lib/api/auth";
 import type { CandidateWithProfile } from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
@@ -107,7 +107,7 @@ function DynamicProfileView({
     if (ids.length === 0) {
       const r = (u.role ?? "").toString().trim().toLowerCase();
       if (!r) return "—";
-      if (r === "user" || r === "candidate") return "Candidate";
+      if (r === "user" || r === "candidate" || r === "employee") return "Employee";
       return r.charAt(0).toUpperCase() + r.slice(1);
     }
     const fallback = (u.role ?? "").toString().trim();
@@ -559,7 +559,7 @@ function DynamicProfileView({
 
 export default function MyProfilePage() {
   const { user } = useAuth();
-  const { hasCandidateProfile, isLoading: rolesLoading } = useHasCandidateRole();
+  const { hasEmployeeProfile, isLoading: rolesLoading } = useHasEmployeeRole();
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
   const [serverEmailVerified, setServerEmailVerified] = useState<boolean | null>(null);
   const [dataLoading, setDataLoading] = useState(true);
@@ -571,7 +571,7 @@ export default function MyProfilePage() {
       return;
     }
     let cancelled = false;
-    if (hasCandidateProfile) {
+    if (hasEmployeeProfile) {
       getMeWithCandidate()
         .then((res) => {
           if (!cancelled) {
@@ -597,7 +597,7 @@ export default function MyProfilePage() {
       setDataLoading(false);
     }
     return () => { cancelled = true; };
-  }, [user, hasCandidateProfile]);
+  }, [user, hasEmployeeProfile]);
 
   if (user && !rolesLoading && !dataLoading) {
     return (

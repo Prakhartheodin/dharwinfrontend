@@ -5,7 +5,7 @@ import Link from "next/link";
 import React, { Fragment, useState, useEffect } from "react";
 import { getMyApplications, withdrawMyApplication, type JobApplication, type JobApplicationStatus } from "@/shared/lib/api/jobApplications";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useIsCandidate } from "@/shared/hooks/use-is-candidate";
+import { useIsEmployee } from "@/shared/hooks/use-is-employee";
 import { ROUTES } from "@/shared/lib/constants";
 
 const WITHDRAWABLE_STATUSES: JobApplicationStatus[] = ["Applied", "Screening"];
@@ -21,7 +21,7 @@ const STATUS_STYLE: Record<JobApplicationStatus, { bg: string; text: string; bor
 
 export default function MyApplicationsPage() {
   const { user } = useAuth();
-  const { isCandidate, isLoading: candidateLoading } = useIsCandidate();
+  const { isEmployee, isLoading: employeeLoading } = useIsEmployee();
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<JobApplicationStatus | "">("");
@@ -42,12 +42,12 @@ export default function MyApplicationsPage() {
   };
 
   useEffect(() => {
-    if (!isCandidate) {
+    if (!isEmployee) {
       setLoading(false);
       return;
     }
     load();
-  }, [isCandidate, statusFilter]);
+  }, [isEmployee, statusFilter]);
 
   const handleWithdraw = async (app: JobApplication) => {
     const id = app._id ?? app.id;
@@ -67,7 +67,7 @@ export default function MyApplicationsPage() {
   const totalPages = Math.ceil(totalItems / pageSize);
   const pagedData = applications.slice(page * pageSize, (page + 1) * pageSize);
 
-  if (!candidateLoading && !user) {
+  if (!employeeLoading && !user) {
     return (
       <>
         <Seo title="My Applications" />
@@ -87,7 +87,7 @@ export default function MyApplicationsPage() {
     );
   }
 
-  if (!candidateLoading && !isCandidate) {
+  if (!employeeLoading && !isEmployee) {
     return (
       <>
         <Seo title="My Applications" />

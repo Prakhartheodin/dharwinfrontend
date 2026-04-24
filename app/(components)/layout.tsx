@@ -67,7 +67,8 @@ function Layout({children, local_varaiable, ThemeChanger}:any) {
               <link href="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.css" rel="stylesheet"/>
               <meta name="keywords" content=" nextjs app router, nextjs template, tailwind nextjs, next js themes, next js tailwind,  tailwind, admin, tailwindcss nextjs, nextjs admin templates, tailwind admin template, nextjs admin template, nextjs typescript, admin template, tailwind dashboard, tailwind css dashboard" />
               </head>
-             <body className={`${local_varaiable.body ? local_varaiable.body : ''}`}>
+              {/* Browser extensions (e.g. Grammarly: data-gr-ext-installed) mutate <body> before React hydrates; suppressHydrationWarning avoids a false mismatch on this node only. */}
+              <body suppressHydrationWarning className={local_varaiable?.body ?? ""}>
               {theme.pageloading && children}
               <script src="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.js"></script>
              </body>

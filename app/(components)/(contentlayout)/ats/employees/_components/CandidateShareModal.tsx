@@ -55,7 +55,7 @@ export default function CandidateShareModal({
             <div className="ti-modal-header px-4 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <h6 className="ti-modal-title flex items-center gap-2">
                 <i className="ri-share-line text-primary"></i>
-                Share Candidate
+                Share Employee
               </h6>
               <button
                 type="button"
@@ -69,7 +69,7 @@ export default function CandidateShareModal({
             <div className="ti-modal-body px-4 sm:px-6 py-4">
               {shareCandidate ? (
                 <div className="space-y-4">
-                  {/* Candidate Info */}
+                  {/* Employee info */}
                   <div className="p-3 bg-gray-50 dark:bg-black/20 rounded-lg border border-gray-200 dark:border-defaultborder/10">
                     <h6 className="font-semibold text-gray-800 dark:text-white mb-1">{shareCandidate.name}</h6>
                     <p className="text-sm text-gray-600 dark:text-gray-400">

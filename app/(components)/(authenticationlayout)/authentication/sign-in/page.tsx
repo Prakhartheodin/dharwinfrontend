@@ -11,6 +11,7 @@ import Swal from "sweetalert2";
 import { consumeCandidateResignedRedirect } from "@/shared/lib/api/client";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
+import { getSafePostLoginPath } from "@/shared/lib/jobReferralRef";
 
 const RESIGNED_POPUP = {
   title: "Cannot sign in",
@@ -27,6 +28,7 @@ function isCandidateResignedResponse(err: unknown): boolean {
 
 export default function SignInPage() {
   const searchParams = useSearchParams();
+  const postLoginPath = getSafePostLoginPath(searchParams.get("next"));
   const registeredMessage =
     searchParams.get("registered") === "1"
       ? searchParams.get("message") ??
@@ -57,7 +59,7 @@ export default function SignInPage() {
       return;
     }
     try {
-      await login(email.trim(), password);
+      await login(email.trim(), password, { redirectTo: postLoginPath });
     } catch (err) {
       if (isCandidateResignedResponse(err)) {
         void Swal.fire({

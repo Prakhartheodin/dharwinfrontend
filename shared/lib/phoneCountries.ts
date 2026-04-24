@@ -88,8 +88,11 @@ export const PHONE_COUNTRIES: PhoneCountryConfig[] = [
 
 const byCode = new Map(PHONE_COUNTRIES.map((c) => [c.code, c]));
 
+/** When country is unknown, prefer a neutral default (avoids wrong India +91 for US/international users). */
+export const DEFAULT_PHONE_COUNTRY = "US" as const;
+
 export function getPhoneCountry(code: string): PhoneCountryConfig {
-  return byCode.get(code) || byCode.get("IN")!;
+  return byCode.get(code) || byCode.get(DEFAULT_PHONE_COUNTRY)!;
 }
 
 export function validatePhoneByCountry(phone: string, countryCode: string): boolean {

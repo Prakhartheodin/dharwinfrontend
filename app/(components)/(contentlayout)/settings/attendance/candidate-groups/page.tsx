@@ -13,9 +13,7 @@ import { listStudents, type Student } from "@/shared/lib/api/students";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -23,8 +21,7 @@ type StudentOption = { value: string; label: string; student: Student };
 const SELECT_ALL = "__all_students__";
 
 export default function SettingsAttendanceStudentGroupsPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const isAdmin = useAttendanceAdminAccess();
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,29 +38,6 @@ export default function SettingsAttendanceStudentGroupsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
   const limit = 10;
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
 
   const fetchStudents = useCallback(async () => {
     try {

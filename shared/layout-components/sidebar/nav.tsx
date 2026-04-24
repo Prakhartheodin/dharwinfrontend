@@ -179,6 +179,16 @@ export const MenuItems: any = [
       },
 
       {
+    icon: OffersPlacementIcon,
+    title: "Offers & Placement",
+        type: "link",
+    path: "/ats/offers-placement",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
     icon: PreBoardingIcon,
     title: "Pre-boarding",
         type: "link",
@@ -193,16 +203,6 @@ export const MenuItems: any = [
     title: "Onboarding",
         type: "link",
     path: "/ats/onboarding",
-        active: false,
-        selected: false,
-        dirchange: false, 
-      },
-
-      {
-    icon: OffersPlacementIcon,
-    title: "Offers & Placement",
-        type: "link",
-    path: "/ats/offers-placement",
         active: false,
         selected: false,
         dirchange: false, 

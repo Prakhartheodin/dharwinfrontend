@@ -7,8 +7,24 @@ export type JobApplicationStatus = "Applied" | "Screening" | "Interview" | "Offe
 export interface JobApplication {
   _id: string;
   id?: string;
-  job: { _id: string; title?: string; organisation?: { name: string }; status?: string };
-  candidate: { _id?: string; id?: string; fullName?: string; email?: string; phoneNumber?: string; countryCode?: string };
+  /** Populated job; API JSON uses `id` (toJSON) — use `_id ?? id` when reading. */
+  job: { _id?: string; id?: string; title?: string; organisation?: { name: string }; status?: string };
+  candidate: {
+    _id?: string;
+    id?: string;
+    fullName?: string;
+    email?: string;
+    phoneNumber?: string;
+    countryCode?: string;
+    address?: {
+      streetAddress?: string;
+      streetAddress2?: string;
+      city?: string;
+      state?: string;
+      zipCode?: string;
+      country?: string;
+    };
+  };
   status: JobApplicationStatus;
   coverLetter?: string | null;
   appliedBy?: { _id: string; name?: string; email?: string };

@@ -2,7 +2,7 @@
 
 import React from "react";
 import Select from "react-select";
-import { PHONE_COUNTRIES } from "@/shared/lib/phoneCountries";
+import { PHONE_COUNTRIES, DEFAULT_PHONE_COUNTRY } from "@/shared/lib/phoneCountries";
 
 const OPTIONS = PHONE_COUNTRIES.map((c) => ({
   value: c.code,
@@ -20,7 +20,8 @@ interface PhoneCountrySelectProps {
 
 /** Searchable country dial code selector - type to jump (e.g. "i" → India, Indonesia) */
 export function PhoneCountrySelect({ value, onChange, name, className = "", id }: PhoneCountrySelectProps) {
-  const selected = OPTIONS.find((o) => o.value === value) ?? OPTIONS[0];
+  const selected =
+    OPTIONS.find((o) => o.value === value) ?? OPTIONS.find((o) => o.value === DEFAULT_PHONE_COUNTRY) ?? OPTIONS[0];
 
   return (
     <div className={className} style={{ minWidth: 140 }}>

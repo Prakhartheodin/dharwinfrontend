@@ -14,6 +14,7 @@ import { Track, ConnectionState, type RemoteParticipant } from "livekit-client";
 import { exchangeSupportCameraInviteToken } from "@/shared/lib/api/support-camera-invite";
 import Link from "next/link";
 import { ROUTES } from "@/shared/lib/constants";
+import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
 
 type Props = {
   inviteToken: string;
@@ -311,6 +312,7 @@ function SupportCameraLiveChrome({ mode }: { mode: "host" | "guest" }) {
 }
 
 export default function SupportCameraSessionClient({ inviteToken, mode }: Props) {
+  useLiveKitBenignErrorSuppression();
   const [token, setToken] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

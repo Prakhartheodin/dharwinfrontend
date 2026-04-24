@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -13,7 +12,7 @@ const sidebarStyles = (
 );
 
 const NAV_ICONS: Record<string, string> = {
-  [ROUTES.settingsAttendanceWeekOff]: "ri-calendar-week-line",
+  [ROUTES.settingsAttendanceWeekOff]: "ri-calendar-schedule-line",
   [ROUTES.settingsAttendanceHolidays]: "ri-calendar-event-line",
   [ROUTES.settingsAttendanceAssignHolidays]: "ri-calendar-check-line",
   [ROUTES.settingsAttendanceCandidateGroups]: "ri-group-line",
@@ -78,9 +77,13 @@ export default function SettingsAttendanceLayout({
     <>
       {sidebarStyles}
       <div className="grid grid-cols-12 gap-6 attendance-sidebar">
-        <div className="xl:col-span-3 col-span-12">
+        {/*
+          Must stack above react-select menuPortal (e.g. week-off / assign use z-index 10000 on document.body);
+          otherwise the last items in this nav can be unclickable when a portal is active or leaves a high-z layer.
+        */}
+        <div className="xl:col-span-3 col-span-12 relative z-[10050] min-w-0">
           <aside
-            className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden sticky top-4"
+            className="pointer-events-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden sticky top-4 isolate"
             aria-label="Attendance navigation"
           >
             <div className="px-5 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
@@ -96,16 +99,27 @@ export default function SettingsAttendanceLayout({
                 </h2>
               </div>
             </div>
-            <nav className="p-2" aria-label="Attendance settings">
+            <nav className="pointer-events-auto relative z-[10051] p-2 pb-2.5" aria-label="Attendance settings">
+              {/*
+                Native <a> forces a full document navigation. Next.js <Link> soft navigation
+                can fail to swap the page slot in this nested settings layout; full navigation is reliable.
+              */}
               {visibleLinks.map(({ href, label }) => {
                 const isActive =
                   pathname === href || pathname.replace(/\/$/, "") === href.replace(/\/$/, "");
                 const icon = NAV_ICONS[href] ?? "ri-arrow-right-s-line";
                 return (
-                  <Link
+                  <a
                     key={href}
                     href={href}
-                    className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+                    onClick={(e) => {
+                      if (e.defaultPrevented) return;
+                      if (e.button !== 0) return;
+                      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                      e.preventDefault();
+                      window.location.assign(href);
+                    }}
+                    className={`relative z-0 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 pointer-events-auto ${
                       isActive
                         ? "bg-primary/10 text-primary shadow-sm"
                         : "text-defaulttextcolor/80 hover:bg-slate-50 dark:hover:bg-white/5 hover:text-defaulttextcolor"
@@ -123,13 +137,15 @@ export default function SettingsAttendanceLayout({
                         aria-hidden
                       />
                     )}
-                  </Link>
+                  </a>
                 );
               })}
             </nav>
           </aside>
         </div>
-        <div className="xl:col-span-9 col-span-12">{children}</div>
+        <div className="xl:col-span-9 col-span-12 min-w-0">
+          {children}
+        </div>
       </div>
     </>
   );

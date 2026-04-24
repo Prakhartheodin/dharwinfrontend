@@ -1,0 +1,607 @@
+.olg {
+  --brand-blue: #1e4080;
+  --brand-green: #4a9e4a;
+  --accent: #2563eb;
+  --accent-light: #eff6ff;
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --yellow-hl: #fff176;
+  --sidebar-bg: #0f172a;
+  --radius: 10px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.06);
+  font-family: var(--font-offer-letter-dm), system-ui, sans-serif;
+  color: var(--text-primary);
+  /* Fill flex parent (fixed overlay) and allow children to shrink for overflow scroll */
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f1f5f9;
+}
+
+.olg *,
+.olg *::before,
+.olg *::after {
+  box-sizing: border-box;
+}
+
+.topbar {
+  background: var(--sidebar-bg);
+  color: #fff;
+  padding: 0 24px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #1e293b;
+}
+
+.topbarLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+}
+
+.topbarTitle {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+
+.topbarSep {
+  width: 1px;
+  height: 24px;
+  background: #334155;
+  margin: 0 4px;
+}
+
+.topbarSub {
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.topbarMeta {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-left: 8px;
+}
+
+.topbarActions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btnPrimary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btnPrimary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.btnGhost {
+  background: transparent;
+  color: #94a3b8;
+  border: 1px solid #334155;
+}
+
+.btnGhost:hover:not(:disabled) {
+  color: #fff;
+  border-color: #64748b;
+}
+
+.btnSuccess {
+  background: #16a34a;
+  color: #fff;
+}
+
+.btnSuccess:hover:not(:disabled) {
+  background: #15803d;
+}
+
+.btnSecondary {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.btnSecondary:hover:not(:disabled) {
+  background: #475569;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.formPanel {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 20px;
+}
+
+/* Critical: flex items default to flex-shrink:1 — in a bounded column they squash and clip fields.
+   Keep each card at content height; the form panel itself scrolls. */
+.formPanel > * {
+  flex-shrink: 0;
+}
+
+.sectionCard {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.sectionHeader {
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sectionHeaderSplit {
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sectionHeaderTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btnAi {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #4f46e5;
+  background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+  color: #fff;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.btnAi:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btnAi:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.sectionBody {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.fieldRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.2px;
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+.select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+}
+
+.helpText {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: -2px;
+}
+
+.compPreview {
+  padding: 10px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #166534;
+  font-weight: 500;
+}
+
+.previewPanel {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  background: #e2e8f0;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.previewPanel > * {
+  flex-shrink: 0;
+}
+
+.letter {
+  width: 794px;
+  min-height: 1123px;
+  background: #fff;
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 11.5pt;
+  line-height: 1.45;
+  color: #111;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.letterPage {
+  padding: 32px 48px 24px;
+  flex: 1;
+}
+
+.letterHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.letterLogo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.letterLogoImg {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+.letterContact {
+  text-align: left;
+  font-size: 9.5pt;
+  line-height: 1.7;
+  color: #222;
+}
+
+.letterContactRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.contactIcon {
+  color: #1e4080;
+  flex-shrink: 0;
+}
+
+.letterDivider {
+  border: none;
+  border-top: 1.5px solid #222;
+  margin: 10px 0 12px;
+}
+
+.letterSubject {
+  text-align: center;
+  font-weight: 700;
+  font-size: 12.5pt;
+  margin-bottom: 10px;
+  text-decoration: underline;
+  color: #1e4080;
+}
+
+.letterDate {
+  text-align: right;
+  font-size: 11pt;
+  margin-bottom: 14px;
+}
+
+.offerBadge {
+  display: inline-block;
+  border: 2px solid #f5c518;
+  background: #fff176;
+  padding: 3px 18px;
+  font-weight: 700;
+  font-size: 12pt;
+  margin: 0 auto 14px;
+  text-align: center;
+  width: 100%;
+  color: #111;
+}
+
+.letterTo {
+  margin-bottom: 14px;
+  font-size: 11pt;
+}
+
+.letterTo strong {
+  font-weight: 700;
+}
+
+.letterGreeting {
+  margin-bottom: 10px;
+  font-size: 11pt;
+  font-weight: 700;
+}
+
+.letterBody {
+  margin-bottom: 10px;
+  font-size: 11pt;
+  text-align: justify;
+}
+
+.sectionTitleHl {
+  background: #fff176;
+  font-weight: 700;
+  font-size: 11.5pt;
+  display: inline-block;
+  padding: 0 2px;
+  margin: 8px 0 4px;
+  text-decoration: underline;
+}
+
+.sectionTitlePlain {
+  font-weight: 700;
+  font-size: 11.5pt;
+  margin: 8px 0 4px;
+  text-decoration: underline;
+}
+
+.bulletList {
+  padding-left: 22px;
+  margin: 4px 0 6px;
+}
+
+.bulletList li {
+  margin-bottom: 2px;
+  font-size: 11pt;
+}
+
+.sigBlock {
+  margin-top: 20px;
+}
+
+.sigLabel {
+  font-weight: 700;
+  font-size: 11pt;
+  margin-bottom: 4px;
+}
+
+.sigLine {
+  border-bottom: 1px solid #555;
+  width: 240px;
+  height: 36px;
+  margin: 4px 0;
+}
+
+.sigName {
+  font-size: 11pt;
+}
+
+.sigRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.letterFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #fff;
+  border-top: 1.5px solid #222;
+  padding: 8px 48px;
+  font-size: 9pt;
+  color: #333;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.footerItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+@media print {
+  .printHide {
+    display: none !important;
+  }
+
+  .olg {
+    background: #fff !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    flex: none !important;
+    overflow: visible !important;
+  }
+
+  .workspace {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .formPanel {
+    display: none !important;
+  }
+
+  .previewPanel {
+    display: block !important;
+    background: #fff !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    max-width: 100% !important;
+  }
+
+  /* Screen simulates one sheet (794×1123); in print, content must paginate. */
+  .letter {
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    display: block !important;
+    overflow: visible !important;
+    page-break-inside: auto;
+    break-inside: auto;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .letterPage {
+    flex: none !important;
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .letterFooter {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .bulletList {
+    page-break-inside: auto;
+  }
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 45vh) minmax(0, 1fr);
+  }
+
+  .formPanel {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

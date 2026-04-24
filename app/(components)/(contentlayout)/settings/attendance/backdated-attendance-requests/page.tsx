@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   getAllBackdatedAttendanceRequests,
   approveBackdatedAttendanceRequest,
@@ -12,13 +12,39 @@ import {
 } from "@/shared/lib/api/backdated-attendance-requests";
 import { listStudents, getStudent, type Student } from "@/shared/lib/api/students";
 import { listCandidates } from "@/shared/lib/api/candidates";
+import {
+  buildMergedAssignPeopleOptions,
+  filterAssignPersonSelectOption,
+  resolveStudentIdsForHolidayAssign,
+  type AssignPersonRow,
+} from "@/shared/lib/attendance-assign-people-options";
 import * as attendanceApi from "@/shared/lib/api/attendance";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import dynamic from "next/dynamic";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import type { FilterOptionOption } from "react-select";
 import StudentAttendanceOverlay from "./StudentAttendanceOverlay";
+
+const Select = dynamic(() => import("react-select"), { ssr: false });
+
+const FILTER_LIST_ALL = "__all__";
+
+/** List filter: "All" row + same search as other attendance (name, email, employee ID). */
+function filterBackdatedListPersonOption(
+  option: FilterOptionOption<unknown>,
+  inputValue: string
+): boolean {
+  const v = (option as { value?: string }).value;
+  if (v === FILTER_LIST_ALL) {
+    const input = (inputValue ?? "").trim();
+    if (!input) return true;
+    return String(option.label ?? "")
+      .toLowerCase()
+      .includes(input.toLowerCase());
+  }
+  return filterAssignPersonSelectOption(option, inputValue);
+}
 
 function getStudentName(request: BackdatedAttendanceRequest): string {
   const s = request.student;
@@ -48,15 +74,14 @@ function getStudentShiftForRequest(
 }
 
 export default function SettingsAttendanceBackdatedPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [loading, setLoading] = useState(true);
+  const isAdmin = useAttendanceAdminAccess();
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const [filterStatus, setFilterStatus] = useState<"all" | "pending" | "approved" | "rejected" | "cancelled">("pending");
   const [filterStudent, setFilterStudent] = useState<string>("all");
   const [students, setStudents] = useState<Student[]>([]);
+  const [people, setPeople] = useState<AssignPersonRow[]>([]);
 
   const [requests, setRequests] = useState<BackdatedAttendanceRequest[]>([]);
   const [attendanceViewStudent, setAttendanceViewStudent] = useState<{
@@ -75,94 +100,48 @@ export default function SettingsAttendanceBackdatedPage() {
   });
 
   const [showAddSection, setShowAddSection] = useState(false);
+  const [addPersonValue, setAddPersonValue] = useState<string>("");
   const [addStudentId, setAddStudentId] = useState<string>("");
+  const [addResolvingProfile, setAddResolvingProfile] = useState(false);
   const [addMode, setAddMode] = useState<"range" | "entries">("range");
   const [addRangeForm, setAddRangeForm] = useState({ fromDate: "", toDate: "", punchInTime: "", punchOutTime: "", notes: "", timezone: "" });
   const [addEntries, setAddEntries] = useState<Array<{ date: string; punchInTime: string; punchOutTime: string; notes: string; timezone: string }>>([]);
   const [addStudentWeekOff, setAddStudentWeekOff] = useState<string[]>([]);
   const [addingBackDate, setAddingBackDate] = useState(false);
 
-  const [filterStudentSearch, setFilterStudentSearch] = useState("");
-  const [filterStudentOpen, setFilterStudentOpen] = useState(false);
-  const [addStudentSearch, setAddStudentSearch] = useState("");
-  const [addStudentOpen, setAddStudentOpen] = useState(false);
-  const filterStudentDropdownRef = useRef<HTMLDivElement>(null);
-  const addStudentDropdownRef = useRef<HTMLDivElement>(null);
-
-  const sortedStudents = useMemo(
-    () => [...students].sort((a, b) => (a.user?.name ?? "").localeCompare(b.user?.name ?? "", undefined, { sensitivity: "base" })),
-    [students]
+  const addPersonRow = useMemo(
+    () => (addPersonValue ? people.find((p) => p.value === addPersonValue) ?? null : null),
+    [people, addPersonValue]
   );
 
-  const filteredStudentsForFilter = useMemo(() => {
-    const q = filterStudentSearch.trim().toLowerCase();
-    if (!q) return sortedStudents;
-    return sortedStudents.filter(
-      (s) =>
-        (s.user?.name ?? "").toLowerCase().includes(q) ||
-        (s.user?.email ?? "").toLowerCase().includes(q)
-    );
-  }, [sortedStudents, filterStudentSearch]);
+  const listFilterOptions = useMemo((): (AssignPersonRow | { value: string; label: string })[] => {
+    return [
+      { value: FILTER_LIST_ALL, label: "All employees" },
+      ...people.filter((p): p is Extract<AssignPersonRow, { kind: "student" }> => p.kind === "student"),
+    ];
+  }, [people]);
 
-  const filteredStudentsForAdd = useMemo(() => {
-    const q = addStudentSearch.trim().toLowerCase();
-    if (!q) return sortedStudents;
-    return sortedStudents.filter(
-      (s) =>
-        (s.user?.name ?? "").toLowerCase().includes(q) ||
-        (s.user?.email ?? "").toLowerCase().includes(q)
-    );
-  }, [sortedStudents, addStudentSearch]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        filterStudentDropdownRef.current &&
-        !filterStudentDropdownRef.current.contains(e.target as Node)
-      ) {
-        setFilterStudentOpen(false);
-      }
-      if (
-        addStudentDropdownRef.current &&
-        !addStudentDropdownRef.current.contains(e.target as Node)
-      ) {
-        setAddStudentOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
+  const listFilterValue = useMemo(() => {
+    if (filterStudent === "all") {
+      return { value: FILTER_LIST_ALL, label: "All employees" } as { value: string; label: string };
+    }
+    const row = people.find((p) => p.kind === "student" && p.value === filterStudent);
+    return row ?? { value: FILTER_LIST_ALL, label: "All employees" };
+  }, [filterStudent, people]);
 
   const fetchStudents = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
-      setStudents(res.results ?? []);
+      const [stuRes, candRes] = await Promise.all([
+        listStudents({ limit: 1000, sortBy: "user.name:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+      ]);
+      const list = stuRes.results ?? [];
+      setStudents(list);
+      setPeople(buildMergedAssignPeopleOptions(list, candRes.results ?? []));
     } catch {
       setStudents([]);
+      setPeople([]);
     }
   }, [isAdmin]);
 
@@ -171,7 +150,7 @@ export default function SettingsAttendanceBackdatedPage() {
   }, [isAdmin, fetchStudents]);
 
   const fetchRequests = useCallback(async () => {
-    if (isAdmin === false) return;
+    if (isAdmin !== true) return;
     setLoadingRequests(true);
     try {
       const params: Record<string, string | number> = {
@@ -196,13 +175,40 @@ export default function SettingsAttendanceBackdatedPage() {
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
       setLoadingRequests(false);
-      setLoading(false);
     }
   }, [isAdmin, filterStatus, filterStudent, pagination.page, pagination.limit]);
 
   useEffect(() => {
     fetchRequests();
   }, [fetchRequests]);
+
+  useEffect(() => {
+    if (!addPersonRow) {
+      setAddStudentId("");
+      return;
+    }
+    if (addPersonRow.kind === "student") {
+      setAddStudentId(addPersonRow.value);
+      setAddResolvingProfile(false);
+      return;
+    }
+    let cancelled = false;
+    setAddResolvingProfile(true);
+    setAddStudentId("");
+    (async () => {
+      try {
+        const ids = await resolveStudentIdsForHolidayAssign([addPersonRow]);
+        if (!cancelled && ids[0]) setAddStudentId(ids[0]);
+      } catch {
+        if (!cancelled) setAddStudentId("");
+      } finally {
+        if (!cancelled) setAddResolvingProfile(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [addPersonRow]);
 
   useEffect(() => {
     if (!addStudentId) return;
@@ -218,9 +224,9 @@ export default function SettingsAttendanceBackdatedPage() {
   }, [addStudentId]);
 
   const openAddSection = () => {
+    setAddPersonValue("");
     setAddStudentId("");
-    setAddStudentSearch("");
-    setAddStudentOpen(false);
+    setAddResolvingProfile(false);
     setAddMode("range");
     setAddRangeForm({ fromDate: "", toDate: "", punchInTime: "", punchOutTime: "", notes: "", timezone: "" });
     setAddEntries([{ date: "", punchInTime: "", punchOutTime: "", notes: "", timezone: "" }]);
@@ -247,8 +253,22 @@ export default function SettingsAttendanceBackdatedPage() {
     });
   };
   const handleSubmitAddBackdated = async () => {
-    if (!addStudentId) {
-      await Swal.fire({ icon: "warning", title: "Select Student", text: "Please select the student who needs backdated attendance.", confirmButtonText: "OK" });
+    if (!addPersonRow) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Select person",
+        text: "Select a training profile or employee for backdated attendance.",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+    if (addResolvingProfile || !addStudentId) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Profile not ready",
+        text: "Wait until the training profile is resolved, or select someone who already has a training profile linked.",
+        confirmButtonText: "OK",
+      });
       return;
     }
 
@@ -685,7 +705,7 @@ export default function SettingsAttendanceBackdatedPage() {
     `}</style>
   );
 
-  if (isAdmin === null || (isAdmin === true && loading && requests.length === 0)) {
+  if (isAdmin === null) {
     return (
       <>
         <Seo title="Backdated Attendance" />
@@ -751,7 +771,7 @@ return (
                 className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98]"
               >
                 <i className="ri-add-line text-base" />
-                Add for Student
+                Add for Employee
               </button>
             ) : (
               <button
@@ -765,73 +785,33 @@ return (
           </div>
           {showAddSection && (
             <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
-              <div ref={addStudentDropdownRef} className="relative">
-                <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Student *</label>
-                <button
-                  type="button"
-                  onClick={() => { setAddStudentOpen((o) => !o); if (!addStudentOpen) setAddStudentSearch(""); }}
-                  className="w-full flex items-center justify-between gap-3 rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-3 text-left text-sm text-defaulttextcolor transition-all duration-150 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  aria-expanded={addStudentOpen}
-                  aria-haspopup="listbox"
-                >
-                  <span className={addStudentId ? "text-defaulttextcolor truncate" : "text-defaulttextcolor/50"}>
-                    {addStudentId
-                      ? (() => {
-                          const s = students.find((x) => x.id === addStudentId);
-                          return s ? `${s.user?.name ?? "Unknown"}${s.user?.email ? ` (${s.user.email})` : ""}` : "Select student";
-                        })()
-                      : "Select student who needs backdated attendance"}
-                  </span>
-                  <i className={`ri-arrow-down-s-line text-xl text-defaulttextcolor/50 shrink-0 transition-transform duration-200 ${addStudentOpen ? "rotate-180" : ""}`} />
-                </button>
-                {addStudentOpen && (
-                  <div className="absolute z-20 mt-2 w-full min-w-[360px] max-w-[min(420px,90vw)] rounded-xl border border-defaultborder bg-white dark:bg-bodybg shadow-xl shadow-black/10 dark:shadow-black/30 overflow-hidden ring-1 ring-black/5 dark:ring-white/5">
-                    <div className="p-2.5 border-b border-defaultborder/50 bg-slate-50/80 dark:bg-white/5">
-                      <div className="relative">
-                        <i className="ri-search-line absolute left-3.5 top-1/2 -translate-y-1/2 text-base text-defaulttextcolor/40 pointer-events-none" aria-hidden />
-                        <input
-                          type="text"
-                          value={addStudentSearch}
-                          onChange={(e) => setAddStudentSearch(e.target.value)}
-                          placeholder="Search by name or email…"
-                          className="w-full rounded-lg border border-defaultborder/80 bg-white dark:bg-white/5 pl-10 pr-9 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-150"
-                          autoFocus
-                        />
-                        {addStudentSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setAddStudentSearch("")}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-defaulttextcolor/50 hover:text-defaulttextcolor hover:bg-defaultborder/30 transition-colors"
-                            aria-label="Clear search"
-                          >
-                            <i className="ri-close-line text-lg" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <ul className="max-h-60 overflow-y-auto py-1.5" role="listbox">
-                      {filteredStudentsForAdd.length === 0 ? (
-                        <li className="px-4 py-4 text-sm text-defaulttextcolor/60 text-center">No students match your search</li>
-                      ) : (
-                        filteredStudentsForAdd.map((s) => (
-                          <li
-                            key={s.id}
-                            role="option"
-                            aria-selected={addStudentId === s.id}
-                            onClick={() => {
-                              setAddStudentId(s.id);
-                              setAddStudentOpen(false);
-                              setAddStudentSearch("");
-                            }}
-                            className={`cursor-pointer px-4 py-2.5 text-sm transition-colors duration-150 hover:bg-primary/10 break-words min-w-0 ${addStudentId === s.id ? "bg-primary/10 text-primary font-medium" : "text-defaulttextcolor"}`}
-                          >
-                            <span className="font-medium">{s.user?.name ?? "Unknown"}</span>
-                            {s.user?.email && <span className="text-defaulttextcolor/70 ml-1 break-all">({s.user.email})</span>}
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  </div>
+              <div>
+                <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select people <span className="text-danger">*</span></label>
+                <p className="text-xs text-defaulttextcolor/60 mb-2">Search by name, email, or employee ID (same as other Attendance assign screens).</p>
+                <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
+                  <Select
+                    options={people}
+                    value={addPersonValue ? people.find((p) => p.value === addPersonValue) ?? null : null}
+                    onChange={(o) => {
+                      setAddPersonValue((o as AssignPersonRow | null)?.value ?? "");
+                    }}
+                    getOptionValue={(o) => (o as AssignPersonRow).value}
+                    getOptionLabel={(o) => (o as AssignPersonRow).label}
+                    filterOption={filterAssignPersonSelectOption}
+                    placeholder="Training profiles and employees…"
+                    isClearable
+                    isSearchable
+                    className="react-select-container backdated-add-person-select"
+                    classNamePrefix="react-select"
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuPosition="fixed"
+                  />
+                </div>
+                {addResolvingProfile && (
+                  <p className="mt-1.5 text-xs text-defaulttextcolor/60">
+                    <i className="ri-loader-4-line animate-spin me-1 inline" aria-hidden />
+                    Linking training profile…
+                  </p>
                 )}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
@@ -863,7 +843,7 @@ return (
               {addMode === "range" && (
                 <div className="p-5 border border-defaultborder/70 rounded-xl bg-slate-50/60 dark:bg-white/[0.04] dark:border-defaultborder/50">
                   <p className="text-sm text-defaulttextcolor/90 mb-4">
-                    Enter a date range. Punch in and punch out will be applied to all working days (weekends excluded, or the student&apos;s week-off if set).
+                    Enter a date range. Punch in and punch out will be applied to all working days (weekends excluded, or the person&apos;s week-off if set).
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -887,11 +867,11 @@ return (
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-defaulttextcolor mb-1.5">Student timezone</label>
+                      <label className="block text-xs font-semibold text-defaulttextcolor mb-1.5">Timezone (from shift)</label>
                       <div className="w-full px-3 py-2.5 border border-defaultborder/80 rounded-lg bg-white dark:bg-white/5 text-defaulttextcolor text-sm">
                         {addStudentId
                           ? (addRangeForm.timezone || "UTC")
-                          : <span className="text-defaulttextcolor/50">Select a student to see their timezone</span>}
+                          : <span className="text-defaulttextcolor/50">Select an employee or training profile to see their timezone</span>}
                       </div>
                     </div>
                     <div />
@@ -997,7 +977,12 @@ return (
                 </div>
               )}
               <div className="flex gap-3 pt-1">
-                <button type="button" onClick={handleSubmitAddBackdated} className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60" disabled={addingBackDate}>
+                <button
+                  type="button"
+                  onClick={handleSubmitAddBackdated}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60"
+                  disabled={addingBackDate || addResolvingProfile || !addPersonValue || !addStudentId}
+                >
                   {addingBackDate ? <><i className="ri-loader-4-line animate-spin text-lg" /> Adding…</> : <><i className="ri-check-line text-lg" /> Add Attendance</>}
                 </button>
               </div>
@@ -1035,87 +1020,30 @@ return (
                   </button>
                 ))}
               </div>
-              <div ref={filterStudentDropdownRef} className="relative inline-block min-w-[220px]">
-                <button
-                  type="button"
-                  onClick={() => { setFilterStudentOpen((o) => !o); if (!filterStudentOpen) setFilterStudentSearch(""); }}
-                  className="flex w-full items-center justify-between gap-2 rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2 text-sm text-defaulttextcolor hover:border-defaulttextcolor/40 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  aria-expanded={filterStudentOpen}
-                  aria-haspopup="listbox"
-                >
-                  <span className="truncate">
-                    {filterStudent === "all"
-                      ? "All Students"
-                      : (() => {
-                          const s = students.find((x) => x.id === filterStudent);
-                          return s?.user?.name ?? "Unknown";
-                        })()}
-                  </span>
-                  <i className={`ri-arrow-down-s-line text-lg text-defaulttextcolor/50 shrink-0 transition-transform duration-200 ${filterStudentOpen ? "rotate-180" : ""}`} />
-                </button>
-                {filterStudentOpen && (
-                  <div className="absolute left-0 top-full z-20 mt-2 w-full min-w-[360px] max-w-[min(420px,90vw)] rounded-xl border border-defaultborder bg-white dark:bg-bodybg shadow-xl shadow-black/10 dark:shadow-black/30 overflow-hidden ring-1 ring-black/5 dark:ring-white/5">
-                    <div className="p-2.5 border-b border-defaultborder/50 bg-defaultborder/5 dark:bg-white/5">
-                      <div className="relative">
-                        <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-base text-defaulttextcolor/40 pointer-events-none" aria-hidden />
-                        <input
-                          type="text"
-                          value={filterStudentSearch}
-                          onChange={(e) => setFilterStudentSearch(e.target.value)}
-                          placeholder="Search student…"
-                          className="w-full rounded-lg border border-defaultborder/80 bg-white dark:bg-white/5 pl-10 pr-9 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all duration-150"
-                          autoFocus
-                        />
-                        {filterStudentSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setFilterStudentSearch("")}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-defaulttextcolor/50 hover:text-defaulttextcolor hover:bg-defaultborder/30 transition-colors"
-                            aria-label="Clear search"
-                          >
-                            <i className="ri-close-line text-lg" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <ul className="max-h-56 overflow-y-auto py-1.5" role="listbox">
-                      <li
-                        role="option"
-                        aria-selected={filterStudent === "all"}
-                        onClick={() => {
-                          setFilterStudent("all");
-                          setPagination((p) => ({ ...p, page: 1 }));
-                          setFilterStudentOpen(false);
-                          setFilterStudentSearch("");
-                        }}
-                        className={`cursor-pointer px-4 py-2.5 text-sm transition-colors duration-150 hover:bg-primary/10 ${filterStudent === "all" ? "bg-primary/10 text-primary font-medium" : "text-defaulttextcolor"}`}
-                      >
-                        All Students
-                      </li>
-                      {filteredStudentsForFilter.length === 0 ? (
-                        <li className="px-4 py-4 text-sm text-defaulttextcolor/60 text-center">No students match</li>
-                      ) : (
-                        filteredStudentsForFilter.map((s) => (
-                          <li
-                            key={s.id}
-                            role="option"
-                            aria-selected={filterStudent === s.id}
-                            onClick={() => {
-                              setFilterStudent(s.id);
-                              setPagination((p) => ({ ...p, page: 1 }));
-                              setFilterStudentOpen(false);
-                              setFilterStudentSearch("");
-                            }}
-                            className={`cursor-pointer px-4 py-2.5 text-sm transition-colors duration-150 hover:bg-primary/10 break-words min-w-0 ${filterStudent === s.id ? "bg-primary/10 text-primary font-medium" : "text-defaulttextcolor"}`}
-                          >
-                            <span className="font-medium">{s.user?.name ?? "Unknown"}</span>
-                            {s.user?.email && <span className="text-defaulttextcolor/60 ml-1 break-all">({s.user.email})</span>}
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  </div>
-                )}
+              <div className="min-w-[220px] w-full sm:w-[min(360px,100%)] sm:ml-auto">
+                <label className="sr-only">Filter by person</label>
+                <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
+                  <Select
+                    options={listFilterOptions as { value: string; label: string }[]}
+                    value={listFilterValue as { value: string; label: string }}
+                    onChange={(o) => {
+                      const v = (o as { value?: string } | null)?.value;
+                      if (v == null || v === FILTER_LIST_ALL) setFilterStudent("all");
+                      else setFilterStudent(v);
+                      setPagination((p) => ({ ...p, page: 1 }));
+                    }}
+                    getOptionValue={(o) => (o as { value: string }).value}
+                    getOptionLabel={(o) => (o as { label: string }).label}
+                    filterOption={filterBackdatedListPersonOption}
+                    placeholder="All employees"
+                    isSearchable
+                    isClearable={false}
+                    className="react-select-container backdated-filter-person-select"
+                    classNamePrefix="react-select"
+                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuPosition="fixed"
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -1287,12 +1215,12 @@ return (
                                     type="button"
                                     onClick={() => handleApprove(request)}
                                     disabled={isProcessing}
-                                    className="
+                                    className={`
                                       inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-4 rounded-lg
                                       bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-sm font-medium
                                       shadow-sm hover:shadow transition-all duration-150
                                       disabled:opacity-50 disabled:pointer-events-none
-                                    "
+                                    `}
                                   >
                                     {isProcessing ? (
                                       <i className="ri-loader-4-line animate-spin text-base" />
@@ -1304,12 +1232,12 @@ return (
                                     type="button"
                                     onClick={() => handleReject(request)}
                                     disabled={isProcessing}
-                                    className="
+                                    className={`
                                       inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-4 rounded-lg
                                       bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-sm font-medium
                                       shadow-sm hover:shadow transition-all duration-150
                                       disabled:opacity-50 disabled:pointer-events-none
-                                    "
+                                    `}
                                   >
                                     {isProcessing ? (
                                       <i className="ri-loader-4-line animate-spin text-base" />
@@ -1323,13 +1251,13 @@ return (
                                     type="button"
                                     onClick={() => void openAttendanceView(request)}
                                     disabled={isProcessing}
-                                    className="
+                                    className={`
                                       inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
                                       border border-sky-400/60 text-sky-700 bg-sky-50/70
                                       hover:bg-sky-100/80 hover:border-sky-500 text-sm font-medium
                                       transition-colors duration-150
                                       disabled:opacity-50 disabled:pointer-events-none
-                                    "
+                                    `}
                                   >
                                     <i className="ri-calendar-check-line text-sm" /> View
                                   </button>
@@ -1337,13 +1265,13 @@ return (
                                     type="button"
                                     onClick={() => handleUpdate(request)}
                                     disabled={isProcessing}
-                                    className="
+                                    className={`
                                       inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
                                       border-2 border-primary/50 text-primary bg-transparent
                                       hover:bg-primary/10 hover:border-primary text-sm font-medium
                                       transition-colors duration-150
                                       disabled:opacity-50 disabled:pointer-events-none
-                                    "
+                                    `}
                                   >
                                     <i className="ri-edit-line text-sm" /> Update
                                   </button>
@@ -1351,12 +1279,12 @@ return (
                                     type="button"
                                     onClick={() => handleCancel(request)}
                                     disabled={isProcessing}
-                                    className="
+                                    className={`
                                       inline-flex items-center justify-center gap-2 min-h-[2.25rem] px-3.5 rounded-lg
                                       text-defaulttextcolor/80 hover:text-defaulttextcolor hover:bg-defaultborder/30
                                       text-sm font-medium transition-colors duration-150
                                       disabled:opacity-50 disabled:pointer-events-none
-                                    "
+                                    `}
                                   >
                                     Cancel
                                   </button>
@@ -1436,6 +1364,26 @@ return (
           </div>
         </section>
       </div>
+
+      <style jsx>{`
+        .backdated-add-person-select :global(.react-select__control),
+        .backdated-filter-person-select :global(.react-select__control) {
+          border: none;
+          min-height: 2.75rem;
+          background: transparent;
+          box-shadow: none;
+        }
+        .backdated-add-person-select :global(.react-select__control--is-focused),
+        .backdated-filter-person-select :global(.react-select__control--is-focused) {
+          box-shadow: none;
+        }
+        .backdated-add-person-select :global(.react-select__placeholder),
+        .backdated-add-person-select :global(.react-select__input-container),
+        .backdated-filter-person-select :global(.react-select__placeholder),
+        .backdated-filter-person-select :global(.react-select__input-container) {
+          color: inherit;
+        }
+      `}</style>
 
       <StudentAttendanceOverlay
         open={!!attendanceViewStudent}

@@ -555,7 +555,7 @@ export default function AssignmentRunPage() {
                         {run.generationMeta.rosterPoolMode === "admin"
                           ? "candidates with the project owner’s adminId"
                           : run.generationMeta.rosterPoolOwnerScope === "candidate_role"
-                            ? "ATS candidates with Candidate role + current employment (resigned excluded)"
+                            ? "ATS employees (Employee user role) + current employment (resigned excluded)"
                             : "all active ATS candidates"}
                       </strong>{" "}
                       (total cap {run.generationMeta.rosterQueryLimit ?? "—"}), then <strong>capacity filter</strong>{" "}

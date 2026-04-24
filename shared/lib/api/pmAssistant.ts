@@ -92,9 +92,9 @@ export interface AssignmentGenerationMeta {
   adminFallbackLimit?: number;
   /** Pool uses same resignDate rule as ATS “current” employment */
   rosterAtsCurrentEmployment?: boolean;
-  /** candidate_role = pool owners must have Candidate role; unscoped_fallback = role missing in DB */
+  /** candidate_role = pool owners must have Employee (ATS) user role; unscoped_fallback = role missing in DB */
   rosterPoolOwnerScope?: string;
-  /** Users with Candidate role (active/pending); compare to User Roles screen */
+  /** Users with Employee / legacy Candidate user role (active/pending); compare to User Roles screen */
   candidateRoleOwnerCount?: number;
   /** Project tasks included in this run (after merge with AI output) */
   assignmentTotalTaskCount?: number;

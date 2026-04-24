@@ -14,9 +14,7 @@ import { getAllTimeZones } from "@/shared/lib/timezones";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import * as XLSX from "xlsx";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 
 const TIMEZONES = getAllTimeZones();
 const EXCEL_COLUMNS = [
@@ -32,8 +30,7 @@ const TIME_REG = /^([01][0-9]|2[0-3]):[0-5][0-9]$/;
 type BulkShiftRow = ShiftCreatePayload & { _key?: string };
 
 export default function SettingsAttendanceManageShiftsPage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  const isAdmin = useAttendanceAdminAccess();
   const [shifts, setShifts] = useState<Shift[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,29 +57,6 @@ export default function SettingsAttendanceManageShiftsPage() {
   const [totalPages, setTotalPages] = useState(1);
   const limit = 10;
   const excelInputRef = React.useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
 
   const fetchShifts = useCallback(async () => {
     setLoading(true);

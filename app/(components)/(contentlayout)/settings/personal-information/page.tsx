@@ -15,8 +15,9 @@ import {
   getMyCandidate,
 } from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
-import { useHasCandidateRole } from "@/shared/hooks/use-has-candidate-role";
+import { useHasEmployeeRole } from "@/shared/hooks/use-has-employee-role";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { DEFAULT_PHONE_COUNTRY } from "@/shared/lib/phoneCountries";
 import type { CandidateWithProfile, UpdateMeWithCandidatePayload } from "@/shared/lib/api/auth";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
@@ -129,9 +130,9 @@ export default function PersonalInformationPage() {
   } = useAuth();
   /** Same UI and PATCH /users privileges as Administrator (includes platform super). */
   const hasAdminPrivileges = isAdministrator || isPlatformSuperUser;
-  const { hasCandidateRole, hasCandidateProfile, isLoading: candidateRoleLoading } = useHasCandidateRole();
+  const { hasEmployeeRole, hasEmployeeProfile, isLoading: candidateRoleLoading } = useHasEmployeeRole();
   /** Username is only persisted on the staff (no linked candidate profile) save path. */
-  const canEditUsernameOnPage = hasAdminPrivileges && !hasCandidateProfile;
+  const canEditUsernameOnPage = hasAdminPrivileges && !hasEmployeeProfile;
   const [candidate, setCandidate] = useState<CandidateWithProfile | null>(null);
 
   const [firstName, setFirstName] = useState("");
@@ -141,7 +142,7 @@ export default function PersonalInformationPage() {
 
   /** User-model fields for staff (no linked Candidate profile): Settings → Personal Information. */
   const [staffPhone, setStaffPhone] = useState("");
-  const [staffCountryCode, setStaffCountryCode] = useState("IN");
+  const [staffCountryCode, setStaffCountryCode] = useState<string>(DEFAULT_PHONE_COUNTRY);
   const [staffLocation, setStaffLocation] = useState("");
   const [staffProfileSummary, setStaffProfileSummary] = useState("");
   const [staffEducation, setStaffEducation] = useState("");
@@ -166,7 +167,7 @@ export default function PersonalInformationPage() {
   const [changePasswordLoading, setChangePasswordLoading] = useState(false);
 
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [countryCode, setCountryCode] = useState("IN");
+  const [countryCode, setCountryCode] = useState<string>(DEFAULT_PHONE_COUNTRY);
   const [shortBio, setShortBio] = useState("");
   const [address, setAddress] = useState({ streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "" });
   const [sevisId, setSevisId] = useState("");
@@ -245,14 +246,14 @@ export default function PersonalInformationPage() {
     if (ids.length === 0) {
       const r = (user.role ?? "").toString().trim().toLowerCase();
       if (!r) return "—";
-      if (r === "user" || r === "candidate") return "Candidate";
+      if (r === "user" || r === "candidate" || r === "employee") return "Employee";
       return r.charAt(0).toUpperCase() + r.slice(1);
     }
     const fallback = (user.role ?? "").toString().trim();
     if (!fallback) return "—";
-    if (fallback.toLowerCase() === "user" && hasCandidateRole) return "Candidate";
+    if (fallback.toLowerCase() === "user" && hasEmployeeRole) return "Employee";
     return fallback.charAt(0).toUpperCase() + fallback.slice(1);
-  }, [user, hasCandidateRole, roleNames, permissionsLoaded]);
+  }, [user, hasEmployeeRole, roleNames, permissionsLoaded]);
 
   useEffect(() => {
     if (!user) return;
@@ -261,7 +262,7 @@ export default function PersonalInformationPage() {
     const load = async () => {
       try {
         if (hasAdminPrivileges) {
-          if (!hasCandidateProfile) {
+          if (!hasEmployeeProfile) {
             if (!cancelled) setCandidate(null);
             return;
           }
@@ -294,7 +295,7 @@ export default function PersonalInformationPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, hasAdminPrivileges, hasCandidateProfile]);
+  }, [user, hasAdminPrivileges, hasEmployeeProfile]);
 
   useEffect(() => {
     if (!candidate) return;
@@ -332,9 +333,13 @@ export default function PersonalInformationPage() {
       }
     };
 
-    if (hasCandidateProfile) {
+    if (hasEmployeeProfile) {
       setPhoneNumber(candidate.phoneNumber ?? "");
-      setCountryCode(candidate.countryCode ?? "IN");
+      setCountryCode(
+        candidate.countryCode ||
+          (typeof user?.countryCode === "string" && user.countryCode ? user.countryCode : null) ||
+          DEFAULT_PHONE_COUNTRY
+      );
       setShortBio(candidate.shortBio ?? "");
       setAddress({
         streetAddress: candidate.address?.streetAddress ?? "",
@@ -358,7 +363,7 @@ export default function PersonalInformationPage() {
     } else {
       syncAttachmentsFromCandidate();
     }
-  }, [candidate, hasCandidateProfile]);
+  }, [candidate, hasEmployeeProfile, user]);
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -378,12 +383,12 @@ export default function PersonalInformationPage() {
       setSaveError("Email is required.");
       return;
     }
-    if (hasCandidateProfile && !candidate) {
+    if (hasEmployeeProfile && !candidate) {
       setSaveError("Still loading your profile. Please wait a moment and try again.");
       return;
     }
 
-    if (hasCandidateProfile && candidate) {
+    if (hasEmployeeProfile && candidate) {
       const phoneErr = validatePhoneForCandidate(phoneNumber);
       if (phoneErr) {
         setSaveError(phoneErr);
@@ -391,7 +396,7 @@ export default function PersonalInformationPage() {
       }
     }
 
-    if (!hasCandidateProfile) {
+    if (!hasEmployeeProfile) {
       const digits = staffPhone.replace(/\D/g, "");
       if (digits && (digits.length < 6 || digits.length > 15)) {
         setSaveError("Phone number must be 6–15 digits.");
@@ -407,7 +412,7 @@ export default function PersonalInformationPage() {
     }
 
     let staffUsernameForSave: string | undefined;
-    if (hasAdminPrivileges && !hasCandidateProfile) {
+    if (hasAdminPrivileges && !hasEmployeeProfile) {
       const tu = userName.trim().toLowerCase();
       if (!tu) {
         setSaveError("Username is required.");
@@ -418,7 +423,7 @@ export default function PersonalInformationPage() {
 
     setSaveLoading(true);
     try {
-      const useCandidateApi = Boolean(candidate && (hasCandidateProfile || !hasAdminPrivileges));
+      const useCandidateApi = Boolean(candidate && (hasEmployeeProfile || !hasAdminPrivileges));
 
       if (useCandidateApi && candidate) {
         const DOCUMENT_TYPES = ["Aadhar", "PAN", "Bank", "Passport", "CV/Resume", "Marksheet", "Degree Certificate", "Experience Letter", "Other"] as const;
@@ -486,7 +491,7 @@ export default function PersonalInformationPage() {
 
         let payload: UpdateMeWithCandidatePayload;
 
-        if (hasCandidateProfile) {
+        if (hasEmployeeProfile) {
           payload = {
             name: fullName || undefined,
             notificationPreferences: notificationPrefs,
@@ -556,7 +561,7 @@ export default function PersonalInformationPage() {
         setDocumentsList([]);
         setSalarySlips([]);
         await refreshUser();
-      } else if (!hasCandidateProfile) {
+      } else if (!hasEmployeeProfile) {
         const digits = staffPhone.replace(/\D/g, "");
         const domainArr = staffDomain.split(",").map((s) => s.trim()).filter(Boolean);
         const staffPayload = {
@@ -615,7 +620,7 @@ export default function PersonalInformationPage() {
     try {
       const result = await uploadDocument(file);
       const profilePicture = { url: result.url, key: result.key, originalName: result.originalName, size: result.size, mimeType: result.mimeType };
-      if (candidate && (hasCandidateProfile || !hasAdminPrivileges)) {
+      if (candidate && (hasEmployeeProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture });
         setCandidate(res.candidate);
       } else {
@@ -637,7 +642,7 @@ export default function PersonalInformationPage() {
     setSaveError("");
     setAvatarRemoveLoading(true);
     try {
-      if (candidate && (hasCandidateProfile || !hasAdminPrivileges)) {
+      if (candidate && (hasEmployeeProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture: null });
         setCandidate(res.candidate);
       } else {
@@ -734,17 +739,17 @@ export default function PersonalInformationPage() {
       });
     }
 
-    if (!hasCandidateProfile) {
+    if (!hasEmployeeProfile) {
       const u = user as Record<string, unknown>;
       setStaffPhone(typeof u.phoneNumber === "string" ? u.phoneNumber : "");
-      setStaffCountryCode(typeof u.countryCode === "string" ? u.countryCode : "IN");
+      setStaffCountryCode(typeof u.countryCode === "string" && u.countryCode ? u.countryCode : DEFAULT_PHONE_COUNTRY);
       setStaffLocation(typeof u.location === "string" ? u.location : "");
       setStaffProfileSummary(typeof u.profileSummary === "string" ? u.profileSummary : "");
       setStaffEducation(typeof u.education === "string" ? u.education : "");
       const dom = u.domain;
       setStaffDomain(Array.isArray(dom) ? dom.map((x) => String(x)).join(", ") : "");
     }
-  }, [user, hasCandidateProfile]);
+  }, [user, hasEmployeeProfile]);
 
   return (
     <Fragment>
@@ -776,7 +781,7 @@ export default function PersonalInformationPage() {
                 <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Email</dt>
                 <dd className="text-[0.9375rem]">{user?.email ?? "—"}</dd>
               </div>
-              {hasCandidateProfile ? (
+              {hasEmployeeProfile ? (
                 <div className="sm:col-span-2">
                   <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
                     Company work email
@@ -803,7 +808,7 @@ export default function PersonalInformationPage() {
                 </dt>
                 <dd className="text-[0.9375rem]">{roleDisplayName}</dd>
               </div>
-              {!hasCandidateProfile && (staffPhone || staffLocation) && (
+              {!hasEmployeeProfile && (staffPhone || staffLocation) && (
                 <>
                   {staffPhone && (
                     <div>
@@ -942,7 +947,7 @@ export default function PersonalInformationPage() {
           </div>
         </div>
 
-        {!hasCandidateProfile && !candidateRoleLoading && (
+        {!hasEmployeeProfile && !candidateRoleLoading && (
           <div className="box border border-defaultborder rounded-lg overflow-hidden mb-6">
             <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
               <h6 className="font-semibold mb-0 text-[0.9375rem]">Contact &amp; professional details</h6>
@@ -1027,9 +1032,9 @@ export default function PersonalInformationPage() {
         )}
 
         {/* Candidate profile (includes Agent + Candidate hybrids) */}
-        {hasCandidateProfile && !candidateRoleLoading && (
+        {hasEmployeeProfile && !candidateRoleLoading && (
           <div className="space-y-6 mb-6">
-            <h6 className="font-semibold text-[1rem]">Candidate information</h6>
+            <h6 className="font-semibold text-[1rem]">Employee information</h6>
 
             {/* Contact & address */}
             <div className="box border border-defaultborder rounded-lg overflow-hidden">

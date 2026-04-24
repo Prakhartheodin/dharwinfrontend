@@ -1,25 +1,33 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { listStudents, type Student } from "@/shared/lib/api/students";
+import { useSearchParams } from "next/navigation";
+import { listCandidates } from "@/shared/lib/api/candidates";
+import { listStudents } from "@/shared/lib/api/students";
+import {
+  buildMergedAssignPeopleOptions,
+  filterAssignPersonSelectOption,
+  resolveStudentIdsForHolidayAssign,
+  type AssignPersonRow,
+} from "@/shared/lib/attendance-assign-people-options";
 import { assignLeavesToStudents } from "@/shared/lib/api/attendance";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
-import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
+import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
+import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
-type StudentOption = { value: string; label: string; student: Student };
 const SELECT_ALL = "__all_students__";
 
 export default function SettingsAttendanceAssignLeavePage() {
-  const { user } = useAuth();
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [selectedStudents, setSelectedStudents] = useState<StudentOption[]>([]);
+  const searchParams = useSearchParams();
+  const sopQueryString = searchParams.toString();
+  const isAdmin = useAttendanceAdminAccess();
+  const [people, setPeople] = useState<AssignPersonRow[]>([]);
+  const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [leaveType, setLeaveType] = useState<"casual" | "sick" | "unpaid">("casual");
   const [dateInput, setDateInput] = useState("");
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
@@ -28,55 +36,36 @@ export default function SettingsAttendanceAssignLeavePage() {
   const [assigning, setAssigning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const check = async () => {
-      try {
-        if (!user?.roleIds?.length) {
-          setIsAdmin(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = (res.results ?? []) as Role[];
-        const map = new Map(roles.map((r) => [r.id, r]));
-        setIsAdmin(
-          (user.roleIds as string[]).some((id) => {
-            const name = map.get(id)?.name;
-            return name === "Administrator" || name === "Agent";
-          })
-        );
-      } catch {
-        setIsAdmin(false);
-      }
-    };
-    check();
-  }, [user]);
-
-  const fetchStudents = useCallback(async () => {
+  const fetchPeople = useCallback(async () => {
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
-      const list = res.results ?? [];
-      setStudents(
-        list.map((s) => ({
-          value: s.id,
-          label: `${s.user?.name ?? "Unknown"} (${s.user?.email ?? ""})`,
-          student: s,
-        })).filter((o) => o.value)
+      const [stuRes, candRes] = await Promise.all([
+        listStudents({ limit: 1000, sortBy: "user.name:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+      ]);
+      setPeople(
+        buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? [])
       );
     } catch {
-      setStudents([]);
+      setPeople([]);
     }
   }, []);
 
   useEffect(() => {
     if (isAdmin) {
       setLoading(true);
-      fetchStudents().finally(() => setLoading(false));
+      fetchPeople().finally(() => setLoading(false));
     }
-  }, [isAdmin, fetchStudents]);
+  }, [isAdmin, fetchPeople]);
 
-  const studentOptions = students.length
-    ? [{ value: SELECT_ALL, label: "Select All Students" }, ...students]
-    : students;
+  const mergeSopPerson = useCallback((row: AssignPersonRow) => {
+    setPeople((prev) => (prev.some((s) => s.value === row.value) ? prev : [row, ...prev]));
+  }, []);
+
+  useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
+
+  const personOptions = people.length
+    ? [{ value: SELECT_ALL, label: "Select all (training + employees)" } as AssignPersonRow, ...people]
+    : people;
 
   const addDate = () => {
     if (!dateInput) {
@@ -94,8 +83,13 @@ export default function SettingsAttendanceAssignLeavePage() {
   };
 
   const handleAssign = async () => {
-    if (selectedStudents.length === 0) {
-      await Swal.fire({ icon: "warning", title: "No students selected", text: "Select at least one student", confirmButtonText: "OK" });
+    if (selectedPeople.length === 0) {
+      await Swal.fire({
+        icon: "warning",
+        title: "No one selected",
+        text: "Select at least one training profile or employee",
+        confirmButtonText: "OK",
+      });
       return;
     }
     if (selectedDates.length === 0) {
@@ -105,11 +99,39 @@ export default function SettingsAttendanceAssignLeavePage() {
     setAssigning(true);
     setError(null);
     try {
-      const ids = selectedStudents.some((s) => s.value === SELECT_ALL)
-        ? students.map((s) => s.value).filter(Boolean)
-        : selectedStudents.map((s) => s.value).filter((id) => id !== SELECT_ALL);
+      const chosen = selectedPeople.some((s) => s.value === SELECT_ALL)
+        ? people
+        : selectedPeople.filter((s) => s.value !== SELECT_ALL);
+      if (chosen.length === 0) {
+        await Swal.fire({
+          icon: "warning",
+          title: "No one selected",
+          text: "Select at least one training profile or employee",
+          confirmButtonText: "OK",
+        });
+        setAssigning(false);
+        return;
+      }
+      let ids: string[];
+      try {
+        ids = await resolveStudentIdsForHolidayAssign(chosen);
+      } catch (resolveErr: unknown) {
+        const msg =
+          (resolveErr as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ??
+          (resolveErr as { message?: string })?.message ??
+          "Could not resolve training profiles. Candidates need the Student role and permission to create a training profile.";
+        setError(msg);
+        await Swal.fire({ icon: "error", title: "Cannot assign leave", text: msg, confirmButtonText: "OK" });
+        setAssigning(false);
+        return;
+      }
       if (ids.length === 0) {
-        await Swal.fire({ icon: "warning", title: "No students", text: "Select at least one student", confirmButtonText: "OK" });
+        await Swal.fire({
+          icon: "warning",
+          title: "Nothing to assign",
+          text: "Select at least one training profile or employee",
+          confirmButtonText: "OK",
+        });
         setAssigning(false);
         return;
       }
@@ -123,6 +145,7 @@ export default function SettingsAttendanceAssignLeavePage() {
           : "Leave assigned.",
         confirmButtonText: "OK",
       });
+      dispatchSopStripRefresh();
       setSelectedDates([]);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to assign leave";
@@ -170,7 +193,7 @@ export default function SettingsAttendanceAssignLeavePage() {
                 <i className="ri-error-warning-line text-5xl" />
               </div>
               <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
-              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can assign leave to students.</p>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can assign leave to training profiles and employees.</p>
             </div>
           </div>
         </div>
@@ -192,7 +215,9 @@ export default function SettingsAttendanceAssignLeavePage() {
             </span>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Assign Leave</h2>
-              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Assign leave to one or more students</p>
+              <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                Training profiles use the training roster; employees without a profile are listed from the employee record. Search by name, email, or employee ID.
+              </p>
             </div>
           </div>
           <div className="px-6 py-6 border-t border-defaultborder/50 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
@@ -202,48 +227,53 @@ export default function SettingsAttendanceAssignLeavePage() {
               </div>
             )}
 
+            <SopAssignChecklistNotice />
+
             {loading ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-4 ring-1 ring-primary/10">
                   <i className="ri-loader-4-line animate-spin text-3xl" />
                 </div>
-                <p className="text-sm font-medium text-defaulttextcolor/80">Loading students…</p>
+                <p className="text-sm font-medium text-defaulttextcolor/80">Loading people…</p>
               </div>
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select Students <span className="text-danger">*</span></label>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Select people <span className="text-danger">*</span></label>
                   <div className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 overflow-hidden focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary transition-all duration-150">
                     <Select
                       isMulti
-                      options={studentOptions}
-                      value={selectedStudents}
+                      options={personOptions}
+                      value={selectedPeople}
+                      getOptionValue={(o) => (o as AssignPersonRow).value}
+                      getOptionLabel={(o) => (o as AssignPersonRow).label}
                       onChange={(sel: unknown) => {
-                        const value = (sel as StudentOption[] | null) ?? [];
+                        const value = (sel as AssignPersonRow[] | null) ?? [];
                         if (!value.length) {
-                          setSelectedStudents([]);
+                          setSelectedPeople([]);
                           return;
                         }
                         const hasAll = value.some((o) => o.value === SELECT_ALL);
                         if (hasAll) {
-                          if (selectedStudents.length === students.length) setSelectedStudents([]);
-                          else setSelectedStudents(students);
+                          if (selectedPeople.length === people.length) setSelectedPeople([]);
+                          else setSelectedPeople(people);
                         } else {
-                          setSelectedStudents(value);
+                          setSelectedPeople(value);
                         }
                       }}
-                      placeholder="Select students..."
+                      placeholder="Training profiles and employees…"
                       closeMenuOnSelect={false}
                       className="react-select-container assign-leave-select"
                       classNamePrefix="react-select"
                       isClearable
                       isSearchable
+                      filterOption={filterAssignPersonSelectOption}
                       menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                       menuPosition="fixed"
                     />
                   </div>
-                  {selectedStudents.length > 0 && (
-                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedStudents.length} student(s) selected</p>
+                  {selectedPeople.length > 0 && (
+                    <p className="mt-1.5 text-xs text-defaulttextcolor/60">{selectedPeople.length} selected</p>
                   )}
                 </div>
 
@@ -321,7 +351,7 @@ export default function SettingsAttendanceAssignLeavePage() {
                   <button
                     type="button"
                     onClick={handleAssign}
-                    disabled={assigning || selectedStudents.length === 0 || selectedDates.length === 0}
+                    disabled={assigning || selectedPeople.length === 0 || selectedDates.length === 0}
                     className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60 disabled:pointer-events-none"
                   >
                     {assigning ? (

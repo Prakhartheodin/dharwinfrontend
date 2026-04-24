@@ -1,7 +1,7 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import React, { Fragment, useState, useRef } from "react";
+import React, { Fragment, useState, useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { sendCandidateInvitation } from "@/shared/lib/api/auth";
 import Swal from "sweetalert2";
@@ -14,6 +14,21 @@ interface EmailRow {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Shorter on-screen link; `copy` must still use the full URL (token in query is required to open the form). */
+function getOnboardUrlDisplayParts(fullUrl: string): { base: string; accessHint: string } {
+  try {
+    const u = new URL(fullUrl);
+    const base = `${u.host}${u.pathname}`;
+    const token = u.searchParams.get("token") ?? "";
+    if (!token) return { base, accessHint: "Secure link" };
+    const accessHint =
+      token.length > 14 ? `${token.slice(0, 6)}…${token.slice(-4)}` : token;
+    return { base, accessHint };
+  } catch {
+    return { base: "Link", accessHint: "—" };
+  }
+}
+
 const ShareCandidateForm = () => {
   const { user } = useAuth();
   const nextIdRef = useRef(2);
@@ -21,7 +36,34 @@ const ShareCandidateForm = () => {
   const [importMode, setImportMode] = useState<"manual" | "excel">("manual");
   const [isLoading, setIsLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [sentInvitations, setSentInvitations] = useState<{ email: string; onboardUrl: string }[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const closeSharedLinksModal = useCallback(() => {
+    setSentInvitations(null);
+  }, []);
+
+  const copyToClipboard = useCallback((text: string) => {
+    if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
+    void navigator.clipboard.writeText(text);
+    void Swal.fire({
+      icon: "success",
+      title: "Copied",
+      toast: true,
+      position: "top-end",
+      timer: 1500,
+      showConfirmButton: false,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!sentInvitations) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeSharedLinksModal();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sentInvitations, closeSharedLinksModal]);
 
   const validateEmail = (email: string) => email.trim() !== "" && EMAIL_REGEX.test(email.trim());
   const validEmails = emails.filter((row) => validateEmail(row.email));
@@ -63,17 +105,8 @@ const ShareCandidateForm = () => {
         onboardUrl: buildOnboardUrl(row.email.trim()),
       }));
       await sendCandidateInvitation({ invitations });
+      setSentInvitations(invitations);
       setEmails([{ id: "1", email: "" }]);
-      await Swal.fire({
-        icon: "success",
-        title: "Invitations sent",
-        text: `Preboarding links were sent to ${invitations.length} recipient(s).`,
-        toast: true,
-        position: "top-end",
-        timer: 3000,
-        showConfirmButton: false,
-        timerProgressBar: true,
-      });
     } catch (err: unknown) {
       const message = err && typeof err === "object" && "message" in err ? String((err as { message: string }).message) : "Failed to send invitations.";
       await Swal.fire({
@@ -206,7 +239,7 @@ const ShareCandidateForm = () => {
                 {importMode === "excel" && (
                   <button
                     type="button"
-                    className="ti-btn ti-btn-outline-primary ti-btn-sm rounded-lg"
+                    className="ti-btn ti-btn-outline-primary rounded-lg shrink-0 whitespace-nowrap"
                     onClick={() => {
                       const ws = XLSX.utils.aoa_to_sheet([["Email Address"], ["john.doe@example.com"], ["jane.smith@example.com"], ["candidate@company.com"]]);
                       const wb = XLSX.utils.book_new();
@@ -356,6 +389,112 @@ const ShareCandidateForm = () => {
           </p>
         </div>
       </div>
+
+      {sentInvitations && sentInvitations.length > 0 && (
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 bg-slate-900/40 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shared-onboarding-links-title"
+          onClick={closeSharedLinksModal}
+        >
+          <div
+            className="bg-white dark:bg-bodybg rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] dark:shadow-black/50 ring-1 ring-black/5 dark:ring-white/10 w-full max-w-xl max-h-[min(88vh,680px)] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-5 sm:p-6 pb-4 border-b border-slate-200/90 dark:border-white/10 flex items-start justify-between gap-4 shrink-0">
+              <div className="flex gap-3 min-w-0">
+                <span
+                  className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/12 text-primary"
+                  aria-hidden
+                >
+                  <i className="ri-checkbox-circle-fill text-2xl" />
+                </span>
+                <div className="min-w-0">
+                  <h2
+                    id="shared-onboarding-links-title"
+                    className="text-xl font-semibold tracking-tight text-defaulttextcolor dark:text-white"
+                  >
+                    Links sent successfully
+                  </h2>
+                  <p className="text-sm text-defaulttextcolor/75 dark:text-white/60 mt-1.5 mb-0 leading-relaxed">
+                    Each recipient got a unique link by email. The preview is shortened; use{" "}
+                    <span className="font-medium text-defaulttextcolor/90 dark:text-white/80">Copy link</span> for
+                    the full URL to share.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeSharedLinksModal}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/90 bg-slate-50/80 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800 dark:border-white/10 dark:bg-white/5 dark:text-white/60 dark:hover:bg-white/10 dark:hover:text-white"
+                aria-label="Close"
+              >
+                <i className="ri-close-line text-xl leading-none" />
+              </button>
+            </div>
+            <div className="p-4 sm:px-6 sm:pt-1 sm:pb-2 overflow-y-auto flex-1 min-h-0 space-y-3">
+              {sentInvitations.map((row) => {
+                const { base, accessHint } = getOnboardUrlDisplayParts(row.onboardUrl);
+                return (
+                <div
+                  key={row.email}
+                  className="rounded-xl border border-primary/15 bg-gradient-to-b from-slate-50/90 to-slate-50/40 p-4 dark:from-white/[0.04] dark:to-transparent dark:border-white/10"
+                >
+                  <div className="flex items-center gap-2 mb-3 min-w-0">
+                    <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                      <i className="ri-mail-line text-base" />
+                    </span>
+                    <p className="text-sm font-medium text-defaulttextcolor dark:text-white truncate" title={row.email}>
+                      {row.email}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-slate-500 dark:text-white/45 mb-2.5 pl-0.5">
+                      Onboarding link
+                    </p>
+                    <div className="flex flex-col gap-2.5 sm:flex-row sm:items-stretch sm:gap-3">
+                      <div className="min-w-0 flex-1 rounded-lg border border-slate-200/90 bg-white shadow-sm dark:border-white/10 dark:bg-black/30 px-3 py-2.5">
+                        <div className="space-y-1.5">
+                          <p
+                            className="m-0 font-mono text-sm sm:text-base font-medium text-primary leading-snug break-all"
+                            title={row.onboardUrl}
+                          >
+                            {base}
+                          </p>
+                          <p className="m-0 font-mono text-[11px] sm:text-xs text-slate-500 dark:text-white/50">
+                            <span className="text-slate-400 dark:text-white/40">Link ID </span>
+                            {accessHint}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(row.onboardUrl)}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 self-stretch rounded-lg border-2 border-primary/35 bg-primary/[0.06] px-4 py-2.5 text-sm font-medium text-primary transition hover:border-primary/55 hover:bg-primary/10 sm:w-[7.5rem] sm:py-0"
+                      >
+                        <i className="ri-file-copy-line text-base shrink-0" />
+                        <span className="whitespace-nowrap">Copy link</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                );
+              })}
+            </div>
+            <div className="p-4 sm:px-6 sm:pb-6 pt-2 border-t border-slate-200/90 dark:border-white/10 shrink-0">
+              <button
+                type="button"
+                onClick={closeSharedLinksModal}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-primary py-3 px-4 text-sm font-semibold text-white shadow-lg shadow-primary/30 transition hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-bodybg"
+              >
+                <i className="ri-check-line text-lg" />
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Fragment>
   );
 };

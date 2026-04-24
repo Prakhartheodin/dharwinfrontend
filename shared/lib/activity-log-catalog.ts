@@ -95,11 +95,11 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
   "attendance.punchOut": { title: "Attendance punch out", description: "Clock-out recorded." },
   "attendance.punchOutByAdmin": { title: "Punch out by admin", description: "An administrator clocked someone out." },
   "attendance.autoPunchOut": { title: "Auto punch out", description: "System automatic clock-out." },
-  "candidate.create": { title: "Candidate created", description: "A new ATS candidate was added." },
-  "candidate.update": { title: "Candidate updated", description: "Candidate profile or pipeline data changed." },
-  "candidate.delete": { title: "Candidate deleted", description: "A candidate record was removed." },
+  "candidate.create": { title: "Employee created", description: "A new ATS employee record was added." },
+  "candidate.update": { title: "Employee updated", description: "Employee profile or pipeline data changed." },
+  "candidate.delete": { title: "Employee deleted", description: "An employee record was removed." },
   "candidate.onboardingShare": {
-    title: "Candidate onboarding form shared",
+    title: "Onboarding form shared",
     description: "An onboarding invitation link was sent by email.",
   },
   "job.create": { title: "Job created", description: "A job posting was added." },
@@ -111,7 +111,7 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
   "jobApplication.delete": { title: "Application deleted", description: "A job application was removed." },
   "settings.bolnaCandidateAgent.update": {
     title: "Calling agent settings updated",
-    description: "Bolna/candidate agent integration settings changed.",
+    description: "Bolna employee calling agent integration settings changed.",
   },
 };
 
@@ -126,12 +126,12 @@ export const ENTITY_TYPE_LABELS: Record<string, ActivityLogLabel> = {
   StudentQuizAttempt: { title: "Quiz attempt", description: "Student quiz submission." },
   Certificate: { title: "Certificate", description: "Issued certificate." },
   Attendance: { title: "Attendance", description: "Punch or attendance record." },
-  Candidate: { title: "Candidate", description: "ATS candidate." },
+  Candidate: { title: "Employee (ATS)", description: "ATS employee / people record." },
   Job: { title: "Job", description: "Job posting." },
   JobApplication: { title: "Job application", description: "Application to a job." },
   BolnaCandidateAgentSettings: {
     title: "Calling agent settings",
-    description: "Voice/candidate agent configuration.",
+    description: "Voice employee-calling agent configuration.",
   },
 };
 

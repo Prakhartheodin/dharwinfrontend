@@ -210,7 +210,7 @@ export default function RolesPage() {
                               <span className="text-[0.8125rem] text-defaulttextcolor/70 tabular-nums block">
                                 {role.assigneeCountActivePending ?? "—"}
                               </span>
-                              {role.name === "Candidate" &&
+                              {(role.name === "Employee" || role.name === "Candidate") &&
                                 (role.assigneeCountTotal ?? 0) > (role.assigneeCountActivePending ?? 0) && (
                                   <span
                                     className="text-[0.65rem] text-defaulttextcolor/50 block max-w-[10rem] mx-auto leading-tight mt-0.5"
@@ -363,7 +363,7 @@ export default function RolesPage() {
                       <dd className="text-[0.9375rem] tabular-nums">
                         {viewRole.assigneeCountTotal ?? "—"} / {viewRole.assigneeCountActivePending ?? "—"}
                       </dd>
-                      {viewRole.name === "Candidate" &&
+                      {(viewRole.name === "Employee" || viewRole.name === "Candidate") &&
                         (viewRole.assigneeCountTotal ?? 0) > (viewRole.assigneeCountActivePending ?? 0) && (
                           <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1 mb-0">
                             The ATS candidates list only includes active and pending accounts (plus profile filters).
