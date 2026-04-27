@@ -51,6 +51,13 @@ function offerLetterCeoSignatureSrcAbsolute(): string {
   }
 }
 
+/** Elapsed seconds → m:ss for PDF generation overlay */
+function formatPdfGenElapsed(totalSec: number): string {
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
 export type OfferLetterFormFields = {
   letterFullName: string
   letterAddress: string
@@ -491,6 +498,20 @@ export function OfferLetterGeneratorWorkspace({
     return fmtCurrencyParts(letterForm.annualGrossCtc, letterForm.ctcCurrency)
   }, [isInternship, letterForm.annualGrossCtc, letterForm.ctcCurrency])
 
+  const [pdfGenElapsedSec, setPdfGenElapsedSec] = useState(0)
+  useEffect(() => {
+    if (!letterBusy) {
+      setPdfGenElapsedSec(0)
+      return undefined
+    }
+    const t0 = Date.now()
+    setPdfGenElapsedSec(0)
+    const id = window.setInterval(() => {
+      setPdfGenElapsedSec(Math.floor((Date.now() - t0) / 1000))
+    }, 250)
+    return () => window.clearInterval(id)
+  }, [letterBusy])
+
   return (
     <div
       className={`offer-letter-workspace ${styles.olg} ${dmSans.variable}`}
@@ -912,6 +933,25 @@ export function OfferLetterGeneratorWorkspace({
           />
         </div>
       </div>
+
+      {letterBusy ? (
+        <div
+          className={styles.pdfGenOverlay}
+          role="status"
+          aria-live="polite"
+          aria-busy="true"
+          aria-label="Generating PDF on server"
+        >
+          <div className={styles.pdfGenOverlayCard}>
+            <div className={styles.pdfGenSpinner} aria-hidden />
+            <p className={styles.pdfGenOverlayTitle}>Generating PDF</p>
+            <p className={styles.pdfGenTimer}>{formatPdfGenElapsed(pdfGenElapsedSec)}</p>
+            <p className={styles.pdfGenHint}>
+              Building on the server and uploading the file. Large letters can take a minute on a slow connection.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
