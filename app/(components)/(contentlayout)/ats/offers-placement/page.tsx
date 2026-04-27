@@ -16,7 +16,7 @@ import {
   formatOfferLetterPdfError,
   downloadOfferLetterFile,
 } from '@/shared/lib/api/offers'
-import type { Offer, OfferLetterJobType } from '@/shared/lib/api/offers'
+import type { Offer, OfferLetterJobType, UpdateOfferPayload } from '@/shared/lib/api/offers'
 import {
   OfferLetterGeneratorWorkspace,
   createEmptyOfferLetterForm,
@@ -657,9 +657,10 @@ const OffersPlacement = () => {
     }
     setLetterBusy(true)
     try {
-      const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as any)
-      const genId = getOfferRecordId(patched) || id
-      const updated = await generateOfferLetterPdf(genId)
+      const updated = await generateOfferLetterPdf(
+        id,
+        buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as UpdateOfferPayload
+      )
       setLetterModalOffer(updated)
       refreshOffers()
     } catch (e: unknown) {

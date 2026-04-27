@@ -156,14 +156,13 @@ export default function CandidateOnboardPage() {
         await Swal.fire({
           title: "Registration Successful!",
           html: `
-            <p class="mb-4">Your account has been created and is pending administrator approval.</p>
-            <p class="mb-4 text-sm text-gray-600">We've sent a verification email to <strong>${em}</strong>.</p>
+            <p class="mb-4">We sent a verification email to <strong>${em}</strong>.</p>
             <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
-              <p class="font-semibold mb-2">Next Steps:</p>
+              <p class="font-semibold mb-2">Next steps:</p>
               <ul class="list-disc list-inside space-y-1 text-gray-700">
-                <li>Check your email and click the verification link</li>
-                <li>Wait for an administrator to activate your account</li>
-                <li>Once activated, log in and complete your profile</li>
+                <li>Open the email and click <strong>Verify</strong></li>
+                <li>After verification, your account becomes active — you can sign in right away</li>
+                <li>Complete your profile after login</li>
               </ul>
             </div>
           `,
@@ -171,7 +170,11 @@ export default function CandidateOnboardPage() {
           confirmButtonText: "Go to Login",
           confirmButtonColor: "#36af4c",
         });
-        router.push(`${ROUTES.signIn}?registered=1&message=${encodeURIComponent("Registration successful. Your account is pending approval. You will be able to sign in once an administrator activates it.")}`);
+        router.push(
+          `${ROUTES.signIn}?registered=1&message=${encodeURIComponent(
+            "Check your email and click the verification link. Once verified, you can sign in — no administrator approval required."
+          )}`
+        );
       } else {
         const res = await usersApi.publicRegisterCandidate({
           name: `${fn} ${ln}`,

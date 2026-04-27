@@ -368,9 +368,17 @@ const Jobs = () => {
     }
   }
 
-  // Share on WhatsApp
+  // Share on WhatsApp (must use the same `?ref=` as Copy — never the placeholder or bare URL)
   const handleShareWhatsApp = (job: any) => {
-    const url = getJobPublicUrl(job.id)
+    if (!jobShareRefToken || shareJob?.id !== job.id) {
+      alert('Your personal tracking link is not ready yet. Wait a moment, or close and open Share again.')
+      return
+    }
+    const base =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/public-job/${job.id}`
+        : `${process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3001'}/public-job/${job.id}`
+    const url = `${base}?ref=${encodeURIComponent(jobShareRefToken)}`
     const text = `Check out this job: ${job.jobTitle} at ${job.company} - ${url}`
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
@@ -1850,6 +1858,7 @@ const Jobs = () => {
         handleSendEmail={handleSendEmail}
         shareEmailSending={shareEmailSending}
         personalLinkLoading={jobShareRefLoading}
+        shareReferralReady={Boolean(jobShareRefToken)}
         onCloseShareModal={() => {
           setJobShareRefToken(null)
           setJobShareRefLoading(false)

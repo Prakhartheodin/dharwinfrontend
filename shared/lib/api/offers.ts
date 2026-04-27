@@ -192,8 +192,13 @@ export async function getOfferLetterDefaults(positionTitle: string): Promise<Off
   return data;
 }
 
-export async function generateOfferLetterPdf(offerId: string): Promise<Offer> {
-  const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, {}, { timeout: OFFER_PDF_API_TIMEOUT_MS });
+export async function generateOfferLetterPdf(
+  offerId: string,
+  letterPayload?: UpdateOfferPayload
+): Promise<Offer> {
+  const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, letterPayload ?? {}, {
+    timeout: OFFER_PDF_API_TIMEOUT_MS,
+  });
   return data;
 }
 
