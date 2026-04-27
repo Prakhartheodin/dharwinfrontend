@@ -212,7 +212,7 @@ export default function BrowseJobDetailsPage() {
           <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
             <span className="flex items-center gap-2">
               <i className="ri-check-double-line text-lg shrink-0" aria-hidden />
-              Applied · {existingApplication.status}
+              {existingApplication.status}
             </span>
           </div>
           {canWithdraw && (

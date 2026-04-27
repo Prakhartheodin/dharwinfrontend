@@ -9,7 +9,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // ATS
   "/ats/jobs": "ats.jobs:",
   "/ats/employees": "ats.candidates:",
-  "/ats/referral-leads": "ats.candidates:",
+  "/ats/referral-leads": "ats.referralLeads:",
   /** Legacy path (Next redirects to /ats/employees); keep for any client-side guard before redirect. */
   "/ats/candidates": "ats.candidates:",
   "/ats/share-candidate-form": "ats.share-candidate-form:",
@@ -63,6 +63,8 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
  */
 const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
   "training.courses:": ["training.modules:", "training.categories:"],
+  /** Referral leads matrix row uses ats.referralLeads:*; legacy roles only have ats.candidates:view. */
+  "ats.referralLeads:": ["ats.candidates:"],
 };
 
 /** Path prefixes that require permission, sorted by length descending for longest-match. */
