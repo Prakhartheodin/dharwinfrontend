@@ -26,20 +26,21 @@
 
 @use "react-color-palette/css" as *;
 
-  @media (max-width: 991.98px) {
-    [data-toggled="open"] {
-      #responsive-overlay {
-        @apply visible #{!important};
-        --tw-bg-opacity: 0.5;
-
-      }
-    } 
-  }
-
-  @media screen and (min-width: 992px) {
-    [data-vertical-style=doublemenu] .app-sidebar .slide.has-sub.active > .slide-menu {
-        display: block !important;
+/* Root-level @media (do not indent — nested @media can confuse the SCSS parser and break line 37). */
+@media (max-width: 991.98px) {
+  [data-toggled="open"] {
+    /* Tailwind `visible` — avoid @apply here (plain SCSS linters/servers don't resolve @apply and flag the next `}`) */
+    #responsive-overlay {
+      visibility: visible !important;
+      --tw-bg-opacity: 0.5;
     }
+  }
+}
+
+@media screen and (min-width: 992px) {
+  [data-vertical-style="doublemenu"] .app-sidebar .slide.has-sub.active > .slide-menu {
+    display: block !important;
+  }
 }
 
 // Ensure active menu items have the same highlight as hover
@@ -178,123 +179,4 @@ select.select-show-page-size {
   padding-inline-end: 2.5rem !important;
   padding-inline-start: 0.75rem !important;
   text-align: start;
-}
-
-/* —— Print: offer letter — hide app nav/header; `print-offer-letter` is set on <html>+<body> by OfferLetterGeneratorWorkspace (avoids :has() bugs in print preview). */
-@media print {
-  @page {
-    margin: 12mm;
-    size: auto;
-  }
-
-  html.print-offer-letter,
-  html.print-offer-letter body,
-  body.print-offer-letter {
-    background: #fff !important;
-    height: auto !important;
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  html.print-offer-letter .app-header,
-  html.print-offer-letter #sidebar,
-  html.print-offer-letter .app-sidebar,
-  body.print-offer-letter .app-header,
-  body.print-offer-letter #sidebar,
-  body.print-offer-letter .app-sidebar,
-  /* Fallback if :has() works but class missing */
-  body:has(.offer-letter-workspace) .app-header,
-  body:has(.offer-letter-workspace) #sidebar,
-  body:has(.offer-letter-workspace) .app-sidebar {
-    display: none !important;
-    width: 0 !important;
-    max-width: 0 !important;
-    overflow: hidden !important;
-    visibility: hidden !important;
-  }
-
-  html.print-offer-letter .scrollToTop,
-  html.print-offer-letter #responsive-overlay,
-  body.print-offer-letter .scrollToTop,
-  body.print-offer-letter #responsive-overlay,
-  body:has(.offer-letter-workspace) .scrollToTop,
-  body:has(.offer-letter-workspace) #responsive-overlay {
-    display: none !important;
-  }
-
-  /* Fullscreen modal: print as normal flow */
-  html.print-offer-letter .offer-letter-fullscreen,
-  body.print-offer-letter .offer-letter-fullscreen,
-  body:has(.offer-letter-workspace) .offer-letter-fullscreen {
-    position: static !important;
-    inset: auto !important;
-    z-index: auto !important;
-    display: block !important;
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-    background: #fff !important;
-    width: 100% !important;
-  }
-
-  html.print-offer-letter .content,
-  body.print-offer-letter .content,
-  body:has(.offer-letter-workspace) .content {
-    margin: 0 !important;
-    margin-top: 0 !important;
-    margin-inline: 0 !important;
-    margin-inline-start: 0 !important;
-    margin-inline-end: 0 !important;
-    padding: 0 !important;
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  html.print-offer-letter .main-content,
-  body.print-offer-letter .main-content,
-  body:has(.offer-letter-workspace) .main-content {
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-
-  html.print-offer-letter .page,
-  body.print-offer-letter .page,
-  body:has(.offer-letter-workspace) .page {
-    min-height: 0 !important;
-    display: block !important;
-  }
-
-  html.print-offer-letter .main-content > *:not(:has(.offer-letter-workspace)),
-  body.print-offer-letter .main-content > *:not(:has(.offer-letter-workspace)),
-  body:has(.offer-letter-workspace) .main-content > *:not(:has(.offer-letter-workspace)) {
-    display: none !important;
-  }
-
-  /* Screen uses a fixed vh + overflow-hidden so the editor fits; that clips print to one viewport. */
-  html.print-offer-letter .offer-letter-page-shell,
-  body.print-offer-letter .offer-letter-page-shell {
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  html.print-offer-letter .offer-letter-page-shell > div,
-  body.print-offer-letter .offer-letter-page-shell > div {
-    height: auto !important;
-    min-height: 0 !important;
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  html.print-offer-letter .offer-letter-workspace,
-  html.print-offer-letter .offer-letter-workspace *,
-  body.print-offer-letter .offer-letter-workspace,
-  body.print-offer-letter .offer-letter-workspace *,
-  body:has(.offer-letter-workspace) .offer-letter-workspace,
-  body:has(.offer-letter-workspace) .offer-letter-workspace * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
-  }
 }

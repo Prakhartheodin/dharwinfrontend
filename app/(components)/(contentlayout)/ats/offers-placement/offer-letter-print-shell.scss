@@ -1,0 +1,161 @@
+/* Offer letter print only — import from OfferLetterGeneratorWorkspace.
+ * Iframe print (print-offer-letter-iframe). Module classes are hashed: [class*='…'].
+ *
+ * @page margins: injected in JS (useOfferLetterPrintMargins) — measured
+ * screen-only header/footer + buffer. See #offer-letter-print-margins in <head>. */
+
+@media print {
+  /* Fixed repeating bands: only when the letter is *not* using per-sheet in-flow head/foot (see iframe + data-inflow-sheets). */
+  body:not(:has(#offer-letter-preview-root[data-inflow-sheets])) {
+    #offer-letter-print-header,
+    #offer-letter-print-footer {
+      display: block !important;
+      position: fixed !important;
+      left: 0;
+      right: 0;
+      width: 100%;
+      z-index: 9999;
+      background: #fff !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      box-sizing: border-box;
+      /* Fluid horizontal padding: scales a bit on wide vs narrow paper */
+      padding-left: clamp(16px, 3.5vw, 40px) !important;
+      padding-right: clamp(16px, 3.5vw, 40px) !important;
+    }
+
+    #offer-letter-print-header {
+      top: 0;
+      padding-top: clamp(8px, 1.2vw, 14px);
+      padding-bottom: clamp(6px, 1vw, 10px);
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    #offer-letter-print-footer {
+      bottom: 0;
+      padding-top: clamp(6px, 1vw, 12px);
+      padding-bottom: clamp(8px, 1.1vw, 14px);
+      border-top: 1px solid #e0e0e0;
+    }
+
+    #offer-letter-print-header img,
+    #offer-letter-print-footer img {
+      max-height: clamp(28px, 3.5vw, 48px);
+      width: auto;
+    }
+
+    #offer-letter-print-header,
+    #offer-letter-print-footer,
+    #offer-letter-print-header *,
+    #offer-letter-print-footer * {
+      font-size: clamp(6.5pt, 1.05vw, 8.5pt);
+      line-height: 1.45;
+    }
+  }
+
+  /* Single-page + fixed bands: hide duplicate in-flow copies. Multi-sheet: keep in-flow head/foot on each page. */
+  #offer-letter-preview-root:not([data-inflow-sheets]) [class*='screenOnlyLetterHead'],
+  #offer-letter-preview-root:not([data-inflow-sheets]) [class*='screenOnlyLetterFooter'] {
+    display: none !important;
+  }
+
+  /* Module `.letter` sets 794px !important; beat it so Letter / narrow paper can shrink */
+  #offer-letter-preview-root {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box;
+  }
+
+  /* Main column: must break across pages */
+  #offer-letter-preview-root [class*='letterPage'] {
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    page-break-inside: auto;
+    break-inside: auto;
+    padding-bottom: 1.5rem !important;
+    padding-left: clamp(12px, 2.5vw, 48px) !important;
+    padding-right: clamp(12px, 2.5vw, 48px) !important;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Short blocks: position details, supervisor, comp, … */
+  [class*='letterPrintSectionCompact'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Do NOT break-inside:avoid on [class*='letterPrintSection'] alone — long eligibility blocks must split. */
+
+  [class*='letterRolesHead'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  [class*='letterSectionIntro'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [class*='letterSectionIntro'] [class*='letterBody'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [class*='letterRolesHead'] + [class*='bulletList'] {
+    break-before: avoid;
+    page-break-before: avoid;
+  }
+
+  [class*='sigBlock'],
+  [class*='sigRow'] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  [class*='sectionTitleHl'],
+  [class*='sectionTitlePlain'] {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  #offer-letter-preview-root p {
+    orphans: 3;
+    widows: 3;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    font-size: clamp(10.5pt, 1.35vw, 12pt);
+    line-height: 1.55;
+  }
+
+  #offer-letter-preview-root,
+  #offer-letter-preview-root * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  [class*='sectionTitleHl'] {
+    background-color: #ffd700 !important;
+  }
+
+  /* Long lists must fragment — do not set break-inside:avoid on ul/ol globally */
+  #offer-letter-preview-root [class*='bulletList'] li {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Rare table in letter HTML */
+  #offer-letter-preview-root table {
+    width: 100%;
+    table-layout: fixed;
+    word-break: break-word;
+  }
+}

@@ -1009,6 +1009,8 @@ const OffersPlacement = () => {
           const inOnboarding = isAccepted && offer.placementStatus === 'Joined'
           const rowAct =
             'hs-tooltip-toggle inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-[0.95rem] text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-500 dark:border-white/15 dark:bg-transparent dark:hover:bg-white/5'
+          /** Preline: parent has overflow-y-auto — scope to window + bottom placement avoids clipped / misplaced tooltips */
+          const ttWrap = 'hs-tooltip ti-main-tooltip shrink-0 [--placement:bottom] [--scope:window]'
           return (
           <div className="flex min-w-0 max-w-[200px] flex-wrap items-center gap-1 sm:max-w-none">
             {inPreBoarding && (
@@ -1035,11 +1037,11 @@ const OffersPlacement = () => {
                 Join
               </Link>
             )}
-            <div className="hs-tooltip ti-main-tooltip shrink-0">
+            <div className={ttWrap}>
               <button
                 type="button"
                 className={rowAct}
-                title="View Offer"
+                aria-label="View offer"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) setViewOfferModal(raw)
@@ -1053,11 +1055,11 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip shrink-0">
+            <div className={ttWrap}>
               <button
                 type="button"
                 className={rowAct}
-                title="View History"
+                aria-label="View history"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) setViewHistoryModal(raw)
@@ -1071,11 +1073,11 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
-            <div className="hs-tooltip ti-main-tooltip shrink-0">
+            <div className={ttWrap}>
               <button
                 type="button"
                 className={rowAct}
-                title="Edit Offer"
+                aria-label="Edit offer"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) {
@@ -1093,11 +1095,11 @@ const OffersPlacement = () => {
               </button>
             </div>
             {canEdit && (
-              <div className="hs-tooltip ti-main-tooltip shrink-0">
+              <div className={ttWrap}>
                 <button
                   type="button"
                   className={rowAct}
-                  title="Generate offer letter (PDF)"
+                  aria-label="Open offer letter generator"
                   onClick={() => {
                     const raw = (row.original as any)._raw as Offer | undefined
                     if (raw) void openOfferLetterModal(raw)
