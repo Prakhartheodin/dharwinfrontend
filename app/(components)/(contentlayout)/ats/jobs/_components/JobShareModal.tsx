@@ -16,6 +16,8 @@ interface JobShareModalProps {
   shareEmailSending: boolean
   /** True while HMAC `?ref=` is being fetched (URL unique to you + this job) */
   personalLinkLoading?: boolean
+  /** False until `ref` token is loaded — WhatsApp needs this so the shared text matches Copy */
+  shareReferralReady?: boolean
   onCloseShareModal?: () => void
 }
 
@@ -33,6 +35,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
   handleSendEmail,
   shareEmailSending,
   personalLinkLoading = false,
+  shareReferralReady = false,
   onCloseShareModal,
 }) => {
   return (
@@ -112,7 +115,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                       <button
                         type="button"
                         className="ti-btn ti-btn-success w-full flex items-center justify-center gap-2"
-                        disabled={personalLinkLoading}
+                        disabled={personalLinkLoading || !shareReferralReady}
                         onClick={() => handleShareWhatsApp(shareJob)}
                       >
                         <i className="ri-whatsapp-line text-xl"></i>

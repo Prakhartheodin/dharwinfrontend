@@ -1,6 +1,6 @@
 
 import Link from "next/link";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { MenuItems } from "../sidebar/nav";
 
 const Modalsearch = () => {
@@ -99,6 +99,24 @@ const Modalsearch = () => {
       const newList = allData.filter((idx) => idx.id !== id);
       setAllData(newList);
   }
+
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const moreMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!moreMenuOpen) return undefined;
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && moreMenuRef.current?.contains(target)) return;
+      setMoreMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [moreMenuOpen]);
   
   return (
     <div id="search-modal" className="hs-overlay ti-modal hidden mt-[1.75rem]"  onClick={handleClose}>
@@ -122,27 +140,60 @@ const Modalsearch = () => {
   
             <a aria-label="anchor" href="#!"  className="!border-e-0 flex items-center input-group-text bg-light !py-[0.375rem] !px-[0.75rem]"
               id="voice-search"><i className="fe fe-mic header-link-icon"></i></a>
-            <div className="hs-dropdown ti-dropdown">
-              <a aria-label="anchor" href="#!"
-                className="flex items-center hs-dropdown-toggle ti-dropdown-toggle btn btn-light btn-icon !bg-light !py-[0.375rem] !rounded-none !px-[0.75rem] text-[0.95rem] h-[2.413rem] w-[2.313rem]">
-                <i className="fe fe-more-vertical"></i>
-              </a>
-              <ul className="absolute hs-dropdown-menu ti-dropdown-menu !-mt-2 !p-0 hidden">
-                <li><a
-                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
-                    href="#!">Action</a></li>
-                <li><a
-                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
-                    href="#!">Another action</a></li>
-                <li><a
-                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
-                    href="#!">Something else here</a></li>
+            <div className="relative shrink-0" ref={moreMenuRef}>
+              <button
+                type="button"
+                aria-expanded={moreMenuOpen}
+                aria-haspopup="menu"
+                aria-label="More actions"
+                onClick={() => setMoreMenuOpen((o) => !o)}
+                className="flex items-center btn btn-light btn-icon !bg-light !py-[0.375rem] !rounded-none !px-[0.75rem] text-[0.95rem] min-h-[2.413rem] min-w-[2.313rem] touch-manipulation"
+              >
+                <i className="fe fe-more-vertical" aria-hidden />
+              </button>
+              <ul
+                role="menu"
+                className={`absolute end-0 top-full z-20 mt-1 min-w-[10rem] rounded-md border border-defaultborder bg-white p-0 shadow-md dark:border-white/10 dark:bg-bgdark ${moreMenuOpen ? "block" : "hidden"}`}
+              >
                 <li>
-                  <hr className="dropdown-divider"/>
-                </li>
-                <li><a
+                  <a
                     className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
-                    href="#!">Separated link</a></li>
+                    href="#!"
+                    onClick={() => setMoreMenuOpen(false)}
+                  >
+                    Action
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
+                    href="#!"
+                    onClick={() => setMoreMenuOpen(false)}
+                  >
+                    Another action
+                  </a>
+                </li>
+                <li>
+                  <a
+                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
+                    href="#!"
+                    onClick={() => setMoreMenuOpen(false)}
+                  >
+                    Something else here
+                  </a>
+                </li>
+                <li>
+                  <hr className="dropdown-divider" />
+                </li>
+                <li>
+                  <a
+                    className="ti-dropdown-item flex text-defaulttextcolor dark:text-defaulttextcolor/70 !py-[0.5rem] !px-[0.9375rem] !text-[0.8125rem] font-medium"
+                    href="#!"
+                    onClick={() => setMoreMenuOpen(false)}
+                  >
+                    Separated link
+                  </a>
+                </li>
               </ul>
             </div>
           </div>

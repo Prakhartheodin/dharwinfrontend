@@ -431,6 +431,11 @@
   .main-header-container .header-element.header-theme-mode  button {
     @apply py-0 #{!important};
   }
+  /* Icon-only controls use explicit min touch targets in TSX — avoid fighting Tailwind with extra vertical padding. */
+  .main-header-container .header-element.header-search > button,
+  .main-header-container .header-element.notifications-dropdown > button {
+    @apply py-0 #{!important};
+  }
 }
 @media (max-width: 991.98px) {
   .app-header .horizontal-logo .header-logo img {

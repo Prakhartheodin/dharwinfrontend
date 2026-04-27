@@ -15,7 +15,6 @@ import {
   formatOfferLetterPdfError,
   getOfferById,
   getOfferLetterDefaults,
-  updateOffer,
   type Offer,
   type OfferLetterJobType,
 } from "@/shared/lib/api/offers";
@@ -142,9 +141,10 @@ export default function NewOfferLetterPage() {
       }
       setLetterBusy(true);
       try {
-        const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, linkedOffer));
-        const genId = getOfferRecordId(patched) || id;
-        const updated = await generateOfferLetterPdf(genId);
+        const updated = await generateOfferLetterPdf(
+          id,
+          buildOfferLetterUpdatePayload(letterForm, linkedOffer)
+        );
         setLinkedOffer(updated);
         const newId = getOfferRecordId(updated);
         if (newId && (!offerIdParam || offerIdParam !== newId)) {
@@ -173,11 +173,9 @@ export default function NewOfferLetterPage() {
       }
 
       setLinkedOffer(created);
-      const patched = await updateOffer(id, buildOfferLetterUpdatePayload(letterForm, created));
-      const genId = getOfferRecordId(patched) || id;
-      const updated = await generateOfferLetterPdf(genId);
+      const updated = await generateOfferLetterPdf(id, buildOfferLetterUpdatePayload(letterForm, created));
       setLinkedOffer(updated);
-      router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(genId)}`, { scroll: false });
+      router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, { scroll: false });
     } catch (e: unknown) {
       alert(formatOfferLetterPdfError(e, "Could not create offer or generate PDF"));
     } finally {

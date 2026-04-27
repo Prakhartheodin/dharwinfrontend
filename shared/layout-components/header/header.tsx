@@ -23,6 +23,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const pathname = usePathname();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationMenuRef = useRef<HTMLDivElement | null>(null);
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -168,9 +169,11 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
 
   const notifications = notificationItems;
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
 
   useEffect(() => {
     setIsProfileMenuOpen(false);
+    setIsNotificationMenuOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -196,6 +199,30 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isProfileMenuOpen]);
+
+  useEffect(() => {
+    if (!isNotificationMenuOpen) return undefined;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && notificationMenuRef.current?.contains(target)) return;
+      setIsNotificationMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsNotificationMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isNotificationMenuOpen]);
 
 
   //full screen
@@ -508,8 +535,12 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 </div>
               )}
               <div className="header-element py-[1rem] md:px-[0.65rem] px-2 header-search">
-                <button aria-label="button" type="button" data-hs-overlay="#search-modal"
-                  className="inline-flex flex-shrink-0 justify-center items-center gap-2  rounded-full font-medium focus:ring-offset-0 focus:ring-offset-white transition-all text-xs dark:bg-bgdark dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10">
+                <button
+                  aria-label="Open search"
+                  type="button"
+                  data-hs-overlay="#search-modal"
+                  className="inline-flex min-h-[2.75rem] min-w-[2.75rem] flex-shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full font-medium focus:ring-offset-0 focus:ring-offset-white transition-all text-xs dark:bg-bgdark dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10"
+                >
                   <i className="bx bx-search-alt-2 header-link-icon"></i>
                 </button>
               </div>
@@ -528,9 +559,23 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
               </div>
        
               {!guestPublicLayout && (
-              <div className="header-element py-[1rem] md:px-[0.65rem] px-2 notifications-dropdown header-notification hs-dropdown ti-dropdown !hidden md:!block [--placement:bottom-right]">
-                <button id="dropdown-notification" type="button"
-                  className="hs-dropdown-toggle relative ti-dropdown-toggle !p-0 !border-0 flex-shrink-0  !rounded-full !shadow-none align-middle text-xs">
+              <div
+                ref={notificationMenuRef}
+                className="header-element relative z-[60] py-[1rem] md:px-[0.65rem] px-2 notifications-dropdown header-notification ti-dropdown [--placement:bottom-right]"
+              >
+                <button
+                  id="dropdown-notification"
+                  type="button"
+                  aria-expanded={isNotificationMenuOpen}
+                  aria-haspopup="menu"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setIsProfileMenuOpen(false);
+                    setIsNotificationMenuOpen((open) => !open);
+                  }}
+                  className="relative ti-dropdown-toggle !border-0 flex-shrink-0 !rounded-full !shadow-none align-middle text-xs inline-flex min-h-[2.75rem] min-w-[2.75rem] items-center justify-center !p-0 touch-manipulation"
+                >
                   <i className="bx bx-bell header-link-icon  text-[1.125rem]"></i>
                   {unreadCount > 0 && (
                   <span className="flex absolute h-5 w-5 -top-[0.25rem] end-0  -me-[0.6rem]">
@@ -543,7 +588,13 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   )}
                 </button>
                 <div
-                  className="main-header-dropdown !-mt-3 !p-0 hs-dropdown-menu ti-dropdown-menu bg-white !w-[22rem] border-0 border-defaultborder hidden !m-0 flex max-h-[min(32rem,85vh)] flex-col overflow-hidden dark:bg-bgdark"
+                  role="menu"
+                  onClick={(event) => event.stopPropagation()}
+                  className={`main-header-dropdown !p-0 ti-dropdown-menu bg-white border-0 border-defaultborder !m-0 flex max-h-[min(32rem,85vh)] flex-col overflow-hidden dark:bg-bgdark absolute top-full mt-2 end-0 z-[60] !w-[min(22rem,calc(100vw-2rem))] shadow-lg ${
+                    isNotificationMenuOpen
+                      ? 'block !opacity-100 visible pointer-events-auto'
+                      : 'hidden !opacity-0 invisible pointer-events-none'
+                  }`}
                   aria-labelledby="dropdown-notification"
                 >
 
@@ -639,6 +690,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
+                    setIsNotificationMenuOpen(false);
                     setIsProfileMenuOpen((open) => !open);
                   }}
                   className="ti-dropdown-toggle inline-flex items-center !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent "

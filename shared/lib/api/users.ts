@@ -129,7 +129,7 @@ export async function publicRegisterCandidate(
   return data;
 }
 
-/** Dharwrin-style: register from invite link – POST /v1/auth/register. Creates User (active) + Candidate, returns tokens. */
+/** Share-candidate invite – POST /v1/auth/register (with adminId). Creates pending User + Candidate role; verify email to activate. */
 export interface RegisterCandidateFromInvitePayload {
   name: string;
   email: string;
