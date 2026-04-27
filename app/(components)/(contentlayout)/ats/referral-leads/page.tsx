@@ -19,6 +19,11 @@ import { listUsers } from "@/shared/lib/api/users";
 import type { User } from "@/shared/lib/types";
 import { LINK_TYPE, STATUS_META, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
 
+/** Matches backend `SALES_AGENT_ROLE_NAMES` / canonical `sales_agent`. */
+function isSalesAgentRoleName(name: string): boolean {
+  return name.trim().toLowerCase().replace(/\s+/g, "_") === "sales_agent";
+}
+
 function canManageCandidatesFromPermissions(permissions: string[]): boolean {
   return permissions.some(
     (p) =>
@@ -74,11 +79,15 @@ function attributionLabel(lead: ReferralLeadRow): { text: string; tone: "ok" | "
 }
 
 export default function ReferralLeadsPage() {
-  const { permissions, permissionsLoaded } = useAuth();
+  const { permissions, permissionsLoaded, roleNames } = useAuth();
   const canManage = useMemo(
     () => (permissionsLoaded ? canManageCandidatesFromPermissions(permissions) : false),
     [permissions, permissionsLoaded]
   );
+  const isSalesAgent = useMemo(() => roleNames.some((n) => isSalesAgentRoleName(n)), [roleNames]);
+  /** Org-wide referral UI (referrer filter, override). Sales agents are always scoped to their own leads on the API. */
+  const canUseOrgReferralControls = canManage && !isSalesAgent;
+  const canOverrideAttribution = canUseOrgReferralControls;
 
   const [list, setList] = useState<ReferralLeadRow[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -353,7 +362,8 @@ export default function ReferralLeadsPage() {
             </p>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">Referral leads</h1>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-              Candidates who arrived through a tracked referral link{canManage ? " (organization view)" : " (your referrals)"}
+              Candidates who arrived through a tracked referral link
+              {canUseOrgReferralControls ? " (organization view)" : " (your referrals)"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -445,7 +455,7 @@ export default function ReferralLeadsPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {canManage && (
+          {canUseOrgReferralControls && (
             <div>
               <label className="form-label text-xs">Referrer</label>
               <select
@@ -531,9 +541,20 @@ export default function ReferralLeadsPage() {
             />
           </div>
           {hasActiveFilters && (
-            <button type="button" className="ti-btn ti-btn-light ti-btn-sm" onClick={clearFilters}>
-              Clear filters
-            </button>
+            <div className="shrink-0">
+              <label className="form-label text-xs select-none pointer-events-none opacity-0" aria-hidden>
+                Reset
+              </label>
+              <button
+                type="button"
+                className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-light border border-slate-200/80 dark:border-white/10 shadow-sm hover:border-slate-300 dark:hover:border-white/20"
+                onClick={clearFilters}
+                aria-label="Clear all filters"
+                title="Clear all filters"
+              >
+                <i className="ri-filter-off-line text-[1.125rem] leading-none" aria-hidden />
+              </button>
+            </div>
           )}
         </div>
 
@@ -572,8 +593,14 @@ export default function ReferralLeadsPage() {
         {showEmptyFiltered && (
           <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/20 p-10 text-center">
             <p className="text-slate-700 dark:text-slate-200 font-medium">No leads match these filters</p>
-            <button type="button" className="ti-btn ti-btn-sm ti-btn-primary mt-3" onClick={clearFilters}>
-              Clear filters
+            <button
+              type="button"
+              className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary mt-3 shadow-sm"
+              onClick={clearFilters}
+              aria-label="Clear all filters"
+              title="Clear all filters"
+            >
+              <i className="ri-filter-off-line text-[1.125rem] leading-none" aria-hidden />
             </button>
           </div>
         )}
@@ -589,7 +616,6 @@ export default function ReferralLeadsPage() {
                   <th className="px-4 py-3">Job</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Claimed</th>
-                  <th className="px-4 py-3">Batch</th>
                 </tr>
               </thead>
               <tbody>
@@ -643,7 +669,6 @@ export default function ReferralLeadsPage() {
                       <div>{fmtDate(lead.referredAt || lead.createdAt)}</div>
                       <div className="text-xs text-slate-400">{fmtTime(lead.referredAt || lead.createdAt)}</div>
                     </td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-500">{lead.referralBatchId || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -734,13 +759,6 @@ export default function ReferralLeadsPage() {
                   </div>
                 )}
 
-                {selected.referralBatchId && (
-                  <div className="rounded-lg bg-slate-50 dark:bg-white/5 p-3 text-sm">
-                    <p className="text-xs text-slate-500">Batch</p>
-                    <p className="font-mono text-slate-800 dark:text-slate-100">{selected.referralBatchId}</p>
-                  </div>
-                )}
-
                 {selected.referralLastOverride?.overriddenAt && (
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm space-y-2">
                     <div className="flex items-start justify-between gap-2">
@@ -791,7 +809,7 @@ export default function ReferralLeadsPage() {
                   >
                     View candidate profile
                   </Link>
-                  {canManage && selected.attributionLockedAt && (
+                  {canOverrideAttribution && selected.attributionLockedAt && (
                     <button
                       type="button"
                       className="ti-btn ti-btn-outline-danger w-full"
@@ -816,7 +834,7 @@ export default function ReferralLeadsPage() {
           </div>
         )}
 
-        {overrideOpen && selected && (
+        {overrideOpen && selected && canOverrideAttribution && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
             <div
               className="absolute inset-0 bg-black/50"
