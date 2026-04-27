@@ -403,6 +403,7 @@
 }
 
 .previewPanel {
+  position: relative;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -419,13 +420,76 @@
   flex-shrink: 0;
 }
 
+/* JS measures section heights here; off-screen, not visible. */
+.letterMeasureGhost {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 794px;
+  max-width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.letterMeasureGhost .letter {
+  min-height: 0 !important;
+  height: auto !important;
+  box-shadow: none !important;
+}
+
+/* One empty sheet: measures how tall the body column is (flex-fill between head + foot). */
+.letterBodyBudgetProbe {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 794px;
+  max-width: 100%;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Stacked “pages” — each sheet repeats in-flow head + body + foot (print/PDF merges as one job). */
+.letterSheetsRoot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  font-size: 12.5pt;
+  line-height: 1.45;
+  color: #111;
+}
+
+.letterInFlowPaged {
+  position: relative;
+}
+
+.letterPrintSheet {
+  width: 794px;
+  max-width: 100%;
+  min-height: 1123px; /* ~A4 at 96dpi; body flex-grows so footer sits at bottom */
+  box-sizing: border-box;
+  background: #fff;
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.letterPrintSheet .screenOnlyLetterHead,
+.letterPrintSheet .screenOnlyLetterFooter {
+  flex-shrink: 0;
+}
+
 .letter {
   width: 794px;
   min-height: 1123px;
   background: #fff;
   box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
   font-family: 'Times New Roman', Times, serif;
-  font-size: 11.5pt;
+  font-size: 12.5pt;
   line-height: 1.45;
   color: #111;
   position: relative;
@@ -433,15 +497,32 @@
   flex-direction: column;
 }
 
-/* Hidden on screen; in @media print, fixed so header repeats on every sheet (parallels server PDF; browser default print does not do this). */
+/* Print-only copies (repeated via position:fixed in print — see globals.scss). Hidden on screen. */
 .letterPrintHeader,
 .letterPrintFooter {
   display: none;
 }
 
+/* In-flow letterhead/footer: visible on screen; hidden in @media print (see offer-letter-print-shell). */
+/* Padding/border ≈ #offer-letter-print-header/footer in print so JS margin measurement matches the fixed bands. */
+.screenOnlyLetterHead {
+  display: block;
+  box-sizing: border-box;
+  padding: 10px 32px 8px 32px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.screenOnlyLetterFooter {
+  display: block;
+  box-sizing: border-box;
+  padding: 8px 32px 10px 32px;
+  border-top: 1px solid #e0e0e0;
+}
+
 .letterPage {
   padding: 32px 48px 24px;
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .letterHeader {
@@ -467,7 +548,7 @@
 
 .letterContact {
   text-align: left;
-  font-size: 9.5pt;
+  font-size: 10.5pt;
   line-height: 1.7;
   color: #222;
 }
@@ -492,7 +573,7 @@
 .letterSubject {
   text-align: center;
   font-weight: 700;
-  font-size: 12.5pt;
+  font-size: 13.5pt;
   margin-bottom: 10px;
   text-decoration: underline;
   color: #1e4080;
@@ -500,7 +581,7 @@
 
 .letterDate {
   text-align: right;
-  font-size: 11pt;
+  font-size: 12pt;
   margin-bottom: 14px;
 }
 
@@ -510,7 +591,7 @@
   background: #fff176;
   padding: 3px 18px;
   font-weight: 700;
-  font-size: 12pt;
+  font-size: 13pt;
   margin: 0 auto 14px;
   text-align: center;
   width: 100%;
@@ -519,7 +600,7 @@
 
 .letterTo {
   margin-bottom: 14px;
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .letterTo strong {
@@ -528,20 +609,20 @@
 
 .letterGreeting {
   margin-bottom: 10px;
-  font-size: 11pt;
+  font-size: 12pt;
   font-weight: 700;
 }
 
 .letterBody {
   margin-bottom: 10px;
-  font-size: 11pt;
+  font-size: 12pt;
   text-align: justify;
 }
 
 .sectionTitleHl {
   background: #fff176;
   font-weight: 700;
-  font-size: 11.5pt;
+  font-size: 12.5pt;
   display: inline-block;
   padding: 0 2px;
   margin: 8px 0 4px;
@@ -550,9 +631,35 @@
 
 .sectionTitlePlain {
   font-weight: 700;
-  font-size: 11.5pt;
+  font-size: 12.5pt;
   margin: 8px 0 4px;
   text-decoration: underline;
+}
+
+/* Groups section title + intro paragraph so print does not split them from the following <ul>. */
+.letterSectionIntro {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+
+/* Position Overview (roles): heading + intro + list — print rules in @media print. */
+.letterRolesBlock {
+  display: block;
+}
+
+/* Logical sections for print: heading + content stay grouped where possible. */
+.letterPrintSection {
+  display: block;
+}
+
+/* Short blocks (position details, supervisor, comp): try one page, no title orphaned */
+.letterPrintSectionCompact {
+  display: block;
+}
+
+/* Keep yellow title + intro line together; the list follows as next sibling. */
+.letterRolesHead {
+  display: block;
 }
 
 .bulletList {
@@ -562,7 +669,7 @@
 
 .bulletList li {
   margin-bottom: 2px;
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .sigBlock {
@@ -571,7 +678,7 @@
 
 .sigLabel {
   font-weight: 700;
-  font-size: 11pt;
+  font-size: 12pt;
   margin-bottom: 4px;
 }
 
@@ -608,13 +715,13 @@
 }
 
 .sigNameCeo {
-  font-size: 11pt;
+  font-size: 12pt;
   font-weight: 700;
   line-height: 1.4;
 }
 
 .sigName {
-  font-size: 11pt;
+  font-size: 12pt;
 }
 
 .sigRow {
@@ -630,7 +737,7 @@
   background: #fff;
   border-top: 1.5px solid #222;
   padding: 8px 48px;
-  font-size: 9pt;
+  font-size: 10pt;
   color: #333;
   gap: 10px;
   flex-shrink: 0;
@@ -644,15 +751,8 @@
 
 @media print {
   /*
-   * Reserve top/bottom space on *every* printed sheet. Without this, the main column
-   * starts at y=0 on page 2+ and sits under the fixed letterhead; padding on .letterPage
-   * only indents the first page.
+   * @page margins live in `offer-letter-print-shell.scss` (iframe print; tune fixed bands there).
    */
-  @page {
-    size: auto;
-    /* Top >= letterhead+rule; bottom >= footer bar (must match .letterPrint* placement). */
-    margin: 1.35in 0.5in 0.95in 0.5in;
-  }
 
   .printHide {
     display: none !important;
@@ -679,19 +779,24 @@
     display: none !important;
   }
 
+  /* Match on-screen preview: gray rail + centered “paper”, not full-bleed white. */
   .previewPanel {
-    display: block !important;
-    background: #fff !important;
-    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    background: #e2e8f0 !important;
+    padding: 32px !important;
     overflow: visible !important;
     max-width: 100% !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
-  /* Screen simulates one sheet (794×1123); in print, content must paginate. */
+  /* Avoid creating a new containing block for position:fixed (transform/filter). */
   .letter {
     box-shadow: none !important;
-    width: 100% !important;
-    max-width: 100% !important;
+    width: 794px !important;
+    max-width: calc(100% - 8px) !important;
     min-height: 0 !important;
     height: auto !important;
     max-height: none !important;
@@ -701,14 +806,47 @@
     break-inside: auto;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+    transform: none !important;
+    filter: none !important;
   }
 
   .letterPage {
     flex: none !important;
     page-break-inside: auto;
     break-inside: auto;
-    /* Vertical position comes from @page; keep horizontal to align with print header. */
-    padding: 0 48px 12px 48px !important;
+    margin-top: 0 !important;
+    /* Room above repeating fixed footer; @page margin is primary; this adds a little body padding */
+    padding: 0.4rem 48px 16px 48px !important;
+  }
+
+  /* Short titled sections: keep title + list/para together when they fit */
+  .letterPrintSectionCompact {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .letterPrintSection {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Position Overview: never orphan the title + intro; list can continue on next page */
+  .letterRolesHead {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .letterPrintSection > .sectionTitleHl,
+  .letterPrintSection > .sectionTitlePlain {
+    display: block !important;
+  }
+
+  /* Eligibility / status titles that are not inside letterSectionIntro */
+  .letterPrintSection > .sectionTitlePlain {
+    break-after: avoid;
+    page-break-after: avoid;
   }
 
   .letterFooter {
@@ -716,54 +854,112 @@
     break-inside: avoid;
   }
 
+  /* Entire <ul> was unbreakable: the list jumped to the next page while a yellow
+   * inline-block heading (and unbreakable .letterBody intro) sat at the bottom. */
   .bulletList {
+    break-inside: auto;
     page-break-inside: auto;
   }
 
-  /*
-   * “Save as PDF” from the browser: without this, the letterhead and footer are only
-   * in normal flow, so they appear at the start and end of the full document, not on
-   * every printed page. Fixed copies + hiding the in-flow duplicates match Download better.
-   * For pixel-perfect multi-page output, use Generate PDF then print that file.
-   */
-  /* Paint in the unprinted @page margin band; body flow starts below/above @page insets. */
-  .letterPrintHeader {
-    display: block;
-    position: fixed;
-    top: 0.12in;
-    left: 0.5in;
-    right: 0.5in;
-    z-index: 2;
-    box-sizing: border-box;
-    padding: 4px 0 0 0;
-    background: #fff;
-  }
-
-  .letterPrintFooter {
-    display: block;
-    position: fixed;
-    left: 0.5in;
-    right: 0.5in;
-    bottom: 0.1in;
-    z-index: 2;
-    box-sizing: border-box;
-    padding: 0 0 4px 0;
-    background: #fff;
-  }
-
-  .letterPrintFooter .letterFooter {
-    margin: 0;
+  /* Do not use break-inside:avoid on all .letterBody — long paragraphs can’t split and break layout */
+  .letterTo,
+  .letterGreeting {
+    break-inside: avoid;
     page-break-inside: avoid;
   }
 
-  .letterPage > .letterHeader,
-  .letterPage > .letterDivider {
+  p.letterBody {
+    orphans: 3;
+    widows: 3;
+  }
+
+  /* Override: intro <p> must not be one atomic block after the title, or the title
+   * (inline-block) is orphaned. Keep title + intro in one .letterSectionIntro box. */
+  .letterSectionIntro {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .letterSectionIntro .sectionTitleHl {
+    display: block !important;
+  }
+
+  /* Never let the <p> below the yellow title be fragmentable on its own — Chrome
+   * can then leave "Position Overview:" (or similar) alone at the page foot while
+   * this paragraph starts on the next page. The whole .letterSectionIntro is
+   * break-inside:avoid; an inner p with break-inside:auto !important broke that. */
+  .letterSectionIntro .letterBody {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Keep the <ul> on the same page as the yellow title + intro when it fits
+   * (Position Overview, Training, Employment Status, etc.). */
+  .letterRolesHead + .bulletList {
+    break-before: avoid;
+    page-break-before: avoid;
+  }
+
+  .letterPage .bulletList > li,
+  .letterPage .bulletList li,
+  .letter li {
+    /* Allow long bullets to split; avoid on every <li> was pushing whole <ul> down and
+     * made heading/list breaks worse next to the fixed print footer. */
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
+  /* Legacy single-column print: hide in-flow bands; fixed #offer-letter-print-* repeats. */
+  #offer-letter-preview-root:not([data-inflow-sheets]) .screenOnlyLetterHead,
+  #offer-letter-preview-root:not([data-inflow-sheets]) .screenOnlyLetterFooter {
     display: none !important;
   }
 
-  .letter > .letterFooter {
-    /* In-flow duplicate (on-screen), hidden in print; footer comes from .letterPrintFooter. */
-    display: none !important;
+  /* Multi-sheet in-flow: head/foot print on every page; merge in one PDF job. */
+  .letterPrintSheet {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 1123px;
+    break-after: page;
+    page-break-after: always;
+    box-shadow: none !important;
+  }
+
+  .letterPrintSheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* Allow body column to absorb space so the footer isn’t stuck under short content. */
+  .letterPrintSheet .letterPage {
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+  }
+
+  /* Repeating fixed #offer-letter-print-header / #offer-letter-print-footer: offer-letter-print-shell.scss */
+
+  .letterPrintFooter .letterFooter {
+    margin: 0 !important;
+    page-break-inside: avoid;
+    border-top: 1.5px solid #222;
+  }
+
+  /* --- Break control: avoid orphan headings; keep signature row intact --- */
+  .sectionTitleHl,
+  .sectionTitlePlain,
+  .letterSubject,
+  .letterTo,
+  .letterGreeting,
+  .sigLabel,
+  .offerBadge {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .sigBlock,
+  .sigRow {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

@@ -1,3 +1,5 @@
+import { syncOfferLetterPrintMarginsFromDocument } from "./useOfferLetterPrintMargins"
+
 /**
  * Renders the live letter node in a hidden same-origin iframe and calls print on that
  * document (not the app shell). Browsers use the iframe document for header/footer
@@ -48,10 +50,7 @@ function waitForSheetsThenPrint(doc: Document, win: Window, onTeardown: () => vo
   }, 1200)
 }
 
-export function printOfferLetterInIframe(letterElement: HTMLElement | null): void {
-  if (!letterElement) return
-  if (typeof document === "undefined") return
-
+function runPrintInIframe(letterElement: HTMLElement): void {
   const iframe = document.createElement("iframe")
   iframe.setAttribute("title", "Print offer letter")
   iframe.setAttribute("aria-hidden", "true")
@@ -109,4 +108,20 @@ export function printOfferLetterInIframe(letterElement: HTMLElement | null): voi
   idoc.body.appendChild(idoc.importNode(letterElement, true))
 
   waitForSheetsThenPrint(idoc, w, teardown)
+}
+
+/**
+ * Iframe document clones styles from parent <head> — @page must be injected first.
+ * We sync, then sync again after one frame, then build the iframe (margins must match
+ * the measured #offer-letter-print-* / screenOnly bands).
+ */
+export function printOfferLetterInIframe(letterElement: HTMLElement | null): void {
+  if (!letterElement) return
+  if (typeof document === "undefined") return
+
+  syncOfferLetterPrintMarginsFromDocument()
+  requestAnimationFrame(() => {
+    syncOfferLetterPrintMarginsFromDocument()
+    runPrintInIframe(letterElement)
+  })
 }

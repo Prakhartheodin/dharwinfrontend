@@ -1,10 +1,16 @@
 'use client'
 
-import React, { useMemo, useCallback, useState, useLayoutEffect, useEffect, useRef } from 'react'
+import React, { useMemo, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { DM_Sans } from 'next/font/google'
 import { enhanceOfferLetterRoles, type OfferLetterJobType } from '@/shared/lib/api/offers'
 import styles from './offer-letter-generator.module.css'
-import { OFFER_LETTER_PREVIEW_ID } from './print-offer-letter-iframe'
+import { OFFER_LETTER_PREVIEW_ID, printOfferLetterInIframe } from './print-offer-letter-iframe'
+import { useOfferLetterPrintMargins } from './useOfferLetterPrintMargins'
+import { DEFAULT_OFFER_LETTER_BODY_MAX_PX, packSectionHeightsIntoPageStarts } from './offer-letter-pack-sections'
+import './offer-letter-print-shell.scss'
+import type { StaticImageData } from 'next/image'
+import offerLetterLogoAsset from './offer-letter-images/logo.jpeg'
+import offerLetterCeoSigAsset from './offer-letter-images/ceo-signature-harvinder.png'
 import {
   type EligibilityPresetKey,
   escHtml,
@@ -30,25 +36,27 @@ const dmSans = DM_Sans({
   display: 'swap',
 })
 
-const OFFER_LETTER_LOGO_PATH = '/assets/images/dharwin-offer-letter-logo.png'
-const OFFER_LETTER_CEO_SIG_PATH = '/assets/images/ceo-signature-harvinder.png'
+/** Webpack emits `/_next/static/media/...` — works in prod with basePath / trailingSlash; plain `/public/...` URLs can 404 on some hosts. */
+function staticAssetPath(asset: string | StaticImageData): string {
+  return typeof asset === 'string' ? asset : asset.src
+}
 
-function offerLetterLogoSrcAbsolute(): string {
-  if (typeof window === 'undefined') return OFFER_LETTER_LOGO_PATH
+function toAbsoluteOnOrigin(path: string): string {
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (typeof window === 'undefined') return path
   try {
-    return new URL(OFFER_LETTER_LOGO_PATH, window.location.origin).href
+    return new URL(path, window.location.origin).href
   } catch {
-    return OFFER_LETTER_LOGO_PATH
+    return path
   }
 }
 
+function offerLetterLogoSrcAbsolute(): string {
+  return toAbsoluteOnOrigin(staticAssetPath(offerLetterLogoAsset))
+}
+
 function offerLetterCeoSignatureSrcAbsolute(): string {
-  if (typeof window === 'undefined') return OFFER_LETTER_CEO_SIG_PATH
-  try {
-    return new URL(OFFER_LETTER_CEO_SIG_PATH, window.location.origin).href
-  } catch {
-    return OFFER_LETTER_CEO_SIG_PATH
-  }
+  return toAbsoluteOnOrigin(staticAssetPath(offerLetterCeoSigAsset))
 }
 
 /** Elapsed seconds → m:ss for PDF generation overlay */
@@ -177,39 +185,6 @@ export function OfferLetterGeneratorWorkspace({
   formPanelTop,
   formPanelFooter,
 }: Props) {
-  /** Toggles a document class so @media print can hide app chrome (sidebar/header) without relying on :has(), which is unreliable in some print engines. */
-  useLayoutEffect(() => {
-    const root = document.documentElement
-    const body = document.body
-    root.classList.add('print-offer-letter')
-    body.classList.add('print-offer-letter')
-    return () => {
-      root.classList.remove('print-offer-letter')
-      body.classList.remove('print-offer-letter')
-    }
-  }, [])
-
-  /** Browsers add document.title to the print header; clearing it for the print job removes that line. Date/URL are controlled by the print dialog. */
-  const printTitleBackupRef = useRef<string | null>(null)
-  useEffect(() => {
-    const onBeforePrint = () => {
-      printTitleBackupRef.current = document.title
-      document.title = ''
-    }
-    const onAfterPrint = () => {
-      if (printTitleBackupRef.current != null) {
-        document.title = printTitleBackupRef.current
-        printTitleBackupRef.current = null
-      }
-    }
-    window.addEventListener('beforeprint', onBeforePrint)
-    window.addEventListener('afterprint', onAfterPrint)
-    return () => {
-      window.removeEventListener('beforeprint', onBeforePrint)
-      window.removeEventListener('afterprint', onAfterPrint)
-    }
-  }, [])
-
   const jobUi = apiJobTypeToUi(letterForm.jobType)
   const isInternship = letterForm.jobType === 'INTERN_UNPAID'
   const isPaid = !isInternship
@@ -299,7 +274,9 @@ export function OfferLetterGeneratorWorkspace({
     }))
   }
 
-  const letterPreviewHtml = useMemo(() => {
+  type OfferLetterPrintSection = { id: string; html: string }
+
+  const letterModel = useMemo(() => {
     const name = letterForm.letterFullName.trim() || '— Candidate Name —'
     const addr = letterForm.letterAddress.trim() || '— Address —'
     const pos = letterForm.positionTitle.trim() || '— Position —'
@@ -315,7 +292,7 @@ export function OfferLetterGeneratorWorkspace({
         : getJobHoursLabel(jobUi)
     const jobTypeLabel = getJobTypeLabelUi(jobUi)
 
-    /** Same branded PNG as server PDF (`src/assets/offer-letters/dharwin-offer-letter-logo.png`); absolute URL for print iframe. */
+    /** Branded logo: `logo.jpeg` + `ceo-signature-harvinder.png` in `offer-letter-images/`. */
     const letterheadLogoHtml = `<img class="${styles.letterLogoImg}" src="${offerLetterLogoSrcAbsolute()}" alt="Dharwin Business Solutions" />`
 
     /** Shared letterhead (logo + contact + rule). Duplicated: on-screen in letterPage, print-only in letterPrintHeader. */
@@ -345,7 +322,7 @@ export function OfferLetterGeneratorWorkspace({
           ? compensationPreviewFromAnnualGross(g, letterForm.ctcCurrency)
           : ''
       if (para) {
-        compSection = `<div class="${styles.sectionTitleHl}">Compensation:</div><ul class="${styles.bulletList}"><li>${compensationHtml(para)}</li></ul>`
+        compSection = `<div class="${styles.letterPrintSection} ${styles.letterPrintSectionCompact}"><div class="${styles.sectionTitleHl}">Compensation:</div><ul class="${styles.bulletList}"><li>${compensationHtml(para)}</li></ul></div>`
       }
     }
 
@@ -360,13 +337,15 @@ export function OfferLetterGeneratorWorkspace({
     }
 
     const supBlock = `
+    <div class="${styles.letterPrintSection} ${styles.letterPrintSectionCompact}">
     <div class="${styles.sectionTitleHl}">Supervisor details</div>
     <ul class="${styles.bulletList}">
       <li><strong>First name-</strong> ${escHtml(letterForm.supFirst)}</li>
       <li><strong>Last Name-</strong> ${escHtml(letterForm.supLast)}</li>
       <li><strong>Number-</strong> ${escHtml(letterForm.supPhone)}</li>
       <li><strong>Email-</strong> ${escHtml(letterForm.supEmail)}</li>
-    </ul>`
+    </ul>
+    </div>`
 
     const rolesSectionTitle = isInternship ? 'Roles &amp; Responsibilities:' : 'Position Overview:'
     const rolesIntro = isInternship
@@ -374,14 +353,18 @@ export function OfferLetterGeneratorWorkspace({
       : `As a ${escHtml(pos)}, your responsibilities will include but are not limited to:`
 
     const learningSection = isInternship
-      ? `<div class="${styles.sectionTitleHl}">Training &amp; Learning Outcomes:</div>
+      ? `<div class="${styles.letterPrintSection}">
+      <div class="${styles.letterRolesHead}"><div class="${styles.letterSectionIntro}">
+      <div class="${styles.sectionTitleHl}">Training &amp; Learning Outcomes:</div>
       <p class="${styles.letterBody}">This internship will focus on enhancing your knowledge in:</p>
+    </div></div>
       ${
         learningBullets
           ? `<ul class="${styles.bulletList}">${learningBullets}</ul>`
           : `<p class="${styles.letterBody}" style="color:var(--text-secondary);font-style:italic;">Add learning outcomes below or use Enhance with AI.</p>`
       }
-      <p class="${styles.letterBody}">All tasks will be <strong>non-billable, supervised, and training-oriented</strong>.</p>`
+      <p class="${styles.letterBody}">All tasks will be <strong>non-billable, supervised, and training-oriented</strong>.</p>
+      </div>`
       : ''
 
     const degreeNote = letterForm.academicNote.trim()
@@ -406,32 +389,42 @@ export function OfferLetterGeneratorWorkspace({
       }
     }
     const eligHtml = eligBody
-      ? `<div class="${isInternship ? styles.sectionTitlePlain : styles.sectionTitleHl}">Employment Eligibility:</div>${
+      ? `<div class="${styles.letterPrintSection}"><div class="${
+          isInternship ? styles.sectionTitlePlain : styles.sectionTitleHl
+        }">Employment Eligibility:</div>${
           eligBody.startsWith('<ul')
             ? eligBody
             : `<p class="${styles.letterBody}">${eligBody}</p>`
-        }`
+        }</div>`
       : ''
 
     let statusSection = ''
     if (isInternship) {
       statusSection = `
-      <div class="${styles.sectionTitlePlain}">Important Notes</div>
+      <div class="${styles.letterPrintSection}">
+      <div class="${styles.letterRolesHead}"><div class="${styles.letterSectionIntro}">
+        <div class="${styles.sectionTitlePlain}">Important Notes</div>
+      </div></div>
       <ul class="${styles.bulletList}">
         <li>This is a <strong>remote, voluntary unpaid internship</strong> for <strong>${escHtml(hoursLabel)}</strong>.</li>
         <li>The internship is intended purely for <strong>skill development and professional experience</strong>.</li>
         <li>There is <strong>no monetary compensation</strong> and no guarantee of future paid employment.</li>
         <li>You may discontinue participation at any time.</li>
         <li>This role does <strong>not constitute an employment relationship</strong> under the Fair Labor Standards Act (FLSA).</li>
-      </ul>`
+      </ul>
+      </div>`
     } else {
       statusSection = `
-      <div class="${styles.sectionTitleHl}">Employment Status:</div>
+      <div class="${styles.letterPrintSection}">
+      <div class="${styles.letterRolesHead}"><div class="${styles.letterSectionIntro}">
+        <div class="${styles.sectionTitleHl}">Employment Status:</div>
+      </div></div>
       <ul class="${styles.bulletList}">
         <li>This offer of employment does not constitute a contract. Your employment with Dharwin Business Solutions LLC will be at-will, meaning that either party may terminate the employment relationship at any time, with or without cause or notice.</li>
         <li>We are confident that your technical expertise and dedication will contribute significantly to our ongoing projects and SaaS development initiatives.</li>
         <li>Please confirm your acceptance of this offer by signing below and returning a scanned copy to <strong>support@dharwinbusinesssolutions.com</strong></li>
-      </ul>`
+      </ul>
+      </div>`
     }
 
     const closing = isInternship
@@ -454,10 +447,7 @@ export function OfferLetterGeneratorWorkspace({
         </div>
       </div>`
 
-    return `
-    <div class="${styles.letterPrintHeader}" aria-hidden="true">${letterHeadAndRule}</div>
-    <div class="${styles.letterPage}">
-      ${letterHeadAndRule}
+    const introHtml = `
       <div class="${styles.letterSubject}">Sub: Offer Letter</div>
       <div class="${styles.letterDate}">Date: ${escHtml(letterDateStr)}</div>
       <div style="text-align:center;margin-bottom:12px;"><span class="${styles.offerBadge}">Offer of Employment</span></div>
@@ -466,7 +456,10 @@ export function OfferLetterGeneratorWorkspace({
         <strong>Address:</strong> ${escHtml(addr)}
       </div>
       <p class="${styles.letterGreeting}">Hi ${escHtml(name)},</p>
-      <p class="${styles.letterBody}">${openingPara}</p>
+      <p class="${styles.letterBody}">${openingPara}</p>`
+
+    const positionHtml = `
+      <div class="${styles.letterPrintSection} ${styles.letterPrintSectionCompact}">
       <div class="${styles.sectionTitleHl}">Position Details:</div>
       <ul class="${styles.bulletList}">
         <li><strong>Job Title:</strong> ${escHtml(pos)}</li>
@@ -475,23 +468,68 @@ export function OfferLetterGeneratorWorkspace({
         <li><strong>Hours:</strong> ${escHtml(hoursLabel)}</li>
         <li><strong>Location:</strong> ${escHtml(letterForm.workLocation.trim() || 'Remote (USA)')}</li>
       </ul>
-      ${isPaid ? supBlock : ''}
-      ${compSection}
-      <div class="${styles.sectionTitleHl}">${rolesSectionTitle}</div>
-      <p class="${styles.letterBody}">${rolesIntro}</p>
-      <ul class="${styles.bulletList}">${rolesBullets}</ul>
-      ${learningSection}
-      ${degreeNote}
-      ${eligHtml}
-      ${statusSection}
-      ${closing ? `<p class="${styles.letterBody}">${closing}</p>` : ''}
-      <div class="${styles.sigBlock}">${sigBlock}</div>
-    </div>
-    <div class="${styles.letterPrintFooter}" aria-hidden="true">
-      <div class="${styles.letterFooter}">${letterFooter3Col}</div>
-    </div>
-    <div class="${styles.letterFooter}">${letterFooter3Col}</div>`
+      </div>`
+
+    const rolesHtml = `<div class="${styles.letterRolesBlock}">
+        <div class="${styles.letterRolesHead}">
+        <div class="${styles.letterSectionIntro}">
+          <div class="${styles.sectionTitleHl}">${rolesSectionTitle}</div>
+          <p class="${styles.letterBody}">${rolesIntro}</p>
+        </div>
+        </div>
+        <ul class="${styles.bulletList}">${rolesBullets}</ul>
+      </div>`
+
+    const sections: OfferLetterPrintSection[] = [
+      { id: 'intro', html: introHtml },
+      { id: 'position', html: positionHtml },
+    ]
+    if (isPaid) sections.push({ id: 'supervisor', html: supBlock })
+    if (compSection) sections.push({ id: 'compensation', html: compSection })
+    sections.push({ id: 'roles', html: rolesHtml })
+    if (learningSection) sections.push({ id: 'learning', html: learningSection })
+    if (degreeNote) sections.push({ id: 'degree', html: degreeNote })
+    if (eligHtml) sections.push({ id: 'eligibility', html: eligHtml })
+    sections.push({ id: 'status', html: statusSection })
+    if (closing) sections.push({ id: 'closing', html: `<p class="${styles.letterBody}">${closing}</p>` })
+    sections.push({ id: 'signature', html: `<div class="${styles.sigBlock}">${sigBlock}</div>` })
+
+    return {
+      sections,
+      letterHeadAndRule,
+      letterFooter3Col,
+      sectionsKey: `${sections.map((s) => s.id).join('|')}::${letterDateStr}::${name}`,
+    }
   }, [letterForm, isPaid, isInternship, jobUi])
+
+  const [sheetStarts, setSheetStarts] = useState<number[]>([0])
+  const measureGhostRef = useRef<HTMLDivElement | null>(null)
+  const bodyBudgetProbeRef = useRef<HTMLDivElement | null>(null)
+
+  useLayoutEffect(() => {
+    const ghost = measureGhostRef.current
+    if (!ghost) return
+    const pack = () => {
+      const nodes = ghost.querySelectorAll<HTMLElement>('[data-olg-section]')
+      if (nodes.length === 0) return
+      const heights = [...nodes].map((n) => n.getBoundingClientRect().height)
+      const bodySlot = bodyBudgetProbeRef.current?.querySelector<HTMLElement>('[data-olg-body-budget]')
+      const raw = bodySlot?.getBoundingClientRect().height ?? 0
+      /* Tighten slightly so a block that *barely* fits the probe doesn’t clip next to the footer. */
+      const maxPx = raw > 80 ? Math.floor(raw) - 8 : DEFAULT_OFFER_LETTER_BODY_MAX_PX
+      const starts = packSectionHeightsIntoPageStarts(heights, maxPx)
+      setSheetStarts((prev) =>
+        prev.length === starts.length && prev.every((v, i) => v === starts[i]) ? prev : starts
+      )
+    }
+    pack()
+    const ro = new ResizeObserver(pack)
+    ro.observe(ghost)
+    if (bodyBudgetProbeRef.current) ro.observe(bodyBudgetProbeRef.current)
+    return () => ro.disconnect()
+  }, [letterModel])
+
+  useOfferLetterPrintMargins(letterModel.sectionsKey)
 
   const compPreview = useMemo(() => {
     if (isInternship || !letterForm.annualGrossCtc) return null
@@ -511,6 +549,11 @@ export function OfferLetterGeneratorWorkspace({
     }, 250)
     return () => window.clearInterval(id)
   }, [letterBusy])
+
+  /** Print only the letter in a same-origin iframe (no app shell). Styles: offer-letter-print-shell + module CSS cloned into the iframe document. */
+  const handleSaveAsPdf = useCallback(() => {
+    printOfferLetterInIframe(document.getElementById(OFFER_LETTER_PREVIEW_ID))
+  }, [])
 
   return (
     <div
@@ -543,6 +586,15 @@ export function OfferLetterGeneratorWorkspace({
             title="Saves your letter fields, then builds a new PDF on the server (PDFKit). That file is what Download retrieves."
           >
             {letterBusy ? '…' : 'Generate PDF'}
+          </button>
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.btnGhost}`}
+            onClick={handleSaveAsPdf}
+            disabled={letterBusy}
+            title="Opens a separate print view (letter only, no app sidebar). Choose “Save as PDF” or “Microsoft Print to PDF”. Turn on “Background graphics” (Chrome/Edge) for yellow/blue fills. No server step."
+          >
+            Save as PDF
           </button>
           <button
             type="button"
@@ -927,10 +979,78 @@ export function OfferLetterGeneratorWorkspace({
 
         <div className={styles.previewPanel}>
           <div
+            ref={measureGhostRef}
+            className={`${styles.letterMeasureGhost} ${styles.printHide}`}
+            aria-hidden
+          >
+            <div
+              className={`${styles.letter} ${dmSans.variable}`}
+              style={{ fontFamily: 'var(--font-offer-letter-dm), system-ui, sans-serif' }}
+            >
+              <div className={styles.letterPage}>
+                {letterModel.sections.map((s) => (
+                  <div key={s.id} data-olg-section dangerouslySetInnerHTML={{ __html: s.html }} />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div
+            ref={bodyBudgetProbeRef}
+            className={`${styles.letterBodyBudgetProbe} ${styles.printHide}`}
+            aria-hidden
+          >
+            <div
+              className={`${styles.letterSheetsRoot} ${dmSans.variable}`}
+              style={{ fontFamily: 'var(--font-offer-letter-dm), system-ui, sans-serif' }}
+            >
+              <div className={styles.letterPrintSheet}>
+                <div
+                  className={styles.screenOnlyLetterHead}
+                  dangerouslySetInnerHTML={{ __html: letterModel.letterHeadAndRule }}
+                />
+                <div className={styles.letterPage} data-olg-body-budget />
+                <div className={styles.screenOnlyLetterFooter}>
+                  <div
+                    className={styles.letterFooter}
+                    dangerouslySetInnerHTML={{ __html: letterModel.letterFooter3Col }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+          <div
             id={OFFER_LETTER_PREVIEW_ID}
-            className={styles.letter}
-            dangerouslySetInnerHTML={{ __html: letterPreviewHtml }}
-          />
+            data-inflow-sheets
+            className={`${styles.letterSheetsRoot} ${styles.letterInFlowPaged} ${dmSans.variable}`}
+            style={{ fontFamily: 'var(--font-offer-letter-dm), system-ui, sans-serif' }}
+          >
+            {sheetStarts.map((start, pi) => {
+              const end = sheetStarts[pi + 1] ?? letterModel.sections.length
+              return (
+                <div key={pi} className={styles.letterPrintSheet}>
+                  <div
+                    className={styles.screenOnlyLetterHead}
+                    dangerouslySetInnerHTML={{ __html: letterModel.letterHeadAndRule }}
+                  />
+                  <div className={styles.letterPage}>
+                    {letterModel.sections.slice(start, end).map((s) => (
+                      <div
+                        key={`${pi}-${s.id}`}
+                        data-olg-section
+                        dangerouslySetInnerHTML={{ __html: s.html }}
+                      />
+                    ))}
+                  </div>
+                  <div className={styles.screenOnlyLetterFooter}>
+                    <div
+                      className={styles.letterFooter}
+                      dangerouslySetInnerHTML={{ __html: letterModel.letterFooter3Col }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
 
