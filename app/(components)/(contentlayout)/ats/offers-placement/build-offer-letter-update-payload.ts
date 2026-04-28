@@ -1,5 +1,6 @@
 import type { Offer, UpdateOfferPayload } from "@/shared/lib/api/offers"
 import { buildEligibilityLinesFromForm, type OfferLetterFormFields } from "./OfferLetterGeneratorWorkspace"
+import { letterDateStampYmd } from "./letter-date-stamp"
 
 /**
  * PATCH /offers/:id body from the letter workshop form (same as Offers & Placement modal).
@@ -39,7 +40,8 @@ export function buildOfferLetterUpdatePayload(
       email: letterForm.supEmail.trim() || undefined,
     },
     joiningDate: letterForm.joiningDate ? letterForm.joiningDate : null,
-    letterDate: letterForm.letterDate ? letterForm.letterDate : null,
+    /** Always the calendar day of save (not edited in the form). */
+    letterDate: letterDateStampYmd(),
   }
   if (letterForm.jobType !== "INTERN_UNPAID") {
     const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""))

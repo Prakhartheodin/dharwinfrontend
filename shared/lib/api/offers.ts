@@ -3,8 +3,8 @@
 import { isAxiosError } from "axios";
 import { apiClient } from "@/shared/lib/api/client";
 
-/** Generate/download touch S3 on the server; allow extra time on slow networks. */
-const OFFER_PDF_API_TIMEOUT_MS = 120_000;
+/** Save/validate letter fields on the server; allow extra time on slow networks. */
+const OFFER_LETTER_SAVE_API_TIMEOUT_MS = 120_000;
 
 export type OfferStatus = "Draft" | "Sent" | "Under Negotiation" | "Accepted" | "Rejected";
 
@@ -25,7 +25,15 @@ export interface Offer {
   id?: string;
   offerCode: string;
   jobApplication: string;
-  job: { _id: string; title: string; organisation?: { name: string }; status?: string };
+  job: {
+    _id: string;
+    title: string;
+    organisation?: { name: string };
+    status?: string;
+    /** Full posting JD + optional shorter summary (used for AI offer-letter enhancement) */
+    jobDescription?: string;
+    description?: string;
+  };
   candidate: {
     _id: string;
     fullName: string;
@@ -192,28 +200,18 @@ export async function getOfferLetterDefaults(positionTitle: string): Promise<Off
   return data;
 }
 
-export async function generateOfferLetterPdf(
-  offerId: string,
-  letterPayload?: UpdateOfferPayload
-): Promise<Offer> {
+/** Validates letter fields and persists them (POST `/offers/:id/generate-letter`). No server-side PDF — use browser Print / Save as PDF. */
+export async function saveOfferLetter(offerId: string, letterPayload?: UpdateOfferPayload): Promise<Offer> {
   const { data } = await apiClient.post<Offer>(`/offers/${offerId}/generate-letter`, letterPayload ?? {}, {
-    timeout: OFFER_PDF_API_TIMEOUT_MS,
+    timeout: OFFER_LETTER_SAVE_API_TIMEOUT_MS,
   });
   return data;
 }
 
-export async function downloadOfferLetterFile(offerId: string): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>(`/offers/${offerId}/letter-file`, {
-    responseType: "blob",
-    timeout: OFFER_PDF_API_TIMEOUT_MS,
-  });
-  return data;
-}
-
-/** User-visible message for failed offer-letter API calls (timeouts, 4xx/5xx, network). */
-export function formatOfferLetterPdfError(err: unknown, fallback: string): string {
+/** User-visible message for failed offer-letter save calls (timeouts, 4xx/5xx, network). */
+export function formatOfferLetterSaveError(err: unknown, fallback: string): string {
   if (isAxiosError(err) && (err.code === "ECONNABORTED" || err.message?.toLowerCase().includes("timeout"))) {
-    return "The request timed out. Generating a PDF saves to cloud storage; check your connection, or try again. If it keeps happening, verify AWS S3 and API server logs.";
+    return "The request timed out while saving the offer letter. Check your connection and try again.";
   }
   if (isAxiosError(err)) {
     const msg = (err.response?.data as { message?: string } | undefined)?.message;
@@ -233,6 +231,8 @@ export interface EnhanceOfferLetterRolesResponse {
 /** AI: generate or improve offer letter roles and/or internship training outcomes (OpenAI on server). */
 export async function enhanceOfferLetterRoles(body: {
   jobTitle: string;
+  /** Official job posting body (JD) from the listing this offer is tied to */
+  jobDescription?: string;
   existingRoles?: string;
   existingTraining?: string;
   isInternship?: boolean;

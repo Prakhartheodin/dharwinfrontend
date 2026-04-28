@@ -39,7 +39,13 @@ export interface PlacementActorRef {
 export interface Placement {
   _id: string;
   id?: string;
-  offer: { _id: string; offerCode?: string; status?: string; ctcBreakdown?: Record<string, number> };
+  offer: {
+    _id: string;
+    offerCode?: string;
+    status?: string;
+    joiningDate?: string | null;
+    ctcBreakdown?: Record<string, number>;
+  };
   job: { _id: string; title?: string; organisation?: { name: string } };
   candidate: { _id: string; fullName?: string; email?: string; phoneNumber?: string; employeeId?: string };
   joiningDate: string;

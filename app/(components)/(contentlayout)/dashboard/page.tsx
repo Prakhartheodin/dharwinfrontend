@@ -292,6 +292,9 @@ function buildFunnelChart(funnel: StatusCount[]): {
 /* ------------------------------------------------------------------ */
 /*  Notification icon helper                                           */
 /* ------------------------------------------------------------------ */
+/** Must cover all rows for dashboard stat + modals; backend totalResults is authoritative vs analytics `totals.totalApplications`. */
+const DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT = 10_000;
+
 const NOTIF_ICONS: Record<string, { icon: string; color: string }> = {
   task: { icon: "ti ti-checklist", color: "primary" },
   leave: { icon: "ti ti-calendar-off", color: "warning" },
@@ -343,6 +346,8 @@ export default function DashboardPage() {
   const [applicantCountByJob, setApplicantCountByJob] = useState<
     Record<string, number>
   >({});
+  /** From GET /job-applications `totalResults` — aligns Applications stat with list modal (analytics total can differ). */
+  const [applicationsListingTotal, setApplicationsListingTotal] = useState<number | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -398,7 +403,18 @@ export default function DashboardPage() {
       hasAtsCandidatesAccess ? listCandidates({ limit: 5 }) : Promise.resolve({ results: [] as CandidateListItem[] }),
       listTasks({ assignedToMe: true, limit: 50 }),
       hasAtsJobsAccess ? listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }) : Promise.resolve({ results: [] as Job[] }),
-      hasAtsJobsAccess ? listJobApplications({ limit: 500 }) : Promise.resolve({ results: [] as JobApplication[] }),
+      hasAtsJobsAccess
+        ? listJobApplications({
+            limit: DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT,
+            activeJobsOnly: true,
+          })
+        : Promise.resolve({
+            results: [] as JobApplication[],
+            page: 1,
+            limit: DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT,
+            totalPages: 0,
+            totalResults: 0,
+          }),
       listProjects({ limit: 100 }),
       listMeetings({ limit: 5, sortBy: "scheduledAt:asc", status: "scheduled" }),
       getNotifications({ limit: 5 }),
@@ -429,7 +445,13 @@ export default function DashboardPage() {
       setRecentJobs(Array.isArray(jobsRes.value?.results) ? jobsRes.value.results : []);
 
     if (applicationsRes.status === "fulfilled") {
-      const apps = applicationsRes.value.results ?? [];
+      const payload = applicationsRes.value;
+      const apps = payload.results ?? [];
+      const total =
+        typeof payload.totalResults === "number"
+          ? payload.totalResults
+          : apps.length;
+      setApplicationsListingTotal(total);
       const map: Record<string, number> = {};
       for (const app of apps) {
         const jRef = app.job;
@@ -443,6 +465,8 @@ export default function DashboardPage() {
         }
       }
       setApplicantCountByJob(map);
+    } else {
+      setApplicationsListingTotal(null);
     }
 
     if (projectsRes.status === "fulfilled")
@@ -518,8 +542,16 @@ export default function DashboardPage() {
           const res = await listCandidates({ limit: 100 });
           if (!cancelled) setStatBoxList(res.results ?? []);
         } else if (statBoxModal === "applications") {
-          const res = await listJobApplications({ limit: 200 });
-          if (!cancelled) setStatBoxList(res.results ?? []);
+          const res = await listJobApplications({
+            limit: DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT,
+            activeJobsOnly: true,
+          });
+          if (!cancelled) {
+            setStatBoxList(res.results ?? []);
+            if (typeof res.totalResults === "number") {
+              setApplicationsListingTotal(res.totalResults);
+            }
+          }
         }
       } catch {
         if (!cancelled) setStatBoxList([]);
@@ -540,12 +572,19 @@ export default function DashboardPage() {
       try {
         const [jobsRes, applicationsRes] = await Promise.allSettled([
           listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }),
-          listJobApplications({ limit: 500 }),
+          listJobApplications({
+            limit: DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT,
+            activeJobsOnly: true,
+          }),
         ]);
         if (jobsRes.status === "fulfilled")
           setRecentJobs(Array.isArray(jobsRes.value?.results) ? jobsRes.value.results : []);
         if (applicationsRes.status === "fulfilled") {
-          const apps = applicationsRes.value.results ?? [];
+          const payload = applicationsRes.value;
+          const apps = payload.results ?? [];
+          if (typeof payload.totalResults === "number") {
+            setApplicationsListingTotal(payload.totalResults);
+          }
           const map: Record<string, number> = {};
           for (const app of apps) {
             const jRef = app.job;
@@ -613,6 +652,9 @@ export default function DashboardPage() {
   );
 
   const totals = atsData?.totals;
+  /** Prefer listing API totalResults so Applications stat matches Applications modal rows. */
+  const applicationsStatCount =
+    applicationsListingTotal != null ? applicationsListingTotal : totals?.totalApplications ?? 0;
   const projectCount = projects.length;
   const studentCount = trainingData?.totalStudents ?? 0;
 
@@ -705,6 +747,8 @@ export default function DashboardPage() {
                 <div className="sm:col-span-6 col-span-12">
                   <Link
                     href="/ats/jobs"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
@@ -727,10 +771,11 @@ export default function DashboardPage() {
                   </Link>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <button
-                    type="button"
-                    onClick={() => setStatBoxModal("activeJobs")}
-                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  <Link
+                    href="/ats/jobs?status=active"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
                       <div className="box-body flex justify-between items-center">
@@ -749,18 +794,19 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  </button>
+                  </Link>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <button
-                    type="button"
-                    onClick={() => setStatBoxModal("candidates")}
-                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  <Link
+                    href="/ats/employees"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
                       <div className="box-body flex justify-between items-center">
                         <div>
-                          <p className="mb-1">Total Candidates</p>
+                          <p className="mb-1">Total Employees</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
@@ -774,7 +820,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  </button>
+                  </Link>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
                   <button
@@ -789,7 +835,7 @@ export default function DashboardPage() {
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
-                          <h4 className="font-semibold mb-1 text-[1.5rem]">{totals?.totalApplications ?? 0}</h4>
+                          <h4 className="font-semibold mb-1 text-[1.5rem]">{applicationsStatCount}</h4>
                         )}
                         <span className="badge bg-success/10 text-success">0.5% <i className="ti ti-trending-up ms-1"></i></span>
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">All time</span>
@@ -1298,13 +1344,14 @@ export default function DashboardPage() {
                 </ul>
               ) : (
                 <ul className="list-none space-y-3">
-                  {(statBoxList as JobApplication[]).map((app) => {
+                  {(statBoxList as JobApplication[]).map((app, idx) => {
                     const c = app.candidate;
                     const j = app.job;
                     const jobTitle = typeof j === "object" && j !== null ? (j as { title?: string }).title : "—";
                     const name = (c?.fullName ?? c?.email ?? "—").trim() || "—";
+                    const rowKey = String(app._id ?? app.id ?? `application-${idx}`);
                     return (
-                      <li key={app._id} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
+                      <li key={rowKey} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
                         <span className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center text-xs font-semibold">
                           {name.charAt(0).toUpperCase()}
                         </span>

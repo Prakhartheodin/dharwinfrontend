@@ -1821,7 +1821,21 @@ export const Basicwizard = ({
         return d.getUTCFullYear();
       };
 
-      const DOCUMENT_TYPES = ['Aadhar', 'PAN', 'Bank', 'Passport'] as const;
+      const DOCUMENT_TYPES = [
+        'Aadhar',
+        'PAN',
+        'Bank',
+        'Passport',
+        'CV/Resume',
+        'Marksheet',
+        'Degree Certificate',
+        'Experience Letter',
+        'Offer Letter',
+        'Visa',
+        'EAD Card',
+        'I-765 Receipt',
+        'I-983 Form-only',
+      ] as const;
       // Upload documents using uploadDocuments API
       const uploadedDocs: { 
         type?: string;
@@ -3163,6 +3177,11 @@ export const Basicwizard = ({
                     <option value="Marksheet">Marksheet</option>
                     <option value="Degree Certificate">Degree Certificate</option>
                     <option value="Experience Letter">Experience Letter</option>
+                    <option value="Offer Letter">Offer Letter</option>
+                    <option value="Visa">Visa</option>
+                    <option value="EAD Card">EAD Card</option>
+                    <option value="I-765 Receipt">I-765 Receipt</option>
+                    <option value="I-983 Form-only">I-983 Form-only</option>
                   </optgroup>
                   <option value="Other">Other</option>
                 </select>

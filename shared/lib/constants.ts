@@ -50,6 +50,12 @@ export const ROUTES = {
   /** ATS — person list (admin); canonical path after rename. */
   atsEmployees: "/ats/employees/",
   /**
+   * Edit a single ATS **candidate** profile (same page as “Candidates” in the nav; legacy URL segment `employees`).
+   * `candidateId` is a `candidates` collection document id — not a Settings → Users org account id.
+   */
+  atsCandidateRecordEdit: (candidateId: string) =>
+    `/ats/employees/edit?id=${encodeURIComponent(candidateId)}`,
+  /**
    * Same URL as `atsEmployees` (legacy name). Used for exit-impersonation return and older call sites.
    * @deprecated Prefer `atsEmployees` in new code.
    */
@@ -80,6 +86,8 @@ export const ROUTES = {
   settingsEmailTemplates: "/settings/email-templates/",
   /** Administrator — manage any Agent's templates & signatures */
   settingsEmailTemplatesAdmin: "/settings/email-templates-admin/",
+  /** ATS job description templates — create jobs → Load from template */
+  settingsJobTemplates: "/settings/job-templates/",
   // Settings > Attendance
   settingsAttendance: "/settings/attendance/",
   settingsAttendanceWeekOff: "/settings/attendance/week-off/",

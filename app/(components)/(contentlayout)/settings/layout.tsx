@@ -7,14 +7,13 @@ import { ROUTES } from "@/shared/lib/constants";
 import {
   hasAnySettingsModulePermission,
   hasEmailReadAccess,
+  hasJobsReadAccess,
   hasSettingsFeatureAccess,
   hasSettingsUsersManage,
   userCanListRoles,
 } from "@/shared/lib/permissions";
 import { canAssignCandidateAgent } from "@/shared/lib/candidate-permissions";
 import { useAuth } from "@/shared/contexts/auth-context";
-import * as rolesApi from "@/shared/lib/api/roles";
-import type { Role } from "@/shared/lib/types";
 
 function getActiveTab(
   pathname: string
@@ -26,6 +25,7 @@ function getActiveTab(
   | "candidate-sop"
   | "personal-information"
   | "email-templates"
+  | "job-templates"
   | "email-templates-admin"
   | "bolna-voice-agent"
   | "company-email"
@@ -39,6 +39,7 @@ function getActiveTab(
   if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
+  if (pathname.startsWith("/settings/job-templates")) return "job-templates";
   if (pathname.startsWith("/settings/personal-information")) return "personal-information";
   return null;
 }
@@ -58,71 +59,64 @@ export default function SettingsLayout({
   const [hasCandidateSopAccess, setHasCandidateSopAccess] = useState<boolean | null>(null);
   const [hasCompanyEmailHubAccess, setHasCompanyEmailHubAccess] = useState<boolean | null>(null);
 
-  // Determine admin (Roles only), users access (Admin or Agent), and attendance access
+  // Derive tab access from `/auth/my-permissions` (roleNames + permissions). Avoids GET /v1/roles
+  // which requires roles.list and returns 403 for many users.
   useEffect(() => {
-    const check = async () => {
-      try {
-        if (isPlatformSuperUser) {
-          setIsAdmin(true);
-          setHasUsersAccess(true);
-          setHasAttendanceAccess(true);
-          setHasCandidateSopAccess(true);
-          setHasCompanyEmailHubAccess(true);
-          return;
-        }
-        if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
-          setIsAdmin(false);
-          setHasUsersAccess(false);
-          setHasAttendanceAccess(false);
-          setHasCandidateSopAccess(false);
-          setHasCompanyEmailHubAccess(false);
-          return;
-        }
-        const res = await rolesApi.listRoles({ limit: 100 });
-        const roles = res.results as Role[];
-        const roleMap = new Map<string, Role>();
-        roles.forEach((r) => roleMap.set(r.id, r));
-        let admin = false;
-        const roleNames = new Set<string>();
-        const perms = new Set<string>();
-        (user.roleIds as string[]).forEach((id) => {
-          const role = roleMap.get(id);
-          if (!role) return;
-          role.permissions?.forEach((p) => perms.add(p));
-          if (role.name) roleNames.add(role.name);
-          if (role.name === "Administrator") admin = true;
-        });
-        setIsAdmin(admin);
-        // Agents and Administrators can access Users; only Administrators can access User Roles
-        setHasUsersAccess(admin || roleNames.has("Agent"));
-        const hasAgentOrAdminRole = roleNames.has("Administrator") || roleNames.has("Agent");
-        const hasStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
-        const hasAttendanceManage = Array.from(perms).some(
-          (p) =>
-            p === "attendance.manage" ||
-            p === "training.attendance:view,create,edit" ||
-            (p.includes("training.attendance") && (p.includes("create") || p.includes("edit") || p.includes("view")))
-        );
-        const hasRelevantPermissions = admin || hasStudentsManage || hasAttendanceManage;
-        setHasAttendanceAccess(hasAgentOrAdminRole && hasRelevantPermissions);
-        const hasAtsCandidatesManage = Array.from(perms).some(
-          (p) =>
-            p.includes("ats.candidates") &&
-            (p.includes("create") || p.includes("edit") || p.includes("delete"))
-        );
-        setHasCandidateSopAccess(admin || hasAtsCandidatesManage);
-        const rawPerms = Array.from(perms);
-        setHasCompanyEmailHubAccess(canAssignCandidateAgent(rawPerms, isPlatformSuperUser));
-      } catch {
+    try {
+      if (isPlatformSuperUser) {
+        setIsAdmin(true);
+        setHasUsersAccess(true);
+        setHasAttendanceAccess(true);
+        setHasCandidateSopAccess(true);
+        setHasCompanyEmailHubAccess(true);
+        return;
+      }
+      if (!user || !user.roleIds || (user.roleIds as string[]).length === 0) {
         setIsAdmin(false);
         setHasUsersAccess(false);
         setHasAttendanceAccess(false);
         setHasCandidateSopAccess(false);
         setHasCompanyEmailHubAccess(false);
+        return;
       }
-    };
-    check();
-  }, [user, isPlatformSuperUser]);
+      if (!permissionsLoaded) {
+        return;
+      }
+
+      const names = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
+      const roleNameSet = new Set(names);
+      const permissionsArray = permissions ?? [];
+      const perms = new Set(permissionsArray);
+
+      const admin = roleNameSet.has("Administrator");
+      setIsAdmin(admin);
+      // Agents and Administrators can access Users; only Administrators can access User Roles
+      setHasUsersAccess(admin || roleNameSet.has("Agent"));
+      const hasAgentOrAdminRole = roleNameSet.has("Administrator") || roleNameSet.has("Agent");
+      const hasStudentsManage = Array.from(perms).some((p) => p === "students.manage" || p.startsWith("students.manage"));
+      const hasAttendanceManage = Array.from(perms).some(
+        (p) =>
+          p === "attendance.manage" ||
+          p === "training.attendance:view,create,edit" ||
+          (p.includes("training.attendance") && (p.includes("create") || p.includes("edit") || p.includes("view")))
+      );
+      const hasRelevantPermissions = admin || hasStudentsManage || hasAttendanceManage;
+      setHasAttendanceAccess(hasAgentOrAdminRole && hasRelevantPermissions);
+      const hasAtsCandidatesManage = Array.from(perms).some(
+        (p) =>
+          p.includes("ats.candidates") &&
+          (p.includes("create") || p.includes("edit") || p.includes("delete"))
+      );
+      setHasCandidateSopAccess(admin || hasAtsCandidatesManage);
+      setHasCompanyEmailHubAccess(canAssignCandidateAgent(permissionsArray, isPlatformSuperUser));
+    } catch {
+      setIsAdmin(false);
+      setHasUsersAccess(false);
+      setHasAttendanceAccess(false);
+      setHasCandidateSopAccess(false);
+      setHasCompanyEmailHubAccess(false);
+    }
+  }, [user, isPlatformSuperUser, permissionsLoaded, permissions, roleNames]);
 
   // Redirect: when `settings.*` matrix permissions exist, enforce those; else legacy rules.
   useEffect(() => {
@@ -165,6 +159,11 @@ export default function SettingsLayout({
       const can = matrixMode
         ? hasSettingsFeatureAccess(raw, "email-templates")
         : hasEmailReadAccess(raw) || hasSettingsFeatureAccess(raw, "email-templates");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "job-templates") {
+      const can =
+        hasJobsReadAccess(raw) ||
+        hasSettingsFeatureAccess(raw, "job-templates");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
       const can = matrixMode
@@ -209,6 +208,7 @@ export default function SettingsLayout({
       | "candidate-sop"
       | "personal-information"
       | "email-templates"
+      | "job-templates"
       | "email-templates-admin"
       | "bolna-voice-agent"
       | "company-email"
@@ -243,6 +243,9 @@ export default function SettingsLayout({
   const showEmailTemplatesTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates")
     : hasEmailReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "email-templates");
+  /** Same idea as ATS Jobs: `jobs.read` / `ats.jobs:*` — not only `settings.job-templates` (matrix roles often lack that grant). */
+  const showJobTemplatesTab =
+    hasJobsReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "job-templates");
   const showEmailTemplatesAdminTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates-admin")
     : isAdministrator || hasSettingsFeatureAccess(rawPerms, "email-templates-admin");
@@ -320,6 +323,16 @@ export default function SettingsLayout({
                     title="Your own templates and signature for Communication → Email"
                   >
                     My email templates
+                  </Link>
+                )}
+                {showJobTemplatesTab && (
+                  <Link
+                    href={ROUTES.settingsJobTemplates}
+                    className={tabClass("job-templates")}
+                    aria-current={activeTab === "job-templates" ? "page" : undefined}
+                    title="Saved job descriptions for ATS → Create job → Load from template"
+                  >
+                    My jobs template
                   </Link>
                 )}
                 {showEmailTemplatesAdminTab && (

@@ -11,7 +11,8 @@ export type ReferralPipelineStatusKey =
   | "hired"
   | "rejected"
   | "pending"
-  | "withdrawn";
+  | "withdrawn"
+  | "job_removed";
 
 export const STATUS_META: Record<
   ReferralPipelineStatusKey,
@@ -24,6 +25,7 @@ export const STATUS_META: Record<
   rejected: { label: "Rejected", color: "#ef4444", bg: "#fee2e2" },
   pending: { label: "Pending", color: "#6b7280", bg: "#f3f4f6" },
   withdrawn: { label: "Withdrawn", color: "#78716c", bg: "#e7e5e4" },
+  job_removed: { label: "Job removed", color: "#92400e", bg: "#fef3c7" },
 };
 
 export function getStatusMeta(

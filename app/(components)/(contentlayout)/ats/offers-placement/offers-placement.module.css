@@ -80,3 +80,83 @@
     background: rgba(148, 163, 184, 0.15);
   }
 }
+
+/* Offer modals — scan-friendly meta rows, aligns with ATS table polish */
+.offerModalSection {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(248, 250, 252, 0.65);
+  padding: 1rem 1.125rem;
+}
+
+:global(.dark) .offerModalSection {
+  border-color: rgba(255, 255, 242, 0.08);
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.offerModalSectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: rgb(15, 23, 42);
+  padding-bottom: 0.625rem;
+  margin-bottom: 0.875rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+:global(.dark) .offerModalSectionTitle {
+  color: rgb(248, 250, 252);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.offerMetaGrid {
+  display: grid;
+  grid-template-columns: minmax(5.25rem, auto) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  align-items: start;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+@media (min-width: 420px) {
+  .offerMetaGrid {
+    grid-template-columns: 7rem 1fr;
+  }
+}
+
+.offerMetaLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgb(100, 116, 139);
+  padding-top: 0.2em;
+}
+
+:global(.dark) .offerMetaLabel {
+  color: rgb(148, 163, 184);
+}
+
+.offerMetaValue {
+  color: rgb(30, 41, 59);
+  word-break: break-word;
+}
+
+:global(.dark) .offerMetaValue {
+  color: rgb(226, 232, 240);
+}
+
+.offerStatusEditCard {
+  border-radius: 0.625rem;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.95) 0%, rgba(241, 245, 249, 0.5) 100%);
+  padding: 0.75rem 0.875rem;
+}
+
+:global(.dark) .offerStatusEditCard {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.55);
+}

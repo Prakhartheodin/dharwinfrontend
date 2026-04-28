@@ -1,5 +1,6 @@
 import type { CreateOfferPayload } from "@/shared/lib/api/offers"
 import { buildEligibilityLinesFromForm, type OfferLetterFormFields } from "./OfferLetterGeneratorWorkspace"
+import { letterDateStampYmd } from "./letter-date-stamp"
 
 /** Maps workshop letter fields + CTC line items into `POST /offers` (same data model as the full-page create form). */
 export function buildCreateOfferPayloadFromLetterForm(
@@ -52,7 +53,7 @@ export function buildCreateOfferPayloadFromLetterForm(
       phone: letterForm.supPhone.trim() || undefined,
       email: letterForm.supEmail.trim() || undefined,
     },
-    letterDate: letterForm.letterDate || null,
+    letterDate: letterDateStampYmd(),
   }
   if (trimmedAppId && /^[0-9a-fA-F]{24}$/.test(trimmedAppId)) {
     return { ...basePayload, jobApplicationId: trimmedAppId }

@@ -28,6 +28,7 @@ import {
   internEligibilityOptRegularPreviewHtml,
   INTERN_OFFER_DEFAULT_ELIGIBILITY,
 } from './offer-letter-generator-data'
+import { letterDateStampYmd } from './letter-date-stamp'
 
 const dmSans = DM_Sans({
   subsets: ['latin'],
@@ -57,13 +58,6 @@ function offerLetterLogoSrcAbsolute(): string {
 
 function offerLetterCeoSignatureSrcAbsolute(): string {
   return toAbsoluteOnOrigin(staticAssetPath(offerLetterCeoSigAsset))
-}
-
-/** Elapsed seconds → m:ss for PDF generation overlay */
-function formatPdfGenElapsed(totalSec: number): string {
-  const m = Math.floor(totalSec / 60)
-  const s = totalSec % 60
-  return `${m}:${String(s).padStart(2, '0')}`
 }
 
 export type OfferLetterFormFields = {
@@ -120,15 +114,17 @@ type Props = {
   letterForm: OfferLetterFormFields
   setLetterForm: React.Dispatch<React.SetStateAction<OfferLetterFormFields>>
   letterBusy: boolean
-  lastGeneratedLabel: string | null
-  hasPdf: boolean
+  /** Shown in header when known (e.g. last `updatedAt` from server). */
+  lastSavedLabel: string | null
   onClose: () => void
-  onGeneratePdf: () => void
-  onDownload: () => void
+  /** Persist letter fields + validation (POST generate-letter). */
+  onSaveLetter: () => void
   /** Insert above Candidate Details (e.g. load error from ?offerId= on new-offer). */
   formPanelTop?: React.ReactNode
   /** Insert after the last form section, still inside the left column (e.g. Create offer actions). */
   formPanelFooter?: React.ReactNode
+  /** Full job posting (JD) for the linked listing — sent to Enhance-with-AI when present. */
+  jobPostingDoc?: string | null
 }
 
 function TopbarLogoIcon() {
@@ -177,13 +173,12 @@ export function OfferLetterGeneratorWorkspace({
   letterForm,
   setLetterForm,
   letterBusy,
-  lastGeneratedLabel,
-  hasPdf,
+  lastSavedLabel,
   onClose,
-  onGeneratePdf,
-  onDownload,
+  onSaveLetter,
   formPanelTop,
   formPanelFooter,
+  jobPostingDoc = null,
 }: Props) {
   const jobUi = apiJobTypeToUi(letterForm.jobType)
   const isInternship = letterForm.jobType === 'INTERN_UNPAID'
@@ -202,6 +197,7 @@ export function OfferLetterGeneratorWorkspace({
       const existing = letterForm.rolesText.trim()
       const { text } = await enhanceOfferLetterRoles({
         jobTitle: title,
+        jobDescription: jobPostingDoc?.trim() || undefined,
         existingRoles: existing,
         existingTraining: letterForm.trainingText.trim(),
         isInternship: letterForm.jobType === 'INTERN_UNPAID',
@@ -219,7 +215,7 @@ export function OfferLetterGeneratorWorkspace({
     } finally {
       setRolesAiLoading(false)
     }
-  }, [letterForm.positionTitle, letterForm.rolesText, letterForm.trainingText, letterForm.jobType, setLetterForm])
+  }, [letterForm.positionTitle, letterForm.rolesText, letterForm.trainingText, letterForm.jobType, jobPostingDoc, setLetterForm])
 
   const handleEnhanceTraining = useCallback(async () => {
     const title = letterForm.positionTitle.trim()
@@ -231,6 +227,7 @@ export function OfferLetterGeneratorWorkspace({
     try {
       const { trainingText } = await enhanceOfferLetterRoles({
         jobTitle: title,
+        jobDescription: jobPostingDoc?.trim() || undefined,
         existingRoles: letterForm.rolesText.trim(),
         existingTraining: letterForm.trainingText.trim(),
         isInternship: true,
@@ -250,7 +247,7 @@ export function OfferLetterGeneratorWorkspace({
     } finally {
       setTrainingAiLoading(false)
     }
-  }, [letterForm.positionTitle, letterForm.rolesText, letterForm.trainingText, setLetterForm])
+  }, [letterForm.positionTitle, letterForm.rolesText, letterForm.trainingText, jobPostingDoc, setLetterForm])
 
   const handlePositionBlur = useCallback(() => {
     const data = autoFillRolesFromPosition(letterForm.positionTitle)
@@ -281,10 +278,10 @@ export function OfferLetterGeneratorWorkspace({
     const addr = letterForm.letterAddress.trim() || '— Address —'
     const pos = letterForm.positionTitle.trim() || '— Position —'
     const joiningFmt = letterForm.joiningDate ? fmtStartDateOrdinal(letterForm.joiningDate) : '— Date —'
-    const today = new Date()
+    /** Preview: last saved date, or provisional “as of save” stamp (same rule as server). */
     const letterDateStr = letterForm.letterDate
       ? fmtDateLong(letterForm.letterDate)
-      : today.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+      : fmtDateLong(letterDateStampYmd())
 
     const hoursLabel =
       letterForm.jobType === 'INTERN_UNPAID'
@@ -536,20 +533,6 @@ export function OfferLetterGeneratorWorkspace({
     return fmtCurrencyParts(letterForm.annualGrossCtc, letterForm.ctcCurrency)
   }, [isInternship, letterForm.annualGrossCtc, letterForm.ctcCurrency])
 
-  const [pdfGenElapsedSec, setPdfGenElapsedSec] = useState(0)
-  useEffect(() => {
-    if (!letterBusy) {
-      setPdfGenElapsedSec(0)
-      return undefined
-    }
-    const t0 = Date.now()
-    setPdfGenElapsedSec(0)
-    const id = window.setInterval(() => {
-      setPdfGenElapsedSec(Math.floor((Date.now() - t0) / 1000))
-    }, 250)
-    return () => window.clearInterval(id)
-  }, [letterBusy])
-
   /** Print only the letter in a same-origin iframe (no app shell). Styles: offer-letter-print-shell + module CSS cloned into the iframe document. */
   const handleSaveAsPdf = useCallback(() => {
     printOfferLetterInIframe(document.getElementById(OFFER_LETTER_PREVIEW_ID))
@@ -572,20 +555,20 @@ export function OfferLetterGeneratorWorkspace({
           {jobTitle ? ` · ${jobTitle}` : ''}
           {candidateName ? ` · ${candidateName}` : ''}
         </span>
-        {lastGeneratedLabel ? (
+        {lastSavedLabel ? (
           <span className={styles.topbarMeta} style={{ color: '#86efac' }}>
-            Last PDF: {lastGeneratedLabel}
+            Last saved: {lastSavedLabel}
           </span>
         ) : null}
         <div className={styles.topbarActions}>
           <button
             type="button"
             className={`${styles.btn} ${styles.btnPrimary}`}
-            onClick={onGeneratePdf}
+            onClick={onSaveLetter}
             disabled={letterBusy}
-            title="Saves your letter fields, then builds a new PDF on the server (PDFKit). That file is what Download retrieves."
+            title="Save letter fields to the server (required fields must be valid)."
           >
-            {letterBusy ? '…' : 'Generate PDF'}
+            {letterBusy ? '…' : 'Save letter'}
           </button>
           <button
             type="button"
@@ -595,23 +578,6 @@ export function OfferLetterGeneratorWorkspace({
             title="Opens a separate print view (letter only, no app sidebar). Choose “Save as PDF” or “Microsoft Print to PDF”. Turn on “Background graphics” (Chrome/Edge) for yellow/blue fills. No server step."
           >
             Save as PDF
-          </button>
-          <button
-            type="button"
-            className={
-              hasPdf
-                ? `${styles.btn} ${styles.btnSuccess}`
-                : `${styles.btn} ${styles.btnGhost}`
-            }
-            onClick={onDownload}
-            disabled={letterBusy || !hasPdf}
-            title={
-              hasPdf
-                ? 'Fetches the PDF file stored on the server from your last successful Generate PDF. On-screen edits are not in this file until you click Generate PDF again.'
-                : 'Run Generate PDF first. When the server finishes storing the file, Download fetches that same PDF (identical to using Download from the offers table).'
-            }
-          >
-            Download
           </button>
           <button type="button" className={`${styles.btn} ${styles.btnGhost}`} onClick={onClose} disabled={letterBusy}>
             Close
@@ -649,14 +615,17 @@ export function OfferLetterGeneratorWorkspace({
               </div>
               <div className={styles.fieldRow}>
                 <div className={styles.field}>
-                  <label htmlFor="olg-letterDate">Letter Date</label>
-                  <input
-                    id="olg-letterDate"
-                    type="date"
-                    className={styles.input}
-                    value={letterForm.letterDate}
-                    onChange={(e) => setLetterForm((f) => ({ ...f, letterDate: e.target.value }))}
-                  />
+                  <label htmlFor="olg-letterDate-display">Letter date</label>
+                  <div id="olg-letterDate-display" className={styles.letterDateReadonly} aria-live="polite">
+                    {letterForm.letterDate ? (
+                      fmtDateLong(letterForm.letterDate)
+                    ) : (
+                      <span className={styles.letterDateUnset}>Not dated yet — saves as today when you save</span>
+                    )}
+                  </div>
+                  <p className={styles.helpText}>
+                    Stamped to the calendar day when you click &quot;Save letter&quot; (cannot be edited here).
+                  </p>
                 </div>
                 <div className={styles.field}>
                   <label htmlFor="olg-joining">Joining Date *</label>
@@ -814,8 +783,12 @@ export function OfferLetterGeneratorWorkspace({
                   !letterForm.positionTitle.trim()
                     ? 'Enter position / job title first'
                     : letterForm.rolesText.trim()
-                      ? 'Improve responsibilities using job title + current text'
-                      : 'Generate responsibilities from job title'
+                      ? jobPostingDoc?.trim()
+                        ? 'Improve responsibilities using your job posting (JD), job title, and current text'
+                        : 'Improve responsibilities using job title + current text'
+                      : jobPostingDoc?.trim()
+                        ? 'Generate responsibilities from your job posting (JD) and role title'
+                        : 'Generate responsibilities from job title'
                 }
               >
                 {rolesAiLoading ? 'Working…' : '✨ Enhance with AI'}
@@ -823,8 +796,10 @@ export function OfferLetterGeneratorWorkspace({
             </div>
             <div className={styles.sectionBody}>
               <p className={styles.helpText}>
-                Auto-filled from position title when it matches a template. One item per line. AI uses the job title; if this
-                box is empty it generates new lines, otherwise it refines what you already have.
+                Auto-filled from position title when it matches a template. One item per line.{' '}
+                {jobPostingDoc?.trim()
+                  ? 'Enhance with AI reads the official job description (JD) for this listing (plus the title)—including named products, platforms, or projects (e.g. specific tools or programmes)—and turns that into responsibilities. If this box is empty it generates from the JD; otherwise it refines your text to align with it.'
+                  : 'Enhance with AI uses the role title (add a full JD on the Job record to ground AI in the posting). If this box is empty it generates new lines; otherwise it refines what you already have.'}
               </p>
               <div className={styles.field}>
                 <textarea
@@ -855,8 +830,12 @@ export function OfferLetterGeneratorWorkspace({
                     !letterForm.positionTitle.trim()
                       ? 'Enter position / job title first'
                       : letterForm.trainingText.trim()
-                        ? 'Improve outcomes using job title, current roles, and existing outcomes'
-                        : 'Generate training & learning outcomes from job title (uses roles as context if present)'
+                        ? jobPostingDoc?.trim()
+                          ? 'Improve outcomes using JD + title, roles, and current outcomes'
+                          : 'Improve outcomes using job title, current roles, and existing outcomes'
+                        : jobPostingDoc?.trim()
+                          ? 'Generate outcomes from JD and job title (roles as context if present)'
+                          : 'Generate training & learning outcomes from job title (uses roles as context if present)'
                   }
                 >
                   {trainingAiLoading ? 'Working…' : '✨ Enhance with AI'}
@@ -864,7 +843,11 @@ export function OfferLetterGeneratorWorkspace({
               </div>
               <div className={styles.sectionBody}>
                 <p className={styles.helpText}>
-                  One outcome per line. AI uses the job title and your roles text (if any) so outcomes match the position.
+                  One outcome per line. Enhance with AI uses{' '}
+                  {jobPostingDoc?.trim()
+                    ? 'your job posting (JD), the title,'
+                    : 'the title'}{' '}
+                  and your roles text (if any) so outcomes match the position.
                 </p>
                 <div className={styles.field}>
                   <textarea
@@ -1060,15 +1043,12 @@ export function OfferLetterGeneratorWorkspace({
           role="status"
           aria-live="polite"
           aria-busy="true"
-          aria-label="Generating PDF on server"
+          aria-label="Saving letter"
         >
           <div className={styles.pdfGenOverlayCard}>
             <div className={styles.pdfGenSpinner} aria-hidden />
-            <p className={styles.pdfGenOverlayTitle}>Generating PDF</p>
-            <p className={styles.pdfGenTimer}>{formatPdfGenElapsed(pdfGenElapsedSec)}</p>
-            <p className={styles.pdfGenHint}>
-              Building on the server and uploading the file. Large letters can take a minute on a slow connection.
-            </p>
+            <p className={styles.pdfGenOverlayTitle}>Saving letter</p>
+            <p className={styles.pdfGenHint}>Validating and storing your offer letter fields on the server.</p>
           </div>
         </div>
       ) : null}

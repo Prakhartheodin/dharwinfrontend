@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
 import {
@@ -10,9 +10,8 @@ import {
 } from "../../OfferLetterGeneratorWorkspace";
 import {
   createOffer,
-  downloadOfferLetterFile,
-  generateOfferLetterPdf,
-  formatOfferLetterPdfError,
+  saveOfferLetter,
+  formatOfferLetterSaveError,
   getOfferById,
   getOfferLetterDefaults,
   type Offer,
@@ -21,6 +20,7 @@ import {
 import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-payload";
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
+import { combinedJobPostingDocText } from "../../job-posting-doc";
 
 function formatCandidateAddress(c: { address?: Offer["candidate"]["address"] } | null | undefined) {
   const a = c?.address;
@@ -37,8 +37,8 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
 }
 
 /**
- * Standalone letter: same server PDF flow as Offers & Placement (`generateOfferLetterPdf` / `downloadOfferLetterFile`).
- * Open with `?offerId=` to continue an offer, or fill the form and use Generate to create an offer and PDF (no job application required).
+ * Standalone letter: save fields via POST `/offers/:id/generate-letter` (validation + persistence). Print/Save as PDF uses the browser only.
+ * Open with `?offerId=` to continue an offer, or fill the form and save to create an offer record (no job application required).
  */
 export default function NewOfferLetterPage() {
   const router = useRouter();
@@ -129,7 +129,7 @@ export default function NewOfferLetterPage() {
     };
   }, [offerIdParam]);
 
-  const handleGeneratePdf = useCallback(async () => {
+  const handleSaveLetter = useCallback(async () => {
     const isIntern = letterForm.jobType === "INTERN_UNPAID";
     const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""));
 
@@ -141,10 +141,7 @@ export default function NewOfferLetterPage() {
       }
       setLetterBusy(true);
       try {
-        const updated = await generateOfferLetterPdf(
-          id,
-          buildOfferLetterUpdatePayload(letterForm, linkedOffer)
-        );
+        const updated = await saveOfferLetter(id, buildOfferLetterUpdatePayload(letterForm, linkedOffer));
         setLinkedOffer(updated);
         const newId = getOfferRecordId(updated);
         if (newId && (!offerIdParam || offerIdParam !== newId)) {
@@ -153,7 +150,7 @@ export default function NewOfferLetterPage() {
           });
         }
       } catch (e: unknown) {
-        alert(formatOfferLetterPdfError(e, "Could not generate PDF"));
+        alert(formatOfferLetterSaveError(e, "Could not save letter"));
       } finally {
         setLetterBusy(false);
       }
@@ -161,7 +158,7 @@ export default function NewOfferLetterPage() {
     }
 
     if (!isIntern && (!Number.isFinite(g) || g <= 0)) {
-      alert("Set annual gross in Compensation before generating a paid offer PDF.");
+      alert("Set annual gross in Compensation before saving a paid offer letter.");
       return;
     }
     setLetterBusy(true);
@@ -173,44 +170,20 @@ export default function NewOfferLetterPage() {
       }
 
       setLinkedOffer(created);
-      const updated = await generateOfferLetterPdf(id, buildOfferLetterUpdatePayload(letterForm, created));
+      const updated = await saveOfferLetter(id, buildOfferLetterUpdatePayload(letterForm, created));
       setLinkedOffer(updated);
       router.replace(`/ats/offers-placement/offer-letter/new?offerId=${encodeURIComponent(id)}`, { scroll: false });
     } catch (e: unknown) {
-      alert(formatOfferLetterPdfError(e, "Could not create offer or generate PDF"));
+      alert(formatOfferLetterSaveError(e, "Could not create offer or save letter"));
     } finally {
       setLetterBusy(false);
     }
   }, [letterForm, linkedOffer, offerIdParam, router]);
 
-  const handleDownload = useCallback(async () => {
-    if (!linkedOffer?.offerLetterKey) {
-      return;
-    }
-    const id = getOfferRecordId(linkedOffer);
-    if (!id) {
-      alert("Missing offer id. Return to Offers & Placement and open the letter from the list.");
-      return;
-    }
-    setLetterBusy(true);
-    try {
-      const blob = await downloadOfferLetterFile(id);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Offer-Letter-${linkedOffer.offerCode || id}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: unknown) {
-      const msg =
-        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-        (e as Error)?.message ||
-        "Download failed";
-      alert(msg);
-    } finally {
-      setLetterBusy(false);
-    }
-  }, [linkedOffer]);
+  const standaloneLetterJobPostingDoc = useMemo(
+    () => combinedJobPostingDocText(linkedOffer?.job) ?? null,
+    [linkedOffer],
+  );
 
   const loadingOfferFromId = Boolean(offerIdParam && letterBusy && !loadError);
   const formPanelLinkOffer =
@@ -237,15 +210,12 @@ export default function NewOfferLetterPage() {
           letterForm={letterForm}
           setLetterForm={setLetterForm}
           letterBusy={letterBusy}
-          lastGeneratedLabel={
-            linkedOffer?.offerLetterGeneratedAt
-              ? new Date(linkedOffer.offerLetterGeneratedAt).toLocaleString()
-              : null
+          jobPostingDoc={standaloneLetterJobPostingDoc}
+          lastSavedLabel={
+            linkedOffer?.updatedAt ? new Date(linkedOffer.updatedAt).toLocaleString() : null
           }
-          hasPdf={Boolean(linkedOffer?.offerLetterKey)}
           onClose={() => router.push("/ats/offers-placement")}
-          onGeneratePdf={() => void handleGeneratePdf()}
-          onDownload={() => void handleDownload()}
+          onSaveLetter={() => void handleSaveLetter()}
           formPanelTop={formPanelLinkOffer}
         />
       </div>

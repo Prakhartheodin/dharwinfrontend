@@ -37,6 +37,8 @@ export interface JobApplicationsListParams {
   jobId?: string;
   candidateId?: string;
   status?: JobApplicationStatus;
+  /** When true, only applications tied to jobs that exist with status Active (drops closed/archived/draft and orphans after job delete). */
+  activeJobsOnly?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;

@@ -3,6 +3,7 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { ROUTES } from "@/shared/lib/constants";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
   listReferralLeads,
@@ -198,6 +199,7 @@ export default function ReferralLeadsPage() {
         limit: 40,
         page: 1,
         status: "active",
+        role: "referral_eligible",
       });
       setReferrerHits(res.results ?? []);
     } catch (e: unknown) {
@@ -362,8 +364,12 @@ export default function ReferralLeadsPage() {
             </p>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white mt-1">Referral leads</h1>
             <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-              Candidates who arrived through a tracked referral link
+              Candidate profiles who arrived through a tracked referral link
               {canUseOrgReferralControls ? " (organization view)" : " (your referrals)"}
+            </p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-2xl">
+              Each row is an ATS candidate record (same as the Candidates list). It is not a Settings → Users org
+              account; the referrer appears in the Referred by column.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -804,7 +810,7 @@ export default function ReferralLeadsPage() {
 
                 <div className="pt-2 space-y-2">
                   <Link
-                    href={`/ats/employees/edit?id=${encodeURIComponent(selected.id)}`}
+                    href={ROUTES.atsCandidateRecordEdit(selected.id)}
                     className="ti-btn ti-btn-primary w-full block text-center"
                   >
                     View candidate profile

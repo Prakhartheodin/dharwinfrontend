@@ -116,6 +116,145 @@ function validateNewPassword(password: string): string | null {
   return null;
 }
 
+type QualRow = {
+  degree: string;
+  institute: string;
+  location?: string;
+  startYear?: number;
+  endYear?: number;
+  description?: string;
+};
+
+type ExpRow = {
+  company: string;
+  role: string;
+  startDate?: string;
+  endDate?: string;
+  currentlyWorking?: boolean;
+  description?: string;
+};
+
+/** Split comma-joined Joi messages and rewrite them for profile forms. */
+function humanizeProfileValidationMessage(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "Couldn't save your profile. Check required fields.";
+  const parts = t.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean);
+  const mapped = [...new Set(parts.map(humanizeSingleValidationSegment))];
+  return mapped.join(" ");
+}
+
+function humanizeSingleValidationSegment(seg: string): string {
+  const low = seg.toLowerCase();
+
+  const expIdx = seg.match(/experiences?\[(\d+)\]/i);
+  const qualIdx = seg.match(/qualifications?\[(\d+)\]/i);
+  const expN = expIdx ? Number(expIdx[1]) + 1 : null;
+  const qualN = qualIdx ? Number(qualIdx[1]) + 1 : null;
+
+  const ex = (detail: string) =>
+    expN != null ? `Work experience (${expN}): ${detail}` : `Work experience: ${detail}`;
+  const qu = (detail: string) =>
+    qualN != null ? `Qualification (${qualN}): ${detail}` : `Qualifications: ${detail}`;
+
+  if (seg.includes('"role"') && (low.includes("empty") || low.includes("required")))
+    return ex("Job title (role) can't be empty — fill the Role field or remove this entry.");
+  if (seg.includes('"company"') && (low.includes("empty") || low.includes("required")))
+    return ex("Company name can't be empty.");
+  if (seg.includes('"degree"') && (low.includes("empty") || low.includes("required")))
+    return qu("Degree can't be empty.");
+  if (seg.includes('"institute"') && (low.includes("empty") || low.includes("required")))
+    return qu("School / institute can't be empty.");
+
+  if (seg.includes('"platform"') && (low.includes("empty") || low.includes("required")))
+    return "Social links: choose a platform for each URL, or clear incomplete rows.";
+  if (
+    seg.includes('"url"') &&
+    (low.includes("uri") || low.includes("invalid") || low.includes("empty") || low.includes("required"))
+  )
+    return "Social links: enter a valid URL (include https://) for each platform.";
+
+  return seg;
+}
+
+function validateQualificationsPayload(rows: QualRow[]): { error?: string; list?: QualRow[] } {
+  const list: QualRow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const q = rows[i];
+    const degree = (q.degree ?? "").trim();
+    const institute = (q.institute ?? "").trim();
+    const loc = (q.location ?? "").trim();
+    const desc = (q.description ?? "").trim();
+    const hasOther = !!(loc || desc || q.startYear != null || q.endYear != null);
+    if (!degree && !institute && !hasOther) continue;
+    if (!degree || !institute) {
+      return { error: `Qualification ${i + 1}: enter both degree and school/institute, or remove this entry.` };
+    }
+    list.push({
+      degree,
+      institute,
+      location: loc || undefined,
+      startYear: q.startYear,
+      endYear: q.endYear,
+      description: desc || undefined,
+    });
+  }
+  return { list };
+}
+
+function validateExperiencesPayload(rows: ExpRow[]): { error?: string; list?: ExpRow[] } {
+  const list: ExpRow[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const x = rows[i];
+    const company = (x.company ?? "").trim();
+    const role = (x.role ?? "").trim();
+    const hasOther =
+      !!(x.startDate || x.endDate || (x.description ?? "").trim() || x.currentlyWorking);
+    if (!company && !role && !hasOther) continue;
+    if (!company) {
+      return { error: `Work experience ${i + 1}: enter the company name, or remove this entry.` };
+    }
+    if (!role) {
+      return { error: `Work experience ${i + 1}: job title (Role) can't be empty — fill it or remove this entry.` };
+    }
+    list.push({ ...x, company, role });
+  }
+  return { list };
+}
+
+function validateSocialLinkRowsIncomplete(
+  rows: Array<{ platform: string; url: string }>
+): string | null {
+  for (let i = 0; i < rows.length; i++) {
+    const platform = rows[i]?.platform.trim() ?? "";
+    const url = rows[i]?.url.trim() ?? "";
+    if (platform && !url) return `Social link ${i + 1}: add a URL, or clear the row.`;
+    if (!platform && url) return `Social link ${i + 1}: choose a platform, or clear the URL.`;
+  }
+  return null;
+}
+
+function extractApiErrorMessage(err: unknown): string {
+  if (!(err instanceof AxiosError)) return "Failed to update profile.";
+  const data = err.response?.data as { message?: string | string[] } | undefined;
+  const m = data?.message;
+  if (Array.isArray(m) && m.length) return m.map(String).join(", ").trim();
+  if (typeof m === "string" && m.trim()) return m.trim();
+  return "Failed to update profile.";
+}
+
+async function showProfileSaveToast(kind: "error" | "success", title: string, text?: string): Promise<void> {
+  await Swal.fire({
+    icon: kind,
+    title,
+    ...(text ? { text } : {}),
+    toast: true,
+    position: "top-end",
+    showConfirmButton: false,
+    timer: kind === "error" ? 7000 : 3200,
+    timerProgressBar: true,
+  });
+}
+
 export default function PersonalInformationPage() {
   const {
     user,
@@ -149,8 +288,6 @@ export default function PersonalInformationPage() {
   const [staffDomain, setStaffDomain] = useState("");
 
   const [saveLoading, setSaveLoading] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const [saveSuccess, setSaveSuccess] = useState("");
   const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
   const [avatarRemoveLoading, setAvatarRemoveLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -199,7 +336,7 @@ export default function PersonalInformationPage() {
   });
 
   const notificationPanelId = useId();
-  const [notificationSectionOpen, setNotificationSectionOpen] = useState(true);
+  const [notificationSectionOpen, setNotificationSectionOpen] = useState(false);
 
   const enabledNotificationEmailCount = useMemo(
     () => ALL_NOTIFICATION_PREF_KEYS.filter((k) => notificationPrefs[k] !== false).length,
@@ -367,8 +504,6 @@ export default function PersonalInformationPage() {
 
   const handleSaveProfile = async () => {
     if (!user) return;
-    setSaveError("");
-    setSaveSuccess("");
 
     const trimmedFirst = firstName.trim();
     const trimmedLast = lastName.trim();
@@ -376,22 +511,26 @@ export default function PersonalInformationPage() {
     const trimmedEmail = email.trim();
 
     if (!trimmedFirst) {
-      setSaveError("First name is required.");
+      await showProfileSaveToast("error", "Can't save profile", "First name is required.");
       return;
     }
     if (hasAdminPrivileges && !trimmedEmail) {
-      setSaveError("Email is required.");
+      await showProfileSaveToast("error", "Can't save profile", "Email address is required.");
       return;
     }
     if (hasEmployeeProfile && !candidate) {
-      setSaveError("Still loading your profile. Please wait a moment and try again.");
+      await showProfileSaveToast(
+        "error",
+        "Can't save profile",
+        "Still loading your profile. Please wait a moment and try again."
+      );
       return;
     }
 
     if (hasEmployeeProfile && candidate) {
       const phoneErr = validatePhoneForCandidate(phoneNumber);
       if (phoneErr) {
-        setSaveError(phoneErr);
+        await showProfileSaveToast("error", "Can't save profile", phoneErr);
         return;
       }
     }
@@ -399,7 +538,7 @@ export default function PersonalInformationPage() {
     if (!hasEmployeeProfile) {
       const digits = staffPhone.replace(/\D/g, "");
       if (digits && (digits.length < 6 || digits.length > 15)) {
-        setSaveError("Phone number must be 6–15 digits.");
+        await showProfileSaveToast("error", "Can't save profile", "Phone number must be 6–15 digits.");
         return;
       }
     }
@@ -407,7 +546,11 @@ export default function PersonalInformationPage() {
     const pendingDocUploads = documentsList.some((d) => d.file && d.name);
     const pendingSlipUploads = salarySlips.some((s) => s.file && s.month && s.year);
     if (!hasAdminPrivileges && !candidate && (pendingDocUploads || pendingSlipUploads)) {
-      setSaveError("No candidate profile is linked to your account. Document and salary slip uploads require a candidate record.");
+      await showProfileSaveToast(
+        "error",
+        "Can't save profile",
+        "No candidate profile is linked to your account. Document and salary slip uploads require a candidate record."
+      );
       return;
     }
 
@@ -415,10 +558,32 @@ export default function PersonalInformationPage() {
     if (hasAdminPrivileges && !hasEmployeeProfile) {
       const tu = userName.trim().toLowerCase();
       if (!tu) {
-        setSaveError("Username is required.");
+        await showProfileSaveToast("error", "Can't save profile", "Username is required.");
         return;
       }
       staffUsernameForSave = tu;
+    }
+
+    let qualForSave: QualRow[] | undefined;
+    let expForSave: ExpRow[] | undefined;
+    if (hasEmployeeProfile && candidate) {
+      const qRes = validateQualificationsPayload(qualifications);
+      if (qRes.error) {
+        await showProfileSaveToast("error", "Can't save profile", qRes.error);
+        return;
+      }
+      qualForSave = qRes.list;
+      const eRes = validateExperiencesPayload(experiences);
+      if (eRes.error) {
+        await showProfileSaveToast("error", "Can't save profile", eRes.error);
+        return;
+      }
+      expForSave = eRes.list;
+      const socialErr = validateSocialLinkRowsIncomplete(socialLinkRows);
+      if (socialErr) {
+        await showProfileSaveToast("error", "Can't save profile", socialErr);
+        return;
+      }
     }
 
     setSaveLoading(true);
@@ -426,7 +591,22 @@ export default function PersonalInformationPage() {
       const useCandidateApi = Boolean(candidate && (hasEmployeeProfile || !hasAdminPrivileges));
 
       if (useCandidateApi && candidate) {
-        const DOCUMENT_TYPES = ["Aadhar", "PAN", "Bank", "Passport", "CV/Resume", "Marksheet", "Degree Certificate", "Experience Letter", "Other"] as const;
+        const DOCUMENT_TYPES = [
+          "Aadhar",
+          "PAN",
+          "Bank",
+          "Passport",
+          "CV/Resume",
+          "Marksheet",
+          "Degree Certificate",
+          "Experience Letter",
+          "Offer Letter",
+          "Visa",
+          "EAD Card",
+          "I-765 Receipt",
+          "I-983 Form-only",
+          "Other",
+        ] as const;
         let finalDocs: Array<{ type: string; label?: string; url?: string; key?: string; originalName?: string; size?: number; mimeType?: string }> = existingDocs.map((d) => ({
           type: d.type || "Other",
           label: d.label,
@@ -514,8 +694,8 @@ export default function PersonalInformationPage() {
               zipCode: address.zipCode || undefined,
               country: address.country || undefined,
             },
-            qualifications: qualifications.length > 0 ? qualifications : undefined,
-            experiences: experiences.length > 0 ? experiences : undefined,
+            qualifications: qualForSave && qualForSave.length > 0 ? qualForSave : undefined,
+            experiences: expForSave && expForSave.length > 0 ? expForSave : undefined,
             documents: finalDocs,
             salarySlips: finalSalarySlips,
             socialLinks: socialPayload,
@@ -586,19 +766,25 @@ export default function PersonalInformationPage() {
         await refreshUser();
       }
       await checkAuth();
-      setSaveSuccess("Profile updated successfully.");
-      await Swal.fire("Profile updated", "Your profile has been saved successfully.", "success");
+      await Swal.fire({
+        icon: "success",
+        title: "Profile updated",
+        text: "Your profile has been saved successfully.",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 3200,
+        timerProgressBar: true,
+      });
     } catch (err) {
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : "Failed to update profile.";
-      setSaveError(msg);
+      const raw = extractApiErrorMessage(err);
+      await showProfileSaveToast(
+        "error",
+        "Couldn't save profile",
+        humanizeProfileValidationMessage(raw)
+      );
     } finally {
       setSaveLoading(false);
-      setTimeout(() => {
-        setSaveSuccess("");
-      }, 2000);
     }
   };
 
@@ -608,14 +794,13 @@ export default function PersonalInformationPage() {
     e.target.value = "";
     const allowed = ["image/jpeg", "image/jpg", "image/png"];
     if (!allowed.includes(file.type)) {
-      setSaveError("Please upload a JPEG or PNG image (max 5MB).");
+      await showProfileSaveToast("error", "Invalid file", "Please upload a JPEG or PNG image (max 5 MB).");
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
-      setSaveError("Image must be smaller than 5MB.");
+      await showProfileSaveToast("error", "Image too large", "Image must be smaller than 5 MB.");
       return;
     }
-    setSaveError("");
     setAvatarUploadLoading(true);
     try {
       const result = await uploadDocument(file);
@@ -627,11 +812,23 @@ export default function PersonalInformationPage() {
         await authApi.updateMyProfile({ profilePicture });
       }
       await refreshUser();
-      setSaveSuccess("Profile picture updated.");
-      setTimeout(() => setSaveSuccess(""), 2000);
+      await Swal.fire({
+        icon: "success",
+        title: "Photo updated",
+        text: "Your profile picture has been saved.",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 2800,
+        timerProgressBar: true,
+      });
     } catch (err) {
-      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : "Failed to upload photo.";
-      setSaveError(msg);
+      const msg = extractApiErrorMessage(err);
+      await showProfileSaveToast(
+        "error",
+        "Upload failed",
+        humanizeProfileValidationMessage(msg) || "Couldn't upload photo. Try again."
+      );
     } finally {
       setAvatarUploadLoading(false);
     }
@@ -639,7 +836,6 @@ export default function PersonalInformationPage() {
 
   const handleAvatarRemove = async () => {
     if (!user) return;
-    setSaveError("");
     setAvatarRemoveLoading(true);
     try {
       if (candidate && (hasEmployeeProfile || !hasAdminPrivileges)) {
@@ -649,11 +845,22 @@ export default function PersonalInformationPage() {
         await authApi.updateMyProfile({ profilePicture: null });
       }
       await refreshUser();
-      setSaveSuccess("Profile picture removed.");
-      setTimeout(() => setSaveSuccess(""), 2000);
+      await Swal.fire({
+        icon: "success",
+        title: "Photo removed",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 2600,
+        timerProgressBar: true,
+      });
     } catch (err) {
-      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : "Failed to remove photo.";
-      setSaveError(msg);
+      const msg = extractApiErrorMessage(err);
+      await showProfileSaveToast(
+        "error",
+        "Couldn't remove photo",
+        humanizeProfileValidationMessage(msg) || "Something went wrong. Try again."
+      );
     } finally {
       setAvatarRemoveLoading(false);
     }
@@ -755,16 +962,7 @@ export default function PersonalInformationPage() {
     <Fragment>
       <Seo title="Personal Information" />
       <div className="sm:p-4 p-4">
-        {saveError && (
-          <div className="mb-4 p-3 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
-            {saveError}
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="mb-4 p-3 bg-success/10 border border-success/30 text-success rounded-md text-sm">
-            {saveSuccess}
-          </div>
-        )}
+        {/* Save success/errors: SweetAlert2 toasts (no top banner) */}
 
         {/* Profile summary card */}
         <div className="box mb-6 border border-defaultborder rounded-lg overflow-hidden">
@@ -881,6 +1079,9 @@ export default function PersonalInformationPage() {
         <div className="sm:grid grid-cols-12 gap-6 mb-6">
           <div className="xl:col-span-6 col-span-12">
             <label htmlFor="first-name" className="form-label">
+              <span className="text-danger me-0.5" aria-hidden>
+                *
+              </span>
               First Name
             </label>
             <input
@@ -906,7 +1107,14 @@ export default function PersonalInformationPage() {
             />
           </div>
           <div className="xl:col-span-12 col-span-12">
-            <label className="form-label">Username</label>
+            <label className="form-label">
+              {canEditUsernameOnPage ? (
+                <span className="text-danger me-0.5" aria-hidden>
+                  *
+                </span>
+              ) : null}
+              Username
+            </label>
             <input
               type="text"
               className={`form-control w-full !rounded-md ${canEditUsernameOnPage ? "" : "!bg-gray-100 dark:!bg-black/20"}`}
@@ -932,6 +1140,11 @@ export default function PersonalInformationPage() {
         <div className="sm:grid grid-cols-12 gap-6 mb-6">
           <div className="xl:col-span-6 col-span-12">
             <label htmlFor="email-address" className="form-label">
+              {hasAdminPrivileges ? (
+                <span className="text-danger me-0.5" aria-hidden>
+                  *
+                </span>
+              ) : null}
               Email Address :
             </label>
             <input
@@ -1252,24 +1465,39 @@ export default function PersonalInformationPage() {
             <div className="box border border-defaultborder rounded-lg overflow-hidden">
               <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
                 <h6 className="font-semibold mb-0 text-[0.9375rem]">Qualifications</h6>
+                <p className="text-xs text-defaulttextcolor/70 mb-0 mt-1">
+                  In each entry, fields marked <span className="text-danger">*</span> are required if you keep that row.
+                </p>
               </div>
               <div className="box-body px-4 py-4 space-y-4">
                 {qualifications.map((q, i) => (
                   <div key={i} className="p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 sm:grid grid-cols-12 gap-3">
                     <div className="col-span-12 sm:col-span-6">
+                      <label className="form-label text-xs mb-1">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        Degree
+                      </label>
                       <input
                         type="text"
                         className="form-control !rounded-md"
-                        placeholder="Degree"
+                        placeholder="e.g. B.Sc Computer Science"
                         value={q.degree}
                         onChange={(e) => setQualifications((arr) => arr.map((x, j) => (j === i ? { ...x, degree: e.target.value } : x)))}
                       />
                     </div>
                     <div className="col-span-12 sm:col-span-6">
+                      <label className="form-label text-xs mb-1">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        Institute
+                      </label>
                       <input
                         type="text"
                         className="form-control !rounded-md"
-                        placeholder="Institute"
+                        placeholder="School or university"
                         value={q.institute}
                         onChange={(e) => setQualifications((arr) => arr.map((x, j) => (j === i ? { ...x, institute: e.target.value } : x)))}
                       />
@@ -1309,7 +1537,7 @@ export default function PersonalInformationPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="col-span-10">
+                    <div className="col-span-12">
                       <input
                         type="text"
                         className="form-control !rounded-md"
@@ -1318,8 +1546,16 @@ export default function PersonalInformationPage() {
                         onChange={(e) => setQualifications((arr) => arr.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
                       />
                     </div>
-                    <div className="col-span-2 flex justify-end">
-                      <button type="button" className="ti-btn ti-btn-soft-danger ti-btn-sm" onClick={() => setQualifications((arr) => arr.filter((_, j) => j !== i))}>Remove</button>
+                    <div className="col-span-12 flex justify-end pt-1 mt-1 border-t border-defaultborder dark:border-white/10">
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-soft-danger ti-btn-sm inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
+                        onClick={() => setQualifications((arr) => arr.filter((_, j) => j !== i))}
+                        aria-label="Remove this qualification"
+                      >
+                        <i className="ri-delete-bin-line text-[1rem] leading-none" aria-hidden />
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1334,24 +1570,39 @@ export default function PersonalInformationPage() {
             <div className="box border border-defaultborder rounded-lg overflow-hidden">
               <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
                 <h6 className="font-semibold mb-0 text-[0.9375rem]">Work experience</h6>
+                <p className="text-xs text-defaulttextcolor/70 mb-0 mt-1">
+                  In each job, fields marked <span className="text-danger">*</span> are required if you keep that entry (job title corresponds to Role).
+                </p>
               </div>
               <div className="box-body px-4 py-4 space-y-4">
                 {experiences.map((exp, i) => (
                   <div key={i} className="p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 sm:grid grid-cols-12 gap-3">
                     <div className="col-span-12 sm:col-span-6">
+                      <label className="form-label text-xs mb-1">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        Company
+                      </label>
                       <input
                         type="text"
                         className="form-control !rounded-md"
-                        placeholder="Company"
+                        placeholder="Company name"
                         value={exp.company}
                         onChange={(e) => setExperiences((arr) => arr.map((x, j) => (j === i ? { ...x, company: e.target.value } : x)))}
                       />
                     </div>
                     <div className="col-span-12 sm:col-span-6">
+                      <label className="form-label text-xs mb-1">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        Role
+                      </label>
                       <input
                         type="text"
                         className="form-control !rounded-md"
-                        placeholder="Role"
+                        placeholder="Job title / role"
                         value={exp.role}
                         onChange={(e) => setExperiences((arr) => arr.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}
                       />
@@ -1374,7 +1625,7 @@ export default function PersonalInformationPage() {
                         onChange={(e) => setExperiences((arr) => arr.map((x, j) => (j === i ? { ...x, endDate: e.target.value || undefined } : x)))}
                       />
                     </div>
-                    <div className="col-span-10">
+                    <div className="col-span-12">
                       <input
                         type="text"
                         className="form-control !rounded-md"
@@ -1383,8 +1634,16 @@ export default function PersonalInformationPage() {
                         onChange={(e) => setExperiences((arr) => arr.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))}
                       />
                     </div>
-                    <div className="col-span-2 flex justify-end">
-                      <button type="button" className="ti-btn ti-btn-soft-danger ti-btn-sm" onClick={() => setExperiences((arr) => arr.filter((_, j) => j !== i))}>Remove</button>
+                    <div className="col-span-12 flex justify-end pt-1 mt-1 border-t border-defaultborder dark:border-white/10">
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-soft-danger ti-btn-sm inline-flex items-center justify-center gap-1.5 whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
+                        onClick={() => setExperiences((arr) => arr.filter((_, j) => j !== i))}
+                        aria-label="Remove this work experience"
+                      >
+                        <i className="ri-delete-bin-line text-[1rem] leading-none" aria-hidden />
+                        Remove
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1423,7 +1682,8 @@ export default function PersonalInformationPage() {
               </div>
               <div className="box-body px-4 py-4 space-y-4">
                 <p className="text-defaulttextcolor/70 text-sm mb-0">
-                  Optional. Shown on My Profile and kept in sync when recruiters edit your candidate record.
+                  Optional. Each added link must have both Platform and URL (fields marked <span className="text-danger">*</span> when you use a row).
+                  Shown on My Profile when saved.
                 </p>
                 {socialLinkRows.map((row, i) => (
                   <div key={row.id} className="p-3 border border-defaultborder rounded-md sm:grid grid-cols-12 gap-3 relative">
@@ -1437,7 +1697,12 @@ export default function PersonalInformationPage() {
                       <i className="ri-close-line" />
                     </button>
                     <div className="col-span-12 sm:col-span-5">
-                      <label className="form-label text-xs">Platform</label>
+                      <label className="form-label text-xs">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        Platform
+                      </label>
                       <select
                         className="form-control !rounded-md"
                         value={row.platform}
@@ -1458,7 +1723,12 @@ export default function PersonalInformationPage() {
                       </select>
                     </div>
                     <div className="col-span-12 sm:col-span-7">
-                      <label className="form-label text-xs">URL</label>
+                      <label className="form-label text-xs">
+                        <span className="text-danger me-0.5" aria-hidden>
+                          *
+                        </span>
+                        URL
+                      </label>
                       <input
                         type="url"
                         className="form-control !rounded-md"
@@ -1561,6 +1831,11 @@ export default function PersonalInformationPage() {
                           <option value="Marksheet">Marksheet</option>
                           <option value="Degree Certificate">Degree Certificate</option>
                           <option value="Experience Letter">Experience Letter</option>
+                          <option value="Offer Letter">Offer Letter</option>
+                          <option value="Visa">Visa</option>
+                          <option value="EAD Card">EAD Card</option>
+                          <option value="I-765 Receipt">I-765 Receipt</option>
+                          <option value="I-983 Form-only">I-983 Form-only</option>
                         </optgroup>
                         <option value="Other">Other</option>
                       </select>

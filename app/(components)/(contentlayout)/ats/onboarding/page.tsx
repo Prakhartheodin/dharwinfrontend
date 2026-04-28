@@ -7,6 +7,7 @@ import pipelineStyles from '../ats-pipeline-list.module.css'
 import { listPlacements } from '@/shared/lib/api/placements'
 import type { Placement } from '@/shared/lib/api/placements'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
+import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 
 const isValidMongoId = (id: unknown): id is string =>
@@ -263,7 +264,7 @@ const Onboarding = () => {
                               {p.candidate?.employeeId || p.employeeId || '-'}
                             </td>
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
-                              {p.joiningDate ? new Date(p.joiningDate).toLocaleDateString() : '-'}
+                              <JoiningDateTableCell value={p.joiningDate} />
                             </td>
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
                               {getCandidateDepartment(p)}

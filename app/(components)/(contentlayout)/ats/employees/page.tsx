@@ -1,6 +1,6 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useCallback, useMemo, useState, useEffect } from 'react'
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 
 const DatePicker = dynamic(() => import('react-datepicker').then((mod) => mod.default), { ssr: false })
@@ -83,6 +83,37 @@ function resignDateLabel(candidate: CandidateDisplay): string | null {
   const d = new Date(rd as string)
   if (Number.isNaN(d.getTime())) return null
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
+/** Stable ref for react-table initialState (avoid new object each render). */
+const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 25 }
+
+/** Maps toolbar / column-header sort → `/employees` `sortBy` (`field:asc|desc`). */
+function getEmployeesApiSortBy(selectedSort: string): string {
+  switch (selectedSort) {
+    case 'name-asc':
+      return 'fullName:asc'
+    case 'name-desc':
+      return 'fullName:desc'
+    case 'joining-asc':
+      return 'joiningDate:asc'
+    case 'joining-desc':
+      return 'joiningDate:desc'
+    default:
+      return 'createdAt:desc'
+  }
+}
+
+function nextNameSortToggle(current: string): 'name-asc' | 'name-desc' {
+  if (current === 'name-asc') return 'name-desc'
+  if (current === 'name-desc') return 'name-asc'
+  return 'name-asc'
+}
+
+function nextJoinSortToggle(current: string): 'joining-asc' | 'joining-desc' {
+  if (current === 'joining-asc') return 'joining-desc'
+  if (current === 'joining-desc') return 'joining-asc'
+  return 'joining-asc'
 }
 
 /** Initials from name (up to 2 chars), same logic as my profile. */
@@ -337,6 +368,13 @@ const Candidates = () => {
     agentIds: [],
     employmentStatus: 'current',
   })
+  /** React-controlled filters panel — Preline HSOverlay often misses registration after SPA navigation */
+  const [employeesFilterPanelOpen, setEmployeesFilterPanelOpen] = useState(false)
+
+  /** Sort / Excel — React-controlled (Preline hs-dropdown + SPA can swallow clicks / skip init). */
+  const [employeesToolbarMenu, setEmployeesToolbarMenu] = useState<'sort' | 'excel' | null>(null)
+  const employeesSortDropdownRef = useRef<HTMLDivElement>(null)
+  const employeesExcelDropdownRef = useRef<HTMLDivElement>(null)
 
   // Search state for name filter dropdown
   const [searchName, setSearchName] = useState('')
@@ -357,6 +395,21 @@ const Candidates = () => {
     const t = setTimeout(() => setDebouncedSearchName(searchName), 400)
     return () => clearTimeout(t)
   }, [searchName])
+
+  useEffect(() => {
+    if (!employeesToolbarMenu) return
+    const handleOutside = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (
+        !employeesSortDropdownRef.current?.contains(t) &&
+        !employeesExcelDropdownRef.current?.contains(t)
+      ) {
+        setEmployeesToolbarMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [employeesToolbarMenu])
 
   // Create candidate modal state
   const [createForm, setCreateForm] = useState({
@@ -390,7 +443,7 @@ const Candidates = () => {
   const fetchParams = useMemo(() => {
     const params: Record<string, unknown> = {
       limit: pageSize,
-      sortBy: 'createdAt:desc',
+      sortBy: getEmployeesApiSortBy(selectedSort),
       includeOpenSopCount: '1',
     }
     if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
@@ -400,12 +453,12 @@ const Candidates = () => {
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
     params.employmentStatus = filters.employmentStatus
     return params
-  }, [filters, pageSize, debouncedSearchName])
+  }, [filters, pageSize, debouncedSearchName, selectedSort])
 
   /** POST /candidates/export uses the same filters as the list (omit page/limit/SOP count). */
   const exportQueryParams = useMemo(() => {
     const params: Record<string, unknown> = {
-      sortBy: 'createdAt:desc',
+      sortBy: getEmployeesApiSortBy(selectedSort),
     }
     if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
     else if (filters.name?.length) params.fullName = filters.name[0]
@@ -414,7 +467,7 @@ const Candidates = () => {
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
     params.employmentStatus = filters.employmentStatus
     return params
-  }, [filters, debouncedSearchName])
+  }, [filters, debouncedSearchName, selectedSort])
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -436,9 +489,10 @@ const Candidates = () => {
       .finally(() => setCandidatesLoading(false))
   }, [apiPage, fetchParams])
 
+  // Refetch when filters / search / page size / sort-by API param or page number change (explicit deps avoid stale closures on sort dropdown).
   useEffect(() => {
     refreshCandidates(false)
-  }, [apiPage, fetchParams])
+  }, [fetchParams, apiPage])
 
   // Fetch all unique names for filter dropdown (not limited by page); respect employmentStatus
   useEffect(() => {
@@ -462,7 +516,7 @@ const Candidates = () => {
       .finally(() => setAgentsLoading(false))
   }, [])
 
-  const prevFiltersRef = React.useRef(filters)
+  const prevFiltersRef = useRef(filters)
   useEffect(() => {
     if (prevFiltersRef.current !== filters) {
       prevFiltersRef.current = filters
@@ -1052,15 +1106,15 @@ const Candidates = () => {
     }
   }
 
-  const openJoiningDateModal = (candidate: CandidateDisplay) => {
+  const openJoiningDateModal = useCallback((candidate: CandidateDisplay) => {
     setJoiningDateCandidate(candidate)
-    const j = (candidate as CandidateDisplay)._raw?.joiningDate
+    const j = candidate._raw?.joiningDate
     setJoiningDateValue(j ? new Date(j as string).toISOString().slice(0, 10) : '')
     setActionError(null)
     setTimeout(() => {
       ;(window as any).HSOverlay?.open(document.querySelector('#joining-date-modal'))
     }, 100)
-  }
+  }, [])
   const handleJoiningDateSubmit = async () => {
     if (!joiningDateCandidate?.id || !joiningDateValue) return
     setJoiningDateSubmitting(true)
@@ -1272,10 +1326,16 @@ const Candidates = () => {
       },
       {
         Header: 'Employee info',
-        accessor: 'candidateInfo',
+        id: 'candidateInfo',
+        accessor: (row: CandidateDisplay) => row.name ?? '',
         Cell: ({ row }: any) => {
           const candidate = row.original as CandidateDisplay
           const resigned = isCandidateResigned(candidate)
+          const jd = candidate._raw?.joiningDate as string | undefined
+          const joinDisplay =
+            jd && !Number.isNaN(new Date(jd).getTime())
+              ? new Date(jd).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+              : '—'
           return (
             <div className="flex items-center gap-3">
               <div
@@ -1323,20 +1383,43 @@ const Candidates = () => {
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                <div className="max-md:whitespace-normal max-md:break-words text-xs text-gray-500 dark:text-gray-400 md:truncate">
                   {(candidate._raw?.employeeId) && (
-                    <div className="flex items-center gap-1">
-                      <i className="ri-id-card-line"></i>
+                    <div className="flex items-start gap-1">
+                      <i className="ri-id-card-line mt-px shrink-0"></i>
                       {candidate._raw.employeeId}
                     </div>
                   )}
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <i className="ri-phone-line"></i>
+                  <div className="mt-0.5 flex items-start gap-1">
+                    <i className="ri-phone-line mt-px shrink-0"></i>
                     {candidate.phone}
                   </div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <i className="ri-mail-line"></i>
-                    {candidate.email}
+                  <div className="mt-0.5 flex items-start gap-1">
+                    <i className="ri-mail-line mt-px shrink-0"></i>
+                    <span className="min-w-0 break-all">{candidate.email}</span>
+                  </div>
+                  <div
+                    className={`mt-1.5 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[0.7rem] text-gray-800 dark:text-gray-200 md:hidden ${
+                      canEditJoiningDate ? 'cursor-pointer hover:bg-primary/[0.07]' : ''
+                    }`}
+                    onClick={canEditJoiningDate ? () => openJoiningDateModal(candidate) : undefined}
+                    onKeyDown={
+                      canEditJoiningDate
+                        ? (e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              openJoiningDateModal(candidate)
+                            }
+                          }
+                        : undefined
+                    }
+                    role={canEditJoiningDate ? 'button' : undefined}
+                    tabIndex={canEditJoiningDate ? 0 : undefined}
+                    title={canEditJoiningDate ? 'Click to edit joining date' : undefined}
+                    aria-label={`Joining date ${joinDisplay}`}
+                  >
+                    <i className="ri-calendar-check-line shrink-0 text-gray-500 dark:text-gray-400"></i>
+                    <span className="whitespace-nowrap">{joinDisplay}</span>
                   </div>
                 </div>
               </div>
@@ -1527,6 +1610,7 @@ const Candidates = () => {
       deletingCandidateId,
       openAttendanceOverlay,
       canEditJoiningDate,
+      openJoiningDateModal,
       isAdministrator,
       authUser?.id,
       authLoading,
@@ -1535,23 +1619,21 @@ const Candidates = () => {
     ]
   )
 
-  // Server-side filtering: API returns filtered results, no client-side filter
+  // Server-side filtering: API returns filtered results (name sorts use API fullName + server collation)
   const filteredData = useMemo(() => candidates, [candidates])
-
-  const data = useMemo(() => filteredData, [filteredData])
+  const data = filteredData
 
   const allNames = filterOptions.names
 
   const filteredNames = useMemo(() => {
-    if (!searchName) return allNames
-    return allNames.filter(name =>
-      name.toLowerCase().includes(searchName.toLowerCase())
-    )
+    const q = searchName.trim().toLowerCase()
+    if (!q) return []
+    return allNames.filter((name) => name.toLowerCase().includes(q))
   }, [allNames, searchName])
 
   const filteredAgents = useMemo(() => {
-    if (!searchAgent.trim()) return agentOptions
     const q = searchAgent.trim().toLowerCase()
+    if (!q) return []
     return agentOptions.filter(
       (a) => a.name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q)
     )
@@ -1586,26 +1668,14 @@ const Candidates = () => {
     setSearchAgent('')
   }
 
-  /** Preline only binds `data-hs-overlay` toggles that exist during `autoInit`; open explicitly so Search always works. */
-  const openCandidatesFilterPanel = useCallback(() => {
-    const el = document.querySelector('#candidates-filter-panel')
-    if (!el) return
-    const run = () => {
-      try {
-        ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
-      } catch {
-        /* ignore */
-      }
-      requestAnimationFrame(() => {
-        ;(window as unknown as { HSOverlay?: { open: (n: Element) => void } }).HSOverlay?.open(el)
-      })
+  useEffect(() => {
+    if (!employeesFilterPanelOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setEmployeesFilterPanelOpen(false)
     }
-    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
-      run()
-      return
-    }
-    void import('preline/preline').then(run)
-  }, [])
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [employeesFilterPanelOpen])
 
   const hasActiveFilters =
     filters.name.length > 0 ||
@@ -1634,21 +1704,29 @@ const Candidates = () => {
     }
   }, [filters.employmentStatus])
 
-  const tableInstance: any = useTable(
-    {
+  /** Must be referentially stable when apiPage/pageSize unchanged — inline objects cause usePagination update loops. */
+  const employeesPaginationState = useMemo(
+    () => ({
+      pageIndex: Math.max(0, apiPage - 1),
+      pageSize,
+    }),
+    [apiPage, pageSize]
+  )
+
+  const employeesTableOptions = useMemo(
+    () => ({
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 25 },
+      initialState: EMPLOYEES_TABLE_INITIAL_STATE,
       manualPagination: true,
-      pageCount: totalPages || 1,
-      state: {
-        pageIndex: apiPage - 1,
-        pageSize,
-      },
-    },
-    useSortBy,
-    usePagination
+      manualSortBy: true,
+      pageCount: Math.max(1, totalPages || 1),
+      state: employeesPaginationState,
+    }),
+    [columns, data, employeesPaginationState, totalPages]
   )
+
+  const tableInstance: any = useTable(employeesTableOptions, useSortBy, usePagination)
 
   const {
     getTableProps,
@@ -1669,32 +1747,29 @@ const Candidates = () => {
 
   const { pageIndex } = state
 
-  // Handle sort selection
+  // Handle sort selection — ordering is enforced by API `sortBy` (+ client page-sort for skills only); manualSortBy prevents react-table from re-sorting with invalid accessors.
   const handleSortChange = (sortOption: string) => {
-    setSelectedSort(sortOption)
-    
-    switch(sortOption) {
+    if (sortOption === 'clear-sort') {
+      setSelectedSort('')
+    } else {
+      setSelectedSort(sortOption)
+    }
+    setApiPage(1)
+    switch (sortOption) {
       case 'name-asc':
         setSortBy([{ id: 'candidateInfo', desc: false }])
         break
       case 'name-desc':
         setSortBy([{ id: 'candidateInfo', desc: true }])
         break
-      case 'skills-asc':
-        setSortBy([{ id: 'skills', desc: false }])
+      case 'joining-asc':
+        setSortBy([{ id: 'joiningDate', desc: false }])
         break
-      case 'skills-desc':
-        setSortBy([{ id: 'skills', desc: true }])
-        break
-      case 'education-asc':
-        setSortBy([{ id: 'education', desc: false }])
-        break
-      case 'education-desc':
-        setSortBy([{ id: 'education', desc: true }])
+      case 'joining-desc':
+        setSortBy([{ id: 'joiningDate', desc: true }])
         break
       case 'clear-sort':
         setSortBy([])
-        setSelectedSort('')
         break
       default:
         setSortBy([])
@@ -1718,7 +1793,7 @@ const Candidates = () => {
   return (
     <Fragment>
       <Seo title="Employees" />
-      <div className="container-fluid pt-6 pb-8">
+      <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
       {!candidatesLoading && candidatesError && (
         <div
           className="mb-6 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger/[0.07] p-4 text-danger shadow-sm"
@@ -1761,10 +1836,10 @@ const Candidates = () => {
           <div className="min-w-0 flex-1 text-sm font-medium leading-relaxed">{actionSuccess}</div>
         </div>
       )}
-      <div className="grid grid-cols-12 gap-6 h-[calc(100vh-8rem)]">
+      <div className="grid min-h-0 grid-cols-12 gap-4 md:h-[calc(100vh-8rem)] md:gap-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box flex h-full flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
-            <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="box-header flex flex-col gap-3 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-4 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-6">
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
                   <i className="ri-team-line text-xl" aria-hidden />
@@ -1797,8 +1872,8 @@ const Candidates = () => {
                   </p>
                 </div>
               </div>
-              <div className="relative z-20 flex flex-wrap items-center gap-2 overflow-visible sm:justify-end">
-                <div className="me-2 inline-flex items-center gap-2">
+              <div className="relative z-20 flex w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-2 overflow-visible md:justify-end">
+                <div className="inline-flex items-center gap-2">
                   <label
                     htmlFor="candidates-page-size"
                     className="mb-0 hidden whitespace-nowrap text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted dark:text-white/45 sm:inline"
@@ -1822,133 +1897,146 @@ const Candidates = () => {
                     ))}
                   </select>
                 </div>
-                <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
+                <div ref={employeesSortDropdownRef} className="relative z-30">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
-                    id="sort-dropdown-button"
-                    aria-expanded="false"
+                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"
+                    id="employees-sort-dropdown-button"
+                    aria-haspopup="menu"
+                    aria-expanded={employeesToolbarMenu === 'sort'}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setEmployeesToolbarMenu((m) => (m === 'sort' ? null : 'sort'))
+                    }}
                   >
                     <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
-                    <li>
+                  {employeesToolbarMenu === 'sort' ? (
+                    <ul
+                      className="absolute end-0 top-full z-50 mt-1 max-h-[min(70vh,24rem)] min-w-[12rem] overflow-y-auto rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
+                      role="menu"
+                      aria-labelledby="employees-sort-dropdown-button"
+                    >
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'name-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('name-asc')}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          handleSortChange('name-asc')
+                        }}
                       >
                         <i className="ri-sort-asc me-2 align-middle inline-block"></i>Name (A-Z)
                       </button>
                     </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'name-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('name-desc')}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          handleSortChange('name-desc')
+                        }}
                       >
                         <i className="ri-sort-desc me-2 align-middle inline-block"></i>Name (Z-A)
                       </button>
                     </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'skills-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('skills-asc')}
-                      >
-                        <i className="ri-code-s-slash-line me-2 align-middle inline-block"></i>Skills (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'skills-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('skills-desc')}
-                      >
-                        <i className="ri-code-s-slash-line me-2 align-middle inline-block"></i>Skills (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'education-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('education-asc')}
-                      >
-                        <i className="ri-graduation-cap-line me-2 align-middle inline-block"></i>Education (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'education-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('education-desc')}
-                      >
-                        <i className="ri-graduation-cap-line me-2 align-middle inline-block"></i>Education (Z-A)
-                      </button>
-                    </li>
                     <li className="ti-dropdown-divider"></li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left text-gray-500 dark:text-gray-400"
-                        onClick={() => handleSortChange('clear-sort')}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          handleSortChange('clear-sort')
+                        }}
                       >
                         <i className="ri-close-line me-2 align-middle inline-block"></i>Clear Sort
                       </button>
                     </li>
-                  </ul>
+                    </ul>
+                  ) : null}
                 </div>
                 <Link
                   href="/ats/employees/add"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem]"
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add employee
                 </Link>
-                <div className="hs-dropdown ti-dropdown me-2 [--placement:bottom-end] [--scope:window]">
+                <div ref={employeesExcelDropdownRef} className="relative z-30">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
-                    id="excel-dropdown-button"
-                    aria-expanded="false"
+                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+                    id="employees-excel-dropdown-button"
+                    aria-haspopup="menu"
+                    aria-expanded={employeesToolbarMenu === 'excel'}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setEmployeesToolbarMenu((m) => (m === 'excel' ? null : 'excel'))
+                    }}
                   >
                     <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
+                  {employeesToolbarMenu === 'excel' ? (
+                    <ul
+                      className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
+                      role="menu"
+                      aria-labelledby="employees-excel-dropdown-button"
+                    >
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => router.push('/ats/employees/import')}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          router.push('/ats/employees/import')
+                        }}
                       >
                         <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
                       </button>
                     </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={handleExportAllOpen}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          handleExportAllOpen()
+                        }}
                       >
                         <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
                       </button>
                     </li>
-                    <li>
+                    <li role="none">
                       <button
                         type="button"
+                        role="menuitem"
                         className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => downloadCandidateExcelTemplate()}
+                        onClick={() => {
+                          setEmployeesToolbarMenu(null)
+                          downloadCandidateExcelTemplate()
+                        }}
                       >
                         <i className="ri-download-line me-2 align-middle inline-block"></i>Template
                       </button>
                     </li>
-                  </ul>
+                    </ul>
+                  ) : null}
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  onClick={openCandidatesFilterPanel}
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ${employeesFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  aria-expanded={employeesFilterPanelOpen}
+                  onClick={() => setEmployeesFilterPanelOpen((v) => !v)}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
                   {hasActiveFilters && (
@@ -1983,7 +2071,30 @@ const Candidates = () => {
                 </button>
               </div>
             </div>
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
+
+            <CandidatesFilterPanel
+              layoutOpen={employeesFilterPanelOpen}
+              onCloseLayout={() => setEmployeesFilterPanelOpen(false)}
+              filters={filters}
+              setFilters={setFilters}
+              allNames={allNames}
+              filterOptionsLoading={filterOptionsLoading}
+              filteredNames={filteredNames}
+              searchName={searchName}
+              setSearchName={setSearchName}
+              agentOptions={agentOptions}
+              agentsLoading={agentsLoading}
+              filteredAgents={filteredAgents}
+              searchAgent={searchAgent}
+              setSearchAgent={setSearchAgent}
+              handleMultiSelectChange={handleMultiSelectChange}
+              handleRemoveFilter={handleRemoveFilter}
+              handleResetFilters={handleResetFilters}
+              hasActiveFilters={hasActiveFilters}
+              activeFilterCount={activeFilterCount}
+            />
+
+            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden min-h-0">
               {candidatesLoading && (
                 <div
                   className="relative h-1 w-full shrink-0 overflow-hidden bg-primary/[0.08] dark:bg-primary/[0.12]"
@@ -1994,24 +2105,28 @@ const Candidates = () => {
                   <div className="absolute inset-y-0 left-0 w-[28%] rounded-e-full bg-gradient-to-r from-primary/30 via-primary to-primary/30 ring-1 ring-primary/25 motion-safe:animate-candidates-load-bar" />
                 </div>
               )}
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:px-5">
-                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
-                  <i className="ri-checkbox-blank-circle-fill text-[0.5rem] text-emerald-500" aria-hidden />
+              <div className="flex w-full min-w-0 flex-row flex-wrap items-center gap-2 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:gap-x-5 sm:px-5">
+                <span className="inline-flex max-w-full shrink-0 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
+                  <i className="ri-checkbox-blank-circle-fill shrink-0 text-[0.5rem] text-emerald-500" aria-hidden />
                   Active row
                 </span>
-                <span className="inline-flex items-center gap-2 rounded-full border border-red-500/25 bg-red-500/[0.06] px-2.5 py-1 text-red-950 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-100/95">
-                  <i className="ri-checkbox-blank-circle-fill text-[0.5rem] text-red-500" aria-hidden />
-                  Resigned (exit in the past)
+                <span
+                  className="inline-flex max-w-full shrink-0 items-center gap-2 rounded-full border border-red-500/25 bg-red-500/[0.06] px-2.5 py-1 text-red-950 dark:border-red-500/30 dark:bg-red-950/30 dark:text-red-100/95"
+                  title="Employee has a resign date on or before today"
+                >
+                  <i className="ri-checkbox-blank-circle-fill shrink-0 text-[0.5rem] text-red-500" aria-hidden />
+                  <span className="min-w-0">
+                    Resigned<span className="hidden sm:inline"> (exit in the past)</span>
+                  </span>
                 </span>
               </div>
               <div
-                className="table-responsive flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
+                className="table-responsive flex-1 overflow-y-auto overflow-x-hidden rounded-b-xl bg-slate-50/40 [-webkit-overflow-scrolling:touch] dark:bg-black/25 md:overflow-x-auto"
                 style={{ minHeight: 0 }}
               >
                 <table
                   {...getTableProps()}
-                  className="table min-w-full table-fixed border-separate border-spacing-0 whitespace-nowrap border-0 text-sm"
-                  style={{ tableLayout: 'fixed' }}
+                  className="table w-full min-w-0 border-separate border-spacing-0 border-0 text-sm whitespace-normal md:min-w-full md:table-fixed md:whitespace-nowrap"
                   aria-busy={candidatesLoading}
                 >
                   <thead>
@@ -2022,18 +2137,84 @@ const Candidates = () => {
                         key={`header-group-${i}`}
                       >
                         {headerGroup.headers.map((column: any, i: number) => {
-                          const headerProps = column.getHeaderProps(column.getSortByToggleProps());
-                          const isCheckboxCol = column.id === 'checkbox';
+                          const headerProps = column.getHeaderProps()
+                          const isCheckboxCol = column.id === 'checkbox'
+                          const isJoiningCol = column.id === 'joiningDate'
+                          const headerSortEmployee = column.id === 'candidateInfo'
+                          const headerSortJoining = column.id === 'joiningDate'
+                          const clickableHeader = headerSortEmployee || headerSortJoining
+
+                          let sortIcon: React.ReactNode = null
+                          if (headerSortEmployee && (selectedSort === 'name-asc' || selectedSort === 'name-desc')) {
+                            sortIcon =
+                              selectedSort === 'name-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          } else if (headerSortJoining && (selectedSort === 'joining-asc' || selectedSort === 'joining-desc')) {
+                            sortIcon =
+                              selectedSort === 'joining-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          }
+
                           return (
                           <th
                             {...headerProps}
                             scope="col"
-                            className="sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]"
+                            className={
+                              'sticky top-0 z-10 border-b border-defaultborder/80 bg-gray-50/95 text-start shadow-[0_1px_0_0_rgba(15,23,42,0.06)] backdrop-blur-sm first:rounded-tl-none dark:border-white/10 dark:bg-bodybg/95 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.06)]' +
+                              (isJoiningCol ? ' hidden md:table-cell' : '') +
+                              (clickableHeader ? ' cursor-pointer select-none' : '')
+                            }
                             key={column.id || `col-${i}`}
-                            style={{ 
+                            {...(clickableHeader
+                              ? {
+                                  tabIndex: 0,
+                                  'aria-sort':
+                                    headerSortEmployee && selectedSort === 'name-asc'
+                                      ? ('ascending' as const)
+                                      : headerSortEmployee && selectedSort === 'name-desc'
+                                        ? ('descending' as const)
+                                        : headerSortJoining && selectedSort === 'joining-asc'
+                                          ? ('ascending' as const)
+                                          : headerSortJoining && selectedSort === 'joining-desc'
+                                            ? ('descending' as const)
+                                            : ('none' as const),
+                                  onClick: () => {
+                                    if (headerSortEmployee) {
+                                      handleSortChange(nextNameSortToggle(selectedSort))
+                                    } else {
+                                      handleSortChange(nextJoinSortToggle(selectedSort))
+                                    }
+                                  },
+                                  onKeyDown: (e: React.KeyboardEvent) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault()
+                                      if (headerSortEmployee) {
+                                        handleSortChange(nextNameSortToggle(selectedSort))
+                                      } else {
+                                        handleSortChange(nextJoinSortToggle(selectedSort))
+                                      }
+                                    }
+                                  },
+                                  title:
+                                    headerSortEmployee
+                                      ? selectedSort === 'name-asc' || selectedSort === 'name-desc'
+                                        ? 'Toggle name sort direction'
+                                        : 'Sort by name (A-Z first)'
+                                      : headerSortJoining && (selectedSort === 'joining-asc' || selectedSort === 'joining-desc')
+                                        ? 'Toggle joining date sort direction'
+                                        : 'Sort by joining date (oldest first)',
+                                }
+                              : {})}
+                            style={{
                               ...headerProps.style,
-                              position: 'sticky', 
-                              top: 0, 
+                              position: 'sticky',
+                              top: 0,
                               zIndex: 10,
                               ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
                             }}
@@ -2052,17 +2233,7 @@ const Candidates = () => {
                             ) : (
                               <div className="flex items-center gap-2">
                                 <span className="tabletitle">{column.render('Header')}</span>
-                              <span>
-                                {column.isSorted ? (
-                                  column.isSortedDesc ? (
-                                    <i className="ri-arrow-down-s-line text-[0.875rem]"></i>
-                                  ) : (
-                                    <i className="ri-arrow-up-s-line text-[0.875rem]"></i>
-                                  )
-                                ) : (
-                                  ''
-                                )}
-                              </span>
+                                <span className={sortIcon ? 'text-defaulttextcolor/80' : ''}>{sortIcon ?? null}</span>
                               </div>
                             )}
                           </th>
@@ -2083,11 +2254,16 @@ const Candidates = () => {
                           >
                             {Array.from({ length: colCount }).map((__, colIdx) => {
                               const isCheckbox = headerGroups[0]?.headers?.[colIdx]?.id === 'checkbox'
+                              const hideJoinSkel =
+                                headerGroups[0]?.headers?.[colIdx]?.id === 'joiningDate'
                               const wPct = isCheckbox ? 16 : [78, 52, 48, 40, 36, 32][colIdx % 6]
                               return (
                                 <td
                                   key={`candidates-skel-${skelRow}-${colIdx}`}
-                                  className="px-3 py-3.5 align-middle"
+                                  className={
+                                    'px-3 py-3.5 align-middle' +
+                                    (hideJoinSkel ? ' hidden md:table-cell' : '')
+                                  }
                                   style={
                                     isCheckbox
                                       ? { width: 52, minWidth: 52, maxWidth: 52 }
@@ -2135,11 +2311,15 @@ const Candidates = () => {
                         >
                           {row.cells.map((cell: any, i: number) => {
                             const isCheckboxCol = cell.column.id === 'checkbox';
+                            const isJoiningCol = cell.column.id === 'joiningDate';
                             const cellProps = cell.getCellProps();
                             return (
                               <td
                                 {...cellProps}
                                 key={cell.column.id || `cell-${i}`}
+                                className={
+                                  (cellProps.className || '') + (isJoiningCol ? ' hidden md:table-cell' : '')
+                                }
                                 style={{
                                   ...cellProps.style,
                                   ...(isCheckboxCol ? { width: 52, minWidth: 52, maxWidth: 52 } : {}),
@@ -2168,7 +2348,7 @@ const Candidates = () => {
                             <button
                               type="button"
                               className="ti-btn ti-btn-primary !rounded-xl !px-4 !py-2 !text-sm font-medium shadow-sm"
-                              onClick={openCandidatesFilterPanel}
+                              onClick={() => setEmployeesFilterPanelOpen(true)}
                             >
                               <i className="ri-filter-3-line me-1.5 align-middle" />
                               Open filters
@@ -2182,8 +2362,8 @@ const Candidates = () => {
               </div>
             </div>
             <div className="box-footer border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="text-sm text-textmuted dark:text-white/55">
+              <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+                <div className="text-center text-sm text-textmuted dark:text-white/55 sm:text-start">
                   Showing{' '}
                   <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
                     {totalResults === 0 ? 0 : (apiPage - 1) * pageSize + 1}
@@ -2195,8 +2375,8 @@ const Candidates = () => {
                   {' '}
                   of <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">{totalResults}</span> entries
                 </div>
-                <div className="ms-auto">
-                  <nav aria-label="Page navigation" className="pagination-style-4">
+                <div className="flex w-full justify-center overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] sm:ms-auto sm:w-auto sm:justify-end [&::-webkit-scrollbar]:hidden">
+                  <nav aria-label="Page navigation" className="pagination-style-4 shrink-0">
                     <ul className="ti-pagination mb-0">
                       <li className={`page-item ${apiPage <= 1 ? 'disabled' : ''}`}>
                         <button
@@ -2301,27 +2481,6 @@ const Candidates = () => {
       </div>
       </div>
 
-      {/* Filter Panel Offcanvas */}
-      <CandidatesFilterPanel
-        filters={filters}
-        setFilters={setFilters}
-        allNames={allNames}
-        filterOptionsLoading={filterOptionsLoading}
-        filteredNames={filteredNames}
-        searchName={searchName}
-        setSearchName={setSearchName}
-        agentOptions={agentOptions}
-        agentsLoading={agentsLoading}
-        filteredAgents={filteredAgents}
-        searchAgent={searchAgent}
-        setSearchAgent={setSearchAgent}
-        handleMultiSelectChange={handleMultiSelectChange}
-        handleRemoveFilter={handleRemoveFilter}
-        handleResetFilters={handleResetFilters}
-        hasActiveFilters={hasActiveFilters}
-        activeFilterCount={activeFilterCount}
-      />
-
       {/* Candidate Preview Panel (Offcanvas – same slider view as Jobs) */}
       <div
         id="candidate-preview-panel"
@@ -2409,10 +2568,14 @@ const Candidates = () => {
                 </div>
               </div>
 
-              {/* Tabs */}
-              <div className="bg-white dark:bg-gray-800 px-4 sm:px-6 lg:px-8 py-4">
-                <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-                  <nav className="-mb-px flex space-x-2 sm:space-x-4 overflow-x-auto">
+              {/* Tabs: small screens = wrap to extra rows (no horizontal scroll); lg+ = one row */}
+              <div className="min-w-0 bg-white dark:bg-gray-800 px-4 sm:px-6 lg:px-8 py-4">
+                <div className="mb-4 min-w-0 border-b border-gray-200 dark:border-gray-700">
+                  <nav
+                    role="tablist"
+                    aria-label="Profile sections"
+                    className="-mb-px flex w-full flex-wrap items-end gap-x-2 gap-y-2 pb-px sm:gap-x-3 lg:flex-nowrap lg:justify-between lg:gap-x-1 lg:gap-y-0 lg:px-1"
+                  >
                     {[
                       { id: 'personal', label: 'Personal Info', icon: 'ri-user-line' },
                       { id: 'qualification', label: 'Qualification', icon: 'ri-book-line' },
@@ -2425,13 +2588,19 @@ const Candidates = () => {
                       <button
                         key={tab.id}
                         type="button"
+                        role="tab"
+                        aria-selected={viewDetailTab === tab.id}
                         onClick={() => setViewDetailTab(tab.id)}
-                        className={`py-2 px-1 sm:px-2 border-b-2 font-medium text-xs sm:text-sm whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${
-                          viewDetailTab === tab.id ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                        className={`inline-flex shrink-0 flex-nowrap items-center gap-1.5 border-b-2 px-2 py-2.5 text-left text-sm font-medium sm:gap-2 sm:px-2.5 lg:flex-1 lg:min-h-[2.75rem] lg:justify-center lg:px-1.5 lg:text-center xl:px-2 ${
+                          viewDetailTab === tab.id
+                            ? 'border-primary text-primary'
+                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300'
                         }`}
                       >
-                        <i className={tab.icon}></i>
-                        {tab.label}
+                        <i className={`${tab.icon} shrink-0 text-base sm:text-[1.05rem]`} aria-hidden />
+                        <span className="whitespace-nowrap text-xs font-medium leading-tight md:text-[0.8125rem] lg:text-xs xl:text-sm">
+                          {tab.label}
+                        </span>
                       </button>
                     ))}
                   </nav>
