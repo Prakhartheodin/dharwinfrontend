@@ -1,13 +1,15 @@
 "use client"
 import Pageheader from '@/shared/layout-components/page-header/pageheader'
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useState, useEffect } from 'react'
+import React, { Fragment, useState, useEffect, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import { createJob, listJobTemplates, type CreateJobPayload } from '@/shared/lib/api/jobs'
+import { createJob, getJobTemplate, listJobTemplates, type CreateJobPayload } from '@/shared/lib/api/jobs'
+import { ROUTES } from '@/shared/lib/constants'
+import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
 const Select = dynamic(() => import("react-select"), { ssr: false })
@@ -15,6 +17,8 @@ import CreatableSelect from 'react-select/creatable'
 
 const CreateJob = () => {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const templateQueryHandled = useRef<string | null>(null)
   const [activeTab, setActiveTab] = useState('general')
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
@@ -86,18 +90,36 @@ const CreateJob = () => {
       .catch(() => setTemplates([]))
   }, [])
 
+  /** Prefill from Settings → My jobs template → “Create job” link (?templateId=) */
+  useEffect(() => {
+    const tid = searchParams.get('templateId')
+    if (!tid || templateQueryHandled.current === tid) return
+    templateQueryHandled.current = tid
+    setTemplatesLoading(true)
+    getJobTemplate(tid)
+      .then((t) => {
+        setJobDescription(normalizeTipTapHtmlFromApi(t.jobDescription))
+        setFormData((prev) => ({
+          ...prev,
+          jobTitle: prev.jobTitle.trim() ? prev.jobTitle : (t.title || ''),
+        }))
+      })
+      .catch(() => {
+        templateQueryHandled.current = null
+      })
+      .finally(() => setTemplatesLoading(false))
+  }, [searchParams])
+
   const handleLoadTemplate = (templateId: string) => {
     if (!templateId) return
     setTemplatesLoading(true)
-    import('@/shared/lib/api/jobs').then(({ getJobTemplate }) =>
-      getJobTemplate(templateId)
-        .then((t) => {
-          setJobDescription(t.jobDescription || '')
-          setFormData((prev) => ({ ...prev, jobTitle: prev.jobTitle || t.title || '' }))
-        })
-        .catch(() => {})
-        .finally(() => setTemplatesLoading(false))
-    )
+    getJobTemplate(templateId)
+      .then((t) => {
+        setJobDescription(normalizeTipTapHtmlFromApi(t.jobDescription))
+        setFormData((prev) => ({ ...prev, jobTitle: prev.jobTitle || t.title || '' }))
+      })
+      .catch(() => {})
+      .finally(() => setTemplatesLoading(false))
   }
 
   const handleSkillsKeyDown = (event: any) => {
@@ -350,22 +372,42 @@ const CreateJob = () => {
                       </div>
 
                       {/* Load from template */}
-                      {templates.length > 0 && (
-                        <div className="xl:col-span-12 col-span-12">
-                          <label className="form-label">Load from template</label>
+                      <div className="xl:col-span-12 col-span-12">
+                        <label className="form-label">Load from template</label>
+                        {templates.length > 0 ? (
                           <select
                             className="form-control !w-auto"
+                            defaultValue=""
                             onChange={(e) => handleLoadTemplate(e.target.value)}
                             disabled={templatesLoading}
                           >
                             <option value="">-- Select template --</option>
-                            {templates.map((t) => (
-                              <option key={t._id} value={t._id}>{t.title}</option>
-                            ))}
+                            {templates.map((t) => {
+                              const oid = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? ''
+                              return (
+                                <option key={oid} value={oid}>
+                                  {t.title}
+                                </option>
+                              )
+                            })}
                           </select>
-                          {templatesLoading && <span className="text-xs text-muted ms-2">Loading...</span>}
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-sm text-muted mb-0">
+                            No saved templates yet.{` `}
+                            <Link href={ROUTES.settingsJobTemplates} className="text-primary underline">
+                              Add templates in Settings
+                            </Link>
+                          </p>
+                        )}
+                        {templatesLoading && <span className="text-xs text-muted ms-2">Loading...</span>}
+                        {templates.length > 0 ? (
+                          <p className="text-xs text-muted mt-1 mb-0">
+                            <Link href={ROUTES.settingsJobTemplates} className="text-primary underline">
+                              Manage templates in Settings
+                            </Link>
+                          </p>
+                        ) : null}
+                      </div>
 
                       {/* Job Description */}
                       <div className="xl:col-span-12 col-span-12">

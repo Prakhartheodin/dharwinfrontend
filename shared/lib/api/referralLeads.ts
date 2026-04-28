@@ -24,6 +24,7 @@ export interface ReferralLastOverride {
 }
 
 export interface ReferralLeadRow {
+  /** Candidate document id (`candidates` collection / GET candidate by id), not a Settings org User id. */
   id: string;
   fullName: string;
   email: string;

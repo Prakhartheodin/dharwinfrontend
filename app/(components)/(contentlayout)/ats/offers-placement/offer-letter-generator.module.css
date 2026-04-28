@@ -392,6 +392,25 @@
   margin-top: -2px;
 }
 
+.letterDateReadonly {
+  width: 100%;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+}
+
+.letterDateUnset {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .compPreview {
   padding: 10px 12px;
   background: #f0fdf4;

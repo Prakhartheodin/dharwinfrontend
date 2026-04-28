@@ -1,6 +1,7 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useCallback, useMemo, useState, useEffect, useRef } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import JobsFilterPanel from './_components/JobsFilterPanel'
@@ -47,6 +48,31 @@ interface BookmarkNote {
   visibility: 'public' | 'private'
   postedBy: string
   postedDate: string
+}
+
+/** neutral → A–Z → Z–A → neutral (handlers call `clear-sort` via return value). */
+function nextJobTitleSortToggle(current: string): 'title-asc' | 'title-desc' | 'clear-sort' {
+  if (current === 'title-asc') return 'title-desc'
+  if (current === 'title-desc') return 'clear-sort'
+  return 'title-asc'
+}
+
+function nextCompanySortToggle(current: string): 'company-asc' | 'company-desc' | 'clear-sort' {
+  if (current === 'company-asc') return 'company-desc'
+  if (current === 'company-desc') return 'clear-sort'
+  return 'company-asc'
+}
+
+function nextLocationSortToggle(current: string): 'location-asc' | 'location-desc' | 'clear-sort' {
+  if (current === 'location-asc') return 'location-desc'
+  if (current === 'location-desc') return 'clear-sort'
+  return 'location-asc'
+}
+
+function nextExperienceSortToggle(current: string): 'experience-asc' | 'experience-desc' | 'clear-sort' {
+  if (current === 'experience-asc') return 'experience-desc'
+  if (current === 'experience-desc') return 'clear-sort'
+  return 'experience-asc'
 }
 
 const Jobs = () => {
@@ -108,14 +134,19 @@ const Jobs = () => {
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
-  
+  const [jobsFilterPanelOpen, setJobsFilterPanelOpen] = useState(false)
+  const closeJobsFilterPanel = () => setJobsFilterPanelOpen(false)
+
+  const searchParams = useSearchParams()
+  const initialActiveFilter = searchParams.get('status')?.toLowerCase() === 'active' ? 'true' : 'true'
+
   const [filters, setFilters] = useState<FilterState>({
     jobTitle: [],
     company: [],
     experience: [experienceRangesConst.min, experienceRangesConst.max],
     location: [],
     salary: [salaryRangesConst.min, salaryRangesConst.max],
-    active: 'all',
+    active: initialActiveFilter,
     postingDate: ''
   })
 
@@ -571,9 +602,17 @@ const Jobs = () => {
         Header: 'Experience',
         accessor: 'experience',
       },
+      /** Hidden column: keeps `setSortBy({ id: 'postingDate' })` working for date sorts (toolbar). Not shown in the table. */
+      {
+        Header: '',
+        accessor: 'postingDate',
+        id: 'postingDate',
+        Cell: () => null,
+      },
       {
         Header: 'Salary',
         accessor: 'salary',
+        disableSortBy: true,
         Cell: ({ row }: any) => {
           const job = row.original
           const salaryTierIcon = getSalaryTierIcon(job.salaryTier || 'medium')
@@ -588,6 +627,7 @@ const Jobs = () => {
       {
         Header: 'Origin',
         accessor: 'jobOrigin',
+        disableSortBy: true,
         Cell: ({ row }: any) => {
           const ext = row.original.jobOrigin === 'external'
           return (
@@ -756,26 +796,23 @@ const Jobs = () => {
   const uniqueLocations = useMemo(() => [...new Set(jobsData.map(job => job.location))].filter(Boolean).sort(), [jobsData])
   const uniqueJobTitles = useMemo(() => [...new Set(jobsData.map(job => job.jobTitle))].filter(Boolean).sort(), [jobsData])
 
-  // Filter options based on search terms
+  // Suggestion lists only while typing (same pattern as Employees → Name)
   const filteredJobTitles = useMemo(() => {
-    if (!searchJobTitle) return uniqueJobTitles
-    return uniqueJobTitles.filter(title => 
-      title.toLowerCase().includes(searchJobTitle.toLowerCase())
-    )
+    const q = searchJobTitle.trim().toLowerCase()
+    if (!q) return []
+    return uniqueJobTitles.filter((title) => title.toLowerCase().includes(q))
   }, [uniqueJobTitles, searchJobTitle])
 
   const filteredCompanies = useMemo(() => {
-    if (!searchCompany) return uniqueCompanies
-    return uniqueCompanies.filter(company => 
-      company.toLowerCase().includes(searchCompany.toLowerCase())
-    )
+    const q = searchCompany.trim().toLowerCase()
+    if (!q) return []
+    return uniqueCompanies.filter((company) => company.toLowerCase().includes(q))
   }, [uniqueCompanies, searchCompany])
 
   const filteredLocations = useMemo(() => {
-    if (!searchLocation) return uniqueLocations
-    return uniqueLocations.filter(location => 
-      location.toLowerCase().includes(searchLocation.toLowerCase())
-    )
+    const q = searchLocation.trim().toLowerCase()
+    if (!q) return []
+    return uniqueLocations.filter((location) => location.toLowerCase().includes(q))
   }, [uniqueLocations, searchLocation])
 
   const handleMultiSelectChange = (key: 'jobTitle' | 'company' | 'location', value: string) => {
@@ -804,6 +841,9 @@ const Jobs = () => {
   }
 
   const handleResetFilters = () => {
+    setSearchJobTitle('')
+    setSearchCompany('')
+    setSearchLocation('')
     setListJobOrigin('')
     setFilters({
       jobTitle: [],
@@ -811,12 +851,13 @@ const Jobs = () => {
       experience: [experienceRangesConst.min, experienceRangesConst.max],
       location: [],
       salary: [salaryRangesConst.min, salaryRangesConst.max],
-      active: 'all',
+      active: 'true',
       postingDate: ''
     })
   }
 
-  const hasActiveFilters = 
+  /** Default status filter is Active only — counts as “custom” when user picks All or Inactive. */
+  const hasActiveFilters =
     listJobOrigin !== '' ||
     filters.jobTitle.length > 0 ||
     filters.company.length > 0 ||
@@ -825,17 +866,17 @@ const Jobs = () => {
     filters.location.length > 0 ||
     filters.salary[0] !== salaryRangesConst.min ||
     filters.salary[1] !== salaryRangesConst.max ||
-    filters.active !== 'all' ||
+    filters.active !== 'true' ||
     filters.postingDate !== ''
 
-  const activeFilterCount = 
+  const activeFilterCount =
     (listJobOrigin !== '' ? 1 : 0) +
     filters.jobTitle.length +
     filters.company.length +
     (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0) +
     filters.location.length +
     (filters.salary[0] !== salaryRangesConst.min || filters.salary[1] !== salaryRangesConst.max ? 1 : 0) +
-    (filters.active !== 'all' ? 1 : 0) +
+    (filters.active !== 'true' ? 1 : 0) +
     (filters.postingDate !== '' ? 1 : 0)
 
   const tableInstance: any = useTable(
@@ -955,44 +996,6 @@ const Jobs = () => {
     void import('preline/preline').then(stableRun)
   }, [permissionsLoading, jobsListFetching, canView])
 
-  /** Open filter panel without relying on data-hs-overlay (same pattern as ATS Candidates). */
-  const openJobsFilterPanel = useCallback(() => {
-    const el = document.querySelector('#jobs-filter-panel')
-    if (!el) return
-    const run = () => {
-      try {
-        ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
-      } catch {
-        /* ignore */
-      }
-      requestAnimationFrame(() => {
-        ;(window as unknown as { HSOverlay?: { open: (n: Element | string) => void } }).HSOverlay?.open(el)
-      })
-    }
-    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
-      run()
-      return
-    }
-    void import('preline/preline').then(run)
-  }, [])
-
-  const closeJobsFilterPanel = useCallback(() => {
-    const el = document.querySelector('#jobs-filter-panel')
-    if (!el) return
-    const run = () => {
-      try {
-        ;(window as unknown as { HSOverlay?: { close: (n: Element | string) => void } }).HSOverlay?.close(el)
-      } catch {
-        /* ignore */
-      }
-    }
-    if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
-      run()
-      return
-    }
-    void import('preline/preline').then(run)
-  }, [])
-
   if (!permissionsLoading && !canView) {
     return (
       <Fragment>
@@ -1065,98 +1068,9 @@ const Jobs = () => {
                     <li>
                       <button
                         type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'title-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('title-asc')}
-                      >
-                        <i className="ri-sort-asc me-2 align-middle inline-block"></i>Job Title (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'title-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('title-desc')}
-                      >
-                        <i className="ri-sort-desc me-2 align-middle inline-block"></i>Job Title (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'company-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('company-asc')}
-                      >
-                        <i className="ri-sort-asc me-2 align-middle inline-block"></i>Company (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'company-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('company-desc')}
-                      >
-                        <i className="ri-sort-desc me-2 align-middle inline-block"></i>Company (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'location-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('location-asc')}
-                      >
-                        <i className="ri-sort-asc me-2 align-middle inline-block"></i>Location (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'location-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('location-desc')}
-                      >
-                        <i className="ri-sort-desc me-2 align-middle inline-block"></i>Location (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-newest' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-newest')}
-                      >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Date (Newest)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-oldest' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-oldest')}
-                      >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Date (Oldest)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'experience-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('experience-asc')}
-                      >
-                        <i className="ri-time-line me-2 align-middle inline-block"></i>Experience (Low-High)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'experience-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('experience-desc')}
-                      >
-                        <i className="ri-time-line me-2 align-middle inline-block"></i>Experience (High-Low)
-                      </button>
-                    </li>
-                    <li className="ti-dropdown-divider"></li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'newest-first' ? 'active' : ''}`}
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${
+                          selectedSort === 'newest-first' || selectedSort === 'date-newest' ? 'active' : ''
+                        }`}
                         onClick={() => handleSortChange('newest-first')}
                       >
                         <i className="ri-arrow-down-line me-2 align-middle inline-block"></i>Newest First
@@ -1165,7 +1079,9 @@ const Jobs = () => {
                     <li>
                       <button
                         type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'oldest-first' ? 'active' : ''}`}
+                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${
+                          selectedSort === 'oldest-first' || selectedSort === 'date-oldest' ? 'active' : ''
+                        }`}
                         onClick={() => handleSortChange('oldest-first')}
                       >
                         <i className="ri-arrow-up-line me-2 align-middle inline-block"></i>Oldest First
@@ -1234,8 +1150,9 @@ const Jobs = () => {
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2"
-                  onClick={openJobsFilterPanel}
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  aria-expanded={jobsFilterPanelOpen}
+                  onClick={() => setJobsFilterPanelOpen((v) => !v)}
                 >
                   <i className="ri-search-line font-semibold align-middle me-1"></i>Search
                   {hasActiveFilters && (
@@ -1264,6 +1181,35 @@ const Jobs = () => {
                 />
               </div>
             </div>
+
+            <JobsFilterPanel
+              layoutOpen={jobsFilterPanelOpen}
+              onCloseLayout={closeJobsFilterPanel}
+              listJobOrigin={listJobOrigin}
+              setListJobOrigin={setListJobOrigin}
+              filters={filters}
+              setFilters={setFilters}
+              searchJobTitle={searchJobTitle}
+              setSearchJobTitle={setSearchJobTitle}
+              searchCompany={searchCompany}
+              setSearchCompany={setSearchCompany}
+              searchLocation={searchLocation}
+              setSearchLocation={setSearchLocation}
+              filteredJobTitles={filteredJobTitles}
+              filteredCompanies={filteredCompanies}
+              filteredLocations={filteredLocations}
+              uniqueJobTitles={uniqueJobTitles}
+              uniqueCompanies={uniqueCompanies}
+              uniqueLocations={uniqueLocations}
+              handleMultiSelectChange={handleMultiSelectChange}
+              handleRemoveFilter={handleRemoveFilter}
+              handleSalaryRangeChange={handleSalaryRangeChange}
+              handleExperienceRangeChange={handleExperienceRangeChange}
+              handleResetFilters={handleResetFilters}
+              salaryRangesConst={salaryRangesConst}
+              experienceRangesConst={experienceRangesConst}
+            />
+
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden relative">
               {jobsListFetching && jobsEverLoadedRef.current ? (
                 <div
@@ -1281,50 +1227,177 @@ const Jobs = () => {
                 >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
-                      <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
-                        {headerGroup.headers.map((column: any, i: number) => (
-                          <th
-                            {...column.getHeaderProps(column.getSortByToggleProps())}
-                            scope="col"
-                            className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 ${
-                              column.id === 'location' ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]' : ''
-                            }`}
-                            key={column.id || `col-${i}`}
-                            style={{ 
-                              position: 'sticky', 
-                              top: 0, 
-                              zIndex: 10
-                            }}
-                          >
-                            {column.id === 'checkbox' ? (
-                              <input
-                                className="form-check-input"
-                                type="checkbox"
-                                checked={isAllSelected}
-                                ref={(input) => {
-                                  if (input) input.indeterminate = isIndeterminate
-                                }}
-                                onChange={handleSelectAll}
-                                aria-label="Select all"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <span className="tabletitle">{column.render('Header')}</span>
-                              <span>
-                                {column.isSorted ? (
-                                  column.isSortedDesc ? (
-                                    <i className="ri-arrow-down-s-line text-[0.875rem]"></i>
-                                  ) : (
-                                    <i className="ri-arrow-up-s-line text-[0.875rem]"></i>
-                                  )
-                                ) : (
-                                  ''
-                                )}
-                              </span>
-                              </div>
-                            )}
-                          </th>
-                        ))}
+                      <tr
+                        {...headerGroup.getHeaderGroupProps()}
+                        className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600"
+                        key={`header-group-${i}`}
+                      >
+                        {headerGroup.headers.map((column: any, i: number) => {
+                          const headerProps = column.getHeaderProps()
+                          const isCheckboxCol = column.id === 'checkbox'
+                          const headerSortTitle = column.id === 'jobTitle'
+                          const headerSortCompany = column.id === 'company'
+                          const headerSortLocation = column.id === 'location'
+                          const headerSortExperience = column.id === 'experience'
+                          /** Date sort uses toolbar only; postingDate column stays hidden — no header click UX. */
+                          const hidePostingCol = column.id === 'postingDate'
+                          const clickableHeader =
+                            headerSortTitle ||
+                            headerSortCompany ||
+                            headerSortLocation ||
+                            headerSortExperience
+
+                          let sortIcon: React.ReactNode = null
+                          if (headerSortTitle && (selectedSort === 'title-asc' || selectedSort === 'title-desc')) {
+                            sortIcon =
+                              selectedSort === 'title-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          } else if (
+                            headerSortCompany &&
+                            (selectedSort === 'company-asc' || selectedSort === 'company-desc')
+                          ) {
+                            sortIcon =
+                              selectedSort === 'company-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          } else if (
+                            headerSortLocation &&
+                            (selectedSort === 'location-asc' || selectedSort === 'location-desc')
+                          ) {
+                            sortIcon =
+                              selectedSort === 'location-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          } else if (
+                            headerSortExperience &&
+                            (selectedSort === 'experience-asc' || selectedSort === 'experience-desc')
+                          ) {
+                            sortIcon =
+                              selectedSort === 'experience-desc' ? (
+                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
+                              ) : (
+                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
+                              )
+                          }
+
+                          return (
+                            <th
+                              {...headerProps}
+                              scope="col"
+                              className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 ${
+                                column.id === 'location' ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]' : ''
+                              }${hidePostingCol ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}${
+                                clickableHeader ? ' cursor-pointer select-none' : ''
+                              }`}
+                              key={column.id || `col-${i}`}
+                              {...(clickableHeader
+                                ? {
+                                    tabIndex: 0,
+                                    'aria-sort':
+                                      headerSortTitle && selectedSort === 'title-asc'
+                                        ? ('ascending' as const)
+                                        : headerSortTitle && selectedSort === 'title-desc'
+                                          ? ('descending' as const)
+                                          : headerSortCompany && selectedSort === 'company-asc'
+                                            ? ('ascending' as const)
+                                            : headerSortCompany && selectedSort === 'company-desc'
+                                              ? ('descending' as const)
+                                              : headerSortLocation && selectedSort === 'location-asc'
+                                                ? ('ascending' as const)
+                                                : headerSortLocation && selectedSort === 'location-desc'
+                                                  ? ('descending' as const)
+                                                  : headerSortExperience && selectedSort === 'experience-asc'
+                                                    ? ('ascending' as const)
+                                                    : headerSortExperience && selectedSort === 'experience-desc'
+                                                      ? ('descending' as const)
+                                                      : ('none' as const),
+                                    onClick: () => {
+                                      if (headerSortTitle) {
+                                        handleSortChange(nextJobTitleSortToggle(selectedSort))
+                                      } else if (headerSortCompany) {
+                                        handleSortChange(nextCompanySortToggle(selectedSort))
+                                      } else if (headerSortLocation) {
+                                        handleSortChange(nextLocationSortToggle(selectedSort))
+                                      } else if (headerSortExperience) {
+                                        handleSortChange(nextExperienceSortToggle(selectedSort))
+                                      }
+                                    },
+                                    onKeyDown: (e: React.KeyboardEvent) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault()
+                                        if (headerSortTitle) {
+                                          handleSortChange(nextJobTitleSortToggle(selectedSort))
+                                        } else if (headerSortCompany) {
+                                          handleSortChange(nextCompanySortToggle(selectedSort))
+                                        } else if (headerSortLocation) {
+                                          handleSortChange(nextLocationSortToggle(selectedSort))
+                                        } else if (headerSortExperience) {
+                                          handleSortChange(nextExperienceSortToggle(selectedSort))
+                                        }
+                                      }
+                                    },
+                                    title:
+                                      headerSortTitle
+                                        ? selectedSort === 'title-asc' || selectedSort === 'title-desc'
+                                          ? selectedSort === 'title-desc'
+                                            ? 'Click to remove sort'
+                                            : 'Toggle to Z–A'
+                                          : 'Sort by job title (A–Z first)'
+                                        : headerSortCompany
+                                          ? selectedSort === 'company-asc' || selectedSort === 'company-desc'
+                                            ? selectedSort === 'company-desc'
+                                              ? 'Click to remove sort'
+                                              : 'Toggle to Z–A'
+                                            : 'Sort by company (A–Z first)'
+                                          : headerSortLocation
+                                            ? selectedSort === 'location-asc' || selectedSort === 'location-desc'
+                                              ? selectedSort === 'location-desc'
+                                                ? 'Click to remove sort'
+                                                : 'Toggle to Z–A'
+                                              : 'Sort by location (A–Z first)'
+                                            : headerSortExperience
+                                                ? selectedSort === 'experience-asc' || selectedSort === 'experience-desc'
+                                                  ? selectedSort === 'experience-desc'
+                                                    ? 'Click to remove sort'
+                                                    : 'Toggle to high–low'
+                                                  : 'Sort by experience (low–high first)'
+                                                : undefined,
+                                  }
+                                : {})}
+                              style={{
+                                ...headerProps.style,
+                                position: 'sticky',
+                                top: 0,
+                                zIndex: 10,
+                              }}
+                            >
+                              {isCheckboxCol ? (
+                                <input
+                                  className="form-check-input"
+                                  type="checkbox"
+                                  checked={isAllSelected}
+                                  ref={(input) => {
+                                    if (input) input.indeterminate = isIndeterminate
+                                  }}
+                                  onChange={handleSelectAll}
+                                  aria-label="Select all"
+                                />
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  <span className="tabletitle">{column.render('Header')}</span>
+                                  <span className={sortIcon ? 'text-defaulttextcolor/80' : ''}>{sortIcon ?? null}</span>
+                                </div>
+                              )}
+                            </th>
+                          )
+                        })}
                       </tr>
                     ))}
                   </thead>
@@ -1335,6 +1408,7 @@ const Jobs = () => {
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
                             const isLocation = cell.column.id === 'location'
+                            const hidePostingCell = cell.column.id === 'postingDate'
                             const cellProps = cell.getCellProps()
                             return (
                               <td
@@ -1343,7 +1417,7 @@ const Jobs = () => {
                                   isLocation
                                     ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]'
                                     : ''
-                                }`.trim()}
+                                }${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}`.trim()}
                                 key={cell.column.id || `cell-${i}`}
                               >
                                 {cell.render('Cell')}
@@ -1469,33 +1543,6 @@ const Jobs = () => {
           </div>
         </div>
       </div>
-
-      <JobsFilterPanel
-        onClosePanel={closeJobsFilterPanel}
-        listJobOrigin={listJobOrigin}
-        setListJobOrigin={setListJobOrigin}
-        filters={filters}
-        setFilters={setFilters}
-        searchJobTitle={searchJobTitle}
-        setSearchJobTitle={setSearchJobTitle}
-        searchCompany={searchCompany}
-        setSearchCompany={setSearchCompany}
-        searchLocation={searchLocation}
-        setSearchLocation={setSearchLocation}
-        filteredJobTitles={filteredJobTitles}
-        filteredCompanies={filteredCompanies}
-        filteredLocations={filteredLocations}
-        uniqueJobTitles={uniqueJobTitles}
-        uniqueCompanies={uniqueCompanies}
-        uniqueLocations={uniqueLocations}
-        handleMultiSelectChange={handleMultiSelectChange}
-        handleRemoveFilter={handleRemoveFilter}
-        handleSalaryRangeChange={handleSalaryRangeChange}
-        handleExperienceRangeChange={handleExperienceRangeChange}
-        handleResetFilters={handleResetFilters}
-        salaryRangesConst={salaryRangesConst}
-        experienceRangesConst={experienceRangesConst}
-      />
 
       {/* Company Info Panel (Offcanvas) */}
       <div

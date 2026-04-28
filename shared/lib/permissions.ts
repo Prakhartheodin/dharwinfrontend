@@ -41,6 +41,31 @@ export function hasEmailReadAccess(rawPermissions: string[]): boolean {
   });
 }
 
+/** True when the user may list/view jobs (and job templates API). Mirrors `jobs.read` / `ats.jobs:view,...`. */
+export function hasJobsReadAccess(rawPermissions: string[]): boolean {
+  if (rawPermissions.includes("jobs.read") || rawPermissions.includes("jobs.manage")) return true;
+  return rawPermissions.some((p) => {
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "ats.jobs" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return (
+      actions.includes("view") ||
+      actions.some((x) => x === "create" || x === "edit" || x === "delete")
+    );
+  });
+}
+
+/** True when the user may create/update/delete jobs and job templates. Mirrors `jobs.manage` / write on `ats.jobs`. */
+export function hasJobsManageAccess(rawPermissions: string[]): boolean {
+  if (rawPermissions.includes("jobs.manage")) return true;
+  return rawPermissions.some((p) => {
+    const [key, actionsPart] = p.split(":");
+    if (key?.trim() !== "ats.jobs" || !actionsPart) return false;
+    const actions = actionsPart.split(",").map((x) => x.trim().toLowerCase());
+    return actions.some((x) => x === "create" || x === "edit" || x === "delete");
+  });
+}
+
 /** True when the user may modify email data (send mail, save templates/signature, etc). */
 export function hasEmailManageAccess(rawPermissions: string[]): boolean {
   return rawPermissions.some((p) => {

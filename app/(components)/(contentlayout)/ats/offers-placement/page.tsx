@@ -12,9 +12,8 @@ import {
   deleteOffer,
   getOfferById,
   getOfferLetterDefaults,
-  generateOfferLetterPdf,
-  formatOfferLetterPdfError,
-  downloadOfferLetterFile,
+  saveOfferLetter,
+  formatOfferLetterSaveError,
 } from '@/shared/lib/api/offers'
 import type { Offer, OfferLetterJobType, UpdateOfferPayload } from '@/shared/lib/api/offers'
 import {
@@ -25,6 +24,9 @@ import {
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
+import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
+import { formatJoiningDateDisplay, joiningDatePresent } from '@/shared/lib/ats/joining-date-display'
+import { combinedJobPostingDocText } from './job-posting-doc'
 
 function formatCandidateAddress(c: { address?: Offer['candidate']['address'] } | null | undefined) {
   const a = c?.address
@@ -41,6 +43,39 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
   return s
 }
 
+/** Aligns with backend `Offer` enum; fallback keeps the status editor defaulting to Draft when API omits status. */
+const OFFER_STATUS_EDIT_VALUES: Offer['status'][] = [
+  'Draft',
+  'Sent',
+  'Under Negotiation',
+  'Accepted',
+  'Rejected',
+]
+
+function offerStatusForEditModal(raw: Offer | null | undefined): Offer['status'] {
+  const s = raw?.status
+  if (s && OFFER_STATUS_EDIT_VALUES.includes(s)) return s
+  return 'Draft'
+}
+
+/** Readable status chip for offer detail / view modal (matches table intent). */
+function offerStatusPillClass(status: string | undefined): string {
+  const base =
+    'inline-flex max-w-max items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide'
+  switch (status) {
+    case 'Accepted':
+      return `${base} bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-100 dark:ring-emerald-500/25`
+    case 'Rejected':
+      return `${base} bg-rose-500/12 text-rose-900 ring-1 ring-rose-600/20 dark:bg-rose-400/10 dark:text-rose-100 dark:ring-rose-500/25`
+    case 'Sent':
+      return `${base} bg-sky-500/12 text-sky-900 ring-1 ring-sky-600/20 dark:bg-sky-400/10 dark:text-sky-100 dark:ring-sky-500/25`
+    case 'Under Negotiation':
+      return `${base} bg-amber-500/14 text-amber-950 ring-1 ring-amber-600/25 dark:bg-amber-400/10 dark:text-amber-50 dark:ring-amber-400/20`
+    default:
+      return `${base} bg-slate-500/[0.12] text-slate-800 ring-1 ring-slate-600/15 dark:bg-slate-500/15 dark:text-slate-100 dark:ring-white/10`
+  }
+}
+
 // Map API offer to table row format (handle both _id and id from API)
 // Includes pre-boarding/onboarding data: placement
 const mapOfferToRow = (o: Offer) => {
@@ -53,7 +88,7 @@ const mapOfferToRow = (o: Offer) => {
     joiningDate: o.joiningDate || null,
     templateType: 'Standard',
     version: 1,
-    offerStatus: o.status,
+    offerStatus: offerStatusForEditModal(o),
     signedStatus: o.status === 'Accepted' ? 'Signed' : o.status === 'Rejected' ? 'Not Sent' : o.status === 'Sent' || o.status === 'Under Negotiation' ? 'Pending' : 'Draft',
     onboardingStatus: o.status === 'Accepted' ? 'Ready' : o.status === 'Rejected' ? 'Not Applicable' : 'Pending',
     placementStatus: (o as { placementStatus?: string }).placementStatus ?? null,
@@ -518,7 +553,7 @@ const OffersPlacement = () => {
   const [listSearch, setListSearch] = useState('')
 
   const [editOfferModal, setEditOfferModal] = useState<Offer | null>(null)
-  const [editStatus, setEditStatus] = useState('')
+  const [editStatus, setEditStatus] = useState<Offer['status']>('Draft')
   const [viewOfferModal, setViewOfferModal] = useState<Offer | null>(null)
   const [viewHistoryModal, setViewHistoryModal] = useState<Offer | null>(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
@@ -527,8 +562,13 @@ const OffersPlacement = () => {
   const [letterForm, setLetterForm] = useState<OfferLetterFormFields>(() => createEmptyOfferLetterForm())
   const [letterBusy, setLetterBusy] = useState(false)
 
-  /** After Create Offer (modal or /create redirect): run Generate PDF once the workspace is open and form is seeded. */
-  const autoGeneratePdfAfterCreateRef = useRef(false)
+  const letterJobPostingDoc = useMemo(
+    () => combinedJobPostingDocText(letterModalOffer?.job) ?? null,
+    [letterModalOffer]
+  )
+
+  /** After Create Offer (modal or /create redirect): save letter once the workspace is open and form is seeded. */
+  const autoSaveLetterAfterOpenRef = useRef(false)
 
   const openOfferLetterModal = useCallback(async (raw: Offer) => {
     const id = getOfferRecordId(raw)
@@ -541,9 +581,9 @@ const OffersPlacement = () => {
     setLetterBusy(true)
     try {
       const full = await getOfferById(id)
-      if (typeof window !== 'undefined' && sessionStorage.getItem('dharwin:offerLetterAutoPdfAfterOpen') === '1') {
-        sessionStorage.removeItem('dharwin:offerLetterAutoPdfAfterOpen')
-        autoGeneratePdfAfterCreateRef.current = true
+      if (typeof window !== 'undefined' && sessionStorage.getItem('dharwin:offerLetterAutoSaveAfterOpen') === '1') {
+        sessionStorage.removeItem('dharwin:offerLetterAutoSaveAfterOpen')
+        autoSaveLetterAfterOpenRef.current = true
       }
       setLetterModalOffer(full)
     } catch (e: unknown) {
@@ -648,7 +688,7 @@ const OffersPlacement = () => {
     }
   }, [letterModalOffer])
 
-  const handleGenerateOfferLetter = async () => {
+  const handleSaveOfferLetter = async () => {
     if (!letterModalOffer) return
     const id = getOfferRecordId(letterModalOffer)
     if (!id) {
@@ -657,54 +697,31 @@ const OffersPlacement = () => {
     }
     setLetterBusy(true)
     try {
-      const updated = await generateOfferLetterPdf(
+      const updated = await saveOfferLetter(
         id,
         buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as UpdateOfferPayload
       )
       setLetterModalOffer(updated)
       refreshOffers()
     } catch (e: unknown) {
-      alert(formatOfferLetterPdfError(e, 'Could not generate PDF'))
+      alert(formatOfferLetterSaveError(e, 'Could not save letter'))
     } finally {
       setLetterBusy(false)
     }
   }
 
-  const handleGenerateOfferLetterRef = useRef(handleGenerateOfferLetter)
-  handleGenerateOfferLetterRef.current = handleGenerateOfferLetter
+  const handleSaveOfferLetterRef = useRef(handleSaveOfferLetter)
+  handleSaveOfferLetterRef.current = handleSaveOfferLetter
 
-  /** Defer PDF generation so letter form state (and async role defaults) can settle after open. */
+  /** Defer save so letter form state (and async role defaults) can settle after open. */
   useEffect(() => {
-    if (!letterModalOffer || !autoGeneratePdfAfterCreateRef.current) return
-    autoGeneratePdfAfterCreateRef.current = false
+    if (!letterModalOffer || !autoSaveLetterAfterOpenRef.current) return
+    autoSaveLetterAfterOpenRef.current = false
     const t = window.setTimeout(() => {
-      void handleGenerateOfferLetterRef.current()
+      void handleSaveOfferLetterRef.current()
     }, 1200)
     return () => window.clearTimeout(t)
   }, [letterModalOffer])
-
-  const handleDownloadOfferLetter = async () => {
-    if (!letterModalOffer) return
-    const id = getOfferRecordId(letterModalOffer)
-    if (!id) {
-      alert('Missing offer id. Close and reopen the offer letter from the list.')
-      return
-    }
-    setLetterBusy(true)
-    try {
-      const blob = await downloadOfferLetterFile(id)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `Offer-Letter-${letterModalOffer.offerCode || id}.pdf`
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e: unknown) {
-      alert((e as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Download failed')
-    } finally {
-      setLetterBusy(false)
-    }
-  }
 
   const handleUpdateStatus = async () => {
     if (!editOfferModal || !editStatus) return
@@ -829,27 +846,6 @@ const OffersPlacement = () => {
         },
       },
       {
-        Header: 'Pre-board',
-        accessor: 'preBoardingStatus',
-        Cell: ({ row }: any) => {
-          const offer = row.original
-          if (offer.offerStatus !== 'Accepted' || offer.placementStatus !== 'Pending') return <span className="text-slate-400">—</span>
-          const status = offer.preBoardingStatus || 'Not Started'
-          const colors: Record<string, string> = {
-            'Not Started': 'bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300',
-            'In Progress': 'bg-sky-50 text-sky-800 dark:bg-sky-500/20 dark:text-sky-200',
-            'Completed': 'bg-emerald-50 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200',
-          }
-          return (
-            <span
-              className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${colors[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
-            >
-              {status}
-            </span>
-          )
-        },
-      },
-      {
         Header: 'BGV',
         accessor: 'bgvStatus',
         Cell: ({ row }: any) => {
@@ -868,21 +864,6 @@ const OffersPlacement = () => {
               className={`inline-flex items-center rounded-full border-0 px-2.5 py-0.5 text-[11px] font-medium ${colors[status] || 'bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300'}`}
             >
               {status}
-            </span>
-          )
-        },
-      },
-      {
-        Header: 'Assets / IT',
-        accessor: 'assetsIt',
-        Cell: ({ row }: any) => {
-          const offer = row.original
-          if (offer.offerStatus !== 'Accepted') return <span className="text-slate-400">—</span>
-          const assets = offer.assetCount ?? 0
-          const it = offer.itAccessCount ?? 0
-          return (
-            <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-white/10 dark:text-slate-300">
-              {assets} / {it}
             </span>
           )
         },
@@ -915,82 +896,11 @@ const OffersPlacement = () => {
         },
       },
       {
-        Header: 'Step',
-        accessor: 'step',
-        Cell: ({ row }: any) => {
-          const offer = row.original
-          if (offer.offerStatus !== 'Accepted') {
-            return (
-              <span className="inline-flex items-center rounded-full bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">
-                Offer
-              </span>
-            )
-          }
-          const status = offer.placementStatus
-          if (status === 'Pending') {
-            return (
-              <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
-                Pre-boarding
-              </span>
-            )
-          }
-          if (status === 'Joined') {
-            return (
-              <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200">
-                Onboarding
-              </span>
-            )
-          }
-          if (status === 'Deferred' || status === 'Cancelled') {
-            const { primary, secondary } = getPlacementStatusActorSummary({
-              status,
-              ...(offer.placement || {}),
-            })
-            return (
-              <div className="flex flex-col gap-0.5">
-                <span className="inline-flex w-fit items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-white/10 dark:text-slate-300">
-                  {status}
-                </span>
-                {primary ? (
-                  <span className="max-w-[14rem] text-[10px] leading-tight text-slate-500 dark:text-slate-400" title={primary}>
-                    {primary}
-                  </span>
-                ) : null}
-                {secondary ? (
-                  <span className="max-w-[14rem] text-[10px] leading-tight text-slate-500 dark:text-slate-400" title={secondary}>
-                    {secondary}
-                  </span>
-                ) : null}
-              </div>
-            )
-          }
-          return (
-            <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
-              Pre-boarding
-            </span>
-          )
-        },
-      },
-      {
         Header: 'Joining Date',
         accessor: 'joiningDate',
         Cell: ({ row }: any) => {
           const offer = row.original
-          return (
-            <div className="text-[12px] text-slate-600 dark:text-slate-300">
-              {offer.joiningDate ? (
-                <div className="inline-flex items-center gap-1.5">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" title="Date set" />
-                  {new Date(offer.joiningDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                </div>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-slate-400">
-                  <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
-                  Not set
-                </span>
-              )}
-            </div>
-          )
+          return <JoiningDateTableCell value={offer.joiningDate} />
         },
       },
       {
@@ -1082,7 +992,7 @@ const OffersPlacement = () => {
                   const raw = (row.original as any)._raw
                   if (raw) {
                     setEditOfferModal(raw)
-                    setEditStatus(raw.status)
+                    setEditStatus(offerStatusForEditModal(raw))
                   }
                 }}
               >
@@ -1368,11 +1278,8 @@ const OffersPlacement = () => {
     offerInfo: '9.5rem',
     candidate: '11rem',
     recruiter: '8rem',
-    preBoardingStatus: '6.5rem',
     bgvStatus: '4rem',
-    assetsIt: '5rem',
     offerStatus: '6.25rem',
-    step: '4.75rem',
     joiningDate: '6.75rem',
     id: '8.5rem',
   }
@@ -2104,26 +2011,58 @@ const OffersPlacement = () => {
 
       {/* Edit Offer Status Modal - !opacity-100 !pointer-events-auto so it shows when opened via React state */}
       {editOfferModal && (
-        <div id="edit-offer-modal" className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
-          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setEditOfferModal(null)} />
-          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm">
-            <div className="ti-modal-content">
-              <div className="ti-modal-header">
-                <h4 className="ti-modal-title">Update Offer Status – {editOfferModal.offerCode}</h4>
-                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setEditOfferModal(null)}>
-                  <i className="ri-close-line"></i>
+        <div
+          id="edit-offer-modal"
+          className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-offer-modal-title"
+          style={{ zIndex: 80 }}
+        >
+          <div className="hs-overlay-backdrop ti-modal-backdrop backdrop-blur-[1px]" onClick={() => setEditOfferModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box !max-w-[26rem]">
+            <div className="ti-modal-content overflow-hidden !rounded-lg shadow-lg ring-1 ring-slate-900/[0.06] dark:ring-white/[0.06]">
+              <div className="ti-modal-header !items-start gap-3 border-slate-200/90 !pb-3 !pt-4 dark:border-white/10">
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+                    Update status
+                  </p>
+                  <h4 id="edit-offer-modal-title" className="ti-modal-title !mb-0 break-words text-lg leading-snug">
+                    {editOfferModal.offerCode}
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  className="ti-modal-close-btn !mt-0.5 shrink-0"
+                  aria-label="Close"
+                  onClick={() => setEditOfferModal(null)}
+                >
+                  <i className="ri-close-line text-lg" aria-hidden />
                 </button>
               </div>
-              <div className="ti-modal-body">
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  {editOfferModal.job?.title} – {editOfferModal.candidate?.fullName}
-                </p>
+              <div className="ti-modal-body !pb-5 !pt-2">
+                <div className={`mb-5 ${offersStyles.offerStatusEditCard}`}>
+                  <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Role · Candidate
+                  </span>
+                  <p className="mb-0 text-sm font-medium leading-snug text-slate-800 dark:text-slate-100">
+                    {editOfferModal.job?.title || '—'}
+                    <span className="mx-1.5 text-slate-300 dark:text-slate-600" aria-hidden>
+                      ·
+                    </span>
+                    {editOfferModal.candidate?.fullName || '—'}
+                  </p>
+                </div>
                 <div>
-                  <label className="form-label">Status</label>
+                  <label className="form-label mb-2 text-slate-700 dark:text-slate-200" htmlFor="edit-offer-status-select">
+                    Offer status
+                  </label>
                   <select
-                    className="form-control"
+                    id="edit-offer-status-select"
+                    className="form-control rounded-md border-slate-200/90 shadow-sm transition-shadow focus:border-primary focus:ring-2 focus:ring-primary/20 dark:border-white/15"
                     value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
+                    onChange={(e) => setEditStatus(e.target.value as Offer['status'])}
                   >
                     <option value="Draft">Draft</option>
                     <option value="Sent">Sent</option>
@@ -2133,10 +2072,17 @@ const OffersPlacement = () => {
                   </select>
                 </div>
               </div>
-              <div className="ti-modal-footer">
-                <button type="button" className="ti-btn ti-btn-light" onClick={() => setEditOfferModal(null)}>Cancel</button>
-                <button type="button" className="ti-btn ti-btn-primary" onClick={handleUpdateStatus} disabled={editSubmitting}>
-                  {editSubmitting ? <i className="ri-loader-4-line animate-spin"></i> : 'Update'}
+              <div className="ti-modal-footer !gap-3 !border-slate-200/90 !py-3.5 dark:!border-white/10">
+                <button type="button" className="ti-btn ti-btn-light min-w-[5.5rem] font-medium" onClick={() => setEditOfferModal(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-primary-full min-w-[6.75rem] font-semibold shadow-sm transition hover:brightness-105"
+                  onClick={handleUpdateStatus}
+                  disabled={editSubmitting}
+                >
+                  {editSubmitting ? <i className="ri-loader-4-line animate-spin" aria-hidden /> : 'Save status'}
                 </button>
               </div>
             </div>
@@ -2159,86 +2105,174 @@ const OffersPlacement = () => {
             letterForm={letterForm}
             setLetterForm={setLetterForm}
             letterBusy={letterBusy}
-            lastGeneratedLabel={
-              letterModalOffer.offerLetterGeneratedAt
-                ? new Date(letterModalOffer.offerLetterGeneratedAt).toLocaleString()
-                : null
+            jobPostingDoc={letterJobPostingDoc}
+            lastSavedLabel={
+              letterModalOffer.updatedAt ? new Date(letterModalOffer.updatedAt).toLocaleString() : null
             }
-            hasPdf={Boolean(letterModalOffer.offerLetterKey)}
             onClose={() => setLetterModalOffer(null)}
-            onGeneratePdf={() => void handleGenerateOfferLetter()}
-            onDownload={() => void handleDownloadOfferLetter()}
+            onSaveLetter={() => void handleSaveOfferLetter()}
           />
         </div>
       )}
 
       {/* View Offer Modal */}
       {viewOfferModal && (
-        <div className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
-          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setViewOfferModal(null)} />
-          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm ti-modal-lg">
-            <div className="ti-modal-content">
-              <div className="ti-modal-header">
-                <h4 className="ti-modal-title">{viewOfferModal.offerCode}</h4>
-                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setViewOfferModal(null)}>
-                  <i className="ri-close-line"></i>
+        <div
+          className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="view-offer-modal-title"
+          style={{ zIndex: 80 }}
+        >
+          <div className="hs-overlay-backdrop ti-modal-backdrop backdrop-blur-[1px]" onClick={() => setViewOfferModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box !max-w-lg">
+            <div className="ti-modal-content overflow-hidden !rounded-lg shadow-lg ring-1 ring-slate-900/[0.06] dark:ring-white/[0.06]">
+              <div className="ti-modal-header !items-start gap-3 border-slate-200/90 !pb-4 dark:border-white/10">
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+                    Offer preview
+                  </p>
+                  <h4 id="view-offer-modal-title" className="ti-modal-title !mb-1 break-all text-xl font-semibold tracking-tight">
+                    {viewOfferModal.offerCode}
+                  </h4>
+                  <p className="mb-0 text-sm text-slate-600 dark:text-slate-400">
+                    {viewOfferModal.job?.title || '—'}
+                    <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
+                    {viewOfferModal.candidate?.fullName || '—'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ti-modal-close-btn !mt-0.5 shrink-0"
+                  aria-label="Close"
+                  onClick={() => setViewOfferModal(null)}
+                >
+                  <i className="ri-close-line text-lg" aria-hidden />
                 </button>
               </div>
-              <div className="ti-modal-body space-y-4 text-sm">
-                <div>
-                  <h5 className="font-semibold text-gray-800 dark:text-white mb-2">Offer &amp; Job</h5>
-                  <p><strong>Position:</strong> {viewOfferModal.job?.title}</p>
-                  <p><strong>Candidate:</strong> {viewOfferModal.candidate?.fullName}</p>
-                  <p><strong>Status:</strong> {viewOfferModal.status}</p>
-                  {viewOfferModal.ctcBreakdown?.gross && (
-                    <p><strong>CTC:</strong> ₹{viewOfferModal.ctcBreakdown.gross.toLocaleString()}</p>
-                  )}
-                  {viewOfferModal.joiningDate && (
-                    <p><strong>Joining:</strong> {new Date(viewOfferModal.joiningDate).toLocaleDateString()}</p>
-                  )}
+              <div className="ti-modal-body space-y-4 !pt-2">
+                <div className={`${offersStyles.offerModalSection} !py-4`}>
+                  <div className={offersStyles.offerModalSectionTitle}>
+                    <i className="ri-briefcase-4-line shrink-0 text-primary" aria-hidden />
+                    Offer &amp; Job
+                  </div>
+                  <div className={offersStyles.offerMetaGrid}>
+                    <span className={offersStyles.offerMetaLabel}>Position</span>
+                    <span className={offersStyles.offerMetaValue}>{viewOfferModal.job?.title || '—'}</span>
+                    <span className={offersStyles.offerMetaLabel}>Candidate</span>
+                    <span className={offersStyles.offerMetaValue}>{viewOfferModal.candidate?.fullName || '—'}</span>
+                    <span className={offersStyles.offerMetaLabel}>Status</span>
+                    <span className={offersStyles.offerMetaValue}>
+                      <span className={offerStatusPillClass(viewOfferModal.status)}>{viewOfferModal.status || '—'}</span>
+                    </span>
+                    <span className={offersStyles.offerMetaLabel}>CTC</span>
+                    <span className={offersStyles.offerMetaValue}>
+                      {viewOfferModal.ctcBreakdown?.gross != null
+                        ? `₹${Number(viewOfferModal.ctcBreakdown.gross).toLocaleString()}`
+                        : '—'}
+                    </span>
+                    <span className={offersStyles.offerMetaLabel}>Joining</span>
+                    <span className={offersStyles.offerMetaValue}>
+                      {joiningDatePresent(viewOfferModal.joiningDate) ? (
+                        <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-700 dark:text-slate-200">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" title="Date set" />
+                          {formatJoiningDateDisplay(viewOfferModal.joiningDate as string | Date)}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-400 dark:text-slate-500">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
+                          Not set
+                        </span>
+                      )}
+                    </span>
+                  </div>
                 </div>
                 {viewOfferModal.status === 'Accepted' && (
                   <>
-                    <div>
-                      <h5 className="font-semibold text-gray-800 dark:text-white mb-2">HRMS (Onboarding)</h5>
-                      <p><strong>Reporting Manager:</strong> {typeof (viewOfferModal.candidate as any)?.reportingManager === 'object' ? (viewOfferModal.candidate as any)?.reportingManager?.name : (viewOfferModal.candidate as any)?.reportingManager || '-'}</p>
+                    <div className={`${offersStyles.offerModalSection}`}>
+                      <div className={offersStyles.offerModalSectionTitle}>
+                        <i className="ri-user-settings-line shrink-0 text-primary" aria-hidden />
+                        HRMS (Onboarding)
+                      </div>
+                      <div className={offersStyles.offerMetaGrid}>
+                        <span className={offersStyles.offerMetaLabel}>Reporting</span>
+                        <span className={offersStyles.offerMetaValue}>
+                          {typeof (viewOfferModal.candidate as any)?.reportingManager === 'object'
+                            ? (viewOfferModal.candidate as any)?.reportingManager?.name
+                            : (viewOfferModal.candidate as any)?.reportingManager || '—'}
+                        </span>
+                      </div>
                     </div>
                     {(viewOfferModal as any).placement && (
-                      <div>
-                        <h5 className="font-semibold text-gray-800 dark:text-white mb-2">Pre-boarding &amp; Placement</h5>
-                        <p>
-                          <strong>Placement status:</strong> {(viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status || '-'}
-                        </p>
-                        <p><strong>Pre-boarding Status:</strong> {(viewOfferModal as any).placement?.preBoardingStatus || '-'}</p>
-                        {(() => {
-                          const { primary, secondary } = getPlacementStatusActorSummary({
-                            status: (viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status,
-                            ...(viewOfferModal as any).placement,
-                          })
-                          return (
+                      <div className={`${offersStyles.offerModalSection}`}>
+                        <div className={offersStyles.offerModalSectionTitle}>
+                          <i className="ri-suitcase-line shrink-0 text-primary" aria-hidden />
+                          Pre-boarding &amp; Placement
+                        </div>
+                        <div className={offersStyles.offerMetaGrid}>
+                          <span className={offersStyles.offerMetaLabel}>Placement</span>
+                          <span className={offersStyles.offerMetaValue}>
+                            {(viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status || '—'}
+                          </span>
+                          <span className={offersStyles.offerMetaLabel}>Pre-boarding</span>
+                          <span className={offersStyles.offerMetaValue}>
+                            {(viewOfferModal as any).placement?.preBoardingStatus || '—'}
+                          </span>
+                          {(() => {
+                            const { primary, secondary } = getPlacementStatusActorSummary({
+                              status: (viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status,
+                              ...(viewOfferModal as any).placement,
+                            })
+                            return (
+                              <>
+                                {primary ? (
+                                  <>
+                                    <span className={offersStyles.offerMetaLabel}>Record</span>
+                                    <span className={`${offersStyles.offerMetaValue} text-slate-600 dark:text-slate-300`}>
+                                      {primary}
+                                    </span>
+                                  </>
+                                ) : null}
+                                {secondary ? (
+                                  <span
+                                    className="text-xs leading-snug text-slate-500 dark:text-slate-400"
+                                    style={{ gridColumn: '1 / -1' }}
+                                  >
+                                    {secondary}
+                                  </span>
+                                ) : null}
+                              </>
+                            )
+                          })()}
+                          {(viewOfferModal as any).placement?.backgroundVerification ? (
                             <>
-                              {primary ? (
-                                <p className="mb-0 text-slate-600 dark:text-slate-300">
-                                  <strong>Record:</strong> {primary}
-                                </p>
-                              ) : null}
-                              {secondary ? (
-                                <p className="mb-0 text-slate-500 dark:text-slate-400 text-xs">
-                                  {secondary}
-                                </p>
-                              ) : null}
+                              <span className={offersStyles.offerMetaLabel}>BGV</span>
+                              <span className={offersStyles.offerMetaValue}>
+                                {(viewOfferModal as any).placement.backgroundVerification?.status || '—'}
+                              </span>
                             </>
-                          )
-                        })()}
-                        {(viewOfferModal as any).placement?.backgroundVerification && (
-                          <p><strong>BGV:</strong> {(viewOfferModal as any).placement.backgroundVerification?.status || '-'}</p>
-                        )}
-                        {Array.isArray((viewOfferModal as any).placement?.assetAllocation) && (viewOfferModal as any).placement.assetAllocation.length > 0 && (
-                          <p><strong>Assets:</strong> {(viewOfferModal as any).placement.assetAllocation.map((a: any) => a.name || a.type).join(', ') || '-'}</p>
-                        )}
-                        {Array.isArray((viewOfferModal as any).placement?.itAccess) && (viewOfferModal as any).placement.itAccess.length > 0 && (
-                          <p><strong>IT Access:</strong> {(viewOfferModal as any).placement.itAccess.map((i: any) => i.system).join(', ') || '-'}</p>
-                        )}
+                          ) : null}
+                          {Array.isArray((viewOfferModal as any).placement?.assetAllocation) &&
+                          (viewOfferModal as any).placement.assetAllocation.length > 0 ? (
+                            <>
+                              <span className={offersStyles.offerMetaLabel}>Assets</span>
+                              <span className={offersStyles.offerMetaValue}>
+                                {(viewOfferModal as any).placement.assetAllocation.map((a: any) => a.name || a.type).join(', ') ||
+                                  '—'}
+                              </span>
+                            </>
+                          ) : null}
+                          {Array.isArray((viewOfferModal as any).placement?.itAccess) &&
+                          (viewOfferModal as any).placement.itAccess.length > 0 ? (
+                            <>
+                              <span className={offersStyles.offerMetaLabel}>IT access</span>
+                              <span className={offersStyles.offerMetaValue}>
+                                {(viewOfferModal as any).placement.itAccess.map((i: any) => i.system).join(', ') || '—'}
+                              </span>
+                            </>
+                          ) : null}
+                        </div>
                       </div>
                     )}
                   </>
@@ -2251,19 +2285,46 @@ const OffersPlacement = () => {
 
       {/* View History Modal */}
       {viewHistoryModal && (
-        <div className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]" tabIndex={-1} style={{ zIndex: 80 }}>
-          <div className="hs-overlay-backdrop ti-modal-backdrop" onClick={() => setViewHistoryModal(null)} />
-          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-sm">
-            <div className="ti-modal-content">
-              <div className="ti-modal-header">
-                <h4 className="ti-modal-title">Offer History – {viewHistoryModal.offerCode}</h4>
-                <button type="button" className="ti-btn ti-btn-light ti-btn-sm !py-1 !px-2" onClick={() => setViewHistoryModal(null)}>
-                  <i className="ri-close-line"></i>
+        <div
+          className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
+          tabIndex={-1}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="view-history-modal-title"
+          style={{ zIndex: 80 }}
+        >
+          <div className="hs-overlay-backdrop ti-modal-backdrop backdrop-blur-[1px]" onClick={() => setViewHistoryModal(null)} />
+          <div className="hs-overlay-open:mt-7 ti-modal-box !max-w-[26rem]">
+            <div className="ti-modal-content overflow-hidden !rounded-lg shadow-lg ring-1 ring-slate-900/[0.06] dark:ring-white/[0.06]">
+              <div className="ti-modal-header !items-start gap-3 border-slate-200/90 !pb-3 dark:border-white/10">
+                <div className="min-w-0 flex-1">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
+                    Activity
+                  </p>
+                  <h4 id="view-history-modal-title" className="ti-modal-title !mb-0 break-words text-lg">
+                    Offer history · {viewHistoryModal.offerCode}
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  className="ti-modal-close-btn shrink-0"
+                  aria-label="Close"
+                  onClick={() => setViewHistoryModal(null)}
+                >
+                  <i className="ri-close-line text-lg" aria-hidden />
                 </button>
               </div>
-              <div className="ti-modal-body text-sm">
-                <p className="text-gray-600 dark:text-gray-400">Current status: <strong>{viewHistoryModal.status}</strong></p>
-                <p className="text-xs text-gray-500 mt-2">Detailed status history is not available.</p>
+              <div className="ti-modal-body !pt-2">
+                <div className={`${offersStyles.offerModalSection} !mb-3 !py-3.5`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={offersStyles.offerMetaLabel}>Current status</span>
+                    <span className={offerStatusPillClass(viewHistoryModal.status)}>{viewHistoryModal.status || '—'}</span>
+                  </div>
+                </div>
+                <p className="mb-0 flex gap-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  <i className="ri-information-line mt-0.5 shrink-0 text-slate-400" aria-hidden />
+                  Detailed status history is not available yet. Future versions may show timeline events here.
+                </p>
               </div>
             </div>
           </div>

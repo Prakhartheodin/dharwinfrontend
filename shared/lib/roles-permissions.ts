@@ -19,6 +19,7 @@ export const PERMISSION_SECTIONS: {
       { id: "company-email", label: "Company work email" },
       { id: "candidate-sop", label: "Employee SOP" },
       { id: "email-templates", label: "My email templates" },
+      { id: "job-templates", label: "My jobs template" },
       { id: "email-templates-admin", label: "All agents' email templates (admin)" },
       { id: "bolna-voice-agent", label: "Bolna voice agent" },
     ],

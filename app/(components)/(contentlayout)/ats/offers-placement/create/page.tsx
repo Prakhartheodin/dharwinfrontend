@@ -14,7 +14,7 @@ const CreateOffer = () => {
   const handleSuccess = (created: Offer) => {
     const newId = (created as { _id?: string })._id ?? (created as { id?: string }).id ?? "";
     if (typeof window !== "undefined") {
-      sessionStorage.setItem("dharwin:offerLetterAutoPdfAfterOpen", "1");
+      sessionStorage.setItem("dharwin:offerLetterAutoSaveAfterOpen", "1");
     }
     const q = new URLSearchParams();
     q.set("refresh", String(Date.now()));

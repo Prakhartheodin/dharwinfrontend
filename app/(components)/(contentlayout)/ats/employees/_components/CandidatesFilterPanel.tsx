@@ -1,8 +1,11 @@
 "use client"
-import React from 'react'
+import React, { useMemo } from 'react'
 import type { AgentOption } from '@/shared/lib/api/candidates'
 
 interface CandidatesFilterPanelProps {
+  /** Controlled by parent — avoids Preline HSOverlay init missing after client navigations / DOM moves */
+  layoutOpen: boolean
+  onCloseLayout: () => void
   filters: {
     name: string[]
     email: string
@@ -29,6 +32,8 @@ interface CandidatesFilterPanelProps {
 }
 
 const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
+  layoutOpen,
+  onCloseLayout,
   filters,
   setFilters,
   allNames,
@@ -47,12 +52,33 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
 }) => {
   const agentLabel = (id: string) => agentOptions.find((a) => a.id === id)?.name ?? id
 
+  const nameQueryTrimmed = searchName.trim()
+  const showNameSuggestions = nameQueryTrimmed.length > 0
+  /** Cap suggestions height; full list stays server-side filtered in parent when typing */
+  const nameSuggestionRows = useMemo(() => filteredNames.slice(0, 100), [filteredNames])
+
+  const agentQueryTrimmed = searchAgent.trim()
+  const showAgentSuggestions = agentQueryTrimmed.length > 0
+  const agentSuggestionRows = useMemo(() => filteredAgents.slice(0, 100), [filteredAgents])
+
+  /** Full-width panel under the Employees toolbar — expands downward (Preline overlay not used for open state). */
   return (
-      <div id="candidates-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
-        <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
+      <div
+        id="candidates-filter-panel"
+        role="region"
+        aria-hidden={!layoutOpen}
+        tabIndex={-1}
+        className={
+          'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +
+          (layoutOpen
+            ? 'pointer-events-auto max-h-[min(92vh,52rem)] overflow-hidden border-x border-b border-defaultborder/80 opacity-100'
+            : 'pointer-events-none max-h-0 overflow-hidden border-0 opacity-0')
+        }
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-defaultborder/60 bg-gradient-to-r from-gray-50/95 to-transparent px-4 py-2.5 dark:from-black/25 dark:to-transparent">
+          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2 !mb-0">
             <i className="ri-search-line text-primary text-base"></i>
-            Search Candidates
+            Search &amp; filters
           </h6>
           <button 
             type="button" 
@@ -62,7 +88,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
             <i className="ri-refresh-line me-1.5"></i>Reset
           </button>
         </div>
-        <div className="ti-offcanvas-body !p-4">
+        <div className="max-h-[min(82vh,48rem)] overflow-y-auto px-4 py-4">
           <div className="space-y-5">
             {/* Employment Status: Current / Resigned / All */}
             <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
@@ -81,7 +107,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
               </select>
             </div>
 
-            {/* Name Filter */}
+            {/* Name Filter — suggestions only appear while typing (no full scrollable roster) */}
             <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-user-line text-primary text-base"></i>
@@ -89,41 +115,58 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                 <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allNames.length})</span>
               </label>
               <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search names..."
-                  value={searchName}
-                  onChange={(e) => setSearchName(e.target.value)}
-                />
-                <div className="max-h-48 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
-                  <div className="space-y-1">
-                    {filterOptionsLoading ? (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
-                        Loading names...
-                      </div>
-                    ) : filteredNames.length > 0 ? (
-                      filteredNames.map((name) => (
-                        <label
-                          key={name}
-                          className="flex items-center gap-2 cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5"
-                            checked={filters.name.includes(name)}
-                            onChange={() => handleMultiSelectChange('name', name)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium">{name}</span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No names found
-                      </div>
-                    )}
-                  </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="form-control !py-1.5 !text-sm"
+                    placeholder="Start typing to search names…"
+                    value={searchName}
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    onChange={(e) => setSearchName(e.target.value)}
+                  />
+                  {showNameSuggestions && (
+                    <div
+                      role="listbox"
+                      className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-defaultborder/70 bg-white py-1 shadow-lg dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5"
+                    >
+                      {filterOptionsLoading ? (
+                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">Loading names…</div>
+                      ) : nameSuggestionRows.length > 0 ? (
+                        nameSuggestionRows.map((name) => {
+                          const selected = filters.name.includes(name)
+                          return (
+                            <button
+                              key={name}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-primary/10 dark:hover:bg-primary/15 ${
+                                selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'
+                              }`}
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                              }}
+                              onClick={() => handleMultiSelectChange('name', name)}
+                            >
+                              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current opacity-70">
+                                {selected ? <i className="ri-check-line text-[0.65rem]" aria-hidden /> : null}
+                              </span>
+                              <span className="min-w-0 flex-1 truncate">{name}</span>
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
+                          No names match “{searchName.trim()}”.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+                <p className="mb-0 text-[0.65rem] text-gray-500 dark:text-gray-500">
+                  Type above to see suggestions; selected names appear as chips below.
+                </p>
                 {filters.name.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1.5">
                     {filters.name.map((name) => (
@@ -176,7 +219,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
               />
             </div>
 
-            {/* Assigned agent — same pattern as Name: list of all agents */}
+            {/* Agent — suggestions only while typing (same pattern as Name) */}
             <div className="pb-4">
               <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
                 <i className="ri-user-settings-line text-primary text-base"></i>
@@ -184,46 +227,66 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                 <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({agentOptions.length})</span>
               </label>
               <div className="space-y-2">
-                <input
-                  type="text"
-                  className="form-control !py-1.5 !text-sm mb-1.5"
-                  placeholder="Search agents..."
-                  value={searchAgent}
-                  onChange={(e) => setSearchAgent(e.target.value)}
-                />
-                <div className="max-h-48 overflow-y-auto rounded-lg bg-white dark:bg-black/20 p-2 shadow-sm">
-                  <div className="space-y-1">
-                    {agentsLoading ? (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
-                        Loading agents...
-                      </div>
-                    ) : filteredAgents.length > 0 ? (
-                      filteredAgents.map((a) => (
-                        <label
-                          key={a.id}
-                          className="flex items-start gap-2 cursor-pointer hover:bg-primary/5 dark:hover:bg-primary/10 p-1.5 rounded-md transition-colors"
-                        >
-                          <input
-                            type="checkbox"
-                            className="form-check-input !w-3.5 !h-3.5 mt-0.5"
-                            checked={filters.agentIds.includes(a.id)}
-                            onChange={() => handleMultiSelectChange('agentIds', a.id)}
-                          />
-                          <span className="text-xs text-gray-700 dark:text-gray-300 font-medium leading-snug">
-                            {a.name}
-                            <span className="block text-[0.65rem] font-normal text-gray-500 dark:text-gray-400 truncate" title={a.email}>
-                              {a.email}
-                            </span>
-                          </span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                        No agents found
-                      </div>
-                    )}
-                  </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    className="form-control !py-1.5 !text-sm"
+                    placeholder="Start typing to search agents…"
+                    value={searchAgent}
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    onChange={(e) => setSearchAgent(e.target.value)}
+                  />
+                  {showAgentSuggestions && (
+                    <div
+                      role="listbox"
+                      className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-defaultborder/70 bg-white py-1 shadow-lg dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5"
+                    >
+                      {agentsLoading ? (
+                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">Loading agents…</div>
+                      ) : agentSuggestionRows.length > 0 ? (
+                        agentSuggestionRows.map((a) => {
+                          const selected = filters.agentIds.includes(a.id)
+                          return (
+                            <button
+                              key={a.id}
+                              type="button"
+                              role="option"
+                              aria-selected={selected}
+                              className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-primary/10 dark:hover:bg-primary/15 ${
+                                selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'
+                              }`}
+                              onMouseDown={(e) => {
+                                e.preventDefault()
+                              }}
+                              onClick={() => handleMultiSelectChange('agentIds', a.id)}
+                            >
+                              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current opacity-70">
+                                {selected ? <i className="ri-check-line text-[0.65rem]" aria-hidden /> : null}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-xs font-medium leading-tight">{a.name}</span>
+                                <span
+                                  className="block truncate text-[0.65rem] font-normal text-gray-500 dark:text-gray-400"
+                                  title={a.email}
+                                >
+                                  {a.email}
+                                </span>
+                              </span>
+                            </button>
+                          )
+                        })
+                      ) : (
+                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
+                          No agents match “{searchAgent.trim()}”.
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
+                <p className="mb-0 text-[0.65rem] text-gray-500 dark:text-gray-500">
+                  Type above to see suggestions; selected agents appear as chips below.
+                </p>
                 {filters.agentIds.length > 0 && (
                   <div className="flex flex-wrap gap-1.5 pt-1.5">
                     {filters.agentIds.map((id) => (
@@ -258,7 +321,7 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
               <button
                 type="button"
                 className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                data-hs-overlay="#candidates-filter-panel"
+                onClick={onCloseLayout}
               >
                 <i className="ri-close-line me-1.5"></i>Close
               </button>

@@ -45,6 +45,8 @@ export interface CandidateListItem {
   /** Company-provided work mailbox (admin); distinct from login email. */
   companyAssignedEmail?: string;
   companyEmailProvider?: "gmail" | "outlook" | "unknown" | "" | string;
+  /** Denormalized title from job-application / referral flow; used when aligning HRMS position to applied role. */
+  referralJobTitle?: string | null;
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
@@ -102,11 +104,16 @@ export async function listCandidates(params?: ListCandidatesParams): Promise<Can
   return data;
 }
 
-/** Assignable people (owner has Student and/or Employee user role) with optional assigned Agent — requires `candidates.manage`. */
+/**
+ * Settings → Agents roster: candidate profiles with Student/Candidate (Employee) owners, plus any profile
+ * that already has an assigned agent (so onboarded hires still appear under the correct agent).
+ * Requires `candidates.manage`.
+ */
 export interface StudentAgentAssignmentRow {
   id: string;
   fullName: string;
   email: string;
+  /** HR id (e.g. DBS…) — null until portal `owner` has the Employee user role (`Candidate`-only hides it). */
   employeeId: string | null;
   ownerId: string;
   /** e.g. `Student`, `Candidate`, or `Student · Candidate` */

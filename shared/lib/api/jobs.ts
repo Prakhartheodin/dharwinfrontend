@@ -179,6 +179,10 @@ export interface JobTemplate {
   title: string;
   jobDescription: string;
   createdAt?: string;
+  updatedAt?: string;
+  usageCount?: number;
+  lastUsedAt?: string | null;
+  createdBy?: { _id?: string; name?: string; email?: string };
 }
 
 export interface JobTemplatesResponse {
@@ -197,6 +201,23 @@ export async function listJobTemplates(params?: { limit?: number; page?: number 
 export async function getJobTemplate(id: string): Promise<JobTemplate> {
   const { data } = await apiClient.get<JobTemplate>(`/jobs/templates/${id}`);
   return data;
+}
+
+export async function createJobTemplate(payload: { title: string; jobDescription: string }): Promise<JobTemplate> {
+  const { data } = await apiClient.post<JobTemplate>("/jobs/templates", payload);
+  return data;
+}
+
+export async function updateJobTemplate(
+  id: string,
+  payload: { title?: string; jobDescription?: string },
+): Promise<JobTemplate> {
+  const { data } = await apiClient.patch<JobTemplate>(`/jobs/templates/${id}`, payload);
+  return data;
+}
+
+export async function deleteJobTemplate(id: string): Promise<void> {
+  await apiClient.delete(`/jobs/templates/${id}`);
 }
 
 export async function importJobsFromExcel(file: File): Promise<{
