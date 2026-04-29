@@ -242,6 +242,87 @@ function extractApiErrorMessage(err: unknown): string {
   return "Failed to update profile.";
 }
 
+const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"] as const;
+
+type SkillRow = { id: number; name: string; level: string; category?: string };
+
+function mergeExtractedSkillsIntoRows(
+  existing: SkillRow[],
+  incoming: Array<{ name: string; level?: string; category?: string }>
+): SkillRow[] {
+  const map = new Map<string, SkillRow>();
+  let nid = Date.now();
+  for (const row of existing) {
+    const k = row.name.trim().toLowerCase();
+    if (k) map.set(k, row);
+  }
+  for (const s of incoming) {
+    const name = (s.name || "").trim();
+    if (!name) continue;
+    const k = name.toLowerCase();
+    if (!map.has(k)) {
+      const lvl =
+        typeof s.level === "string" && SKILL_LEVELS.includes(s.level as (typeof SKILL_LEVELS)[number])
+          ? s.level
+          : "Intermediate";
+      map.set(k, {
+        id: nid++,
+        name,
+        level: lvl,
+        category: typeof s.category === "string" ? s.category : undefined,
+      });
+    }
+  }
+  return [...map.values()];
+}
+
+function buildSkillsPayload(rows: SkillRow[]): NonNullable<UpdateMeWithCandidatePayload["skills"]> {
+  return rows
+    .filter((r) => r.name.trim())
+    .map((r) => ({
+      name: r.name.trim(),
+      level: SKILL_LEVELS.includes(r.level as (typeof SKILL_LEVELS)[number])
+        ? (r.level as (typeof SKILL_LEVELS)[number])
+        : "Intermediate",
+      category: r.category?.trim() || undefined,
+    }));
+}
+
+/** Maps API `candidate.skills` to editable rows. */
+function candidateSkillsToSkillRows(skills: unknown): SkillRow[] {
+  if (!Array.isArray(skills) || skills.length === 0) return [];
+  const base = Date.now();
+  return skills
+    .map((s: unknown, i: number) => {
+      const o =
+        typeof s === "object" && s !== null
+          ? (s as { name?: string; level?: string; category?: string })
+          : {};
+      const lvl =
+        typeof o.level === "string" && SKILL_LEVELS.includes(o.level as (typeof SKILL_LEVELS)[number])
+          ? o.level
+          : "Intermediate";
+      return {
+        id: base + i,
+        name: typeof o.name === "string" ? o.name : "",
+        level: lvl,
+        category: typeof o.category === "string" ? o.category : undefined,
+      };
+    })
+    .filter((x) => x.name.trim());
+}
+
+/** PDF/DOCX only — matches backend resume extractor. */
+function isResumeExtractableFile(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  return (
+    file.type === "application/pdf" ||
+    lower.endsWith(".pdf") ||
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lower.endsWith(".docx")
+  );
+}
+
 async function showProfileSaveToast(kind: "error" | "success", title: string, text?: string): Promise<void> {
   await Swal.fire({
     icon: kind,
@@ -322,6 +403,12 @@ export default function PersonalInformationPage() {
   const [salarySlips, setSalarySlips] = useState<Array<{ id: number; month: string; year: string; file: File | null }>>([]);
   const [existingSalarySlips, setExistingSalarySlips] = useState<Array<{ month: string; year: string; documentUrl?: string; key?: string; originalName?: string }>>([]);
   const [socialLinkRows, setSocialLinkRows] = useState<Array<{ id: number; platform: string; url: string }>>([]);
+
+  /** Structured skills — persisted via PATCH me/with-candidate; can be populated by AI resume extraction. */
+  const [skillsRows, setSkillsRows] = useState<SkillRow[]>([]);
+  const [extractSkillsLoading, setExtractSkillsLoading] = useState(false);
+  const [skillRoleRecommendLoading, setSkillRoleRecommendLoading] = useState(false);
+  const resumeExtractInputRef = useRef<HTMLInputElement | null>(null);
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     leaveUpdates: true,
@@ -500,7 +587,102 @@ export default function PersonalInformationPage() {
     } else {
       syncAttachmentsFromCandidate();
     }
+
+    const rawSkills = candidate.skills;
+    if (Array.isArray(rawSkills)) {
+      setSkillsRows(candidateSkillsToSkillRows(rawSkills));
+    }
+    // If `skills` is omitted from API JSON, do not clear — avoids wiping after PATCH responses without skills.
   }, [candidate, hasEmployeeProfile, user]);
+
+  const runResumeSkillExtract = async (file: File | undefined | null) => {
+    if (!file || !candidate) return;
+    const lower = file.name.toLowerCase();
+    const isPdf = file.type === "application/pdf" || lower.endsWith(".pdf");
+    const isDocx =
+      file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      lower.endsWith(".docx");
+    if (!isPdf && !isDocx) {
+      await Swal.fire({ icon: "error", title: "Unsupported file", text: "Upload a PDF or DOCX resume." });
+      return;
+    }
+    setExtractSkillsLoading(true);
+    try {
+      const res = await authApi.extractSkillsFromResume(file);
+      const n = res.skills?.length ?? 0;
+      setSkillsRows((prev) => mergeExtractedSkillsIntoRows(prev, res.skills || []));
+      await Swal.fire({
+        icon: "success",
+        title: "Skills extracted",
+        text: n ? `Merged ${n} skill${n === 1 ? "" : "s"} into your list. Click Save profile to persist.` : "No new skills found.",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 4500,
+        timerProgressBar: true,
+      });
+    } catch (err) {
+      const raw = extractApiErrorMessage(err);
+      await showProfileSaveToast("error", "Couldn't extract skills", raw);
+    } finally {
+      setExtractSkillsLoading(false);
+    }
+  };
+
+  const runSkillRecommendationByRole = async () => {
+    if (!candidate) return;
+    const { value: role, isConfirmed } = await Swal.fire({
+      title: "Skills to develop for a role",
+      html:
+        '<p class="text-sm text-muted mb-3 text-start">We use your <strong>current skill list</strong> on this page plus the <strong>target role</strong> you enter, and suggest <em>additional</em> skills to develop. Click <strong>Save profile</strong> to persist merges.</p>',
+      input: "text",
+      inputPlaceholder: "e.g. AI Engineer, Lead Backend Developer",
+      showCancelButton: true,
+      confirmButtonText: "Suggest gaps",
+      cancelButtonText: "Cancel",
+      focusConfirm: false,
+      inputValidator: (value) => {
+        if (!value || String(value).trim().length < 2) {
+          return "Enter at least 2 characters";
+        }
+        return null;
+      },
+    });
+    if (!isConfirmed || !role || String(role).trim().length < 2) return;
+    setSkillRoleRecommendLoading(true);
+    try {
+      const currentSkills = skillsRows
+        .filter((r) => r.name.trim())
+        .map((r) => ({
+          name: r.name.trim(),
+          level: r.level,
+          ...(r.category?.trim() ? { category: r.category.trim() } : {}),
+        }));
+      const res = await authApi.recommendSkillsByRole({
+        role: String(role).trim(),
+        currentSkills,
+      });
+      const n = res.skills?.length ?? 0;
+      setSkillsRows((prev) => mergeExtractedSkillsIntoRows(prev, res.skills || []));
+      await Swal.fire({
+        icon: "success",
+        title: "Skills suggested",
+        text: n
+          ? `Merged ${n} new skill${n === 1 ? "" : "s"} to develop. Click Save profile to persist.`
+          : "No new gaps returned — your list may already cover that role.",
+        toast: true,
+        position: "top-end",
+        showConfirmButton: false,
+        timer: 4500,
+        timerProgressBar: true,
+      });
+    } catch (err) {
+      const raw = extractApiErrorMessage(err);
+      await showProfileSaveToast("error", "Couldn't suggest skills", raw);
+    } finally {
+      setSkillRoleRecommendLoading(false);
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -614,6 +796,8 @@ export default function PersonalInformationPage() {
           key: d.key,
           originalName: d.originalName,
         }));
+        /** Merged with AI when CV/Resume is uploaded (after S3). */
+        let skillsForPayload: SkillRow[] = skillsRows;
         const docsToUpload = documentsList.filter((d) => d.file && d.name);
         if (docsToUpload.length > 0) {
           const files = docsToUpload.map((d) => d.file!);
@@ -633,6 +817,25 @@ export default function PersonalInformationPage() {
                 mimeType: fileData.mimeType,
               });
             });
+            for (const docRow of docsToUpload) {
+              if (docRow.name !== "CV/Resume" || !docRow.file || !isResumeExtractableFile(docRow.file)) continue;
+              try {
+                const extracted = await authApi.extractSkillsFromResume(docRow.file);
+                skillsForPayload = mergeExtractedSkillsIntoRows(skillsForPayload, extracted.skills || []);
+              } catch (extractErr) {
+                const msg = extractApiErrorMessage(extractErr);
+                await Swal.fire({
+                  icon: "warning",
+                  title: "Document saved — skills not extracted",
+                  text: msg || "Resume text may be empty, or OpenAI is unavailable. You can extract skills manually from the Skills section.",
+                  toast: true,
+                  position: "top-end",
+                  showConfirmButton: true,
+                  timer: 9000,
+                });
+              }
+            }
+            setSkillsRows(skillsForPayload);
           }
         }
 
@@ -699,6 +902,7 @@ export default function PersonalInformationPage() {
             documents: finalDocs,
             salarySlips: finalSalarySlips,
             socialLinks: socialPayload,
+            skills: buildSkillsPayload(skillsForPayload),
           };
         } else {
           const staffDigits = staffPhone.replace(/\D/g, "");
@@ -733,11 +937,16 @@ export default function PersonalInformationPage() {
             documents: finalDocs,
             salarySlips: finalSalarySlips,
             socialLinks: socialPayload,
+            skills: buildSkillsPayload(skillsForPayload),
           };
         }
 
         const res = await authApi.updateMeWithCandidate(payload);
         setCandidate(res.candidate);
+        const apiSkills = res.candidate?.skills;
+        const mappedFromApi =
+          Array.isArray(apiSkills) && apiSkills.length > 0 ? candidateSkillsToSkillRows(apiSkills) : [];
+        setSkillsRows(mappedFromApi.length > 0 ? mappedFromApi : skillsForPayload);
         setDocumentsList([]);
         setSalarySlips([]);
         await refreshUser();
@@ -1893,6 +2102,159 @@ export default function PersonalInformationPage() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+
+            {/* Skills — populated manually or extracted from CV/resume via OpenAI (server OPENAI_API_KEY) */}
+            <div className="box border border-defaultborder rounded-lg overflow-hidden">
+              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-wrap items-center justify-between gap-2">
+                <h6 className="font-semibold mb-0 text-[0.9375rem]">Skills</h6>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <input
+                    ref={resumeExtractInputRef}
+                    type="file"
+                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      void runResumeSkillExtract(f);
+                      e.target.value = "";
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-soft-secondary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
+                    disabled={!candidate || extractSkillsLoading}
+                    onClick={() => resumeExtractInputRef.current?.click()}
+                  >
+                    {extractSkillsLoading ? (
+                      <>
+                        <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
+                        Extracting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-magic-line me-1 align-middle" />
+                        Extract from resume
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
+                    disabled={!candidate || extractSkillsLoading || skillRoleRecommendLoading}
+                    onClick={() => void runSkillRecommendationByRole()}
+                  >
+                    {skillRoleRecommendLoading ? (
+                      <>
+                        <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
+                        Suggesting…
+                      </>
+                    ) : (
+                      <>
+                        <i className="ri-lightbulb-flash-line me-1 align-middle" />
+                        Skill recommendation
+                      </>
+                    )}
+                  </button>
+                  {documentsList.some((d) => d.file && d.name === "CV/Resume") ? (
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
+                      disabled={!candidate || extractSkillsLoading}
+                      onClick={() => {
+                        const f = documentsList.find((d) => d.file && d.name === "CV/Resume")?.file;
+                        void runResumeSkillExtract(f ?? null);
+                      }}
+                    >
+                      Use CV row file
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="box-body px-4 py-4 space-y-3">
+                <p className="text-defaulttextcolor/70 text-sm mb-0">
+                  Extract reads PDF/DOCX text on the server and merges skills into this list. Click <strong>Save profile</strong> below to persist.
+                </p>
+                {skillsRows.length === 0 ? (
+                  <p className="text-defaulttextcolor/60 text-sm mb-0">No skills yet — extract from your CV or add rows.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {skillsRows.map((row) => (
+                      <div
+                        key={row.id}
+                        className="grid grid-cols-12 gap-2 items-end border border-defaultborder rounded-md p-2 bg-gray-50/40 dark:bg-gray-800/20"
+                      >
+                        <div className="col-span-12 sm:col-span-5">
+                          <label className="form-label text-xs mb-1">Skill</label>
+                          <input
+                            type="text"
+                            className="form-control !rounded-md"
+                            placeholder="e.g. React"
+                            value={row.name}
+                            disabled={!candidate}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, name: v } : x)));
+                            }}
+                          />
+                        </div>
+                        <div className="col-span-12 sm:col-span-3">
+                          <label className="form-label text-xs mb-1">Level</label>
+                          <select
+                            className="form-control !rounded-md"
+                            value={row.level}
+                            disabled={!candidate}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, level: v } : x)));
+                            }}
+                          >
+                            {(["Beginner", "Intermediate", "Advanced", "Expert"] as const).map((lvl) => (
+                              <option key={lvl} value={lvl}>
+                                {lvl}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-span-12 sm:col-span-3">
+                          <label className="form-label text-xs mb-1">Category</label>
+                          <input
+                            type="text"
+                            className="form-control !rounded-md"
+                            placeholder="Optional"
+                            value={row.category ?? ""}
+                            disabled={!candidate}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, category: v || undefined } : x)));
+                            }}
+                          />
+                        </div>
+                        <div className="col-span-12 sm:col-span-1 flex justify-end pb-1">
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-soft-danger ti-btn-sm !min-w-0 !px-2"
+                            disabled={!candidate}
+                            onClick={() => setSkillsRows((arr) => arr.filter((x) => x.id !== row.id))}
+                            aria-label="Remove skill"
+                          >
+                            <i className="ri-close-line" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-soft-primary ti-btn-sm"
+                  disabled={!candidate}
+                  onClick={() => setSkillsRows((arr) => [...arr, { id: Date.now(), name: "", level: "Intermediate" }])}
+                >
+                  <i className="ri-add-line me-1 align-middle" />
+                  Add skill
+                </button>
               </div>
             </div>
 
