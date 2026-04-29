@@ -561,7 +561,7 @@ export const Basicwizard = ({
 
   // ------------------------------- State: Skills -------------------------------
 
-  const [skills, setSkills] = useState<{id: number, name: string, level: string}[]>([]);
+  const [skills, setSkills] = useState<{ id: number; name: string; level: string; category?: string }[]>([]);
 
   // ------------------------------- State: Social Links -------------------------------
 
@@ -570,7 +570,7 @@ export const Basicwizard = ({
   const handleAddSkill = () => {
     setSkills([
       ...skills,
-      { id: Date.now(), name: "", level: "Beginner" },
+      { id: Date.now(), name: "", level: "Beginner", category: "" },
     ]);
   };
 
@@ -1778,6 +1778,7 @@ export const Basicwizard = ({
           id: Date.now() + Math.random(),
           name: s.name || "",
           level: s.level || "Beginner",
+          category: typeof s.category === "string" ? s.category : "",
         })));
       }
       if (Array.isArray(initialData.socialLinks) && initialData.socialLinks.length) {
@@ -2034,10 +2035,14 @@ export const Basicwizard = ({
             currentlyWorking: (exp as any).currentlyWorking || false,
           };
         }),
-        skills: skills.filter(skill => skill.name.trim() !== "").map((skill) => ({
-          name: skill.name,
-          level: skill.level,
-        })),
+        skills: skills.filter(skill => skill.name.trim() !== "").map((skill) => {
+          const cat = (skill.category ?? "").trim();
+          return {
+            name: skill.name,
+            level: skill.level,
+            ...(cat ? { category: cat } : {}),
+          };
+        }),
         socialLinks: socialLinks.filter(link => link.platform.trim() !== "" && link.url.trim() !== "").map((link) => ({
           platform: link.platform,
           url: link.url,
@@ -2910,7 +2915,7 @@ export const Basicwizard = ({
                   ✕
                 </button>
 
-                <div className="xl:col-span-6 col-span-12">
+                <div className="xl:col-span-4 col-span-12">
                   <label className="form-label">Skill Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
@@ -2922,7 +2927,7 @@ export const Basicwizard = ({
                   />
                 </div>
 
-                <div className="xl:col-span-6 col-span-12">
+                <div className="xl:col-span-4 col-span-12">
                   <label className="form-label">Skill Level</label>
                   <select
                     className="form-control w-full !rounded-md"
@@ -2934,6 +2939,17 @@ export const Basicwizard = ({
                     <option value="Advanced">Advanced</option>
                     <option value="Expert">Expert</option>
                   </select>
+                </div>
+
+                <div className="xl:col-span-4 col-span-12">
+                  <label className="form-label">Category</label>
+                  <input
+                    type="text"
+                    className="form-control w-full !rounded-md"
+                    placeholder="e.g., Frontend, Languages"
+                    value={skill.category ?? ""}
+                    onChange={(e) => handleSkillChange(index, "category", e.target.value)}
+                  />
                 </div>
               </div>
             ))}

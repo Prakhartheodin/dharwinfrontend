@@ -122,6 +122,8 @@ export interface CandidateWithProfile {
   salarySlips?: Array<{ month?: string; year?: number; documentUrl?: string; key?: string; originalName?: string }>;
   /** Same shape as candidate wizard / PATCH candidates — kept in sync via me/with-candidate and candidate edit. */
   socialLinks?: Array<{ platform?: string; url?: string }>;
+  /** Resume / CV skills (structured; same shape as PATCH me/with-candidate `skills`). */
+  skills?: Array<{ name: string; level?: string; category?: string }>;
   companyAssignedEmail?: string;
   companyEmailProvider?: string;
   [key: string]: unknown;
@@ -178,6 +180,49 @@ export type UpdateMeWithCandidatePayload = UpdateMyProfilePayload & Partial<{
  */
 export async function updateMeWithCandidate(payload: UpdateMeWithCandidatePayload): Promise<{ user: User; candidate: CandidateWithProfile }> {
   const { data } = await apiClient.patch<{ user: User; candidate: CandidateWithProfile }>(AUTH_ENDPOINTS.meWithCandidate, payload);
+  return data;
+}
+
+/** Response from POST /auth/me/extract-skills-from-resume (PDF/DOCX; server uses OPENAI_API_KEY). */
+export interface ExtractSkillsFromResumeResponse {
+  skills: Array<{ name: string; level?: string; category?: string }>;
+  buckets?: Record<string, string[]>;
+}
+
+/** Extract skills from a resume/CV file using the server-side OpenAI integration. */
+export async function extractSkillsFromResume(file: File): Promise<ExtractSkillsFromResumeResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post<ExtractSkillsFromResumeResponse>(
+    AUTH_ENDPOINTS.extractSkillsFromResume,
+    formData,
+    {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 120000,
+    }
+  );
+  return data;
+}
+
+/** Payload for POST /auth/me/recommend-skills-by-role — OpenAI gap analysis vs target role. */
+export interface RecommendSkillsByRolePayload {
+  role: string;
+  /** Employee's existing skills (names); only these + role are sent to the model. */
+  currentSkills?: Array<{ name: string; level?: string; category?: string }>;
+}
+
+/** Suggest additional skills to develop for a role given current profile skills (server OpenAI). */
+export async function recommendSkillsByRole(
+  payload: RecommendSkillsByRolePayload
+): Promise<ExtractSkillsFromResumeResponse> {
+  const { data } = await apiClient.post<ExtractSkillsFromResumeResponse>(
+    AUTH_ENDPOINTS.recommendSkillsByRole,
+    {
+      role: payload.role.trim(),
+      currentSkills: payload.currentSkills ?? [],
+    },
+    { timeout: 120000 }
+  );
   return data;
 }
 

@@ -9,7 +9,7 @@ export interface CandidateListItem {
   email: string;
   phoneNumber: string;
   profilePicture?: { url?: string; key?: string };
-  skills?: { name: string; level?: string }[];
+  skills?: { name: string; level?: string; category?: string }[];
   qualifications?: { degree: string; institute: string }[];
   experiences?: { company: string; role: string; startDate?: string; endDate?: string; currentlyWorking?: boolean }[];
   shortBio?: string;
@@ -500,11 +500,46 @@ export async function importCandidatesFromExcel(file: File): Promise<ImportExcel
   return data;
 }
 
+const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"] as const;
+
+/** Normalized skill row aligned with Employee schema (`name`, `level`, optional `category`). */
+export type CandidateSkillStructured = {
+  name: string;
+  level: string;
+  category?: string;
+};
+
+/** Normalize API `skills` (strings or objects) for Settings / ATS preview tables. */
+export function normalizeCandidateSkillsStructured(skills: unknown): CandidateSkillStructured[] {
+  if (!Array.isArray(skills) || skills.length === 0) return [];
+  const out: CandidateSkillStructured[] = [];
+  for (const s of skills) {
+    if (typeof s === "string") {
+      const name = s.trim();
+      if (name) out.push({ name, level: "Intermediate" });
+      continue;
+    }
+    if (s && typeof s === "object") {
+      const o = s as { name?: unknown; level?: unknown; category?: unknown };
+      const name = String(o.name ?? "").trim();
+      if (!name) continue;
+      const lv = String(o.level ?? "Intermediate");
+      const level = (SKILL_LEVELS as readonly string[]).includes(lv) ? lv : "Intermediate";
+      const catRaw = o.category;
+      const category =
+        typeof catRaw === "string" && catRaw.trim() !== "" ? catRaw.trim() : undefined;
+      out.push({ name, level, category });
+    }
+  }
+  return out;
+}
+
 /**
  * Map API candidate to the shape expected by the ATS candidates page UI (id, name, displayPicture, phone, email, skills[], education, experience, bio).
  */
 export function mapCandidateToDisplay(c: CandidateListItem) {
-  const skillsList = c.skills?.map((s) => (typeof s === "string" ? s : s.name)) ?? [];
+  const skillsStructured = normalizeCandidateSkillsStructured(c.skills);
+  const skillsList = skillsStructured.map((x) => x.name);
   let education = "";
   if (c.qualifications?.length) {
     education = c.qualifications.map((q) => `${q.degree} - ${q.institute}`).join("; ");
@@ -528,6 +563,7 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
     phone: c.phoneNumber,
     email: c.email,
     skills: skillsList,
+    skillsStructured,
     education,
     experience: experienceYears,
     bio: c.shortBio ?? "",

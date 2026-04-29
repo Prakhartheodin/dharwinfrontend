@@ -19,6 +19,10 @@ export const AUTH_ENDPOINTS = {
   me: process.env.NEXT_PUBLIC_AUTH_ME_URL ?? "auth/me",
   /** User + Candidate merged for candidates (GET/PATCH). Single source for Personal Information and My Profile. */
   meWithCandidate: "auth/me/with-candidate",
+  /** Resume/CV skill extraction (multipart file PDF/DOCX). Server uses OPENAI_API_KEY. */
+  extractSkillsFromResume: "auth/me/extract-skills-from-resume",
+  /** Suggest skills for a job role (JSON `{ role }`). Same OPENAI integration as resume extraction. */
+  recommendSkillsByRole: "auth/me/recommend-skills-by-role",
   /** Request verification email for the current user (auth only; no permission required). */
   sendMyVerificationEmail: "auth/me/send-verification-email",
   /** Current user's resolved permissions (auth only, no permission required). */

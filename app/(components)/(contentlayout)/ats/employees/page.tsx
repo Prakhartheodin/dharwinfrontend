@@ -18,6 +18,7 @@ import {
   getDocumentDownloadUrl,
   getSalarySlipDownloadUrl,
   addSalarySlipToCandidate,
+  updateCandidate,
   updateSalarySlip,
   deleteSalarySlip,
   shareCandidateProfile,
@@ -37,6 +38,7 @@ import {
   assignShiftToCandidates,
   verifyDocument,
   getDocumentStatus,
+  normalizeCandidateSkillsStructured,
   type CandidateDocument,
   type AgentOption,
 } from '@/shared/lib/api/candidates'
@@ -53,6 +55,7 @@ import CandidateShareModal from './_components/CandidateShareModal'
 import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
 import { canEditCandidateJoiningDate, canEditCandidateResignDate } from '@/shared/lib/candidate-permissions'
 import { ROUTES } from '@/shared/lib/constants'
+import { recommendSkillsByRole } from '@/shared/lib/api/auth'
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
@@ -63,6 +66,45 @@ function candidateDocumentCanView(doc: { key?: string; url?: string } | null | u
   if (doc.key && String(doc.key).trim()) return true
   const u = String(doc.url || '')
   return /amazonaws\.com|\.s3[.-]/i.test(u)
+}
+
+const SKILL_LEVELS_MERGE = ['Beginner', 'Intermediate', 'Advanced', 'Expert'] as const
+
+/** Merge AI-recommended skills into existing candidate.skills without duplicate names (case-insensitive). */
+function mergeRecommendedSkillsIntoExisting(
+  existingRaw: unknown,
+  incoming: Array<{ name: string; level?: string; category?: string }>
+): Array<{ name: string; level: string; category?: string }> {
+  const existing = normalizeCandidateSkillsStructured(existingRaw)
+  const seen = new Set(existing.map((x) => x.name.toLowerCase()))
+  const out: Array<{ name: string; level: string; category?: string }> = []
+  for (const x of existing) {
+    out.push({
+      name: x.name,
+      level: SKILL_LEVELS_MERGE.includes(x.level as (typeof SKILL_LEVELS_MERGE)[number])
+        ? x.level
+        : 'Intermediate',
+      ...(x.category ? { category: x.category } : {}),
+    })
+  }
+  for (const s of incoming) {
+    const name = (s.name || '').trim()
+    if (!name) continue
+    const k = name.toLowerCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    const lvl =
+      typeof s.level === 'string' && SKILL_LEVELS_MERGE.includes(s.level as (typeof SKILL_LEVELS_MERGE)[number])
+        ? s.level
+        : 'Intermediate'
+    const cat = typeof s.category === 'string' && s.category.trim() ? s.category.trim() : undefined
+    out.push({
+      name,
+      level: lvl,
+      ...(cat ? { category: cat } : {}),
+    })
+  }
+  return out
 }
 
 /** Resigned = resign date set and on or before today (matches API “employmentStatus: resigned”). */
@@ -326,6 +368,13 @@ interface CandidateNote {
   postedDate: string
 }
 
+interface SkillRecommendationItem {
+  name: string
+  level: string
+  category?: string
+  selected: boolean
+}
+
 const Candidates = () => {
   const router = useRouter()
   const { isAdministrator, permissions, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
@@ -347,6 +396,11 @@ const Candidates = () => {
   const [previewPanelDocuments, setPreviewPanelDocuments] = useState<CandidateDocument[] | null>(null)
   const [previewPanelDocumentsLoading, setPreviewPanelDocumentsLoading] = useState(false)
   const [viewDetailTab, setViewDetailTab] = useState<string>('personal')
+  const [skillRecommendModalOpen, setSkillRecommendModalOpen] = useState(false)
+  const [skillRecommendRole, setSkillRecommendRole] = useState('')
+  const [skillRecommendLoading, setSkillRecommendLoading] = useState(false)
+  const [skillRecommendApplyLoading, setSkillRecommendApplyLoading] = useState(false)
+  const [skillRecommendSuggestions, setSkillRecommendSuggestions] = useState<SkillRecommendationItem[]>([])
   const [notesCandidateId, setNotesCandidateId] = useState<string | null>(null)
   const [newNote, setNewNote] = useState({ text: '', visibility: 'public' as 'public' | 'private' })
   const [shareCandidate, setShareCandidate] = useState<any>(null)
@@ -584,13 +638,93 @@ const Candidates = () => {
     setSelectedRows(newSelected)
   }
 
+  /** Preline binds overlays during autoInit; ATS pages often mount before HSOverlay exists (SPA navigation). */
+  const refreshPrelineDom = useCallback(() => {
+    try {
+      ;(window as unknown as { HSStaticMethods?: { autoInit?: () => void } }).HSStaticMethods?.autoInit?.()
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const ensurePrelineLoaded = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    if ((window as unknown as { HSOverlay?: unknown }).HSOverlay) return
+    try {
+      await import('preline/preline')
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const openHsOverlay = useCallback(
+    (selector: string) => {
+      if (!document.querySelector(selector)) return
+      const run = () => {
+        refreshPrelineDom()
+        requestAnimationFrame(() => {
+          const HSOverlay = (window as unknown as { HSOverlay?: { open: (n: Element | string) => void } }).HSOverlay
+          HSOverlay?.open(selector)
+        })
+      }
+      if (typeof window !== 'undefined' && (window as unknown as { HSOverlay?: unknown }).HSOverlay) {
+        run()
+        return
+      }
+      void ensurePrelineLoaded().then(run)
+    },
+    [ensurePrelineLoaded, refreshPrelineDom]
+  )
+
+  useEffect(() => {
+    void ensurePrelineLoaded().then(() => {
+      requestAnimationFrame(() => {
+        refreshPrelineDom()
+      })
+    })
+  }, [ensurePrelineLoaded, refreshPrelineDom])
+
+  useEffect(() => {
+    if (!skillRecommendModalOpen) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !skillRecommendLoading && !skillRecommendApplyLoading) {
+        e.preventDefault()
+        setSkillRecommendModalOpen(false)
+        setSkillRecommendRole('')
+        setSkillRecommendSuggestions([])
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [skillRecommendModalOpen, skillRecommendLoading, skillRecommendApplyLoading])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const previewPanel = document.querySelector('#candidate-preview-panel') as HTMLElement | null
+    const previewBackdrop = document.querySelector('#candidate-preview-panel-backdrop') as HTMLElement | null
+    if (!previewPanel && !previewBackdrop) return
+
+    const prevPanelVisibility = previewPanel?.style.visibility ?? ''
+    const prevBackdropVisibility = previewBackdrop?.style.visibility ?? ''
+    if (skillRecommendModalOpen) {
+      if (previewPanel) previewPanel.style.visibility = 'hidden'
+      if (previewBackdrop) previewBackdrop.style.visibility = 'hidden'
+    } else {
+      if (previewPanel) previewPanel.style.visibility = prevPanelVisibility
+      if (previewBackdrop) previewBackdrop.style.visibility = prevBackdropVisibility
+    }
+
+    return () => {
+      if (previewPanel) previewPanel.style.visibility = prevPanelVisibility
+      if (previewBackdrop) previewBackdrop.style.visibility = prevBackdropVisibility
+    }
+  }, [skillRecommendModalOpen])
+
   // Handle add note - open notes sidebar
   const handleAddNote = (id: string, candidate?: any) => {
     // Open the notes sidebar
     setNotesCandidateId(id)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#candidate-notes-panel'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#candidate-notes-panel'))
   }
 
   // Get notes for a specific candidate
@@ -633,23 +767,32 @@ const Candidates = () => {
   }
 
   /** Open preview panel and fetch full candidate (including documents & salarySlips) for display. */
-  const openCandidatePreview = useCallback((c: CandidateDisplay) => {
-    setPreviewCandidate(c)
-    setPreviewPanelDocuments(null)
-    setPreviewPanelDocumentsLoading(false)
-    setViewDetailTab('personal')
-    setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#candidate-preview-panel'))
-    }, 100)
-    getCandidate(c.id)
-      .then((full) => {
-        setPreviewCandidate((prev: any) =>
-          prev && prev.id === c.id ? { ...prev, _raw: full } : prev
-        )
-      })
-      .catch(() => {})
-  }, [])
+  const openCandidatePreview = useCallback(
+    (c: CandidateDisplay) => {
+      if (!c?.id) {
+        void Swal.fire({
+          icon: 'error',
+          title: 'Cannot open preview',
+          text: 'This row is missing a candidate id. Refresh the page or contact support.',
+        })
+        return
+      }
+      setPreviewCandidate(c)
+      setPreviewPanelDocuments(null)
+      setPreviewPanelDocumentsLoading(false)
+      setViewDetailTab('personal')
+      setActionError(null)
+      queueMicrotask(() => openHsOverlay('#candidate-preview-panel'))
+      getCandidate(c.id)
+        .then((full) => {
+          setPreviewCandidate((prev: any) =>
+            prev && prev.id === c.id ? { ...prev, _raw: full } : prev
+          )
+        })
+        .catch(() => {})
+    },
+    [openHsOverlay]
+  )
 
   // Generate public URL for candidate
   const getCandidatePublicUrl = (candidateId: string) => {
@@ -693,9 +836,7 @@ const Candidates = () => {
     setExportCandidate(candidate)
     setExportEmail('')
     setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#export-candidate-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#export-candidate-modal'))
   }
   const handleExportSubmit = async () => {
     if (!exportCandidate?.id || !exportEmail.trim()) return
@@ -740,11 +881,9 @@ const Candidates = () => {
       setSalarySlipsFromCandidate([])
     } finally {
       setDocumentsLoading(false)
-      // Open modal only after state is updated so content is visible (avoids Preline showing stale/empty body)
+      // Open modal after state updates; Preline needs autoInit + HSOverlay (SPA navigation).
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          ;(window as any).HSOverlay?.open(document.querySelector('#documents-modal'))
-        }, 0)
+        queueMicrotask(() => openHsOverlay('#documents-modal'))
       })
     }
   }
@@ -848,9 +987,7 @@ const Candidates = () => {
     setSalarySlipCandidate(candidate)
     setSalarySlipForm({ month: '', year: '', file: null })
     setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#salary-slip-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#salary-slip-modal'))
   }
   const handleSalarySlipSubmit = async () => {
     if (!salarySlipCandidate?.id || !salarySlipForm.month || !salarySlipForm.year || !salarySlipForm.file) return
@@ -884,9 +1021,7 @@ const Candidates = () => {
     setFeedbackCandidate(candidate)
     setFeedbackForm({ feedback: '', rating: 3 })
     setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#feedback-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#feedback-modal'))
   }
   const handleFeedbackSubmit = async () => {
     if (!feedbackCandidate?.id || !feedbackForm.feedback.trim()) return
@@ -1029,7 +1164,7 @@ const Candidates = () => {
   const handleExportAllOpen = () => {
     setExportAllEmail('')
     setActionError(null)
-    ;(window as any).HSOverlay?.open(document.querySelector('#export-all-modal'))
+    queueMicrotask(() => openHsOverlay('#export-all-modal'))
   }
   const handleExportAllSubmit = async () => {
     setExportAllSubmitting(true)
@@ -1083,9 +1218,7 @@ const Candidates = () => {
     listUsers({ limit: 200 })
       .then((res) => setRecruitersList((res.results ?? []).map((u: any) => ({ id: u.id ?? u._id, name: u.name, email: u.email }))))
       .catch(() => setRecruitersList([]))
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#assign-recruiter-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#assign-recruiter-modal'))
   }
   const handleAssignRecruiterSubmit = async () => {
     if (!assignRecruiterCandidate?.id || !assignRecruiterId) return
@@ -1111,10 +1244,8 @@ const Candidates = () => {
     const j = candidate._raw?.joiningDate
     setJoiningDateValue(j ? new Date(j as string).toISOString().slice(0, 10) : '')
     setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#joining-date-modal'))
-    }, 100)
-  }, [])
+    queueMicrotask(() => openHsOverlay('#joining-date-modal'))
+  }, [openHsOverlay])
   const handleJoiningDateSubmit = async () => {
     if (!joiningDateCandidate?.id || !joiningDateValue) return
     setJoiningDateSubmitting(true)
@@ -1139,9 +1270,7 @@ const Candidates = () => {
     const r = candidate._raw?.resignDate
     setResignDateValue(r ? new Date(r as string).toISOString().slice(0, 10) : '')
     setActionError(null)
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#resign-date-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#resign-date-modal'))
   }
   const handleResignDateSubmit = async () => {
     if (!resignDateCandidate?.id) return
@@ -1159,6 +1288,106 @@ const Candidates = () => {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
     } finally {
       setResignDateSubmitting(false)
+    }
+  }
+
+  const submitSkillRecommendationForPreview = async () => {
+    const role = skillRecommendRole.trim()
+    if (role.length < 2) {
+      await Swal.fire({ icon: 'warning', title: 'Enter a role', text: 'Use at least 2 characters for the job title or role.' })
+      return
+    }
+    const cid =
+      previewCandidate?.id ?? previewCandidate?._raw?._id ?? previewCandidate?._raw?.id
+    if (!cid) return
+    setSkillRecommendLoading(true)
+    try {
+      const currentSkills = normalizeCandidateSkillsStructured(previewCandidate._raw?.skills).map((s) => ({
+        name: s.name,
+        level: s.level,
+        category: s.category,
+      }))
+      const res = await recommendSkillsByRole({ role, currentSkills })
+      const options = (res.skills ?? [])
+        .filter((s) => String(s?.name ?? '').trim())
+        .map((s) => ({
+          name: String(s.name).trim(),
+          level: String(s.level || 'Intermediate').trim(),
+          ...(s.category ? { category: String(s.category).trim() } : {}),
+          selected: true,
+        }))
+
+      if (!options.length) {
+        await Swal.fire({
+          icon: 'info',
+          title: 'No new gaps found',
+          text: 'No additional skills were returned for this role based on current skills.',
+        })
+        return
+      }
+
+      setSkillRecommendSuggestions(options)
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as AxiosError<{ message?: string }>).response?.data?.message
+          : undefined
+      await Swal.fire({
+        icon: 'error',
+        title: 'Could not suggest skills',
+        text: typeof msg === 'string' ? msg : 'Try again later.',
+      })
+    } finally {
+      setSkillRecommendLoading(false)
+    }
+  }
+
+  const applySelectedSkillRecommendations = async () => {
+    const cid = previewCandidate?.id ?? previewCandidate?._raw?._id ?? previewCandidate?._raw?.id
+    if (!cid) return
+    const selected = skillRecommendSuggestions
+      .filter((s) => s.selected)
+      .map((s) => ({ name: s.name, level: s.level, category: s.category }))
+
+    if (!selected.length) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Select at least one',
+        text: 'Choose at least one skill to merge into this employee profile.',
+      })
+      return
+    }
+
+    setSkillRecommendApplyLoading(true)
+    try {
+      const merged = mergeRecommendedSkillsIntoExisting(previewCandidate._raw?.skills, selected)
+      await updateCandidate(String(cid), { skills: merged })
+      const fresh = await getCandidate(String(cid))
+      const mapped = mapCandidateToDisplay(fresh)
+      setPreviewCandidate(mapped)
+      setCandidates((prev) => prev.map((row) => (String(row.id) === String(cid) ? mapped : row)))
+      setSkillRecommendModalOpen(false)
+      setSkillRecommendRole('')
+      setSkillRecommendSuggestions([])
+      await Swal.fire({
+        icon: 'success',
+        title: 'Skills updated',
+        text: `Merged ${selected.length} selected skill${selected.length === 1 ? '' : 's'} to develop.`,
+        timer: 3400,
+        showConfirmButton: true,
+      })
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as AxiosError<{ message?: string }>).response?.data?.message
+          : undefined
+      await Swal.fire({
+        icon: 'error',
+        title: 'Could not update skills',
+        text: typeof msg === 'string' ? msg : 'Try again later.',
+      })
+    } finally {
+      setSkillRecommendApplyLoading(false)
     }
   }
 
@@ -1209,9 +1438,7 @@ const Candidates = () => {
     if (candidateIds.length === 1) {
       getCandidateWeekOff(candidateIds[0]).then((r) => setWeekOffDays(r.weekOff ?? [])).catch(() => {})
     }
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#week-off-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#week-off-modal'))
   }
   const handleWeekOffSubmit = async () => {
     if (weekOffCandidateIds.length === 0 || weekOffDays.length === 0) return
@@ -1242,9 +1469,7 @@ const Candidates = () => {
     getAllShifts({ isActive: true })
       .then((res) => setShiftsList((res.data?.results ?? []).map((s: any) => ({ id: s.id ?? s._id, name: s.name }))))
       .catch(() => setShiftsList([]))
-    setTimeout(() => {
-      ;(window as any).HSOverlay?.open(document.querySelector('#assign-shift-modal'))
-    }, 100)
+    queueMicrotask(() => openHsOverlay('#assign-shift-modal'))
   }
   const handleAssignShiftSubmit = async () => {
     if (assignShiftCandidateIds.length === 0 || !assignShiftId) return
@@ -2735,18 +2960,82 @@ const Candidates = () => {
 
                   {viewDetailTab === 'skills' && (
                     <div className="space-y-4">
-                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Skills</h4>
-                      {(previewCandidate.skills?.length || previewCandidate._raw?.skills?.length) ? (
-                        <div className="flex flex-wrap gap-2">
-                          {(previewCandidate.skills || previewCandidate._raw?.skills?.map((s: any) => typeof s === 'string' ? s : s.name))
-                            ?.flatMap((skill: string) =>
-                              skill.split(/[,;]|\.\s+|\r?\n+/).map((x) => x.trim()).filter(Boolean)
-                            )
-                            ?.map((skill: string, index: number) => (
-                              <span key={index} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary border border-primary/30">
-                                {skill}
+                      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3 dark:border-white/10">
+                        <div className="min-w-0">
+                          <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-0">Skills</h4>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!previewCandidate?.id || skillRecommendLoading || skillRecommendApplyLoading}
+                          onClick={() => {
+                            setSkillRecommendRole('')
+                            setSkillRecommendSuggestions([])
+                            setSkillRecommendModalOpen(true)
+                          }}
+                          aria-label={
+                            skillRecommendLoading || skillRecommendApplyLoading
+                              ? 'Generating skill suggestions'
+                              : 'Suggest skills from a job role using AI'
+                          }
+                          className="group shrink-0 inline-flex max-w-full items-center gap-2.5 rounded-xl border border-primary/25 bg-gradient-to-br from-primary/[0.09] via-white to-transparent py-2 pl-2 pr-3 text-left shadow-[0_2px_8px_-2px_rgba(15,23,42,0.08)] transition duration-200 hover:border-primary/45 hover:shadow-[0_6px_16px_-4px_rgba(79,70,229,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-45 dark:border-primary/35 dark:from-primary/[0.14] dark:via-gray-900/90 dark:to-gray-950 dark:shadow-[0_2px_12px_-2px_rgba(0,0,0,0.35)] dark:hover:border-primary/55 dark:focus-visible:ring-offset-gray-950"
+                        >
+                          {skillRecommendLoading || skillRecommendApplyLoading ? (
+                            <>
+                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/15 dark:bg-primary/25">
+                                <span
+                                  className="inline-block h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"
+                                  aria-hidden
+                                />
                               </span>
-                            ))}
+                              <span className="flex flex-col gap-0.5 pr-1">
+                                <span className="text-sm font-semibold leading-tight text-gray-900 dark:text-white">
+                                  Working…
+                                </span>
+                                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
+                                  Calling AI
+                                </span>
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white shadow-inner shadow-black/10 ring-2 ring-white/25 transition group-hover:scale-[1.03] group-hover:shadow-md dark:ring-gray-950/60">
+                                <i className="ri-lightbulb-flash-line text-lg leading-none" aria-hidden />
+                              </span>
+                              <span className="flex min-w-0 flex-col gap-0.5 pr-0.5">
+                                <span className="text-sm font-semibold leading-tight text-gray-900 dark:text-white">
+                                  Suggest skills
+                                </span>
+                                <span className="text-[11px] font-medium uppercase tracking-wide text-primary/80 dark:text-primary/75">
+                                  By job role · AI
+                                </span>
+                              </span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      {previewCandidate.skillsStructured?.length ? (
+                        <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 dark:bg-gray-800/80">
+                              <tr>
+                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Skill</th>
+                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Level</th>
+                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Category</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewCandidate.skillsStructured.map((row: { name: string; level: string; category?: string }, index: number) => (
+                                <tr
+                                  key={`${row.name}-${index}`}
+                                  className="border-t border-gray-200 dark:border-gray-700"
+                                >
+                                  <td className="p-3 text-gray-900 dark:text-white">{row.name}</td>
+                                  <td className="p-3 text-gray-900 dark:text-white">{row.level}</td>
+                                  <td className="p-3 text-gray-900 dark:text-white">{row.category ?? '—'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ) : (
                         <div className="text-center py-8">
@@ -3241,6 +3530,220 @@ const Candidates = () => {
       />
 
       {/* Share employee modal */}
+      {/* Suggest skills by job role (OpenAI; same shape as resume extraction).
+          Portal to document.body so stacking sits above Preline HSOverlay/offcanvas (otherwise the preview panel can flash above the dim layer during loading). */}
+      {skillRecommendModalOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[2147483000] flex items-center justify-center p-4 bg-black/55 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="skill-recommend-modal-title"
+            onClick={(e) => {
+              if (e.target === e.currentTarget && !skillRecommendLoading && !skillRecommendApplyLoading) {
+                setSkillRecommendModalOpen(false)
+                setSkillRecommendRole('')
+                setSkillRecommendSuggestions([])
+              }
+            }}
+          >
+          <div
+            className="relative z-[1] w-full max-w-md rounded-2xl border border-gray-200/90 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col gap-5 p-6 sm:p-7">
+              <div className="space-y-2">
+                <div className="flex items-start gap-3">
+                  <span
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-md ring-4 ring-primary/15 dark:ring-primary/25"
+                    aria-hidden
+                  >
+                    <i className="ri-lightbulb-flash-line text-xl leading-none" />
+                  </span>
+                  <div className="min-w-0 pt-0.5">
+                    <h3
+                      id="skill-recommend-modal-title"
+                      className="text-lg font-semibold leading-snug text-gray-900 dark:text-white"
+                    >
+                      Suggest skills by role
+                    </h3>
+                    <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
+                      We send this employee&apos;s <strong className="font-semibold text-gray-800 dark:text-gray-200">current skills</strong> plus the{" "}
+                      <strong className="font-semibold text-gray-800 dark:text-gray-200">target role</strong> below and ask what else they should develop — only
+                      new skills are merged into the profile.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="skill-recommend-role-input"
+                  className="block text-sm font-medium text-gray-800 dark:text-gray-200"
+                >
+                  Job role
+                </label>
+                <input
+                  id="skill-recommend-role-input"
+                  type="text"
+                  autoComplete="off"
+                  className="form-control block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm shadow-inner transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 dark:border-gray-600 dark:bg-gray-800/80 dark:text-white"
+                  placeholder="e.g. Senior Full Stack Developer"
+                  value={skillRecommendRole}
+                  onChange={(e) => setSkillRecommendRole(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !skillRecommendLoading && !skillRecommendSuggestions.length && skillRecommendRole.trim().length >= 2) {
+                      void submitSkillRecommendationForPreview()
+                    }
+                  }}
+                  disabled={skillRecommendLoading || skillRecommendApplyLoading}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-500">
+                  Tip: include seniority or stack for tighter suggestions (e.g. “Lead QA Automation Engineer”).
+                </p>
+              </div>
+
+              {skillRecommendSuggestions.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/40">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-200">
+                      Review suggested skills and choose what to merge.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={skillRecommendApplyLoading}
+                        onClick={() =>
+                          setSkillRecommendSuggestions((prev) => prev.map((item) => ({ ...item, selected: true })))
+                        }
+                        className="text-xs font-medium text-primary hover:underline disabled:opacity-60"
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        disabled={skillRecommendApplyLoading}
+                        onClick={() =>
+                          setSkillRecommendSuggestions((prev) => prev.map((item) => ({ ...item, selected: false })))
+                        }
+                        className="text-xs font-medium text-gray-500 hover:underline disabled:opacity-60 dark:text-gray-400"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                    <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {skillRecommendSuggestions.map((item, idx) => (
+                        <li key={`${item.name}-${idx}`} className="bg-white px-3 py-2.5 dark:bg-gray-900">
+                          <label className="flex cursor-pointer items-start gap-3">
+                            <input
+                              type="checkbox"
+                              checked={item.selected}
+                              disabled={skillRecommendApplyLoading}
+                              onChange={(e) =>
+                                setSkillRecommendSuggestions((prev) =>
+                                  prev.map((row, rowIndex) =>
+                                    rowIndex === idx ? { ...row, selected: e.target.checked } : row
+                                  )
+                                )
+                              }
+                              className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/40"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">{item.name}</span>
+                              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                                {item.level}{item.category ? ` • ${item.category}` : ''}
+                              </span>
+                            </span>
+                          </label>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {skillRecommendLoading && (
+                <p className="rounded-lg border border-primary/20 bg-primary/[0.07] px-3 py-2.5 text-xs leading-relaxed text-gray-700 dark:border-primary/30 dark:bg-primary/15 dark:text-gray-200">
+                  <i className="ri-cloud-line me-1.5 align-middle text-primary" aria-hidden />
+                  Skills are generated on the server using OpenAI.{" "}
+                  <strong className="font-semibold text-gray-900 dark:text-white">Often ~10–45s</strong>
+                  {" "}depending on API load and region — the page is waiting on that response, not frozen.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 px-6 pb-6 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-7 sm:pb-7">
+              <button
+                type="button"
+                disabled={skillRecommendLoading || skillRecommendApplyLoading}
+                onClick={() => {
+                  if (skillRecommendSuggestions.length > 0) {
+                    setSkillRecommendSuggestions([])
+                    return
+                  }
+                  setSkillRecommendModalOpen(false)
+                  setSkillRecommendRole('')
+                  setSkillRecommendSuggestions([])
+                }}
+                className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 sm:w-auto"
+              >
+                {skillRecommendSuggestions.length > 0 ? 'Back' : 'Cancel'}
+              </button>
+              {skillRecommendSuggestions.length > 0 ? (
+                <button
+                  type="button"
+                  disabled={skillRecommendApplyLoading || !skillRecommendSuggestions.some((item) => item.selected)}
+                  onClick={() => void applySelectedSkillRecommendations()}
+                  className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
+                >
+                  {skillRecommendApplyLoading ? (
+                    <>
+                      <span
+                        className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+                        aria-hidden
+                      />
+                      <span>Applying…</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-check-line text-base leading-none" aria-hidden />
+                      <span>Apply selected</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={skillRecommendLoading || skillRecommendRole.trim().length < 2}
+                  onClick={() => void submitSkillRecommendationForPreview()}
+                  className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
+                >
+                  {skillRecommendLoading ? (
+                    <>
+                      <span
+                        className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"
+                        aria-hidden
+                      />
+                      <span>Suggesting…</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-sparkling-2-line text-base leading-none" aria-hidden />
+                      <span>Preview suggestions</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>,
+          document.body
+        )}
+
       <CandidateAttendanceOverlay
         open={!!attendanceOverlayCandidate}
         onClose={() => setAttendanceOverlayCandidate(null)}
