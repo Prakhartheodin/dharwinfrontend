@@ -53,7 +53,7 @@ export function buildCreateOfferPayloadFromLetterForm(
       phone: letterForm.supPhone.trim() || undefined,
       email: letterForm.supEmail.trim() || undefined,
     },
-    letterDate: letterDateStampYmd(),
+    letterDate: letterForm.letterDate?.trim() ? letterForm.letterDate.trim() : letterDateStampYmd(),
   }
   if (trimmedAppId && /^[0-9a-fA-F]{24}$/.test(trimmedAppId)) {
     return { ...basePayload, jobApplicationId: trimmedAppId }

@@ -27,6 +27,7 @@ import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorT
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
 import { formatJoiningDateDisplay, joiningDatePresent } from '@/shared/lib/ats/joining-date-display'
 import { combinedJobPostingDocText } from './job-posting-doc'
+import { letterDateStampYmd } from './letter-date-stamp'
 
 function formatCandidateAddress(c: { address?: Offer['candidate']['address'] } | null | undefined) {
   const a = c?.address
@@ -652,7 +653,7 @@ const OffersPlacement = () => {
       letterAddress: o.letterAddress || addr || '',
       positionTitle: o.positionTitle || o.job?.title || '',
       joiningDate: o.joiningDate ? String(o.joiningDate).slice(0, 10) : '',
-      letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : '',
+      letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : letterDateStampYmd(),
       jobType: jt,
       weeklyHours: (o.weeklyHours === 25 ? 25 : 40) as 25 | 40,
       workLocation: o.workLocation || 'Remote (USA)',

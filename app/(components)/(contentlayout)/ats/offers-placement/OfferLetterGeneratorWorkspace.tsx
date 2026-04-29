@@ -89,7 +89,7 @@ export function createEmptyOfferLetterForm(): OfferLetterFormFields {
     letterAddress: '',
     positionTitle: '',
     joiningDate: '',
-    letterDate: '',
+    letterDate: letterDateStampYmd(),
     jobType: 'FT_40',
     weeklyHours: 40,
     workLocation: 'Remote (USA)',
@@ -278,7 +278,7 @@ export function OfferLetterGeneratorWorkspace({
     const addr = letterForm.letterAddress.trim() || '— Address —'
     const pos = letterForm.positionTitle.trim() || '— Position —'
     const joiningFmt = letterForm.joiningDate ? fmtStartDateOrdinal(letterForm.joiningDate) : '— Date —'
-    /** Preview: last saved date, or provisional “as of save” stamp (same rule as server). */
+    /** Preview uses selected letter date, or today if unset (matches save fallback). */
     const letterDateStr = letterForm.letterDate
       ? fmtDateLong(letterForm.letterDate)
       : fmtDateLong(letterDateStampYmd())
@@ -615,16 +615,16 @@ export function OfferLetterGeneratorWorkspace({
               </div>
               <div className={styles.fieldRow}>
                 <div className={styles.field}>
-                  <label htmlFor="olg-letterDate-display">Letter date</label>
-                  <div id="olg-letterDate-display" className={styles.letterDateReadonly} aria-live="polite">
-                    {letterForm.letterDate ? (
-                      fmtDateLong(letterForm.letterDate)
-                    ) : (
-                      <span className={styles.letterDateUnset}>Not dated yet — saves as today when you save</span>
-                    )}
-                  </div>
+                  <label htmlFor="olg-letterDate">Letter date</label>
+                  <input
+                    id="olg-letterDate"
+                    type="date"
+                    className={styles.input}
+                    value={letterForm.letterDate}
+                    onChange={(e) => setLetterForm((f) => ({ ...f, letterDate: e.target.value }))}
+                  />
                   <p className={styles.helpText}>
-                    Stamped to the calendar day when you click &quot;Save letter&quot; (cannot be edited here).
+                    Calendar date shown on the letter (adjust if your timezone differs from the recipient&apos;s).
                   </p>
                 </div>
                 <div className={styles.field}>
