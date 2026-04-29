@@ -59,7 +59,6 @@ function offerStatusForEditModal(raw: Offer | null | undefined): Offer['status']
   return 'Draft'
 }
 
-/** Readable status chip for offer detail / view modal (matches table intent). */
 function offerStatusPillClass(status: string | undefined): string {
   const base =
     'inline-flex max-w-max items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide'
@@ -726,6 +725,11 @@ const OffersPlacement = () => {
 
   const handleUpdateStatus = async () => {
     if (!editOfferModal || !editStatus) return
+    const current = offerStatusForEditModal(editOfferModal)
+    if (editStatus === current) {
+      setEditOfferModal(null)
+      return
+    }
     setEditSubmitting(true)
     try {
       await updateOffer((editOfferModal as any)._id ?? (editOfferModal as any).id ?? '', { status: editStatus as any })
@@ -2055,9 +2059,17 @@ const OffersPlacement = () => {
                     {editOfferModal.candidate?.fullName || '—'}
                   </p>
                 </div>
+                <div className="mb-4 rounded-lg border border-slate-200/80 bg-slate-50/90 px-3 py-2.5 dark:border-white/10 dark:bg-white/[0.04]">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Current status (saved)
+                  </span>
+                  <p className="mb-0 mt-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    {offerStatusForEditModal(editOfferModal)}
+                  </p>
+                </div>
                 <div>
                   <label className="form-label mb-2 text-slate-700 dark:text-slate-200" htmlFor="edit-offer-status-select">
-                    Offer status
+                    New offer status
                   </label>
                   <select
                     id="edit-offer-status-select"
@@ -2065,11 +2077,11 @@ const OffersPlacement = () => {
                     value={editStatus}
                     onChange={(e) => setEditStatus(e.target.value as Offer['status'])}
                   >
-                    <option value="Draft">Draft</option>
-                    <option value="Sent">Sent</option>
-                    <option value="Under Negotiation">Under Negotiation</option>
-                    <option value="Accepted">Accepted</option>
-                    <option value="Rejected">Rejected</option>
+                    {OFFER_STATUS_EDIT_VALUES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
