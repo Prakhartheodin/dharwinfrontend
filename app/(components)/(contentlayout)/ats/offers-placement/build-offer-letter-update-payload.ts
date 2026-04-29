@@ -40,8 +40,7 @@ export function buildOfferLetterUpdatePayload(
       email: letterForm.supEmail.trim() || undefined,
     },
     joiningDate: letterForm.joiningDate ? letterForm.joiningDate : null,
-    /** Always the calendar day of save (not edited in the form). */
-    letterDate: letterDateStampYmd(),
+    letterDate: letterForm.letterDate?.trim() ? letterForm.letterDate.trim() : letterDateStampYmd(),
   }
   if (letterForm.jobType !== "INTERN_UNPAID") {
     const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""))

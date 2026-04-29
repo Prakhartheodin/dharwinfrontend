@@ -86,7 +86,7 @@ function resignDateLabel(candidate: CandidateDisplay): string | null {
 }
 
 /** Stable ref for react-table initialState (avoid new object each render). */
-const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 25 }
+const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 50 }
 
 /** Maps toolbar / column-header sort → `/employees` `sortBy` (`field:asc|desc`). */
 function getEmployeesApiSortBy(selectedSort: string): string {
@@ -359,7 +359,7 @@ const Candidates = () => {
   const [apiPage, setApiPage] = useState(1)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
-  const [pageSize, setPageSize] = useState(10)
+  const [pageSize, setPageSize] = useState(50)
   
   const [filters, setFilters] = useState<FilterState>({
     name: [],

@@ -1,6 +1,6 @@
 /**
- * Local calendar date YYYY-MM-DD — applied to offer `letterDate` whenever the letter is saved.
- * (Not UTC midnight; matches “the day it is saved” in the user’s timezone.)
+ * Local calendar date YYYY-MM-DD — fallback when letter date is empty on save (same clock as browser).
+ * Prefer `letterForm.letterDate` from the Offer Letter Generator so teams can align with US/other zones.
  */
 export function letterDateStampYmd(): string {
   const d = new Date()

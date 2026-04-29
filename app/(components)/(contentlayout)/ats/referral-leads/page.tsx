@@ -169,7 +169,9 @@ export default function ReferralLeadsPage() {
   }, [permissionsLoaded, baseParams, refresh]);
 
   useEffect(() => {
-    if (!permissionsLoaded) return;
+    // Only start polling after initial load succeeds (statsSnapshot is non-null means first fetch worked).
+    // This prevents stale-banner noise when the page is in an error state.
+    if (!permissionsLoaded || statsSnapshot == null) return;
     const t = setInterval(() => {
       void (async () => {
         try {
@@ -187,7 +189,7 @@ export default function ReferralLeadsPage() {
       })();
     }, 60_000);
     return () => clearInterval(t);
-  }, [permissionsLoaded, baseParams]);
+  }, [permissionsLoaded, baseParams, statsSnapshot]);
 
   /** Same user directory as Settings → Users (GET /users). */
   const fetchReferrerDirectory = useCallback(async (search: string) => {

@@ -8,7 +8,7 @@ const pagesToTest = [
   '/dashboards/nft',
   '/dashboards/crypto',
   '/dashboards/jobs',
-  '/dashboards/projects',
+  '/apps/projects/project-list',
   '/dashboards/personal',
   '/dashboards/courses',
   '/dashboards/hrm',

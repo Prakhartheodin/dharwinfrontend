@@ -91,17 +91,18 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                       <input
                         type="text"
                         className="form-control"
-                        value={getJobPublicUrl(shareJob.id)}
+                        value={personalLinkLoading ? '' : getJobPublicUrl(shareJob.id)}
+                        placeholder={personalLinkLoading ? 'Generating your personal tracking link…' : ''}
                         readOnly
                       />
                       <button
                         type="button"
                         className={`ti-btn ${copied ? 'ti-btn-success' : 'ti-btn-primary'}`}
-                        disabled={personalLinkLoading}
+                        disabled={personalLinkLoading || !getJobPublicUrl(shareJob.id)}
                         onClick={() => handleCopyUrl(getJobPublicUrl(shareJob.id))}
                       >
                         <i className={`ri-${copied ? 'check' : 'file-copy'}-line me-1`}></i>
-                        {copied ? 'Copied!' : 'Copy'}
+                        {personalLinkLoading ? 'Loading…' : copied ? 'Copied!' : 'Copy'}
                       </button>
                     </div>
                   </div>

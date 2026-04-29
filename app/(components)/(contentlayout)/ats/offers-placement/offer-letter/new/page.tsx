@@ -21,6 +21,7 @@ import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
 import { combinedJobPostingDocText } from "../../job-posting-doc";
+import { letterDateStampYmd } from "../../letter-date-stamp";
 
 function formatCandidateAddress(c: { address?: Offer["candidate"]["address"] } | null | undefined) {
   const a = c?.address;
@@ -79,7 +80,7 @@ export default function NewOfferLetterPage() {
           letterAddress: o.letterAddress || addr || "",
           positionTitle: o.positionTitle || o.job?.title || "",
           joiningDate: o.joiningDate ? String(o.joiningDate).slice(0, 10) : "",
-          letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : "",
+          letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : letterDateStampYmd(),
           jobType: jt,
           weeklyHours: (o.weeklyHours === 25 ? 25 : 40) as 25 | 40,
           workLocation: o.workLocation || "Remote (USA)",

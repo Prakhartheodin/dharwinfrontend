@@ -133,7 +133,8 @@ const Jobs = () => {
   const [copied, setCopied] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
-  const [selectedSort, setSelectedSort] = useState<string>('')
+  /** Default: newest jobs first (matches postingDate / createdAt). */
+  const [selectedSort, setSelectedSort] = useState<string>('newest-first')
   const [jobsFilterPanelOpen, setJobsFilterPanelOpen] = useState(false)
   const closeJobsFilterPanel = () => setJobsFilterPanelOpen(false)
 
@@ -375,13 +376,13 @@ const Jobs = () => {
 
   // Generate public URL for job (with per-sharer `ref` when loaded)
   const getJobPublicUrl = (jobId: string) => {
+    if (jobShareRefLoading && shareJob?.id === jobId) {
+      return '' // Return empty string while loading — prevents accidental clipboard copy of placeholder
+    }
     const base =
       typeof window !== 'undefined'
         ? `${window.location.origin}/public-job/${jobId}`
         : `${process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://localhost:3001'}/public-job/${jobId}`
-    if (jobShareRefLoading && shareJob?.id === jobId) {
-      return 'Generating your personal tracking link…'
-    }
     if (jobShareRefToken && shareJob?.id === jobId) {
       return `${base}?ref=${encodeURIComponent(jobShareRefToken)}`
     }
@@ -883,7 +884,11 @@ const Jobs = () => {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      initialState: {
+        pageIndex: 0,
+        pageSize: 10,
+        sortBy: [{ id: 'postingDate', desc: true }],
+      },
     },
     useSortBy,
     usePagination
