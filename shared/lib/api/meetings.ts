@@ -64,6 +64,8 @@ export interface Meeting {
   createdAt?: string;
   updatedAt?: string;
   publicMeetingUrl?: string;
+  /** Set when interviewResult=selected but createPlacementFromInterview failed (PATCH response only). */
+  moveToPreboardingError?: string;
 }
 
 export interface MeetingsListResponse {

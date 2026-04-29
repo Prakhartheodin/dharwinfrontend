@@ -211,7 +211,11 @@ export function PublicJobApplyModal({
           cancelButtonText: "Close",
         });
         if (result.isConfirmed) {
-          router.push("/authentication/sign-in/");
+          const applyPath =
+            referralRef?.trim()
+              ? `/ats/browse-jobs/${jobId}?ref=${encodeURIComponent(referralRef.trim())}`
+              : `/ats/browse-jobs/${jobId}`;
+          router.push(`${ROUTES.signIn}?next=${encodeURIComponent(applyPath)}`);
         }
       } else {
         await Swal.fire({ icon: "error", title: "Application failed", html: errorMessage });

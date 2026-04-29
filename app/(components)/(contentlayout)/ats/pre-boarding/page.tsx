@@ -16,6 +16,20 @@ const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verifi
 const PRE_BOARDING_QUEUE_STATUSES = 'Pending,Deferred,Cancelled' as const
 type PlacementQueueFilter = '' | 'Pending' | 'Deferred' | 'Cancelled'
 
+type PreBoardingFeedbackDialog =
+  | {
+      variant: 'validation'
+      title: string
+      intro?: string
+      bullets?: string[]
+    }
+  | {
+      variant: 'error'
+      title: string
+      body: string
+      supportRef?: string
+    }
+
 const PreBoarding = () => {
   const { canView, canEdit } = useFeaturePermissions('ats.pre-boarding')
   const searchParams = useSearchParams()
@@ -38,6 +52,16 @@ const PreBoarding = () => {
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [preboardingGateBypassAck, setPreboardingGateBypassAck] = useState(false)
+  const [feedbackDialog, setFeedbackDialog] = useState<PreBoardingFeedbackDialog | null>(null)
+
+  useEffect(() => {
+    if (!feedbackDialog) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setFeedbackDialog(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [feedbackDialog])
 
   const fetchPlacements = useCallback(() => {
     setLoading(true)
@@ -122,13 +146,26 @@ const PreBoarding = () => {
     if (!editModal || !editForm) return
     const placementId = (editModal as { _id?: string; id?: string })._id ?? editModal.id ?? ''
     if (!placementId || !/^[0-9a-fA-F]{24}$/.test(placementId)) {
-      alert('Invalid placement')
+      setFeedbackDialog({
+        variant: 'error',
+        title: 'Cannot save',
+        body: 'This placement record is missing a valid ID. Close the dialog and open Edit again.',
+      })
       return
     }
     const needsGateBypass =
       editForm.placementStatus === 'Joined' && editForm.preBoardingStatus !== 'Completed'
     if (needsGateBypass && !preboardingGateBypassAck) {
-      alert('Pre-boarding is not Complete. Check "Override pre-boarding gate" below, or set Pre-boarding Status to Completed first.')
+      setFeedbackDialog({
+        variant: 'validation',
+        title: 'Finish pre-boarding before marking Joined',
+        intro:
+          'Placement is set to Joined while pre-boarding is not Complete. Choose one of the following:',
+        bullets: [
+          'Set Pre-boarding status to Completed (recommended), or',
+          'Turn on Override pre-boarding gate below if your role allows an exception.',
+        ],
+      })
       return
     }
     setSubmitting(true)
@@ -156,10 +193,21 @@ const PreBoarding = () => {
       setEditModal(null)
       setEditForm(null)
       fetchPlacements()
-    } catch (err: any) {
-      const code = err?.response?.data?.errorCode
-      const msg = err?.response?.data?.message || err?.message || 'Failed to update pre-boarding'
-      alert(code ? `${msg} (${code})` : msg)
+    } catch (err: unknown) {
+      const ax = err as { response?: { data?: { message?: string; errorCode?: string } }; message?: string }
+      const data = ax?.response?.data
+      const msg =
+        typeof data?.message === 'string' && data.message.trim()
+          ? data.message.trim()
+          : ax?.message || 'Failed to update pre-boarding'
+      const code = data?.errorCode
+      const ref = code && !msg.includes(code) ? code : undefined
+      setFeedbackDialog({
+        variant: 'error',
+        title: 'Could not save changes',
+        body: msg,
+        supportRef: ref,
+      })
     } finally {
       setSubmitting(false)
     }
@@ -806,6 +854,94 @@ const PreBoarding = () => {
               setEditForm(null)
             }}
           />
+        </div>
+      )}
+
+      {feedbackDialog && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 sm:p-6" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/45 backdrop-blur-[3px] transition-opacity dark:bg-black/55"
+            aria-label="Dismiss"
+            onClick={() => setFeedbackDialog(null)}
+          />
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="preboarding-feedback-title"
+            aria-describedby="preboarding-feedback-desc"
+            className={`relative w-full max-w-[26rem] overflow-hidden rounded-2xl border shadow-[0_22px_55px_-18px_rgba(15,23,42,0.35)] dark:shadow-black/40 ${
+              feedbackDialog.variant === 'validation'
+                ? 'border-amber-300/90 bg-gradient-to-b from-amber-50/98 to-white dark:border-amber-600/35 dark:from-amber-950/50 dark:to-slate-950'
+                : 'border-rose-200/95 bg-gradient-to-b from-rose-50/95 to-white dark:border-rose-900/45 dark:from-rose-950/35 dark:to-slate-950'
+            }`}
+          >
+            <div
+              className={`flex items-start gap-3 px-5 pb-3 pt-5 sm:px-6 sm:pt-6 ${
+                feedbackDialog.variant === 'validation'
+                  ? 'border-b border-amber-200/80 dark:border-amber-800/40'
+                  : 'border-b border-rose-200/70 dark:border-rose-900/35'
+              }`}
+            >
+              <span
+                className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-lg ${
+                  feedbackDialog.variant === 'validation'
+                    ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-100'
+                    : 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-100'
+                }`}
+                aria-hidden
+              >
+                <i className={feedbackDialog.variant === 'validation' ? 'ri-alert-line' : 'ri-error-warning-line'} />
+              </span>
+              <div className="min-w-0 flex-1 pt-0.5">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                  {feedbackDialog.variant === 'validation' ? 'Before you continue' : 'Something went wrong'}
+                </p>
+                <h3 id="preboarding-feedback-title" className="mt-1 text-[1.05rem] font-semibold leading-snug text-slate-900 dark:text-white">
+                  {feedbackDialog.title}
+                </h3>
+              </div>
+            </div>
+            <div id="preboarding-feedback-desc" className="px-5 pb-5 pt-4 text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 sm:px-6">
+              {feedbackDialog.variant === 'validation' ? (
+                <div className="space-y-3">
+                  {feedbackDialog.intro ? <p className="mb-0">{feedbackDialog.intro}</p> : null}
+                  {feedbackDialog.bullets && feedbackDialog.bullets.length > 0 ? (
+                    <ul className="mb-0 space-y-2 border-l-2 border-amber-400/70 py-0.5 ps-4 dark:border-amber-500/40">
+                      {feedbackDialog.bullets.map((line, idx) => (
+                        <li key={idx} className="leading-snug">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="whitespace-pre-wrap rounded-xl border border-slate-200/90 bg-white/90 px-3.5 py-3 text-[13px] text-slate-800 shadow-inner dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-100">
+                    {feedbackDialog.body}
+                  </div>
+                  {feedbackDialog.supportRef ? (
+                    <p className="mb-0 text-[11px] text-slate-500 dark:text-slate-400">
+                      Support reference:{' '}
+                      <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-700 dark:bg-white/10 dark:text-slate-200">
+                        {feedbackDialog.supportRef}
+                      </code>
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200/80 bg-slate-50/90 px-5 py-3.5 dark:border-white/10 dark:bg-white/[0.03] sm:px-6">
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary min-w-[6.5rem] rounded-xl px-5 py-2 text-sm font-semibold shadow-sm"
+                onClick={() => setFeedbackDialog(null)}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Fragment>

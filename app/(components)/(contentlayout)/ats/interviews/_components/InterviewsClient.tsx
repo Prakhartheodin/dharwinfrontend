@@ -4,7 +4,7 @@ import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } fr
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, moveMeetingToPreboarding, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
@@ -13,6 +13,11 @@ import type { User } from '@/shared/lib/types'
 import CreateInterviewModal from './CreateInterviewModal'
 import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
+
+/** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
+function isMongoObjectIdString(value: string | undefined): boolean {
+  return typeof value === 'string' && /^[0-9a-fA-F]{24}$/.test(value.trim())
+}
 
 /** Table row shape derived from Meeting API */
 interface InterviewTableRow {
@@ -198,15 +203,17 @@ export default function InterviewsClient() {
   // Copy interview link feedback
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
 
-  // Move to preboarding (retry for selected interviews)
-  const [moveToPreboardingId, setMoveToPreboardingId] = useState<string | null>(null)
-
   // Edit interview modal
   const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // Edit modal: candidate-specific job list (mirrors CreateInterviewModal)
+  const [editJobsForCandidate, setEditJobsForCandidate] = useState<Job[]>([])
+  const [editJobsLoading, setEditJobsLoading] = useState(false)
+  // Controlled selected job id in edit modal
+  const [editSelectedJobId, setEditSelectedJobId] = useState<string>('')
 
   // View mode: table or week calendar
   const [viewMode, setViewMode] = useState<'table' | 'week'>('table')
@@ -359,6 +366,8 @@ export default function InterviewsClient() {
     setEditMeetingId(null)
     setEditMeeting(null)
     setEditError(null)
+    setEditJobsForCandidate([])
+    setEditSelectedJobId('')
     ;(window as any).HSOverlay?.close(document.querySelector('#edit-interview-modal'))
   }, [])
 
@@ -367,7 +376,59 @@ export default function InterviewsClient() {
     let cancelled = false
     getMeeting(editMeetingId)
       .then((m) => {
-        if (!cancelled) setEditMeeting(m)
+        if (!cancelled) {
+          setEditMeeting(m)
+          // Load candidate-specific jobs when the meeting is fetched
+          const candId = m?.candidate?.id
+          if (candId) {
+            setEditJobsLoading(true)
+            import('@/shared/lib/api/jobApplications')
+              .then(({ listJobApplications }) => listJobApplications({ candidateId: candId, limit: 200 }))
+              .then((res) => {
+                if (cancelled) return
+                // Build job list from applications (same as CreateInterviewModal.jobOptionsFromApplications)
+                const seen = new Map<string, Job>()
+                for (const app of res.results ?? []) {
+                  const j = app.job
+                  if (!j || typeof j === 'string') continue
+                  const id = String((j as any)._id ?? (j as any).id ?? '')
+                  if (!id || seen.has(id)) continue
+                  seen.set(id, {
+                    _id: id, id,
+                    title: (j as any).title || 'Position',
+                    organisation: (j as any).organisation ?? { name: '' },
+                    jobDescription: '', jobType: '', location: '',
+                    status: (j as any).status || 'Active',
+                  })
+                }
+                setEditJobsForCandidate([...seen.values()])
+                // Pre-select existing jobPosition (stored as ObjectId or title)
+                const pos = (m?.jobPosition || '').trim()
+                if (pos) {
+                  const byId = [...seen.entries()].find(([id]) => id === pos)
+                  if (byId) {
+                    setEditSelectedJobId(byId[0])
+                  } else {
+                    // fallback: match by title
+                    const byTitle = [...seen.entries()].find(([, job]) =>
+                      job.title.toLowerCase() === pos.toLowerCase()
+                    )
+                    setEditSelectedJobId(byTitle?.[0] ?? '')
+                  }
+                } else {
+                  setEditSelectedJobId('')
+                }
+              })
+              .catch(() => { if (!cancelled) setEditJobsForCandidate([]) })
+              .finally(() => { if (!cancelled) setEditJobsLoading(false) })
+          } else {
+            setEditJobsForCandidate([])
+            // jobPosition is an ObjectId — try to match against all-jobs list
+            const pos = (m?.jobPosition || '').trim()
+            const matched = jobs.find((j) => (j.id ?? j._id) === pos)
+            setEditSelectedJobId(matched ? (matched.id ?? matched._id ?? '') : '')
+          }
+        }
       })
       .catch((err: any) => {
         if (!cancelled) setEditError(err?.response?.data?.message || err?.message || 'Failed to load meeting')
@@ -376,6 +437,7 @@ export default function InterviewsClient() {
         if (!cancelled) setEditLoading(false)
       })
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editMeetingId])
 
   const handleEditInterviewSubmit = useCallback(async (e: React.FormEvent) => {
@@ -390,8 +452,15 @@ export default function InterviewsClient() {
     const time = getVal('edit-time')
     const durationMinutes = parseInt(getVal('edit-duration') || '60', 10) || 60
     const jobId = getVal('edit-job')
-    const selectedJob = jobs.find((j) => (j.id ?? j._id) === jobId)
-    const jobPosition = jobId ? (selectedJob?.title || jobId) : editMeeting.jobPosition
+    // Look up in candidate-specific list first (has ObjectId ids), then fall back to all-jobs
+    const selectedJob =
+      editJobsForCandidate.find((j) => (j.id ?? j._id) === jobId) ||
+      jobs.find((j) => (j.id ?? j._id) === jobId)
+    const jobPosition = jobId
+      ? isMongoObjectIdString(jobId)
+        ? jobId.trim()                        // store ObjectId — backend resolves to job
+        : selectedJob?.title || jobId
+      : editMeeting.jobPosition              // unchanged if recruiter didn't touch the field
     const interviewType = (form.querySelector('input[name="edit-type"]:checked') as HTMLInputElement)?.value || editMeeting.interviewType || 'Video'
     const notes = getVal('edit-notes')
     const status = getVal('edit-status') as 'scheduled' | 'ended' | 'cancelled' || editMeeting.status
@@ -422,7 +491,7 @@ export default function InterviewsClient() {
     } finally {
       setEditSaving(false)
     }
-  }, [editMeetingId, editMeeting, jobs, candidates, recruiters, fetchMeetings, closeEditModal])
+  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, recruiters, fetchMeetings, closeEditModal])
 
   const openResultModal = useCallback((row: InterviewTableRow) => {
     setResultModalInterview(row)
@@ -443,8 +512,10 @@ export default function InterviewsClient() {
       const updated = await updateMeeting(resultModalInterview.id, { interviewResult: resultModalSelected })
       await fetchMeetings()
       closeResultModal()
-      if (resultModalSelected === 'selected' && (updated as any).moveToPreboardingError) {
-        alert(`Result updated to Selected, but move to Pre-boarding failed: ${(updated as any).moveToPreboardingError}. Use the "Move to Pre-boarding" button to retry.`)
+      if (resultModalSelected === 'selected' && updated.moveToPreboardingError) {
+        alert(
+          `Interview marked as Selected, but moving to Offers & placement did not complete:\n\n${updated.moveToPreboardingError}\n\nYou can retry with the row action "Re-trigger offer & placement" after fixing the issue above.`
+        )
       }
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || 'Failed to update result')
@@ -461,20 +532,6 @@ export default function InterviewsClient() {
       await fetchMeetings()
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || 'Failed to cancel meeting')
-    }
-  }, [fetchMeetings])
-
-  const handleMoveToPreboarding = useCallback(async (row: InterviewTableRow) => {
-    if (!row.id || row.interviewResult !== 'selected') return
-    setMoveToPreboardingId(row.id)
-    try {
-      await moveMeetingToPreboarding(row.id)
-      await fetchMeetings()
-      alert('Candidate moved to Pre-boarding. Refresh the Pre-boarding page to see them.')
-    } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || 'Failed to move to Pre-boarding')
-    } finally {
-      setMoveToPreboardingId(null)
     }
   }, [fetchMeetings])
 
@@ -600,7 +657,10 @@ export default function InterviewsClient() {
       setFormError('Select a job this candidate has applied for.')
       return
     }
-    const jobPosition = (selectedJob?.title || jobOptionText) || (jobId || undefined)
+    const jobPosition =
+      isMongoObjectIdString(jobId)
+        ? jobId.trim()
+        : (selectedJob?.title || jobOptionText || jobId || undefined)
     const interviewType = (form.querySelector('input[name="schedule-type"]:checked') as HTMLInputElement)?.value || 'Video'
     const notes = getVal('schedule-notes')
     const candidateOption = candidateSelect?.selectedOptions?.[0]
@@ -856,41 +916,20 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
-            {row.original.status?.toLowerCase() === 'ended' && (
+            {/* Show "Set result" for ended interviews OR to re-trigger a stuck selected interview */}
+            {(row.original.status?.toLowerCase() === 'ended' || row.original.interviewResult === 'selected') && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
                   className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
-                  title="Set interview result"
+                  title={row.original.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
                   onClick={() => openResultModal(row.original)}
                 >
                   <i className="ri-checkbox-circle-line"></i>
                   <span
                     className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                     role="tooltip">
-                    Set result
-                  </span>
-                </button>
-              </div>
-            )}
-            {row.original.interviewResult === 'selected' && (
-              <div className="hs-tooltip ti-main-tooltip">
-                <button
-                  type="button"
-                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                  title="Move to Pre-boarding"
-                  disabled={moveToPreboardingId === row.original.id}
-                  onClick={() => handleMoveToPreboarding(row.original)}
-                >
-                  {moveToPreboardingId === row.original.id ? (
-                    <i className="ri-loader-4-line animate-spin"></i>
-                  ) : (
-                    <i className="ri-user-follow-line"></i>
-                  )}
-                  <span
-                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                    role="tooltip">
-                    Move to Pre-boarding
+                    {row.original.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set result'}
                   </span>
                 </button>
               </div>
@@ -937,8 +976,6 @@ export default function InterviewsClient() {
       copyInterviewLink,
       copiedLinkId,
       openEditModal,
-      handleMoveToPreboarding,
-      moveToPreboardingId,
       handleCancelMeeting,
     ]
   )
@@ -1880,10 +1917,27 @@ export default function InterviewsClient() {
                   </div>
                   <div>
                     <label htmlFor="edit-job" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Job / Position</label>
-                    <select id="edit-job" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={jobs.find((j) => j.title === editMeeting.jobPosition)?.id ?? jobs.find((j) => j.title === editMeeting.jobPosition)?._id ?? ''}>
-                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select job'}</option>
-                      {jobs.map((j) => (
-                        <option key={j.id ?? j._id} value={j.id ?? j._id}>{j.title}</option>
+                    <p className="text-xs text-textmuted dark:text-white/50 mb-1.5">
+                      {editJobsForCandidate.length > 0
+                        ? 'Shows jobs this candidate has applied to.'
+                        : 'Select a candidate to filter by their applications.'}
+                    </p>
+                    <select
+                      id="edit-job"
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      disabled={dropdownsLoading || editJobsLoading}
+                      value={editSelectedJobId}
+                      onChange={(e) => setEditSelectedJobId(e.target.value)}
+                    >
+                      <option value="">
+                        {editJobsLoading
+                          ? 'Loading applications...'
+                          : editJobsForCandidate.length === 0
+                            ? 'No applications found — select candidate first'
+                            : 'Select a position'}
+                      </option>
+                      {editJobsForCandidate.map((j) => (
+                        <option key={j.id ?? j._id} value={String(j.id ?? j._id)}>{j.title}</option>
                       ))}
                     </select>
                   </div>
