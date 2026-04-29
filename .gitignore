@@ -31,6 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# graphify AST cache (regeneratable; `graphify update .`)
+graphify-out/cache/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
