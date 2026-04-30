@@ -293,13 +293,19 @@ const PreBoarding = () => {
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
                   >
                     <i className="ri-file-paper-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Offers &amp; placement
+                    Offers &amp; Placement
                   </Link>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                  <span className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
+                    <i className="ri-suitcase-line me-1 align-middle" aria-hidden />
+                    Pre-boarding
+                  </span>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
                   <Link
                     href="/ats/onboarding"
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
                   >
-                    <i className="ri-login-circle-line me-1 align-middle opacity-80" aria-hidden />
+                    <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
                     Onboarding
                   </Link>
                 </div>

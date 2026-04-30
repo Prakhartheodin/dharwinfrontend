@@ -174,10 +174,13 @@ export async function shareJobByEmail(jobId: string, to: string, message?: strin
   return data;
 }
 
+export type JobTemplateVisibility = "public" | "private";
+
 export interface JobTemplate {
   _id: string;
   title: string;
   jobDescription: string;
+  visibility?: JobTemplateVisibility;
   createdAt?: string;
   updatedAt?: string;
   usageCount?: number;
@@ -203,14 +206,18 @@ export async function getJobTemplate(id: string): Promise<JobTemplate> {
   return data;
 }
 
-export async function createJobTemplate(payload: { title: string; jobDescription: string }): Promise<JobTemplate> {
+export async function createJobTemplate(payload: {
+  title: string;
+  jobDescription: string;
+  visibility?: JobTemplateVisibility;
+}): Promise<JobTemplate> {
   const { data } = await apiClient.post<JobTemplate>("/jobs/templates", payload);
   return data;
 }
 
 export async function updateJobTemplate(
   id: string,
-  payload: { title?: string; jobDescription?: string },
+  payload: { title?: string; jobDescription?: string; visibility?: JobTemplateVisibility },
 ): Promise<JobTemplate> {
   const { data } = await apiClient.patch<JobTemplate>(`/jobs/templates/${id}`, payload);
   return data;

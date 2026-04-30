@@ -104,6 +104,38 @@ export async function listCandidates(params?: ListCandidatesParams): Promise<Can
   return data;
 }
 
+export interface JobMatchSkill {
+  name: string;
+  required: boolean;
+  employeeLevel?: string;
+  requiredLevel?: string | null;
+  meetsLevel?: boolean;
+}
+
+export interface JobMatch {
+  jobId: string;
+  title: string;
+  company: string;
+  location: string;
+  jobType: string;
+  experienceLevel?: string | null;
+  fitScore: number;
+  fitLabel: string;
+  matchedSkills: JobMatchSkill[];
+  missingSkills: JobMatchSkill[];
+}
+
+export interface MatchingJobsResponse {
+  matches: JobMatch[];
+  candidateSkillCount: number;
+  totalJobsScored: number;
+}
+
+export async function getMyMatchingJobs(params?: { limit?: number; minScore?: number }): Promise<MatchingJobsResponse> {
+  const { data } = await apiClient.get<MatchingJobsResponse>("/employees/me/matching-jobs", { params });
+  return data;
+}
+
 /**
  * Settings → Agents roster: candidate profiles with Student/Candidate (Employee) owners, plus any profile
  * that already has an assigned agent (so onboarded hires still appear under the correct agent).

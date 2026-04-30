@@ -47,6 +47,7 @@ function getOfferRecordId(o: { _id?: string; id?: string } | null | undefined): 
 /** Aligns with backend `Offer` enum; fallback keeps the status editor defaulting to Draft when API omits status. */
 const OFFER_STATUS_EDIT_VALUES: Offer['status'][] = [
   'Draft',
+  'Active',
   'Sent',
   'Under Negotiation',
   'Accepted',
@@ -67,6 +68,8 @@ function offerStatusPillClass(status: string | undefined): string {
       return `${base} bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-600/20 dark:bg-emerald-500/10 dark:text-emerald-100 dark:ring-emerald-500/25`
     case 'Rejected':
       return `${base} bg-rose-500/12 text-rose-900 ring-1 ring-rose-600/20 dark:bg-rose-400/10 dark:text-rose-100 dark:ring-rose-500/25`
+    case 'Active':
+      return `${base} bg-indigo-500/12 text-indigo-900 ring-1 ring-indigo-600/20 dark:bg-indigo-500/10 dark:text-indigo-100 dark:ring-indigo-500/25`
     case 'Sent':
       return `${base} bg-sky-500/12 text-sky-900 ring-1 ring-sky-600/20 dark:bg-sky-400/10 dark:text-sky-100 dark:ring-sky-500/25`
     case 'Under Negotiation':
@@ -1297,14 +1300,41 @@ const OffersPlacement = () => {
         <div className="col-span-12 min-w-0 flex flex-col">
           <div className="box min-w-0 flex flex-col">
             <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <div className="box-title min-w-0 flex-1">
-                Offers &amp; Placement
-                <span
-                  className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
-                  title="Count after search and filters"
-                >
-                  {filteredData.length}
+              <div className="min-w-0 flex flex-wrap items-center gap-3">
+                <span className="box-title min-w-0">
+                  Offers &amp; Placement
+                  <span
+                    className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
+                    title="Count after search and filters"
+                  >
+                    {filteredData.length}
+                  </span>
                 </span>
+                <div
+                  className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                  aria-label="Pipeline pages"
+                >
+                  <span className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
+                    <i className="ri-file-paper-2-line me-1 align-middle" aria-hidden />
+                    Offers &amp; Placement
+                  </span>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                  <Link
+                    href="/ats/pre-boarding"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                  >
+                    <i className="ri-suitcase-line me-1 align-middle opacity-80" aria-hidden />
+                    Pre-boarding
+                  </Link>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                  <Link
+                    href="/ats/onboarding"
+                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
+                  >
+                    <i className="ri-user-received-2-line me-1 align-middle opacity-80" aria-hidden />
+                    Onboarding
+                  </Link>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 shrink-0" role="toolbar" aria-label="Offer list tools">
                 <label className="sr-only" htmlFor="offers-page-size">

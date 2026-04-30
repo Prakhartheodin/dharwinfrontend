@@ -12,6 +12,8 @@ import { ROUTES } from "@/shared/lib/constants";
 import { listActivityLogs } from "@/shared/lib/api/activity-logs";
 import type { User, ActivityLog } from "@/shared/lib/types";
 import { getDocumentDownloadUrl } from "@/shared/lib/api/candidates";
+import { getMyMatchingJobs } from "@/shared/lib/api/employees";
+import type { JobMatch } from "@/shared/lib/api/employees";
 import Swal from "sweetalert2";
 
 function normalizeSocialUrlForHref(raw: string): string {
@@ -83,6 +85,9 @@ function DynamicProfileView({
   const { user, refreshUser, roleNames, permissionsLoaded } = useAuth();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
+  const [matchingJobs, setMatchingJobs] = useState<JobMatch[]>([]);
+  const [matchingJobsLoading, setMatchingJobsLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "activity" | "jobs">("overview");
   const [resendVerificationSending, setResendVerificationSending] = useState(false);
   const [resendVerificationMessage, setResendVerificationMessage] = useState<"success" | "error" | null>(null);
 
@@ -122,6 +127,15 @@ function DynamicProfileView({
       .catch(() => {})
       .finally(() => setActivitiesLoading(false));
   }, [u]);
+
+  useEffect(() => {
+    if (!candidate?.skills?.length) return;
+    setMatchingJobsLoading(true);
+    getMyMatchingJobs({ limit: 10, minScore: 1 })
+      .then((res) => setMatchingJobs(res.matches))
+      .catch(() => {})
+      .finally(() => setMatchingJobsLoading(false));
+  }, [candidate]);
 
   if (!u) {
     return (
@@ -164,161 +178,162 @@ function DynamicProfileView({
     }
   };
 
+  const visibleSkills = candidate?.skills?.slice(0, 12) ?? [];
+  const extraSkillCount = (candidate?.skills?.length ?? 0) - visibleSkills.length;
+
   return (
     <div className="grid grid-cols-12 gap-x-6">
       {!isEmailVerified && (
         <div className="col-span-12 mb-4">
           <div className="box border border-warning/30 bg-warning/5">
-            <div className="box-body flex flex-wrap items-center justify-between gap-3">
-              <p className="text-defaulttextcolor dark:text-white/90 mb-0">
+            <div className="box-body !py-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-defaulttextcolor dark:text-white/90 mb-0 text-sm">
                 <i className="ri-mail-unread-line me-2 align-middle text-warning" />
-                Your email is not verified. Check your inbox for the verification link, or request a new one.
+                Email not verified. Check inbox or request a new link.
               </p>
               <button
                 type="button"
                 onClick={handleResendVerification}
                 disabled={resendVerificationSending}
-                className="ti-btn ti-btn-warning !font-medium"
+                className="ti-btn ti-btn-sm ti-btn-warning !font-medium !w-auto !h-auto whitespace-nowrap"
               >
                 {resendVerificationSending ? (
                   <>
-                    <span className="animate-spin inline-block me-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                    <span className="animate-spin inline-block me-1.5 w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
                     Sending…
                   </>
                 ) : (
                   <>
                     <i className="ri-mail-send-line me-1 align-middle" />
-                    Resend verification email
+                    Resend
                   </>
                 )}
               </button>
             </div>
             {resendVerificationMessage === "success" && (
-              <div className="box-body pt-0 text-success text-sm">
-                Verification email sent. Check your inbox (and spam folder).
-              </div>
+              <div className="box-body pt-0 text-success text-xs">Verification email sent.</div>
             )}
             {resendVerificationMessage === "error" && (
-              <div className="box-body pt-0 text-danger text-sm">
-                Failed to send. Try again later.
-              </div>
+              <div className="box-body pt-0 text-danger text-xs">Failed to send. Try again later.</div>
             )}
           </div>
         </div>
       )}
-      {/* Left sidebar */}
-      <div className="xxl:col-span-4 xl:col-span-12 col-span-12">
+
+      {/* ── Compact Left Sidebar ── */}
+      <div className="xxl:col-span-3 xl:col-span-4 col-span-12">
         <div className="box overflow-hidden">
           <div className="box-body !p-0">
-            {/* Profile cover */}
-            <div className="sm:flex items-start p-6 main-profile-cover">
-              <div>
-                {u.profilePicture?.url ? (
-                  <span className="avatar avatar-xxl avatar-rounded online me-4">
-                    <img src={u.profilePicture.url} alt="" />
-                  </span>
-                ) : (
-                  <span className="avatar avatar-xxl avatar-rounded me-4 flex items-center justify-center bg-primary/10 text-primary font-semibold text-[1.5rem]">
-                    {getInitial(u.name ?? u.email)}
-                  </span>
-                )}
-              </div>
-              <div className="flex-grow main-profile-info">
-                <div className="flex items-center !justify-between">
-                  <h6 className="font-semibold mb-1 text-white text-[1rem]">
-                    {displayName}
-                  </h6>
-                  <Link
-                    href="/settings/personal-information/"
-                    className="ti-btn ti-btn-light !font-medium !gap-0 !py-1 !px-3 !w-auto !h-auto whitespace-nowrap"
-                  >
-                    <i className="ri-edit-line me-1 align-middle inline-block" />
-                    Edit Profile
-                  </Link>
-                </div>
-                <p className="mb-1 !text-white opacity-[0.7]">{roleDisplayName}</p>
-                <p className="text-[0.75rem] text-white mb-6 opacity-[0.5]">
-                  {displayAddress ? (
-                    <span className="inline-flex">
-                      <i className="ri-map-pin-line me-1 align-middle" />
-                      {displayAddress}
-                    </span>
-                  ) : (
-                    <span className="opacity-0">—</span>
-                  )}
+            {/* Profile cover — centred, smaller avatar */}
+            <div className="main-profile-cover flex flex-col items-center text-center px-4 pt-5 pb-4">
+              {u.profilePicture?.url ? (
+                <span className="avatar avatar-xl avatar-rounded online mb-2">
+                  <img src={u.profilePicture.url} alt="" />
+                </span>
+              ) : (
+                <span className="avatar avatar-xl avatar-rounded mb-2 flex items-center justify-center bg-primary/20 text-primary font-bold text-[1.25rem]">
+                  {getInitial(u.name ?? u.email)}
+                </span>
+              )}
+              <h6 className="font-semibold text-white text-[0.9375rem] mb-0 leading-tight">{displayName}</h6>
+              <p className="text-white/70 text-[0.75rem] mb-0">{roleDisplayName}</p>
+              {displayAddress && (
+                <p className="text-white/50 text-[0.7rem] mb-0 mt-0.5 flex items-center gap-1 justify-center">
+                  <i className="ri-map-pin-line" />{displayAddress}
                 </p>
-              </div>
+              )}
+            </div>
+
+            {/* Stat strip */}
+            <div className="grid grid-cols-3 divide-x divide-dashed dark:divide-defaultborder/10 border-b border-dashed dark:border-defaultborder/10">
+              {[
+                { label: "Skills", value: candidate?.skills?.length ?? 0, icon: "ri-tools-line" },
+                { label: "Jobs", value: matchingJobs.length, icon: "ri-briefcase-line" },
+                { label: "Edu", value: candidate?.qualifications?.length ?? 0, icon: "ri-graduation-cap-line" },
+              ].map((stat) => (
+                <div key={stat.label} className="flex flex-col items-center py-2.5">
+                  <span className="text-[1rem] font-bold text-defaulttextcolor dark:text-white/90">{stat.value}</span>
+                  <span className="text-[0.65rem] text-[#8c9097] dark:text-white/45 uppercase tracking-wide">{stat.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Icon contact row */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-dashed dark:border-defaultborder/10 flex-wrap">
+              <a
+                href={`mailto:${u.email}`}
+                title={u.email ?? ""}
+                className="flex items-center gap-1.5 text-[0.75rem] text-[#8c9097] dark:text-white/50 hover:text-primary transition-colors truncate max-w-full"
+              >
+                <i className="ri-mail-line text-[0.875rem] shrink-0" />
+                <span className="truncate">{u.email}</span>
+              </a>
+              {displayPhone && (
+                <span className="flex items-center gap-1 text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                  <i className="ri-phone-line text-[0.875rem] shrink-0" />
+                  {displayCountryCode ? `${displayCountryCode} ` : ""}{displayPhone}
+                </span>
+              )}
             </div>
 
             {/* Bio */}
             {displayBio && (
-              <div className="p-6 border-b border-dashed dark:border-defaultborder/10">
-                <p className="text-[.9375rem] mb-2 font-semibold">Professional Bio :</p>
-                <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 opacity-[0.7] mb-0">
-                  {displayBio}
-                </p>
+              <div className="px-4 py-3 border-b border-dashed dark:border-defaultborder/10">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-1">Bio</p>
+                <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0 line-clamp-4">{displayBio}</p>
               </div>
             )}
 
-            {/* Contact */}
-            <div className="p-6 border-b border-dashed dark:border-defaultborder/10">
-              <p className="text-[.9375rem] mb-2 me-6 font-semibold">Contact Information :</p>
-              <div className="text-[#8c9097] dark:text-white/50">
-                <p className="mb-2">
-                  <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
-                    <i className="ri-mail-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
-                  </span>
-                  {u.email ?? "—"}
-                </p>
-                {displayPhone && (
-                  <p className="mb-2">
-                    <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
-                      <i className="ri-phone-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
-                    </span>
-                    {displayCountryCode ? `${displayCountryCode} ` : ""}{displayPhone}
-                  </p>
-                )}
-                {displayAddress && (
-                  <p className="mb-0">
-                    <span className="avatar avatar-sm avatar-rounded me-2 bg-light text-[#8c9097] dark:text-white/50">
-                      <i className="ri-map-pin-line align-middle text-[.875rem] text-[#8c9097] dark:text-white/50" />
-                    </span>
-                    {displayAddress}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Skills / Domain */}
+            {/* Domain pills */}
             {u.domain && u.domain.length > 0 && (
-              <div className="p-6 border-b dark:border-defaultborder/10 border-dashed">
-                <p className="text-[.9375rem] mb-2 me-6 font-semibold">Domain :</p>
-                <div>
+              <div className="px-4 py-3 border-b border-dashed dark:border-defaultborder/10">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-1.5">Domain</p>
+                <div className="flex flex-wrap gap-1">
                   {u.domain.map((d) => (
-                    <span key={d} className="badge bg-light text-[#8c9097] dark:text-white/50 m-1">
-                      {d}
-                    </span>
+                    <span key={d} className="badge bg-light text-[#8c9097] dark:text-white/50 text-[0.65rem] px-1.5 py-0.5">{d}</span>
                   ))}
                 </div>
               </div>
             )}
 
+            {/* Skill pills — max 12 */}
+            {visibleSkills.length > 0 && (
+              <div className="px-4 py-3 border-b border-dashed dark:border-defaultborder/10">
+                <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-1.5">Skills</p>
+                <div className="flex flex-wrap gap-1">
+                  {visibleSkills.map((s, i) => (
+                    <span
+                      key={i}
+                      title={s.level}
+                      className="badge bg-primary/10 text-primary text-[0.65rem] px-1.5 py-0.5 rounded-full font-medium"
+                    >
+                      {s.name}
+                    </span>
+                  ))}
+                  {extraSkillCount > 0 && (
+                    <span className="badge bg-light text-[#8c9097] dark:text-white/40 text-[0.65rem] px-1.5 py-0.5 rounded-full">
+                      +{extraSkillCount}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Quick actions */}
-            <div className="p-6">
-              <p className="text-[.9375rem] mb-3 font-semibold">Quick actions</p>
-              <div className="flex flex-wrap gap-2">
+            <div className="px-4 py-3">
+              <div className="flex flex-col gap-1.5">
                 <Link
                   href="/settings/personal-information/"
-                  className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap"
+                  className="ti-btn ti-btn-sm ti-btn-primary !flex !w-full !h-auto whitespace-nowrap items-center justify-center"
                 >
-                  <i className="ri-user-settings-line me-1" />
-                  Personal Information
+                  <i className="ri-user-settings-line me-1 align-middle inline-block" />
+                  Edit Profile
                 </Link>
                 <Link
                   href="/settings/"
-                  className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap"
+                  className="ti-btn ti-btn-sm ti-btn-light !flex !w-full !h-auto whitespace-nowrap items-center justify-center"
                 >
-                  <i className="ri-settings-3-line me-1" />
+                  <i className="ri-settings-3-line me-1 align-middle inline-block" />
                   Settings
                 </Link>
               </div>
@@ -327,230 +342,312 @@ function DynamicProfileView({
         </div>
       </div>
 
-      {/* Right content */}
-      <div className="xxl:col-span-8 xl:col-span-12 col-span-12">
-        <div className="grid grid-cols-12 gap-x-6">
-          {/* Activity log */}
-          <div className="xl:col-span-12 col-span-12">
-            <div className="box">
-              <div className="box-body !p-0">
-                <div className="!p-4 border-b dark:border-defaultborder/10 border-dashed flex items-center justify-between">
-                  <nav className="-mb-0.5 flex" role="tablist">
-                    <span className="flex font-semibold text-white bg-primary rounded-md py-2 px-4 text-sm">
-                      <i className="ri-history-line align-middle inline-block me-1" />
-                      Activity Log
-                    </span>
-                  </nav>
+      {/* ── Right Panel with Tabs ── */}
+      <div className="xxl:col-span-9 xl:col-span-8 col-span-12">
+        <div className="box">
+          <div className="box-body !p-0">
+            {/* Tab nav */}
+            <div className="border-b border-dashed dark:border-defaultborder/10 px-4 pt-3 flex items-center gap-1">
+              {(
+                [
+                  { id: "overview", label: "Overview", icon: "ri-user-3-line" },
+                  { id: "activity", label: "Activity", icon: "ri-history-line" },
+                  { id: "jobs", label: `Jobs${matchingJobs.length > 0 ? ` (${matchingJobs.length})` : ""}`, icon: "ri-briefcase-line" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`-mb-px flex items-center gap-1.5 text-[0.8125rem] font-medium px-3 py-2 border-b-2 transition-colors whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? "border-primary text-primary"
+                      : "border-transparent text-[#8c9097] dark:text-white/50 hover:text-defaulttextcolor dark:hover:text-white/80"
+                  }`}
+                >
+                  <i className={`${tab.icon} text-[0.875rem] align-middle`} />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Overview Tab ── */}
+            {activeTab === "overview" && (
+              <div className="p-4 space-y-4">
+                {/* Personal info 2-col grid */}
+                <div>
+                  <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-2">Personal Information</p>
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    {personalInfo.map((item) => (
+                      <div key={item.label} className="flex flex-col">
+                        <dt className="text-[0.7rem] text-[#8c9097] dark:text-white/40 font-medium">{item.label.replace(" :", "")}</dt>
+                        <dd className="text-[0.8125rem] text-defaulttextcolor dark:text-white/80 font-medium truncate">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
                 </div>
-                <div className="!p-4">
-                  {activitiesLoading ? (
-                    <div className="text-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
-                      <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading activity...</p>
-                    </div>
-                  ) : activities.length === 0 ? (
-                    <div className="text-center py-8">
-                      <i className="ri-history-line text-4xl text-[#8c9097]/40 mb-2 block" />
-                      <p className="text-[#8c9097] dark:text-white/50 text-sm">No activity recorded yet.</p>
-                    </div>
-                  ) : (
-                    <ul className="list-none profile-timeline">
-                      {activities.map((log) => {
-                        const ai = actionIcon(log.action);
-                        return (
-                          <li key={log.id}>
-                            <div>
-                              <span className={`avatar avatar-sm avatar-rounded profile-timeline-avatar ${ai.bg}`}>
-                                <i className={ai.icon} />
-                              </span>
-                              <p className="mb-2">
-                                <b>{humanizeAction(log.action)}</b>
-                                {log.entityType && (
-                                  <span className="text-[#8c9097] dark:text-white/50">
-                                    {" "}on <b>{log.entityType}</b>
-                                    {log.entityId && <span className="text-xs"> ({log.entityId.slice(-6)})</span>}
-                                  </span>
-                                )}
-                                <span className="ltr:float-right rtl:float-left text-[.6875rem] text-[#8c9097] dark:text-white/50">
-                                  {formatActivityDate(log.createdAt)}
-                                </span>
-                              </p>
-                              {log.metadata && Object.keys(log.metadata).length > 0 && (
-                                <p className="text-[#8c9097] dark:text-white/50 text-xs mb-0">
-                                  {Object.entries(log.metadata)
-                                    .filter(([, v]) => v != null && v !== "")
-                                    .slice(0, 3)
-                                    .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
-                                    .join(" · ")}
-                                </p>
+
+                {/* Qualifications */}
+                {candidate?.qualifications && candidate.qualifications.length > 0 && (
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-2">Education</p>
+                    <div className="space-y-2">
+                      {candidate.qualifications.map((q, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-light dark:bg-black/10">
+                          <span className="w-7 h-7 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                            <i className="ri-graduation-cap-line text-[0.75rem]" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[0.8125rem] mb-0 truncate">{q.degree}</p>
+                            <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
+                              {q.institute}
+                              {q.location && <span> · {q.location}</span>}
+                              {(q.startYear || q.endYear) && (
+                                <span> · {q.startYear ?? "?"} – {q.endYear ?? "Present"}</span>
                               )}
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                            </p>
+                            {q.description && <p className="text-[0.7rem] text-[#8c9097] dark:text-white/40 mt-0.5 mb-0">{q.description}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Work Experience */}
+                {candidate?.experiences && candidate.experiences.length > 0 && (
+                  <div>
+                    <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-2">Work Experience</p>
+                    <div className="space-y-2">
+                      {candidate.experiences.map((exp, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3 rounded-lg bg-light dark:bg-black/10">
+                          <span className="w-7 h-7 rounded-full bg-info/10 text-info flex items-center justify-center shrink-0 mt-0.5">
+                            <i className="ri-building-2-line text-[0.75rem]" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-[0.8125rem] mb-0">{exp.role}</p>
+                            <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
+                              {exp.company}
+                              {(exp.startDate || exp.endDate) && (
+                                <span>
+                                  {" · "}
+                                  {exp.startDate ? new Date(exp.startDate).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "?"}
+                                  {" – "}
+                                  {exp.currentlyWorking ? "Present" : exp.endDate ? new Date(exp.endDate).toLocaleDateString(undefined, { month: "short", year: "numeric" }) : "?"}
+                                </span>
+                              )}
+                            </p>
+                            {exp.description && <p className="text-[0.7rem] text-[#8c9097] dark:text-white/40 mt-0.5 mb-0">{exp.description}</p>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Social + Documents side by side */}
+                <div className="grid grid-cols-2 gap-4">
+                  {socialLinksList.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-0">Social Links</p>
+                        <Link href="/settings/personal-information/" className="text-[0.7rem] text-primary hover:underline">Edit</Link>
+                      </div>
+                      <div className="space-y-1.5">
+                        {socialLinksList.map((s, i) => {
+                          const href = normalizeSocialUrlForHref(String(s.url ?? ""));
+                          const label = String(s.platform ?? "").trim() || "Link";
+                          return (
+                            <a
+                              key={`${label}-${i}`}
+                              href={href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center gap-2 text-[0.75rem] text-primary hover:underline truncate"
+                            >
+                              <i className="ri-external-link-line shrink-0" />
+                              <span className="truncate">{label}</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {candidate?.documents && candidate.documents.length > 0 && (
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[0.7rem] font-semibold uppercase tracking-wide text-[#8c9097] dark:text-white/40 mb-0">Documents</p>
+                        <Link href="/settings/personal-information/" className="text-[0.7rem] text-primary hover:underline">Manage</Link>
+                      </div>
+                      <div className="space-y-1.5">
+                        {candidate.documents.map((doc, index) => (
+                          <div key={index} className="flex items-center justify-between gap-2">
+                            <span className="text-[0.75rem] truncate">{doc.label || doc.type || `Document ${index + 1}`}</span>
+                            {candidateIdForDocs && (doc.key || doc.url) ? (
+                              <button
+                                type="button"
+                                className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto !py-0.5 !px-2 whitespace-nowrap text-[0.65rem] shrink-0"
+                                onClick={async () => {
+                                  try {
+                                    const { url } = await getDocumentDownloadUrl(candidateIdForDocs, index);
+                                    window.open(url, "_blank", "noopener,noreferrer");
+                                  } catch {
+                                    Swal.fire("Error", "Could not open document.", "error");
+                                  }
+                                }}
+                              >
+                                <i className="ri-external-link-line" />
+                              </button>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
-            </div>
-          </div>
+            )}
 
-          {/* Personal Info box */}
-          <div className="xl:col-span-12 col-span-12">
-            <div className="box">
-              <div className="box-header">
-                <div className="box-title">Personal Info</div>
-              </div>
-              <div className="box-body">
-                <ul className="list-group">
-                  {personalInfo.map((item) => (
-                    <li className="list-group-item" key={item.label}>
-                      <div className="flex flex-wrap items-center">
-                        <div className="me-2 font-semibold">{item.label}</div>
-                        <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                          {item.value}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          {/* Qualifications (candidate) */}
-          {candidate?.qualifications && candidate.qualifications.length > 0 && (
-            <div className="xl:col-span-12 col-span-12">
-              <div className="box">
-                <div className="box-header">
-                  <div className="box-title">Qualifications</div>
-                </div>
-                <div className="box-body">
-                  <ul className="list-group">
-                    {candidate.qualifications.map((q, i) => (
-                      <li className="list-group-item" key={i}>
-                        <div className="font-semibold">{q.degree} – {q.institute}</div>
-                        {q.location && <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">{q.location}</div>}
-                        {(q.startYear || q.endYear) && (
-                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                            {q.startYear ?? "?"} – {q.endYear ?? "Present"}
-                          </div>
-                        )}
-                        {q.description && <p className="text-[0.75rem] mt-1 mb-0">{q.description}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Work Experience (candidate) */}
-          {candidate?.experiences && candidate.experiences.length > 0 && (
-            <div className="xl:col-span-12 col-span-12">
-              <div className="box">
-                <div className="box-header">
-                  <div className="box-title">Work Experience</div>
-                </div>
-                <div className="box-body">
-                  <ul className="list-group">
-                    {candidate.experiences.map((exp, i) => (
-                      <li className="list-group-item" key={i}>
-                        <div className="font-semibold">{exp.role} at {exp.company}</div>
-                        {(exp.startDate || exp.endDate) && (
-                          <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                            {exp.startDate ? new Date(exp.startDate).toLocaleDateString() : "?"} –{" "}
-                            {exp.currentlyWorking ? "Present" : exp.endDate ? new Date(exp.endDate).toLocaleDateString() : "?"}
-                          </div>
-                        )}
-                        {exp.description && <p className="text-[0.75rem] mt-1 mb-0">{exp.description}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Social links — same data as Settings → Personal Information & candidate edit */}
-          {socialLinksList.length > 0 && (
-            <div className="xl:col-span-12 col-span-12">
-              <div className="box">
-                <div className="box-header flex flex-wrap items-center justify-between gap-2">
-                  <div className="box-title mb-0">Social links</div>
-                  <Link href="/settings/personal-information/" className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap">
-                    <i className="ri-edit-line me-1" />
-                    Edit
-                  </Link>
-                </div>
-                <div className="box-body">
-                  <ul className="list-group list-group-flush">
-                    {socialLinksList.map((s, i) => {
-                      const href = normalizeSocialUrlForHref(String(s.url ?? ""));
-                      const label = String(s.platform ?? "").trim() || "Link";
+            {/* ── Activity Tab ── */}
+            {activeTab === "activity" && (
+              <div className="p-4">
+                {activitiesLoading ? (
+                  <div className="text-center py-10">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading activity...</p>
+                  </div>
+                ) : activities.length === 0 ? (
+                  <div className="text-center py-10">
+                    <i className="ri-history-line text-4xl text-[#8c9097]/40 mb-2 block" />
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm">No activity recorded yet.</p>
+                  </div>
+                ) : (
+                  <ul className="list-none profile-timeline">
+                    {activities.map((log) => {
+                      const ai = actionIcon(log.action);
                       return (
-                        <li className="list-group-item !border-x-0 !border-t-0 !px-0" key={`${label}-${i}`}>
-                          <a
-                            href={href}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary font-medium hover:underline inline-flex items-center gap-2"
-                          >
-                            <i className="ri-external-link-line" />
-                            {label}
-                          </a>
-                          {s.url ? (
-                            <div className="text-[0.7rem] text-[#8c9097] dark:text-white/45 truncate mt-0.5">{s.url}</div>
-                          ) : null}
+                        <li key={log.id}>
+                          <div>
+                            <span className={`avatar avatar-sm avatar-rounded profile-timeline-avatar ${ai.bg}`}>
+                              <i className={ai.icon} />
+                            </span>
+                            <p className="mb-1.5">
+                              <b>{humanizeAction(log.action)}</b>
+                              {log.entityType && (
+                                <span className="text-[#8c9097] dark:text-white/50">
+                                  {" "}on <b>{log.entityType}</b>
+                                  {log.entityId && <span className="text-xs"> ({log.entityId.slice(-6)})</span>}
+                                </span>
+                              )}
+                              <span className="ltr:float-right rtl:float-left text-[.6875rem] text-[#8c9097] dark:text-white/50">
+                                {formatActivityDate(log.createdAt)}
+                              </span>
+                            </p>
+                            {log.metadata && Object.keys(log.metadata).length > 0 && (
+                              <p className="text-[#8c9097] dark:text-white/50 text-xs mb-0">
+                                {Object.entries(log.metadata)
+                                  .filter(([, v]) => v != null && v !== "")
+                                  .slice(0, 3)
+                                  .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+                                  .join(" · ")}
+                              </p>
+                            )}
+                          </div>
                         </li>
                       );
                     })}
                   </ul>
-                </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Documents — matches personal info / edit candidate */}
-          {candidate?.documents && candidate.documents.length > 0 && (
-            <div className="xl:col-span-12 col-span-12">
-              <div className="box">
-                <div className="box-header flex flex-wrap items-center justify-between gap-2">
-                  <div className="box-title mb-0">Documents</div>
-                  <Link href="/settings/personal-information/" className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap">
-                    <i className="ri-edit-line me-1" />
-                    Manage
-                  </Link>
-                </div>
-                <div className="box-body">
-                  <ul className="list-group list-group-flush">
-                    {candidate.documents.map((doc, index) => (
-                      <li className="list-group-item !border-x-0 !border-t-0 !px-0 flex flex-wrap items-center justify-between gap-2" key={index}>
-                        <span className="text-[0.875rem]">{doc.label || doc.type || `Document ${index + 1}`}</span>
-                        {candidateIdForDocs && (doc.key || doc.url) ? (
-                          <button
-                            type="button"
-                            className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap"
-                            onClick={async () => {
-                              try {
-                                const { url } = await getDocumentDownloadUrl(candidateIdForDocs, index);
-                                window.open(url, "_blank", "noopener,noreferrer");
-                              } catch {
-                                Swal.fire("Error", "Could not open document.", "error");
-                              }
-                            }}
+            {/* ── Jobs Tab ── */}
+            {activeTab === "jobs" && (
+              <div className="p-4">
+                {!candidate?.skills?.length ? (
+                  <div className="text-center py-10">
+                    <i className="ri-tools-line text-4xl text-[#8c9097]/40 mb-2 block" />
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm">Add skills to your profile to see matching jobs.</p>
+                    <Link href="/settings/personal-information/" className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto mt-2 inline-flex items-center">
+                      <i className="ri-user-settings-line me-1 align-middle" />
+                      Edit Profile
+                    </Link>
+                  </div>
+                ) : matchingJobsLoading ? (
+                  <div className="text-center py-10">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-3" />
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm">Finding matching jobs...</p>
+                  </div>
+                ) : matchingJobs.length === 0 ? (
+                  <div className="text-center py-10">
+                    <i className="ri-search-line text-4xl text-[#8c9097]/40 mb-2 block" />
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm">No matching jobs found. Add more skills to improve matches.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {matchingJobs.map((job) => {
+                      const scoreColor =
+                        job.fitScore >= 80
+                          ? "text-emerald-600 dark:text-emerald-400"
+                          : job.fitScore >= 60
+                          ? "text-sky-600 dark:text-sky-400"
+                          : job.fitScore >= 40
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-[#8c9097] dark:text-white/50";
+                      const scoreBg =
+                        job.fitScore >= 80
+                          ? "bg-emerald-500/10"
+                          : job.fitScore >= 60
+                          ? "bg-sky-500/10"
+                          : job.fitScore >= 40
+                          ? "bg-amber-500/10"
+                          : "bg-slate-500/10";
+                      return (
+                        <div key={job.jobId} className="p-3 rounded-lg border border-dashed dark:border-defaultborder/10 bg-light/50 dark:bg-black/10 flex flex-col gap-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-[0.8125rem] mb-0 truncate">{job.title}</p>
+                              <p className="text-[0.7rem] text-[#8c9097] dark:text-white/50 mb-0 truncate">
+                                {job.company && <span>{job.company}</span>}
+                                {job.location && <span>{job.company ? " · " : ""}{job.location}</span>}
+                              </p>
+                            </div>
+                            <div className={`flex flex-col items-center rounded-md px-2 py-1 shrink-0 ${scoreBg}`}>
+                              <span className={`text-[0.9rem] font-bold leading-none ${scoreColor}`}>{job.fitScore}%</span>
+                              <span className={`text-[0.55rem] font-medium ${scoreColor}`}>{job.fitLabel}</span>
+                            </div>
+                          </div>
+                          {job.jobType && (
+                            <span className="badge bg-light text-[#8c9097] dark:text-white/50 text-[0.6rem] self-start">{job.jobType}</span>
+                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {job.matchedSkills.slice(0, 3).map((s) => (
+                              <span key={s.name} className="badge bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 text-[0.6rem] px-1.5 py-0.5 rounded">
+                                <i className="ri-check-line me-0.5" />{s.name}
+                              </span>
+                            ))}
+                            {job.missingSkills.slice(0, 2).map((s) => (
+                              <span key={s.name} className="badge bg-slate-500/10 text-[#8c9097] dark:text-white/40 text-[0.6rem] px-1.5 py-0.5 rounded">
+                                {s.name}
+                              </span>
+                            ))}
+                          </div>
+                          <Link
+                            href={`/ats/browse-jobs/${job.jobId}`}
+                            className="ti-btn ti-btn-sm ti-btn-primary !flex !w-full !h-auto !py-1 whitespace-nowrap text-[0.7rem] items-center justify-center mt-auto"
                           >
-                            <i className="ri-external-link-line me-1" />
-                            View
-                          </button>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                            <i className="ri-send-plane-line me-1 align-middle inline-block" />
+                            Apply Now
+                          </Link>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -20,6 +20,7 @@ import {
   listJobTemplates,
   updateJobTemplate,
   type JobTemplate,
+  type JobTemplateVisibility,
 } from "@/shared/lib/api/jobs";
 import DOMPurify from "isomorphic-dompurify";
 import { normalizeTipTapHtmlFromApi } from "@/shared/lib/tiptapHtml";
@@ -65,6 +66,7 @@ export default function SettingsJobTemplatesPage() {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formBody, setFormBody] = useState("");
+  const [formVisibility, setFormVisibility] = useState<JobTemplateVisibility>("public");
   const [saving, setSaving] = useState(false);
 
   const [viewer, setViewer] = useState<JobTemplate | null>(null);
@@ -100,6 +102,7 @@ export default function SettingsJobTemplatesPage() {
     setEditingKey(null);
     setFormTitle("");
     setFormBody("<p></p>");
+    setFormVisibility("public");
     setModalOpen(true);
   };
 
@@ -110,6 +113,7 @@ export default function SettingsJobTemplatesPage() {
       setEditingKey(id);
       setFormTitle(t.title || "");
       setFormBody(normalizeTipTapHtmlFromApi(t.jobDescription) || "<p></p>");
+      setFormVisibility(t.visibility === "private" ? "private" : "public");
       setModalOpen(true);
     } catch (e) {
       const msg =
@@ -139,9 +143,9 @@ export default function SettingsJobTemplatesPage() {
     setSaving(true);
     try {
       if (editingKey) {
-        await updateJobTemplate(editingKey, { title, jobDescription });
+        await updateJobTemplate(editingKey, { title, jobDescription, visibility: formVisibility });
       } else {
-        await createJobTemplate({ title, jobDescription });
+        await createJobTemplate({ title, jobDescription, visibility: formVisibility });
       }
       await Swal.fire({ icon: "success", title: "Saved", toast: true, timer: 2000, showConfirmButton: false, position: "top-end" });
       closeModal();
@@ -227,8 +231,10 @@ export default function SettingsJobTemplatesPage() {
 
       <div className="box-body px-4 pb-6">
         <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-4">
-          These descriptions power <strong>ATS → Create job → Load from template</strong>. Recruiters with <code className="text-xs">jobs.manage</code> can
-          add or edit templates; anyone with <code className="text-xs">jobs.read</code> can view and reuse them.
+          These descriptions power <strong>ATS → Create job → Load from template</strong>.{" "}
+          <strong>Public</strong> templates are visible to everyone who can open this page; <strong>private</strong> templates are only visible to the user who
+          created them (admins can still manage them). Recruiters with <code className="text-xs">jobs.manage</code> can add or edit templates; anyone with{" "}
+          <code className="text-xs">jobs.read</code> can view and reuse templates they are allowed to see.
         </p>
 
         <div className="table-responsive overflow-x-auto">
@@ -237,6 +243,7 @@ export default function SettingsJobTemplatesPage() {
               <tr className="bg-gray-50 dark:bg-gray-800/50">
                 <th className="px-4 py-2.5 text-start font-semibold">S.no.</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Template title</th>
+                <th className="px-4 py-2.5 text-center font-semibold">Visibility</th>
                 <th className="px-4 py-2.5 text-center font-semibold">Uses</th>
                 <th className="px-4 py-2.5 text-start font-semibold">Updated</th>
                 <th className="px-4 py-2.5 text-center font-semibold w-40">Action</th>
@@ -245,13 +252,13 @@ export default function SettingsJobTemplatesPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                  <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
                     Loading…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                  <td colSpan={6} className="px-4 py-8 text-center text-defaulttextcolor/70">
                     No job templates yet.{canManage ? " Create one to reuse for new roles." : ""}
                   </td>
                 </tr>
@@ -263,6 +270,17 @@ export default function SettingsJobTemplatesPage() {
                     <tr key={id || idx} className="border-b border-defaultborder">
                       <td className="px-4 py-2.5 align-middle">{serial}</td>
                       <td className="px-4 py-2.5 align-middle font-medium">{t.title}</td>
+                      <td className="px-4 py-2.5 align-middle text-center">
+                        {t.visibility === "private" ? (
+                          <span className="badge bg-light text-default border border-defaultborder rounded-full text-[0.7rem] font-medium px-2 py-0.5">
+                            Private
+                          </span>
+                        ) : (
+                          <span className="badge bg-primary/10 text-primary rounded-full text-[0.7rem] font-medium px-2 py-0.5">
+                            Public
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-2.5 align-middle text-center tabular-nums">{t.usageCount ?? 0}</td>
                       <td className="px-4 py-2.5 align-middle text-[0.8125rem]">{formatTs(t.updatedAt ?? t.createdAt)}</td>
                       <td className="px-4 py-2.5 align-middle">
@@ -364,6 +382,43 @@ export default function SettingsJobTemplatesPage() {
                   onChange={(e) => setFormTitle(e.target.value)}
                   placeholder="e.g. Java Developer"
                 />
+              </div>
+              <div>
+                <span className="form-label d-block">Visibility</span>
+                <div className="flex flex-col gap-3 sm:flex-row sm:gap-8">
+                  <label className="flex gap-2 cursor-pointer items-start mb-0">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      name="job-template-visibility"
+                      checked={formVisibility === "public"}
+                      onChange={() => setFormVisibility("public")}
+                      disabled={!canManage}
+                    />
+                    <span className="text-[0.875rem]">
+                      <span className="font-medium text-defaulttextcolor">Public</span>
+                      <span className="block text-[#8c9097] dark:text-white/50 text-[0.8125rem] mt-0.5">
+                        Shared with everyone who can open My jobs template in Settings.
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex gap-2 cursor-pointer items-start mb-0">
+                    <input
+                      type="radio"
+                      className="mt-1"
+                      name="job-template-visibility"
+                      checked={formVisibility === "private"}
+                      onChange={() => setFormVisibility("private")}
+                      disabled={!canManage}
+                    />
+                    <span className="text-[0.875rem]">
+                      <span className="font-medium text-defaulttextcolor">Private</span>
+                      <span className="block text-[#8c9097] dark:text-white/50 text-[0.8125rem] mt-0.5">
+                        Only you can see and reuse this template (plus administrators).
+                      </span>
+                    </span>
+                  </label>
+                </div>
               </div>
               <div>
                 <label className="form-label">Job description</label>
