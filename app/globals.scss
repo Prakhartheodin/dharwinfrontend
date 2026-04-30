@@ -180,3 +180,21 @@ select.select-show-page-size {
   padding-inline-start: 0.75rem !important;
   text-align: start;
 }
+
+/* Notification bell ring animation */
+@keyframes bell-ring {
+  0%,100% { transform: rotate(0deg); transform-origin: top center; }
+  15%     { transform: rotate(20deg); transform-origin: top center; }
+  30%     { transform: rotate(-18deg); transform-origin: top center; }
+  45%     { transform: rotate(14deg); transform-origin: top center; }
+  60%     { transform: rotate(-10deg); transform-origin: top center; }
+  75%     { transform: rotate(6deg); transform-origin: top center; }
+}
+.animate-bell-ring { animation: bell-ring 0.5s ease-in-out 2; }
+
+/* Notification toast slide-in */
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(1.5rem); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right { animation: slide-in-right 0.25s ease-out forwards; }

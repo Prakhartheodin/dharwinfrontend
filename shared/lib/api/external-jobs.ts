@@ -87,3 +87,52 @@ export async function unsaveExternalJob(
     params: { source },
   });
 }
+
+export interface ApolloContact {
+  apolloId: string;
+  firstName: string;
+  lastName: string;
+  title: string;
+  email: string;
+  phoneFetched: boolean;
+  phoneNumbers?: { rawNumber: string; sanitizedNumber: string; typeCd: string }[];
+  linkedinUrl?: string;
+  location?: string;
+}
+
+export interface SavedHrContact extends ApolloContact {
+  id?: string;
+  companyName?: string;
+  savedAt?: string;
+}
+
+export interface ApolloEnrichResponse {
+  contacts: ApolloContact[];
+}
+
+export async function enrichExternalJobContacts(
+  company: string,
+  externalId: string,
+  location?: string | null
+): Promise<ApolloEnrichResponse> {
+  const { data } = await apiClient.post<ApolloEnrichResponse>('/external-jobs/enrich', {
+    company,
+    externalId,
+    ...(location ? { location } : {}),
+  });
+  return data;
+}
+
+export async function saveHrContact(contact: ApolloContact & { companyName?: string }): Promise<SavedHrContact> {
+  const { data } = await apiClient.post<SavedHrContact>('/external-jobs/hr-contacts', contact);
+  return data;
+}
+
+export async function listSavedHrContacts(): Promise<{ contacts: SavedHrContact[] }> {
+  const { data } = await apiClient.get<{ contacts: SavedHrContact[] }>('/external-jobs/hr-contacts');
+  return data;
+}
+
+export async function deleteSavedHrContact(apolloId: string): Promise<void> {
+  await apiClient.delete(`/external-jobs/hr-contacts/${encodeURIComponent(apolloId)}`);
+}

@@ -1224,18 +1224,18 @@ const Chat = () => {
   };
 
   const recentConvsByDate = React.useMemo(() => {
-    const groups: { label: string; convs: Conversation[] }[] = [];
-    let lastLabel = "";
+    const map = new Map<string, Conversation[]>();
+    const order: string[] = [];
     for (const c of recentConvs) {
       const d = (c as any).lastMessageAt ? new Date((c as any).lastMessageAt) : new Date();
       const label = formatDateSeparatorForList(d);
-      if (label !== lastLabel) {
-        lastLabel = label;
-        groups.push({ label, convs: [] });
+      if (!map.has(label)) {
+        map.set(label, []);
+        order.push(label);
       }
-      groups[groups.length - 1].convs.push(c);
+      map.get(label)!.push(c);
     }
-    return groups;
+    return order.map((label) => ({ label, convs: map.get(label)! }));
   }, [recentConvs]);
 
   const getReplyPreviewText = (r: { content?: string; type?: string }) => {

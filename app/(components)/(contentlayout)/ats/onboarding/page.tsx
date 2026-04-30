@@ -101,8 +101,9 @@ const Onboarding = () => {
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
                   >
                     <i className="ri-file-paper-2-line me-1 align-middle opacity-80" aria-hidden />
-                    Offers &amp; placement
+                    Offers &amp; Placement
                   </Link>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
                   <Link
                     href="/ats/pre-boarding"
                     className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !rounded-md !border-0 !bg-transparent !py-1.5 !px-2.5 !text-[0.75rem] shadow-none hover:!bg-white dark:hover:!bg-slate-800/80"
@@ -110,6 +111,11 @@ const Onboarding = () => {
                     <i className="ri-suitcase-line me-1 align-middle opacity-80" aria-hidden />
                     Pre-boarding
                   </Link>
+                  <i className="ri-arrow-right-s-line text-slate-400 dark:text-slate-600 text-[0.85rem]" aria-hidden />
+                  <span className="inline-flex items-center !rounded-md !bg-white dark:!bg-slate-800/80 !py-1.5 !px-2.5 !text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
+                    <i className="ri-user-received-2-line me-1 align-middle" aria-hidden />
+                    Onboarding
+                  </span>
                 </div>
                 <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:ms-0 sm:max-w-md sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10">
                   <div className="relative min-w-0 flex-1 sm:max-w-xs">
@@ -217,6 +223,12 @@ const Onboarding = () => {
                         </th>
                         <th
                           scope="col"
+                          className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-start align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
+                        >
+                          Status
+                        </th>
+                        <th
+                          scope="col"
                           className="sticky top-0 z-10 border-b border-slate-200/90 bg-slate-100/90 px-2 py-2 text-end align-bottom text-[0.625rem] font-semibold uppercase leading-tight tracking-tight text-slate-500 shadow-sm first:pl-2.5 last:pr-2.5 dark:border-white/10 dark:bg-slate-900/90 dark:text-slate-400 sm:px-2.5 sm:text-[0.65rem] sm:leading-snug"
                         >
                           Actions
@@ -271,6 +283,28 @@ const Onboarding = () => {
                             </td>
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
                               {getCandidateDesignation(p)}
+                            </td>
+                            <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
+                              <div className="flex flex-col gap-1">
+                                {(() => {
+                                  const pb = (p.preBoardingStatus || 'Pending') as string;
+                                  const pbColor = pb === 'Completed' ? 'bg-success/10 text-success' : pb === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
+                                  const bgv = ((p.backgroundVerification as { status?: string } | undefined)?.status || 'Pending') as string;
+                                  const bgvColor = bgv === 'Completed' || bgv === 'Verified' ? 'bg-success/10 text-success' : bgv === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
+                                  return (
+                                    <>
+                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${pbColor}`}>
+                                        <i className="ri-suitcase-line text-[0.6rem]" aria-hidden />
+                                        {pb}
+                                      </span>
+                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${bgvColor}`}>
+                                        <i className="ri-shield-check-line text-[0.6rem]" aria-hidden />
+                                        BGV: {bgv}
+                                      </span>
+                                    </>
+                                  );
+                                })()}
+                              </div>
                             </td>
                             <td className="whitespace-nowrap px-2.5 py-2 text-end align-middle text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
                               <div className="flex flex-wrap items-center justify-end gap-2">

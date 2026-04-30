@@ -14,9 +14,33 @@ import {
   getNotifications,
   getUnreadCount,
   markAsRead,
+  markAllAsRead,
   openNotificationStream,
   type Notification,
 } from '@/shared/lib/api/notifications';
+import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
+
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+type NotifItem = { createdAt?: string; [key: string]: unknown };
+function groupByDate<T extends NotifItem>(items: T[]): Record<string, T[]> {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  const groups: Record<string, T[]> = {};
+  for (const item of items) {
+    const d = item.createdAt ? new Date(item.createdAt) : new Date();
+    d.setHours(0, 0, 0, 0);
+    const label = d >= today ? 'Today' : d >= yesterday ? 'Yesterday' : 'Earlier';
+    (groups[label] = groups[label] || []).push(item);
+  }
+  return groups;
+}
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
@@ -85,36 +109,55 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     setCartItemCount(updatedCart.length);
   };
 
-  // Notifications: map API shape to existing UI shape { id, class, data, icon, class2, color, color2 }
-  const typeToIcon: Record<string, string> = {
-    leave: 'clock', task: 'circle-check', offer: 'gift', meeting: 'video', meeting_reminder: 'video', course: 'book',
-    certificate: 'certificate', job_application: 'briefcase', project: 'folder', account: 'user-check',
-    recruiter: 'user',
-    assignment: 'user-plus',
-    sop: 'checklist',
-    general: 'bell',
-  };
-  const typeToColor: Record<string, string> = {
-    leave: 'primary', task: 'success', offer: 'secondary', meeting: 'primary', meeting_reminder: 'primary', course: 'pinkmain',
-    certificate: 'warning', job_application: 'secondary', project: 'primary', account: 'success',
-    recruiter: 'pinkmain',
-    assignment: 'primary',
-    sop: 'primary',
-    general: 'secondary',
-  };
+  // Notifications: map API shape to existing UI shape { id, class, data, icon, class2, color, color2, link, read }
   const mapNotificationToItem = (n: Notification) => ({
     id: n._id,
     class: n.title,
     data: n.message,
-    icon: typeToIcon[n.type] || 'bell',
+    icon: notifTypeToIcon[n.type] || 'bell',
     class2: '',
-    color: `!bg-${typeToColor[n.type] || 'secondary'}/10`,
-    color2: typeToColor[n.type] || 'secondary',
+    color: `!bg-${notifTypeToColor[n.type] || 'secondary'}/10`,
+    color2: notifTypeToColor[n.type] || 'secondary',
     _id: n._id,
+    link: (n.link?.startsWith('/') ? n.link : null) ?? '/pages/notifications/',
+    read: n.read,
+    createdAt: n.createdAt,
   });
 
   const [notificationItems, setNotificationItems] = useState<Array<ReturnType<typeof mapNotificationToItem>>>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [bellRinging, setBellRinging] = useState(false);
+  const prevUnreadRef = useRef(0);
+
+  useEffect(() => {
+    if (unreadCount > prevUnreadRef.current) {
+      setBellRinging(true);
+      const t = setTimeout(() => setBellRinging(false), 1500);
+      prevUnreadRef.current = unreadCount;
+      return () => clearTimeout(t);
+    }
+    prevUnreadRef.current = unreadCount;
+  }, [unreadCount]);
+
+  const handleMarkAsRead = useCallback(async (id: string) => {
+    try {
+      await markAsRead(id);
+      setNotificationItems((prev) => prev.map((n) => n._id === id ? { ...n, read: true } : n));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch (err) {
+      console.warn('Failed to mark notification as read:', err);
+    }
+  }, []);
+
+  const handleMarkAllAsRead = useCallback(async () => {
+    try {
+      await markAllAsRead();
+      setNotificationItems((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.warn('Failed to mark all notifications as read:', err);
+    }
+  }, []);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -576,7 +619,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   }}
                   className="relative ti-dropdown-toggle !border-0 flex-shrink-0 !rounded-full !shadow-none align-middle text-xs inline-flex min-h-[2.75rem] min-w-[2.75rem] items-center justify-center !p-0 touch-manipulation"
                 >
-                  <i className="bx bx-bell header-link-icon  text-[1.125rem]"></i>
+                  <i className={`bx bx-bell header-link-icon text-[1.125rem]${bellRinging ? ' animate-bell-ring' : ''}`}></i>
                   {unreadCount > 0 && (
                   <span className="flex absolute h-5 w-5 -top-[0.25rem] end-0  -me-[0.6rem]">
                     <span
@@ -600,8 +643,19 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
 
                   <div className="ti-dropdown-header !m-0 !p-4 !bg-transparent flex shrink-0 justify-between items-center">
                     <p className="mb-0 text-[1.0625rem] text-defaulttextcolor font-semibold ">Notifications</p>
-                    <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-secondary/10 text-secondary"
-                      id="notifiation-data">{`${unreadCount} Unread`}</span>
+                    <div className="flex items-center gap-2">
+                      {unreadCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleMarkAllAsRead}
+                          className="text-[0.7rem] text-secondary hover:underline focus:outline-none"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-secondary/10 text-secondary"
+                        id="notifiation-data">{`${unreadCount} Unread`}</span>
+                    </div>
                   </div>
                   <div className="dropdown-divider shrink-0"></div>
                   <ul
@@ -612,31 +666,53 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     }
                     id="header-notification-scroll"
                   >
-                  {notifications.map((idx, index) => (
-                      <li
-                        className="ti-dropdown-item dropdown-item bg-white dark:bg-bgdark"
-                        key={idx.id}
-                      >
-                        <div className="flex items-start">
-                          <div className="pe-2">
-                            <span
-                              className={`inline-flex text-${idx.color2} justify-center items-center !w-[2.5rem] !h-[2.5rem] !leading-[2.5rem] !text-[0.8rem] ${idx.color} !rounded-[50%]`}><i
-                                className={`ti ti-${idx.icon} text-[1.125rem]`}></i></span>
-                          </div>
-                          <div className="grow flex items-center justify-between">
-                            <div>
-                              <p className="mb-0 text-defaulttextcolor dark:text-white text-[0.8125rem] font-semibold"><Link
-                                href="/pages/notifications/">{idx.class} {idx.class2}</Link></p>
-                              <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text whitespace-pre-line">{idx.data}</span>
+                  {(() => {
+                    const grouped = groupByDate(notifications);
+                    return Object.entries(grouped).map(([label, items]) => (
+                      <Fragment key={label}>
+                        <li className="px-4 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[#8c9097] bg-gray-50 dark:bg-bgdark/60 sticky top-0 list-none">
+                          {label}
+                        </li>
+                        {items.map((idx, index) => (
+                          <li
+                            className={`ti-dropdown-item dropdown-item transition-colors ${idx.read ? 'bg-white dark:bg-bgdark' : 'bg-secondary/5 dark:bg-secondary/10 border-s-2 border-secondary'}`}
+                            key={idx.id}
+                          >
+                            <div className="flex items-start">
+                              <div className="pe-2">
+                                <span className={`inline-flex text-${idx.color2} justify-center items-center !w-[2.5rem] !h-[2.5rem] !leading-[2.5rem] !text-[0.8rem] ${idx.color} !rounded-[50%]`}>
+                                  <i className={`ti ti-${idx.icon} text-[1.125rem]`}></i>
+                                </span>
+                              </div>
+                              <div className="grow flex items-center justify-between">
+                                <div>
+                                  <p className="mb-0 text-defaulttextcolor dark:text-white text-[0.8125rem] font-semibold">
+                                    <Link
+                                      href={idx.link as string}
+                                      onClick={() => { handleMarkAsRead(idx._id); setIsNotificationMenuOpen(false); }}
+                                    >
+                                      {idx.class} {idx.class2}
+                                    </Link>
+                                  </p>
+                                  <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text whitespace-pre-line">{idx.data}</span>
+                                  {idx.createdAt && (
+                                    <span className="text-[0.65rem] text-[#8c9097]/70 dark:text-white/30 mt-0.5 block">
+                                      {formatRelativeTime(idx.createdAt as string)}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <Link aria-label="anchor" href="#!" scroll={false} className="min-w-fit text-[#8c9097] dark:text-white/50 me-1 dropdown-item-close1" onClick={(event) => handleNotificationClose(notifications.indexOf(idx), event)}>
+                                    <i className="ti ti-x text-[1rem]"></i>
+                                  </Link>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <Link aria-label="anchor" href="#!" scroll={false} className="min-w-fit text-[#8c9097] dark:text-white/50 me-1 dropdown-item-close1" onClick={(event) => handleNotificationClose(index, event)}><i
-                                className="ti ti-x text-[1rem]"></i></Link>
-                            </div>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
+                          </li>
+                        ))}
+                      </Fragment>
+                    ));
+                  })()}
                   </ul>
 
                   <div className={`empty-header-item1 mt-2 shrink-0 border-t p-4 ${notifications.length > 0 ? 'block' : 'hidden'}`}>

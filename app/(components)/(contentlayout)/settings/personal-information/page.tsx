@@ -408,6 +408,7 @@ export default function PersonalInformationPage() {
   const [skillsRows, setSkillsRows] = useState<SkillRow[]>([]);
   const [extractSkillsLoading, setExtractSkillsLoading] = useState(false);
   const [skillRoleRecommendLoading, setSkillRoleRecommendLoading] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
   const resumeExtractInputRef = useRef<HTMLInputElement | null>(null);
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
@@ -1170,211 +1171,109 @@ export default function PersonalInformationPage() {
   return (
     <Fragment>
       <Seo title="Personal Information" />
-      <div className="sm:p-4 p-4">
-        {/* Save success/errors: SweetAlert2 toasts (no top banner) */}
+      <div className="sm:p-4 p-4 space-y-4">
 
-        {/* Profile summary card */}
-        <div className="box mb-6 border border-defaultborder rounded-lg overflow-hidden">
-          <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-            <h6 className="font-semibold mb-0 text-[1rem]">Profile summary</h6>
-          </div>
-          <div className="box-body px-4 py-4">
-            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-0">
-              <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Name</dt>
-                <dd className="text-[0.9375rem] font-medium">{user?.name ?? user?.email ?? "—"}</dd>
+        {/* ── Compact profile header ── */}
+        <div className="box overflow-hidden">
+          <div className="box-body !p-0">
+            <div className="flex flex-wrap items-center gap-4 px-4 py-4">
+              <div className="shrink-0">
+                {user?.profilePicture?.url ? (
+                  <img src={user.profilePicture.url} alt="" className="w-14 h-14 rounded-full object-cover ring-2 ring-defaultborder dark:ring-white/10" />
+                ) : (
+                  <span className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[1.3rem]">
+                    {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
+                  </span>
+                )}
               </div>
-              <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Email</dt>
-                <dd className="text-[0.9375rem]">{user?.email ?? "—"}</dd>
-              </div>
-              {hasEmployeeProfile ? (
-                <div className="sm:col-span-2">
-                  <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
-                    Company work email
-                  </dt>
-                  <dd className="text-[0.9375rem]">
-                    {candidate?.companyAssignedEmail && String(candidate.companyAssignedEmail).trim()
-                      ? String(candidate.companyAssignedEmail).trim()
-                      : "—"}
-                  </dd>
-                  <p className="text-xs text-textmuted dark:text-white/50 mt-1 mb-0 max-w-xl">
-                    This is the company mailbox your employer assigned (for example Google Workspace or Microsoft 365). It
-                    may differ from your login email. Connect it under Communication → Email. Only an administrator can
-                    change this field.
-                  </p>
+              <div className="flex-1 min-w-0">
+                <h6 className="font-semibold text-[0.9375rem] mb-0 leading-tight">{user?.name ?? user?.email ?? "—"}</h6>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="badge bg-primary/10 text-primary text-[0.65rem] font-medium px-2 py-0.5 rounded-full">{roleDisplayName}</span>
+                  {user?.email && <span className="text-[0.7rem] text-[#8c9097] dark:text-white/50 flex items-center gap-1"><i className="ri-mail-line" />{user.email}</span>}
+                  {user?.username && user.username !== user.email && <span className="text-[0.7rem] text-[#8c9097] dark:text-white/50 flex items-center gap-1"><i className="ri-at-line" />{user.username}</span>}
+                  {hasEmployeeProfile && candidate?.companyAssignedEmail && String(candidate.companyAssignedEmail).trim() && (
+                    <span className="text-[0.7rem] text-[#8c9097] dark:text-white/50 flex items-center gap-1" title="Company work email — assigned by admin">
+                      <i className="ri-building-line" />{String(candidate.companyAssignedEmail).trim()}
+                    </span>
+                  )}
                 </div>
-              ) : null}
-              <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Username</dt>
-                <dd className="text-[0.9375rem]">{user?.username ?? user?.email ?? "—"}</dd>
               </div>
-              <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">
-                  {roleDisplayName.includes(",") ? "Roles" : "Role"}
-                </dt>
-                <dd className="text-[0.9375rem]">{roleDisplayName}</dd>
+              <div className="flex items-center gap-2 shrink-0">
+                <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png" className="hidden" onChange={handleAvatarUpload} aria-label="Upload profile picture" />
+                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={avatarUploadLoading || avatarRemoveLoading || !user} className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap inline-flex items-center">
+                  {avatarUploadLoading ? "Uploading…" : <><i className="ri-camera-line me-1 align-middle inline-block" />Photo</>}
+                </button>
+                {user?.profilePicture?.url && (
+                  <button type="button" onClick={handleAvatarRemove} disabled={avatarUploadLoading || avatarRemoveLoading} className="ti-btn ti-btn-sm ti-btn-soft-danger !w-auto !h-auto whitespace-nowrap">
+                    {avatarRemoveLoading ? "Removing…" : "Remove"}
+                  </button>
+                )}
               </div>
-              {!hasEmployeeProfile && (staffPhone || staffLocation) && (
-                <>
-                  {staffPhone && (
-                    <div>
-                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Phone</dt>
-                      <dd className="text-[0.9375rem]">
-                        {staffCountryCode ? `${staffCountryCode} ` : ""}
-                        {staffPhone}
-                      </dd>
-                    </div>
-                  )}
-                  {staffLocation && (
-                    <div>
-                      <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Location</dt>
-                      <dd className="text-[0.9375rem]">{staffLocation}</dd>
-                    </div>
-                  )}
-                </>
-              )}
-            </dl>
+            </div>
           </div>
         </div>
 
-        {/* Avatar / Profile picture */}
-        <h6 className="font-semibold mb-4 text-[1rem]">Profile picture</h6>
-        <div className="flex items-center gap-4 mb-6">
-          <div className="flex-shrink-0">
-            {user?.profilePicture?.url ? (
-              <img
-                src={user.profilePicture.url}
-                alt=""
-                className="w-20 h-20 rounded-full object-cover border border-defaultborder"
-              />
-            ) : (
-              <span className="avatar avatar-xl avatar-rounded bg-primary/10 text-primary flex items-center justify-center font-semibold text-[1.25rem]">
-                {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
-              </span>
-            )}
+        {/* ── Account fields (name, username, email) ── */}
+        <div className="box overflow-hidden">
+          <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10">
+            <h6 className="font-medium mb-0 text-[0.875rem]">Account</h6>
           </div>
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/jpeg,image/jpg,image/png"
-              className="hidden"
-              onChange={handleAvatarUpload}
-              aria-label="Upload profile picture"
-            />
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={avatarUploadLoading || avatarRemoveLoading || !user}
-              className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
-            >
-              {avatarUploadLoading ? "Uploading…" : "Upload"}
-            </button>
-            {(user?.profilePicture?.url) && (
-              <button
-                type="button"
-                onClick={handleAvatarRemove}
-                disabled={avatarUploadLoading || avatarRemoveLoading}
-                className="ti-btn ti-btn-soft-danger ti-btn-sm whitespace-nowrap shrink-0 !w-auto !h-auto !py-1.5 !px-3"
-              >
-                {avatarRemoveLoading ? "Removing…" : "Remove"}
-              </button>
-            )}
-          </div>
-        </div>
-
-        <h6 className="font-semibold mb-4 text-[1rem]">Profile :</h6>
-        <div className="sm:grid grid-cols-12 gap-6 mb-6">
-          <div className="xl:col-span-6 col-span-12">
-            <label htmlFor="first-name" className="form-label">
-              <span className="text-danger me-0.5" aria-hidden>
-                *
-              </span>
-              First Name
-            </label>
-            <input
-              type="text"
-              className="form-control w-full !rounded-md"
-              id="first-name"
-              placeholder="First Name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
-            />
-          </div>
-          <div className="xl:col-span-6 col-span-12">
-            <label htmlFor="last-name" className="form-label">
-              Last Name
-            </label>
-            <input
-              type="text"
-              className="form-control w-full !rounded-md"
-              id="last-name"
-              placeholder="Last Name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
-            />
-          </div>
-          <div className="xl:col-span-12 col-span-12">
-            <label className="form-label">
-              {canEditUsernameOnPage ? (
-                <span className="text-danger me-0.5" aria-hidden>
-                  *
-                </span>
-              ) : null}
-              Username
-            </label>
-            <input
-              type="text"
-              className={`form-control w-full !rounded-md ${canEditUsernameOnPage ? "" : "!bg-gray-100 dark:!bg-black/20"}`}
-              id={canEditUsernameOnPage ? "username" : "username-readonly"}
-              value={userName}
-              readOnly={!canEditUsernameOnPage}
-              onChange={canEditUsernameOnPage ? (e) => setUserName(e.target.value) : undefined}
-              title={
-                canEditUsernameOnPage
-                  ? undefined
-                  : "Only an administrator can change your username (via Settings → Users → Edit)"
-              }
-            />
-            <p className="text-[0.75rem] text-defaulttextcolor/70 mt-1 mb-0">
-              {canEditUsernameOnPage
-                ? "Username is used for sign-in. You can update it here; it must stay unique."
-                : "Username is used for sign-in. Only an administrator can change it (Settings → Users → Edit)."}
-            </p>
-          </div>
-        </div>
-
-        <h6 className="font-semibold mb-4 text-[1rem]">Personal information :</h6>
-        <div className="sm:grid grid-cols-12 gap-6 mb-6">
-          <div className="xl:col-span-6 col-span-12">
-            <label htmlFor="email-address" className="form-label">
-              {hasAdminPrivileges ? (
-                <span className="text-danger me-0.5" aria-hidden>
-                  *
-                </span>
-              ) : null}
-              Email Address :
-            </label>
-            <input
-              type="email"
-              className="form-control w-full !rounded-md"
-              id="email-address"
-              placeholder="xyz@gmail.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              readOnly={!hasAdminPrivileges}
-              title={!hasAdminPrivileges ? "Only an administrator can change your email address" : undefined}
-            />
+          <div className="box-body px-4 py-3">
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 sm:col-span-6">
+                <label htmlFor="first-name" className="form-label !text-xs !mb-1">
+                  <span className="text-danger me-0.5" aria-hidden>*</span>First Name
+                </label>
+                <input type="text" className="form-control w-full !rounded-md" id="first-name" placeholder="First Name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label htmlFor="last-name" className="form-label !text-xs !mb-1">Last Name</label>
+                <input type="text" className="form-control w-full !rounded-md" id="last-name" placeholder="Last Name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label className="form-label !text-xs !mb-1">
+                  {canEditUsernameOnPage ? <span className="text-danger me-0.5" aria-hidden>*</span> : null}Username
+                </label>
+                <input
+                  type="text"
+                  className={`form-control w-full !rounded-md ${canEditUsernameOnPage ? "" : "!bg-gray-100 dark:!bg-black/20"}`}
+                  id={canEditUsernameOnPage ? "username" : "username-readonly"}
+                  value={userName}
+                  readOnly={!canEditUsernameOnPage}
+                  onChange={canEditUsernameOnPage ? (e) => setUserName(e.target.value) : undefined}
+                  title={canEditUsernameOnPage ? undefined : "Only an administrator can change your username (via Settings → Users → Edit)"}
+                />
+                <p className="text-[0.7rem] text-defaulttextcolor/60 mt-0.5 mb-0">
+                  {canEditUsernameOnPage ? "Must be unique." : "Only an admin can change this."}
+                </p>
+              </div>
+              <div className="col-span-12 sm:col-span-6">
+                <label htmlFor="email-address" className="form-label !text-xs !mb-1">
+                  {hasAdminPrivileges ? <span className="text-danger me-0.5" aria-hidden>*</span> : null}Email Address
+                </label>
+                <input
+                  type="email"
+                  className="form-control w-full !rounded-md"
+                  id="email-address"
+                  placeholder="xyz@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  readOnly={!hasAdminPrivileges}
+                  title={!hasAdminPrivileges ? "Only an administrator can change your email address" : undefined}
+                />
+                {!hasAdminPrivileges && <p className="text-[0.7rem] text-defaulttextcolor/60 mt-0.5 mb-0">Only an admin can change this.</p>}
+              </div>
+            </div>
           </div>
         </div>
 
         {!hasEmployeeProfile && !candidateRoleLoading && (
-          <div className="box border border-defaultborder rounded-lg overflow-hidden mb-6">
-            <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-              <h6 className="font-semibold mb-0 text-[0.9375rem]">Contact &amp; professional details</h6>
+          <div className="box overflow-hidden">
+            <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10">
+              <h6 className="font-medium mb-0 text-[0.875rem]">Contact &amp; professional details</h6>
             </div>
-            <div className="box-body px-4 py-4 sm:grid grid-cols-12 gap-4">
+            <div className="box-body px-4 py-3 sm:grid grid-cols-12 gap-3">
               <p className="col-span-12 text-[0.75rem] text-defaulttextcolor/70 mb-0 -mt-1">
                 These fields are stored on your user account (not the ATS candidate record). Use them to keep your contact info and a short bio up to date.
               </p>
@@ -1453,17 +1352,16 @@ export default function PersonalInformationPage() {
           </div>
         )}
 
-        {/* Candidate profile (includes Agent + Candidate hybrids) */}
+        {/* Candidate profile */}
         {hasEmployeeProfile && !candidateRoleLoading && (
-          <div className="space-y-6 mb-6">
-            <h6 className="font-semibold text-[1rem]">Employee information</h6>
+          <div className="space-y-3">
 
             {/* Contact & address */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Contact & address</h6>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Contact &amp; address</h6>
               </div>
-              <div className="box-body px-4 py-4 sm:grid grid-cols-12 gap-4">
+              <div className="box-body px-4 py-3 sm:grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-6">
                   <label className="form-label">Phone <span className="text-danger">*</span></label>
                   <div className="flex gap-2">
@@ -1553,11 +1451,11 @@ export default function PersonalInformationPage() {
             </div>
 
             {/* Immigration / visa */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Immigration / visa</h6>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Immigration / visa</h6>
               </div>
-              <div className="box-body px-4 py-4 sm:grid grid-cols-12 gap-4">
+              <div className="box-body px-4 py-3 sm:grid grid-cols-12 gap-3">
                 <div className="col-span-12 sm:col-span-6">
                   <label className="form-label">SEVIS ID</label>
                   <input
@@ -1671,14 +1569,12 @@ export default function PersonalInformationPage() {
             </div>
 
             {/* Qualifications */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Qualifications</h6>
-                <p className="text-xs text-defaulttextcolor/70 mb-0 mt-1">
-                  In each entry, fields marked <span className="text-danger">*</span> are required if you keep that row.
-                </p>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center gap-2">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Qualifications</h6>
+                <span className="text-[0.7rem] text-defaulttextcolor/60">Fields marked <span className="text-danger">*</span> required per row</span>
               </div>
-              <div className="box-body px-4 py-4 space-y-4">
+              <div className="box-body px-4 py-3 space-y-3">
                 {qualifications.map((q, i) => (
                   <div key={i} className="p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 sm:grid grid-cols-12 gap-3">
                     <div className="col-span-12 sm:col-span-6">
@@ -1776,14 +1672,12 @@ export default function PersonalInformationPage() {
             </div>
 
             {/* Work experience */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Work experience</h6>
-                <p className="text-xs text-defaulttextcolor/70 mb-0 mt-1">
-                  In each job, fields marked <span className="text-danger">*</span> are required if you keep that entry (job title corresponds to Role).
-                </p>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center gap-2">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Work experience</h6>
+                <span className="text-[0.7rem] text-defaulttextcolor/60">Fields marked <span className="text-danger">*</span> required per entry</span>
               </div>
-              <div className="box-body px-4 py-4 space-y-4">
+              <div className="box-body px-4 py-3 space-y-3">
                 {experiences.map((exp, i) => (
                   <div key={i} className="p-3 border border-defaultborder rounded-md bg-gray-50/50 dark:bg-gray-800/30 sm:grid grid-cols-12 gap-3">
                     <div className="col-span-12 sm:col-span-6">
@@ -1867,18 +1761,17 @@ export default function PersonalInformationPage() {
 
         {/* Social links, documents & salary slips: all non-administrators (staff with linked candidate included); hidden for Administrator */}
         {!hasAdminPrivileges && !candidateRoleLoading && (
-          <div className="space-y-6 mb-6">
-            <h6 className="font-semibold text-[1rem]">Profile attachments</h6>
+          <div className="space-y-3">
             {!candidate && (
               <p className="text-[0.875rem] text-defaulttextcolor/80 mb-0">
                 When your account is linked to a candidate record, you can add social links and upload documents here. If uploads are disabled, no candidate profile is linked yet—contact your administrator.
               </p>
             )}
 
-            {/* Social links — same fields as ATS candidate edit (Basicwizard); saved with PATCH /auth/me/with-candidate */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Social links</h6>
+            {/* Social links */}
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center justify-between">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Social links</h6>
                 <button
                   type="button"
                   className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
@@ -1958,9 +1851,9 @@ export default function PersonalInformationPage() {
             </div>
 
             {/* Documents */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Documents</h6>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center justify-between">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Documents</h6>
                 <button
                   type="button"
                   className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
@@ -2105,163 +1998,179 @@ export default function PersonalInformationPage() {
               </div>
             </div>
 
-            {/* Skills — populated manually or extracted from CV/resume via OpenAI (server OPENAI_API_KEY) */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-wrap items-center justify-between gap-2">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Skills</h6>
+            {/* Skills */}
+            <div className="box overflow-hidden">
+              <div
+                className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex flex-wrap items-center justify-between gap-2 cursor-pointer select-none"
+                onClick={() => setSkillsOpen((v) => !v)}
+              >
+                <div className="flex items-center gap-2">
+                  <h6 className="font-medium mb-0 text-[0.875rem]">Skills</h6>
+                  {skillsRows.length > 0 && (
+                    <span className="badge bg-primary/10 text-primary text-[0.65rem] px-1.5 py-0.5 rounded-full">{skillsRows.length}</span>
+                  )}
+                </div>
                 <div className="flex flex-wrap gap-2 items-center">
-                  <input
-                    ref={resumeExtractInputRef}
-                    type="file"
-                    accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    className="hidden"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      void runResumeSkillExtract(f);
-                      e.target.value = "";
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-soft-secondary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
-                    disabled={!candidate || extractSkillsLoading}
-                    onClick={() => resumeExtractInputRef.current?.click()}
-                  >
-                    {extractSkillsLoading ? (
-                      <>
-                        <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
-                        Extracting…
-                      </>
-                    ) : (
-                      <>
-                        <i className="ri-magic-line me-1 align-middle" />
-                        Extract from resume
-                      </>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
-                    disabled={!candidate || extractSkillsLoading || skillRoleRecommendLoading}
-                    onClick={() => void runSkillRecommendationByRole()}
-                  >
-                    {skillRoleRecommendLoading ? (
-                      <>
-                        <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
-                        Suggesting…
-                      </>
-                    ) : (
-                      <>
-                        <i className="ri-lightbulb-flash-line me-1 align-middle" />
-                        Skill recommendation
-                      </>
-                    )}
-                  </button>
-                  {documentsList.some((d) => d.file && d.name === "CV/Resume") ? (
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1.5 !px-3"
-                      disabled={!candidate || extractSkillsLoading}
-                      onClick={() => {
-                        const f = documentsList.find((d) => d.file && d.name === "CV/Resume")?.file;
-                        void runResumeSkillExtract(f ?? null);
-                      }}
-                    >
-                      Use CV row file
-                    </button>
-                  ) : null}
+                  {skillsOpen && (
+                    <>
+                      <input
+                        ref={resumeExtractInputRef}
+                        type="file"
+                        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          void runResumeSkillExtract(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-soft-secondary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2.5 inline-flex items-center"
+                        disabled={!candidate || extractSkillsLoading}
+                        onClick={(e) => { e.stopPropagation(); resumeExtractInputRef.current?.click(); }}
+                      >
+                        {extractSkillsLoading ? (
+                          <>
+                            <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
+                            Extracting…
+                          </>
+                        ) : (
+                          <>
+                            <i className="ri-magic-line me-1 align-middle inline-block" />
+                            Extract from resume
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2.5 inline-flex items-center"
+                        disabled={!candidate || extractSkillsLoading || skillRoleRecommendLoading}
+                        onClick={(e) => { e.stopPropagation(); void runSkillRecommendationByRole(); }}
+                      >
+                        {skillRoleRecommendLoading ? (
+                          <>
+                            <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full me-1 align-middle" />
+                            Suggesting…
+                          </>
+                        ) : (
+                          <>
+                            <i className="ri-lightbulb-flash-line me-1 align-middle inline-block" />
+                            Skill recommendation
+                          </>
+                        )}
+                      </button>
+                      {documentsList.some((d) => d.file && d.name === "CV/Resume") ? (
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-soft-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2.5 inline-flex items-center"
+                          disabled={!candidate || extractSkillsLoading}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const f = documentsList.find((d) => d.file && d.name === "CV/Resume")?.file;
+                            void runResumeSkillExtract(f ?? null);
+                          }}
+                        >
+                          Use CV row file
+                        </button>
+                      ) : null}
+                    </>
+                  )}
+                  <i className={`ri-arrow-${skillsOpen ? "up" : "down"}-s-line text-[#8c9097] dark:text-white/50 text-base transition-transform`} onClick={(e) => e.stopPropagation()} />
                 </div>
               </div>
-              <div className="box-body px-4 py-4 space-y-3">
-                <p className="text-defaulttextcolor/70 text-sm mb-0">
-                  Extract reads PDF/DOCX text on the server and merges skills into this list. Click <strong>Save profile</strong> below to persist.
-                </p>
-                {skillsRows.length === 0 ? (
-                  <p className="text-defaulttextcolor/60 text-sm mb-0">No skills yet — extract from your CV or add rows.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {skillsRows.map((row) => (
-                      <div
-                        key={row.id}
-                        className="grid grid-cols-12 gap-2 items-end border border-defaultborder rounded-md p-2 bg-gray-50/40 dark:bg-gray-800/20"
-                      >
-                        <div className="col-span-12 sm:col-span-5">
-                          <label className="form-label text-xs mb-1">Skill</label>
-                          <input
-                            type="text"
-                            className="form-control !rounded-md"
-                            placeholder="e.g. React"
-                            value={row.name}
-                            disabled={!candidate}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, name: v } : x)));
-                            }}
-                          />
+              {skillsOpen && (
+                <div className="box-body px-4 py-3 space-y-3">
+                  <p className="text-defaulttextcolor/70 text-[0.8125rem] mb-0">
+                    Extract reads PDF/DOCX text on the server and merges skills into this list. Click <strong>Save profile</strong> below to persist.
+                  </p>
+                  {skillsRows.length === 0 ? (
+                    <p className="text-defaulttextcolor/60 text-sm mb-0">No skills yet — extract from your CV or add rows.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {skillsRows.map((row) => (
+                        <div
+                          key={row.id}
+                          className="grid grid-cols-12 gap-2 items-end border border-defaultborder rounded-md p-2 bg-gray-50/40 dark:bg-gray-800/20"
+                        >
+                          <div className="col-span-12 sm:col-span-5">
+                            <label className="form-label text-xs mb-1">Skill</label>
+                            <input
+                              type="text"
+                              className="form-control !rounded-md"
+                              placeholder="e.g. React"
+                              value={row.name}
+                              disabled={!candidate}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, name: v } : x)));
+                              }}
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="form-label text-xs mb-1">Level</label>
+                            <select
+                              className="form-control !rounded-md"
+                              value={row.level}
+                              disabled={!candidate}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, level: v } : x)));
+                              }}
+                            >
+                              {(["Beginner", "Intermediate", "Advanced", "Expert"] as const).map((lvl) => (
+                                <option key={lvl} value={lvl}>
+                                  {lvl}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="col-span-12 sm:col-span-3">
+                            <label className="form-label text-xs mb-1">Category</label>
+                            <input
+                              type="text"
+                              className="form-control !rounded-md"
+                              placeholder="Optional"
+                              value={row.category ?? ""}
+                              disabled={!candidate}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, category: v || undefined } : x)));
+                              }}
+                            />
+                          </div>
+                          <div className="col-span-12 sm:col-span-1 flex justify-end pb-1">
+                            <button
+                              type="button"
+                              className="ti-btn ti-btn-soft-danger ti-btn-sm !min-w-0 !px-2"
+                              disabled={!candidate}
+                              onClick={() => setSkillsRows((arr) => arr.filter((x) => x.id !== row.id))}
+                              aria-label="Remove skill"
+                            >
+                              <i className="ri-close-line" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="col-span-12 sm:col-span-3">
-                          <label className="form-label text-xs mb-1">Level</label>
-                          <select
-                            className="form-control !rounded-md"
-                            value={row.level}
-                            disabled={!candidate}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, level: v } : x)));
-                            }}
-                          >
-                            {(["Beginner", "Intermediate", "Advanced", "Expert"] as const).map((lvl) => (
-                              <option key={lvl} value={lvl}>
-                                {lvl}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="col-span-12 sm:col-span-3">
-                          <label className="form-label text-xs mb-1">Category</label>
-                          <input
-                            type="text"
-                            className="form-control !rounded-md"
-                            placeholder="Optional"
-                            value={row.category ?? ""}
-                            disabled={!candidate}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setSkillsRows((arr) => arr.map((x) => (x.id === row.id ? { ...x, category: v || undefined } : x)));
-                            }}
-                          />
-                        </div>
-                        <div className="col-span-12 sm:col-span-1 flex justify-end pb-1">
-                          <button
-                            type="button"
-                            className="ti-btn ti-btn-soft-danger ti-btn-sm !min-w-0 !px-2"
-                            disabled={!candidate}
-                            onClick={() => setSkillsRows((arr) => arr.filter((x) => x.id !== row.id))}
-                            aria-label="Remove skill"
-                          >
-                            <i className="ri-close-line" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-soft-primary ti-btn-sm"
-                  disabled={!candidate}
-                  onClick={() => setSkillsRows((arr) => [...arr, { id: Date.now(), name: "", level: "Intermediate" }])}
-                >
-                  <i className="ri-add-line me-1 align-middle" />
-                  Add skill
-                </button>
-              </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-soft-primary ti-btn-sm !w-auto !h-auto whitespace-nowrap inline-flex items-center"
+                    disabled={!candidate}
+                    onClick={() => setSkillsRows((arr) => [...arr, { id: Date.now(), name: "", level: "Intermediate" }])}
+                  >
+                    <i className="ri-add-line me-1 align-middle inline-block" />
+                    Add skill
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Salary slips */}
-            <div className="box border border-defaultborder rounded-lg overflow-hidden">
-              <div className="box-header px-4 py-3 border-b border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex items-center justify-between">
-                <h6 className="font-semibold mb-0 text-[0.9375rem]">Salary slips</h6>
+            <div className="box overflow-hidden">
+              <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center justify-between">
+                <h6 className="font-medium mb-0 text-[0.875rem]">Salary slips</h6>
                 <button
                   type="button"
                   className="ti-btn ti-btn-primary ti-btn-sm whitespace-nowrap !w-auto !h-auto !py-1 !px-2"
@@ -2566,78 +2475,37 @@ export default function PersonalInformationPage() {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between mb-6 rounded-lg border border-defaultborder bg-white dark:bg-gray-800/20 px-4 py-3 sm:px-5">
-          <p className="text-[0.8125rem] text-defaulttextcolor/65 mb-0 max-w-xl order-2 sm:order-1">
-            Saves name, contact details, attachments, and notification choices together.
-          </p>
-          <button
-            type="button"
-            onClick={handleSaveProfile}
-            className="ti-btn ti-btn-primary ti-btn-lg order-1 sm:order-2 min-w-[9rem] disabled:opacity-70 disabled:cursor-not-allowed"
-            disabled={saveLoading || !user}
-          >
-            {saveLoading ? (
-              <>
-                <span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-0.125em] me-2" />
-                Saving…
-              </>
-            ) : (
-              <>
-                <i className="ri-save-3-line me-2 align-middle" />
-                Save profile
-              </>
-            )}
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 mb-6">
-          <button type="button" onClick={openChangePasswordModal} className="ti-btn ti-btn-light">
-            Change password
-          </button>
-          <button type="button" onClick={() => logout()} className="ti-btn ti-btn-soft-danger">
-            Logout
-          </button>
-        </div>
-
-        {/* Security cues */}
-        <h6 className="font-semibold mb-4 mt-6 text-[1rem]">Security</h6>
-        <div className="box border border-defaultborder rounded-lg overflow-hidden mb-4">
-          <div className="box-body px-4 py-4">
-            <dl className="space-y-4 mb-0">
-              <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Last login</dt>
-                <dd className="text-[0.9375rem] text-defaulttextcolor/80">
-                  {formatDate(user?.lastLoginAt)}
-                </dd>
+        {/* ── Actions + security ── */}
+        <div className="box overflow-hidden">
+          <div className="box-body !p-0">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-dashed dark:border-defaultborder/10">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={openChangePasswordModal} className="ti-btn ti-btn-sm ti-btn-light !w-auto !h-auto whitespace-nowrap inline-flex items-center">
+                  <i className="ri-lock-password-line me-1 align-middle inline-block" />Change password
+                </button>
+                <button type="button" onClick={() => logout()} className="ti-btn ti-btn-sm ti-btn-soft-danger !w-auto !h-auto whitespace-nowrap inline-flex items-center">
+                  <i className="ri-logout-circle-line me-1 align-middle inline-block" />Logout
+                </button>
               </div>
-              {/* <div>
-                <dt className="text-[0.75rem] font-medium text-defaulttextcolor/70 uppercase tracking-wide mb-1">Active sessions / devices</dt>
-                <dd className="text-[0.9375rem] text-defaulttextcolor/80">
-                  {!sessions?.length ? (
-                    "—"
-                  ) : (
-                    <ul className="list-none pl-0 mb-0 space-y-2 mt-2">
-                      {sessions.slice(0, 10).map((session) => (
-                        <li
-                          key={session.id}
-                          className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2 border-b border-defaultborder/50 last:border-0 last:pb-0 first:pt-0"
-                        >
-                          <span className="font-medium text-defaulttextcolor">{formatUserAgentSummary(session.userAgent)}</span>
-                          <span className="text-[0.8125rem] text-defaulttextcolor/70">
-                            {session.ip ?? "—"} · {formatDate(session.createdAt)}
-                          </span>
-                        </li>
-                      ))}
-                      {sessions.length > 10 && (
-                        <li className="text-[0.8125rem] text-defaulttextcolor/70 pt-1">
-                          +{sessions.length - 10} more session{sessions.length - 10 !== 1 ? "s" : ""}
-                        </li>
-                      )}
-                    </ul>
-                  )}
-                </dd>
-              </div> */}
-            </dl>
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                className="ti-btn ti-btn-primary !w-auto !h-auto whitespace-nowrap disabled:opacity-70 disabled:cursor-not-allowed"
+                disabled={saveLoading || !user}
+              >
+                {saveLoading ? (
+                  <><span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-0.125em] me-2" />Saving…</>
+                ) : (
+                  <><i className="ri-save-3-line me-1.5 align-middle" />Save profile</>
+                )}
+              </button>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2.5">
+              <i className="ri-shield-check-line text-[#8c9097] dark:text-white/40 text-[0.875rem]" />
+              <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                Last login: <span className="font-medium">{formatDate(user?.lastLoginAt)}</span>
+              </span>
+            </div>
           </div>
         </div>
       </div>

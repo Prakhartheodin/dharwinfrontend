@@ -6,7 +6,7 @@ import { apiClient } from "@/shared/lib/api/client";
 /** Save/validate letter fields on the server; allow extra time on slow networks. */
 const OFFER_LETTER_SAVE_API_TIMEOUT_MS = 120_000;
 
-export type OfferStatus = "Draft" | "Sent" | "Under Negotiation" | "Accepted" | "Rejected";
+export type OfferStatus = "Draft" | "Active" | "Sent" | "Under Negotiation" | "Accepted" | "Rejected";
 
 /** Must match backend offer letter job types */
 export type OfferLetterJobType = "FT_40" | "PT_25" | "INTERN_UNPAID";

@@ -91,6 +91,7 @@ export type NotificationSSEEvent = { type: "notification"; notification: Notific
  * Open Server-Sent Events stream for real-time notifications.
  * Caller must call close() on the returned object when done.
  * Uses fetch with credentials so cookies are sent (same-origin or CORS with credentials).
+ * Reconnects automatically with exponential backoff (max 30s) on stream close or error.
  */
 export function openNotificationStream(
   onEvent: (event: NotificationSSEEvent) => void,
@@ -99,43 +100,57 @@ export function openNotificationStream(
   const baseURL = apiClient.defaults.baseURL || (typeof window !== "undefined" ? "/api/v1" : "");
   const url = `${baseURL}${BASE}/sse`;
   const controller = new AbortController();
+  let retries = 0;
 
-  fetch(url, { credentials: "include", signal: controller.signal })
-    .then((res) => {
-      if (!res.ok || !res.body) {
-        onError?.(new Error(`SSE failed: ${res.status}`));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+  function scheduleReconnect() {
+    if (controller.signal.aborted) return;
+    const delay = Math.min(1000 * 2 ** retries, 30000);
+    retries++;
+    setTimeout(openStream, delay);
+  }
 
-      function read(): Promise<void> {
-        return reader.read().then(({ done, value }) => {
-          if (done) return;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split("\n\n");
-          buffer = lines.pop() || "";
-          for (const chunk of lines) {
-            if (chunk.startsWith("data: ")) {
-              try {
-                const payload = JSON.parse(chunk.slice(6)) as NotificationSSEEvent;
-                onEvent(payload);
-              } catch (_) {
-                // skip non-JSON (e.g. heartbeat)
+  function openStream() {
+    if (controller.signal.aborted) return;
+    fetch(url, { credentials: "include", signal: controller.signal })
+      .then((res) => {
+        if (!res.ok || !res.body) {
+          onError?.(new Error(`SSE failed: ${res.status}`));
+          scheduleReconnect();
+          return;
+        }
+        retries = 0;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        function read(): Promise<void> {
+          return reader.read().then(({ done, value }) => {
+            if (done) { scheduleReconnect(); return; }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n\n");
+            buffer = lines.pop() || "";
+            for (const chunk of lines) {
+              if (chunk.startsWith("data: ")) {
+                try {
+                  const payload = JSON.parse(chunk.slice(6)) as NotificationSSEEvent;
+                  onEvent(payload);
+                } catch (_) {
+                  // skip non-JSON (e.g. heartbeat)
+                }
               }
             }
-          }
-          return read();
-        });
-      }
-      return read();
-    })
-    .catch((err) => {
-      if (err?.name !== "AbortError") onError?.(err);
-    });
+            return read();
+          });
+        }
+        return read();
+      })
+      .catch((err) => {
+        if (err?.name === "AbortError") return;
+        onError?.(err);
+        scheduleReconnect();
+      });
+  }
 
-  return {
-    close: () => controller.abort(),
-  };
+  openStream();
+  return { close: () => controller.abort() };
 }

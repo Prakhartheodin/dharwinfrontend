@@ -79,13 +79,30 @@ function attributionLabel(lead: ReferralLeadRow): { text: string; tone: "ok" | "
   return { text: "—", tone: "muted" };
 }
 
+/** Same rule as backend `getReferralLeadsStats`: org-wide top referrer only for Administrator / Agent (not sales_agent). */
+function canSeeReferralLeaderboardFromRoles(
+  roleNames: string[],
+  isAdministrator: boolean,
+  isPlatformSuperUser: boolean,
+): boolean {
+  if (isPlatformSuperUser || isAdministrator) return true;
+  return roleNames.some((n) => {
+    const norm = n.trim().toLowerCase().replace(/\s+/g, "_");
+    return norm === "agent";
+  });
+}
+
 export default function ReferralLeadsPage() {
-  const { permissions, permissionsLoaded, roleNames } = useAuth();
+  const { permissions, permissionsLoaded, roleNames, isAdministrator, isPlatformSuperUser } = useAuth();
   const canManage = useMemo(
     () => (permissionsLoaded ? canManageCandidatesFromPermissions(permissions) : false),
     [permissions, permissionsLoaded]
   );
   const isSalesAgent = useMemo(() => roleNames.some((n) => isSalesAgentRoleName(n)), [roleNames]);
+  const canSeeReferralLeaderboard = useMemo(
+    () => canSeeReferralLeaderboardFromRoles(roleNames, isAdministrator, isPlatformSuperUser),
+    [roleNames, isAdministrator, isPlatformSuperUser],
+  );
   /** Org-wide referral UI (referrer filter, override). Sales agents are always scoped to their own leads on the API. */
   const canUseOrgReferralControls = canManage && !isSalesAgent;
   const canOverrideAttribution = canUseOrgReferralControls;
@@ -442,9 +459,11 @@ export default function ReferralLeadsPage() {
               <p className="text-2xl font-bold text-amber-600 mt-1">{stats.pending}</p>
             </div>
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase text-slate-500">Hired + top referrer</p>
+              <p className="text-xs font-semibold uppercase text-slate-500">
+                {canSeeReferralLeaderboard ? "Hired + top referrer" : "Hired"}
+              </p>
               <p className="text-2xl font-bold text-violet-600 mt-1">{stats.hired}</p>
-              {stats.topReferrer && (
+              {canSeeReferralLeaderboard && stats.topReferrer && (
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 truncate" title={stats.topReferrer.name}>
                   {stats.topReferrer.name} ({stats.topReferrer.count})
                 </p>

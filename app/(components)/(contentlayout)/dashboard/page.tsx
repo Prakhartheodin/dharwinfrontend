@@ -690,7 +690,7 @@ export default function DashboardPage() {
           <div>
             <h4 className="font-semibold text-[1.125rem] mb-0">
               {getGreeting()},{" "}
-              <span className="text-primary">{user?.name || "there"}</span>
+              <span className="text-primary">{(user?.name || "there").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
             </h4>
             <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
               {getTodayDisplay()}
@@ -1532,7 +1532,7 @@ export default function DashboardPage() {
                             : 0;
                         return (
                           <tr
-                            key={p._id}
+                            key={p._id ?? p.id ?? i}
                             className="border border-inherit border-solid hover:bg-gray-100 dark:hover:bg-light dark:border-defaultborder/10"
                           >
                             <th scope="row" className="!text-start">
@@ -1542,9 +1542,9 @@ export default function DashboardPage() {
                             <td>
                               {p.assignedTo && p.assignedTo.length > 0 ? (
                                 <div className="avatar-list-stacked">
-                                  {p.assignedTo.slice(0, 3).map((u) => (
+                                  {p.assignedTo.slice(0, 3).map((u, idx) => (
                                     <span
-                                      key={u._id}
+                                      key={u._id ?? u.id ?? idx}
                                       className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]"
                                     >
                                       {getInitial(u.name ?? u.email)}
