@@ -198,3 +198,9 @@ select.select-show-page-size {
   to   { opacity: 1; transform: translateX(0); }
 }
 .animate-slide-in-right { animation: slide-in-right 0.25s ease-out forwards; }
+
+@keyframes slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(1.5rem); }
+}
+.animate-slide-out-right { animation: slide-out-right 0.22s ease-in forwards; }

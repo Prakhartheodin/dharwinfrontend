@@ -9,6 +9,12 @@ import { Initialload } from "@/shared/contextapi";
 import { AuthProvider } from "@/shared/contexts/auth-context";
 import { ChatSocketProvider } from "@/shared/contexts/ChatSocketContext";
 import { NotificationToastStack } from "@/shared/components/NotificationToastStack";
+import dynamic from "next/dynamic";
+
+const FloatingChatbot = dynamic(
+  () => import("@/shared/components/FloatingChatbot"),
+  { ssr: false }
+);
 
 const RootLayout = ({ children }: any) => {
   const [pageloading, setpageloading] = useState(false);
@@ -21,6 +27,7 @@ const RootLayout = ({ children }: any) => {
             <Initialload.Provider value={{ pageloading, setpageloading }}>
               {children}
             </Initialload.Provider>
+            <FloatingChatbot />
           </ChatSocketProvider>
         </AuthProvider>
       </Provider>

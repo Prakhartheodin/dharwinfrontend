@@ -103,6 +103,11 @@ export const PERMISSION_SECTIONS: {
     label: "Support",
     features: [{ id: "tickets", label: "Support Tickets" }],
   },
+  {
+    id: "ai",
+    label: "AI",
+    features: [{ id: "chatbot", label: "Chatbot Access" }],
+  },
 ];
 
 export type FeaturePermissions = { view: boolean; create: boolean; edit: boolean; delete: boolean };
