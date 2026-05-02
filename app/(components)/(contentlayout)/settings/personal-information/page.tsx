@@ -25,13 +25,13 @@ import { formatUserAgentSummary } from "@/shared/lib/parse-user-agent";
 
 type NotificationPrefKey = keyof NotificationPreferences;
 
-/** Grouped email notification toggles — keys must match `NotificationPreferences`. */
+/** Grouped notification toggles — keys must match `NotificationPreferences`. */
 const NOTIFICATION_PREF_GROUPS: {
   id: string;
   title: string;
   summary: string;
   icon: string;
-  items: { key: NotificationPrefKey; label: string; description?: string }[];
+  items: { key: NotificationPrefKey; inAppKey: NotificationPrefKey; label: string; description?: string }[];
 }[] = [
   {
     id: "work",
@@ -39,8 +39,8 @@ const NOTIFICATION_PREF_GROUPS: {
     summary: "HR, leave, and tasks",
     icon: "ri-time-line",
     items: [
-      { key: "leaveUpdates", label: "Leave & attendance updates", description: "Absences, approvals, and attendance changes" },
-      { key: "taskAssignments", label: "Task assignments", description: "When new work is assigned to you" },
+      { key: "leaveUpdates", inAppKey: "leaveUpdatesInApp", label: "Leave & attendance updates", description: "Absences, approvals, and attendance changes" },
+      { key: "taskAssignments", inAppKey: "taskAssignmentsInApp", label: "Task assignments", description: "When new work is assigned to you" },
     ],
   },
   {
@@ -49,9 +49,9 @@ const NOTIFICATION_PREF_GROUPS: {
     summary: "Recruiting and recruiter touchpoints",
     icon: "ri-briefcase-4-line",
     items: [
-      { key: "applicationUpdates", label: "Job application updates", description: "Status changes on roles you applied to" },
-      { key: "offerUpdates", label: "Offer updates", description: "Offers, negotiations, and outcomes" },
-      { key: "recruiterUpdates", label: "Recruiter assignments", description: "When a recruiter is linked to you" },
+      { key: "applicationUpdates", inAppKey: "applicationUpdatesInApp", label: "Job application updates", description: "Status changes on roles you applied to" },
+      { key: "offerUpdates", inAppKey: "offerUpdatesInApp", label: "Offer updates", description: "Offers, negotiations, and outcomes" },
+      { key: "recruiterUpdates", inAppKey: "recruiterUpdatesInApp", label: "Recruiter assignments", description: "When a recruiter is linked to you" },
     ],
   },
   {
@@ -60,15 +60,26 @@ const NOTIFICATION_PREF_GROUPS: {
     summary: "Calendar, reminders, and programmes",
     icon: "ri-calendar-event-line",
     items: [
-      { key: "meetingInvitations", label: "Meeting invitations", description: "Invites and schedule updates" },
-      { key: "meetingReminders", label: "Meeting reminders", description: "Alerts before your sessions" },
-      { key: "certificates", label: "Certificates", description: "Issued credentials and completions" },
-      { key: "courseUpdates", label: "Course / training updates", description: "Modules, deadlines, and programme news" },
+      { key: "meetingInvitations", inAppKey: "meetingInvitationsInApp", label: "Meeting invitations", description: "Invites and schedule updates" },
+      { key: "meetingReminders", inAppKey: "meetingRemindersInApp", label: "Meeting reminders", description: "Alerts before your sessions" },
+      { key: "certificates", inAppKey: "certificatesInApp", label: "Certificates", description: "Issued credentials and completions" },
+      { key: "courseUpdates", inAppKey: "courseUpdatesInApp", label: "Course / training updates", description: "Modules, deadlines, and programme news" },
+    ],
+  },
+  {
+    id: "support",
+    title: "Support",
+    summary: "Help desk and ticket updates",
+    icon: "ri-customer-service-2-line",
+    items: [
+      { key: "supportTicketUpdates", inAppKey: "supportTicketUpdatesInApp", label: "Support ticket updates", description: "Status changes on tickets you raised" },
     ],
   },
 ];
 
-const ALL_NOTIFICATION_PREF_KEYS = NOTIFICATION_PREF_GROUPS.flatMap((g) => g.items.map((i) => i.key));
+const ALL_NOTIFICATION_PREF_KEYS = NOTIFICATION_PREF_GROUPS.flatMap((g) =>
+  g.items.flatMap((i) => [i.key, i.inAppKey])
+);
 
 function normalizeSocialUrl(raw: string): string {
   const u = raw.trim();
@@ -413,14 +424,25 @@ export default function PersonalInformationPage() {
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     leaveUpdates: true,
+    leaveUpdatesInApp: true,
     taskAssignments: true,
+    taskAssignmentsInApp: true,
     applicationUpdates: true,
+    applicationUpdatesInApp: true,
     offerUpdates: true,
+    offerUpdatesInApp: true,
     meetingInvitations: true,
+    meetingInvitationsInApp: true,
     meetingReminders: true,
+    meetingRemindersInApp: true,
     certificates: true,
+    certificatesInApp: true,
     courseUpdates: true,
+    courseUpdatesInApp: true,
     recruiterUpdates: true,
+    recruiterUpdatesInApp: true,
+    supportTicketUpdates: true,
+    supportTicketUpdatesInApp: true,
   });
 
   const notificationPanelId = useId();
@@ -2316,7 +2338,7 @@ export default function PersonalInformationPage() {
               <span className="flex flex-wrap items-center gap-2 gap-y-1">
                 <span className="font-semibold text-[1.05rem] text-defaulttextcolor">Notification preferences</span>
                 <span className="inline-flex items-center rounded-md border border-defaultborder bg-white/90 px-2 py-0.5 text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/70 dark:bg-gray-800/80">
-                  Email
+                  Email & In-App
                 </span>
               </span>
               <span className="mt-1.5 block text-[0.8125rem] leading-snug text-defaulttextcolor/65">
@@ -2324,7 +2346,7 @@ export default function PersonalInformationPage() {
                   {enabledNotificationEmailCount}/{ALL_NOTIFICATION_PREF_KEYS.length}
                 </span>
                 {" · "}
-                {notificationSectionOpen ? "Hide details" : "Expand to manage email types"}
+                {notificationSectionOpen ? "Hide details" : "Expand to manage notification channels"}
               </span>
             </span>
             <span className="flex shrink-0 flex-col items-center gap-1 pt-1 sm:pt-0.5">
@@ -2341,13 +2363,13 @@ export default function PersonalInformationPage() {
           <div
             id={notificationPanelId}
             role="region"
-            aria-label="Email notification preferences"
+            aria-label="Notification preferences"
             className={`grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${notificationSectionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
           >
             <div className="min-h-0">
               <div className="border-b border-defaultborder/70 bg-white/40 px-4 py-4 dark:border-defaultborder/50 dark:bg-gray-900/25 sm:px-5 sm:py-4">
                 <p className="text-[0.875rem] text-defaulttextcolor/75 mb-4 max-w-2xl leading-relaxed">
-                  Choose which <strong className="font-medium text-defaulttextcolor">email</strong> updates you want. In-app notifications stay on—we only adjust what goes to your inbox.
+                  Choose which <strong className="font-medium text-defaulttextcolor">email</strong> and <strong className="font-medium text-defaulttextcolor">in-app</strong> notifications you receive. Toggle each channel independently per category.
                 </p>
                 <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-4 sm:gap-y-3">
                   <span className="text-[0.8125rem] text-defaulttextcolor/60 tabular-nums shrink-0">
@@ -2355,7 +2377,7 @@ export default function PersonalInformationPage() {
                   </span>
                   <div
                     role="group"
-                    aria-label="Bulk email notification actions"
+                    aria-label="Bulk notification actions"
                     className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end"
                   >
                     <button
@@ -2380,9 +2402,9 @@ export default function PersonalInformationPage() {
 
           <div className="px-3 py-4 sm:px-5 sm:py-5 space-y-4">
             {NOTIFICATION_PREF_GROUPS.map((group) => {
-              const groupKeys = group.items.map((i) => i.key);
-              const groupOn = groupKeys.every((k) => notificationPrefs[k] !== false);
-              const groupPartial = !groupOn && groupKeys.some((k) => notificationPrefs[k] !== false);
+              const groupAllKeys = group.items.flatMap((i) => [i.key, i.inAppKey]);
+              const groupOn = groupAllKeys.every((k) => notificationPrefs[k] !== false);
+              const groupPartial = !groupOn && groupAllKeys.some((k) => notificationPrefs[k] !== false);
 
               return (
                 <section
@@ -2413,7 +2435,7 @@ export default function PersonalInformationPage() {
                       ) : null}
                       <button
                         type="button"
-                        onClick={() => setNotificationGroupPrefs(groupKeys, !groupOn)}
+                        onClick={() => setNotificationGroupPrefs(groupAllKeys, !groupOn)}
                         className={`ti-btn ti-btn-outline-primary inline-flex !h-auto min-h-[2.5rem] w-full max-w-full items-center justify-center gap-2 !px-4 !py-2.5 text-[0.875rem] font-medium lg:w-auto lg:shrink-0 lg:min-w-[12rem] ${!groupPartial ? "lg:ms-auto" : ""}`}
                       >
                         <span className="lg:hidden">{groupOn ? "Disable section" : "Enable section"}</span>
@@ -2422,38 +2444,63 @@ export default function PersonalInformationPage() {
                     </div>
                   </div>
                   <ul className="list-none m-0 p-0 divide-y divide-defaultborder/50">
-                    {group.items.map(({ key, label, description }) => {
-                      const on = notificationPrefs[key] !== false;
+                    {group.items.map(({ key, inAppKey, label, description }) => {
+                      const emailOn = notificationPrefs[key] !== false;
+                      const inAppOn = notificationPrefs[inAppKey] !== false;
                       return (
                         <li key={key}>
-                          <label className="flex cursor-pointer flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3.5 transition-colors hover:bg-gray-50/90 dark:hover:bg-white/5 rounded-md has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary/30 has-[:focus-visible]:ring-offset-2 has-[:focus-visible]:ring-offset-white dark:has-[:focus-visible]:ring-offset-gray-900">
+                          <div className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:gap-4 sm:px-4 sm:py-3.5 transition-colors hover:bg-gray-50/90 dark:hover:bg-white/5">
                             <span className="min-w-0 flex-1 pr-0 sm:pr-2">
                               <span className="block text-[0.9375rem] font-medium text-defaulttextcolor break-words">{label}</span>
                               {description ? (
                                 <span className="mt-0.5 block text-[0.8125rem] leading-snug text-defaulttextcolor/60 break-words">{description}</span>
                               ) : null}
                             </span>
-                            <div className="flex shrink-0 items-center justify-end sm:justify-center">
-                              <input
-                                type="checkbox"
-                                className="sr-only"
-                                checked={on}
-                                onChange={(e) => setNotificationPrefs((p) => ({ ...p, [key]: e.target.checked }))}
-                              />
-                              <span
-                                className={`relative inline-flex h-7 w-[2.75rem] cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ${
-                                  on ? "bg-primary" : "bg-gray-200 dark:bg-gray-600"
-                                }`}
-                                aria-hidden
-                              >
-                                <span
-                                  className={`block h-6 w-6 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-transform duration-200 ease-out dark:ring-white/10 ${
-                                    on ? "translate-x-[1.15rem]" : "translate-x-0"
-                                  }`}
+                            <div className="flex shrink-0 items-center gap-5">
+                              <label className="flex cursor-pointer flex-col items-center gap-1 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary/40 rounded">
+                                <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/55">Email</span>
+                                <input
+                                  type="checkbox"
+                                  className="sr-only"
+                                  checked={emailOn}
+                                  onChange={(e) => setNotificationPrefs((p) => ({ ...p, [key]: e.target.checked }))}
                                 />
-                              </span>
+                                <span
+                                  className={`relative inline-flex h-7 w-[2.75rem] cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                    emailOn ? "bg-primary" : "bg-gray-200 dark:bg-gray-600"
+                                  }`}
+                                  aria-hidden
+                                >
+                                  <span
+                                    className={`block h-6 w-6 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-transform duration-200 ease-out dark:ring-white/10 ${
+                                      emailOn ? "translate-x-[1.15rem]" : "translate-x-0"
+                                    }`}
+                                  />
+                                </span>
+                              </label>
+                              <label className="flex cursor-pointer flex-col items-center gap-1 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-primary/40 rounded">
+                                <span className="text-[0.6875rem] font-medium uppercase tracking-wide text-defaulttextcolor/55">In-App</span>
+                                <input
+                                  type="checkbox"
+                                  className="sr-only"
+                                  checked={inAppOn}
+                                  onChange={(e) => setNotificationPrefs((p) => ({ ...p, [inAppKey]: e.target.checked }))}
+                                />
+                                <span
+                                  className={`relative inline-flex h-7 w-[2.75rem] cursor-pointer items-center rounded-full p-0.5 transition-colors duration-200 ${
+                                    inAppOn ? "bg-primary" : "bg-gray-200 dark:bg-gray-600"
+                                  }`}
+                                  aria-hidden
+                                >
+                                  <span
+                                    className={`block h-6 w-6 rounded-full bg-white shadow-md ring-1 ring-black/5 transition-transform duration-200 ease-out dark:ring-white/10 ${
+                                      inAppOn ? "translate-x-[1.15rem]" : "translate-x-0"
+                                    }`}
+                                  />
+                                </span>
+                              </label>
                             </div>
-                          </label>
+                          </div>
                         </li>
                       );
                     })}
