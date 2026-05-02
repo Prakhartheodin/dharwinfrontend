@@ -98,7 +98,7 @@ export function createEmptyOfferLetterForm(): OfferLetterFormFields {
     annualGrossCtc: '',
     ctcCurrency: 'USD',
     academicNote: '',
-    eligibilityPreset: 'none',
+    eligibilityPreset: 'opt_stem',
     eligibilityText: '',
     supFirst: 'Jason',
     supLast: 'Mendonca',

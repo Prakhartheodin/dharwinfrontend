@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
-import { openNotificationStream } from "@/shared/lib/api/notifications";
+import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { notifTypeToColor, notifTypeToIcon } from "@/shared/lib/notification-utils";
 
 type ToastKind = "chat" | "system";
@@ -130,8 +130,10 @@ export function NotificationToastStack() {
   const { user } = useAuth();
   const userId = authUserId(user as { id?: string; _id?: string } | null);
   const { onNewMessage } = useChatSocket();
+  const { latestNotification, error: sseError } = useNotificationContext();
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const seenMsgIds = useRef<Set<string>>(new Set());
+  const prevLatestIdRef = useRef<string | null>(null);
 
   const addToast = useCallback((toast: Omit<AppToast, "id" | "createdAt">) => {
     setToasts((prev) => {
@@ -155,7 +157,7 @@ export function NotificationToastStack() {
         content?: string;
         type?: string;
       };
-      // Dedup: backend now emits new_message to both conversation room and user room
+      // Dedup: backend emits new_message to both conversation room and user room
       const msgId = String(m?.id || m?._id || "").trim();
       if (msgId) {
         if (seenMsgIds.current.has(msgId)) return;
@@ -163,6 +165,15 @@ export function NotificationToastStack() {
       }
       const senderId = authUserId(m?.sender);
       if (!senderId || senderId === userId) return;
+
+      // Suppress toast when user is already viewing that conversation
+      if (typeof window !== "undefined" && m?.conversation) {
+        const url = new URL(window.location.href);
+        if (
+          url.pathname === "/communication/chats" &&
+          url.searchParams.get("conv") === m.conversation
+        ) return;
+      }
 
       const senderName = m?.sender?.name?.trim() || "New message";
       const body =
@@ -182,33 +193,39 @@ export function NotificationToastStack() {
     });
   }, [onNewMessage, userId, addToast]);
 
-  // System notification toasts via SSE
+  // System notification toasts from shared SSE context
   useEffect(() => {
-    if (!user?.id) return;
-    const stream = openNotificationStream((event) => {
-      if (event.type !== "notification") return;
-      const n = event.notification;
-      addToast({
-        kind: "system",
-        title: n.title,
-        body: n.message,
-        link: (n.link?.startsWith('/') ? n.link : null) ?? "/pages/notifications/",
-        icon: notifTypeToIcon[n.type] ?? "bell",
-        color: notifTypeToColor[n.type] ?? "secondary",
-      });
+    if (!latestNotification) return;
+    if (prevLatestIdRef.current === latestNotification._id) return;
+    prevLatestIdRef.current = latestNotification._id;
+    const n = latestNotification;
+    addToast({
+      kind: "system",
+      title: n.title,
+      body: n.message,
+      link: (n.link?.startsWith("/") ? n.link : null) ?? "/pages/notifications/",
+      icon: notifTypeToIcon[n.type] ?? "bell",
+      color: notifTypeToColor[n.type] ?? "secondary",
     });
-    return () => stream.close();
-  }, [user?.id, addToast]);
-
-  if (toasts.length === 0) return null;
+  }, [latestNotification, addToast]);
 
   return (
-    <div className="fixed top-[4.5rem] end-6 flex flex-col gap-2 z-[9999] pointer-events-none">
-      {toasts.map((t) => (
-        <div key={t.id} className="pointer-events-auto">
-          <ToastCard toast={t} onDismiss={dismiss} />
+    <>
+      {sseError && (
+        <div className="fixed top-[4.5rem] start-1/2 -translate-x-1/2 z-[9999] flex items-center gap-2 rounded-lg border border-danger/30 bg-danger/10 px-4 py-2 text-[0.8125rem] text-danger shadow-sm">
+          <i className="ti ti-wifi-off" />
+          {sseError}
         </div>
-      ))}
-    </div>
+      )}
+      {toasts.length > 0 && (
+        <div className="fixed top-[4.5rem] end-6 flex flex-col gap-2 z-[9999] pointer-events-none">
+          {toasts.map((t) => (
+            <div key={t.id} className="pointer-events-auto">
+              <ToastCard toast={t} onDismiss={dismiss} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

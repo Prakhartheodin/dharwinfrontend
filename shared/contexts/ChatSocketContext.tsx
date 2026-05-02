@@ -29,13 +29,22 @@ export interface IncomingCallData {
   supportInviteToken?: string;
   conversationId: string;
   callId: string;
-  roomName: string;
+  /** Present for legacy incoming_call and support_camera; absent for socket-initiated chat calls */
+  roomName?: string;
   callType: "audio" | "video";
   caller: { id: string; name: string; email?: string };
   /** From server when call is in a group conversation */
   conversationType?: "direct" | "group";
   /** Present for group calls; display as secondary context under caller */
   groupName?: string;
+}
+
+export interface CallStartData {
+  callId: string;
+  conversationId: string;
+  roomName: string;
+  callType: "audio" | "video";
+  token: string;
 }
 
 interface ChatSocketContextValue {
@@ -59,6 +68,14 @@ interface ChatSocketContextValue {
   emitTyping: (conversationId: string) => void;
   emitMessageRead: (conversationId: string) => void;
   syncOnlineUsers: (userIds: string[]) => void;
+  onCallStart: (callback: (data: CallStartData) => void) => () => void;
+  onCallDeclined: (callback: (data: { callId: string; conversationId: string }) => void) => () => void;
+  onCallCancelled: (callback: (data: { callId: string; conversationId: string }) => void) => () => void;
+  emitCallInitiate: (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => void;
+  emitCallAccept: (callId: string, cb?: (res: { success?: boolean; error?: string }) => void) => void;
+  emitCallDecline: (callId: string) => void;
+  emitCallEnd: (callId: string) => void;
+  emitCallCancel: (callId: string) => void;
   /** Stops ringtone, clears incoming UI — same as modal Accept/Decline. Registered by GlobalIncomingCall. */
   dismissIncomingCall: () => void;
   /** @internal Registered by GlobalIncomingCall; do not use elsewhere. */
@@ -93,6 +110,11 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const typingListeners = useRef<Set<(data: { conversationId: string; userId: string; userName: string }) => void>>(new Set());
   const readListeners = useRef<Set<(data: { conversationId: string; userId: string; readAt: string }) => void>>(new Set());
   const dismissIncomingCallFnRef = useRef<(() => void) | null>(null);
+  const callStartListeners = useRef<Set<(data: CallStartData) => void>>(new Set());
+  const callDeclinedListeners = useRef<Set<(data: { callId: string; conversationId: string }) => void>>(new Set());
+  const callCancelledListeners = useRef<Set<(data: { callId: string; conversationId: string }) => void>>(new Set());
+  const pendingAcceptCallIdRef = useRef<string | null>(null);
+  const pendingInitiateCallIdRef = useRef<string | null>(null);
 
   const registerIncomingCallDismiss = useCallback((fn: (() => void) | null) => {
     dismissIncomingCallFnRef.current = fn;
@@ -146,6 +168,57 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     readListeners.current.add(cb);
     return () => { readListeners.current.delete(cb); };
   }, []);
+
+  const onCallStart = useCallback((cb: (data: CallStartData) => void) => {
+    callStartListeners.current.add(cb);
+    return () => { callStartListeners.current.delete(cb); };
+  }, []);
+
+  const onCallDeclined = useCallback((cb: (data: { callId: string; conversationId: string }) => void) => {
+    callDeclinedListeners.current.add(cb);
+    return () => { callDeclinedListeners.current.delete(cb); };
+  }, []);
+
+  const onCallCancelled = useCallback((cb: (data: { callId: string; conversationId: string }) => void) => {
+    callCancelledListeners.current.add(cb);
+    return () => { callCancelledListeners.current.delete(cb); };
+  }, []);
+
+  const emitCallInitiate = useCallback(
+    (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => {
+      socket?.emit("call:initiate", { conversationId, callType }, (res: { success?: boolean; callId?: string; error?: string }) => {
+        if (res?.callId) pendingInitiateCallIdRef.current = res.callId;
+        cb?.(res);
+      });
+    },
+    [socket]
+  );
+
+  const emitCallAccept = useCallback(
+    (callId: string, cb?: (res: { success?: boolean; error?: string }) => void) => {
+      pendingAcceptCallIdRef.current = callId;
+      socket?.emit("call:accept", { callId }, (res: { success?: boolean; error?: string }) => {
+        if (res?.error) pendingAcceptCallIdRef.current = null;
+        cb?.(res);
+      });
+    },
+    [socket]
+  );
+
+  const emitCallDecline = useCallback(
+    (callId: string) => { socket?.emit("call:decline", { callId }); },
+    [socket]
+  );
+
+  const emitCallEnd = useCallback(
+    (callId: string) => { socket?.emit("call:end", { callId }); },
+    [socket]
+  );
+
+  const emitCallCancel = useCallback(
+    (callId: string) => { socket?.emit("call:cancel", { callId }); },
+    [socket]
+  );
 
   const joinConversation = useCallback(
     (conversationId: string) => {
@@ -293,6 +366,48 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           callEndedListeners.current.forEach((cb) => cb(data));
         });
 
+        sock.on("call:incoming", (data: { callId: string; conversationId: string; callType: "audio" | "video"; caller: { id: string; name: string } }) => {
+          const callData: IncomingCallData = {
+            callId: data.callId,
+            conversationId: data.conversationId,
+            callType: data.callType,
+            caller: data.caller,
+            callSource: "chat",
+          };
+          incomingCallListeners.current.forEach((cb) => cb(callData));
+        });
+
+        sock.on("call:start", (data: CallStartData) => {
+          callStartListeners.current.forEach((cb) => cb(data));
+          if (
+            (pendingAcceptCallIdRef.current && pendingAcceptCallIdRef.current === data.callId) ||
+            (pendingInitiateCallIdRef.current && pendingInitiateCallIdRef.current === data.callId)
+          ) {
+            pendingAcceptCallIdRef.current = null;
+            pendingInitiateCallIdRef.current = null;
+            const params = new URLSearchParams({ from: "chat", conv: data.conversationId, callId: data.callId });
+            if (data.callType === "audio") params.set("video", "0");
+            else params.set("video", "1");
+            if (typeof window !== "undefined") {
+              window.open(`/meetings/room/${encodeURIComponent(data.roomName)}?${params}`, "_blank", "noopener");
+            }
+          }
+        });
+
+        sock.on("call:declined", (data: { callId: string; conversationId: string }) => {
+          callDeclinedListeners.current.forEach((cb) => cb(data));
+          if (pendingInitiateCallIdRef.current === data.callId) {
+            pendingInitiateCallIdRef.current = null;
+          }
+        });
+
+        sock.on("call:cancelled", (data: { callId: string; conversationId: string }) => {
+          callCancelledListeners.current.forEach((cb) => cb(data));
+          if (pendingAcceptCallIdRef.current === data.callId) {
+            pendingAcceptCallIdRef.current = null;
+          }
+        });
+
         sock.on("message_deleted", (data: { conversationId: string; messageId: string; deleteFor?: string }) => {
           messageDeletedListeners.current.forEach((cb) => cb(data));
         });
@@ -364,6 +479,14 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     emitTyping,
     emitMessageRead,
     syncOnlineUsers,
+    onCallStart,
+    onCallDeclined,
+    onCallCancelled,
+    emitCallInitiate,
+    emitCallAccept,
+    emitCallDecline,
+    emitCallEnd,
+    emitCallCancel,
     dismissIncomingCall,
     registerIncomingCallDismiss,
   };

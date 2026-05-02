@@ -571,6 +571,7 @@ const Chat = () => {
     emitMessageRead,
     onlineUsers,
     syncOnlineUsers,
+    emitCallInitiate,
   } = useChatSocket();
 
   const [activeTab, setActiveTab] = useState<"recent" | "groups" | "calls">("recent");
@@ -1061,20 +1062,12 @@ const Chat = () => {
     }
   };
 
-  const handleCall = async (callType: "audio" | "video") => {
+  const handleCall = (callType: "audio" | "video") => {
     const cid = getId(selectedConversation);
     if (!cid) return;
-    try {
-      const { call, roomName } = await initiateCall(cid, callType);
-      const params = new URLSearchParams({ from: "chat", conv: cid });
-      if (call?.id) params.set("callId", call.id);
-      if (callType === "audio") params.set("video", "0");
-      else params.set("video", "1");
-      const url = `/meetings/room/${encodeURIComponent(roomName)}?${params}`;
-      window.open(url, "_blank", "noopener");
-    } catch {
-      // Error
-    }
+    // Socket-based flow: backend emits call:start to both participants on accept,
+    // and ChatSocketContext auto-navigates to the room at that point.
+    emitCallInitiate(cid, callType);
   };
 
   const [deletingChat, setDeletingChat] = useState(false);

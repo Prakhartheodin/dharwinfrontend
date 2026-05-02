@@ -55,6 +55,7 @@ function RoomContent({
   hasPermissionError,
   roomName,
   isHost,
+  isChatCall,
   waitingParticipantIdentities,
 }: {
   onLeave: () => void;
@@ -64,6 +65,7 @@ function RoomContent({
   hasPermissionError: boolean;
   roomName: string;
   isHost: boolean;
+  isChatCall?: boolean;
   waitingParticipantIdentities?: string[];
 }) {
   const room = useRoomContext();
@@ -656,7 +658,7 @@ function RoomContent({
 
         <VideoConference />
         <RoomAudioRenderer />
-        {recordingSlot &&
+        {recordingSlot && !isChatCall &&
           createPortal(
             <RecordingButton
               roomName={roomName}
@@ -686,7 +688,7 @@ function RoomContent({
             <span>Meeting ended</span>
           </div>
         )}
-      {isHost && (
+      {isHost && !isChatCall && (
         <WaitingParticipantsPanel
           roomName={roomName}
           onParticipantAdmitted={(identity) => {
@@ -795,8 +797,8 @@ export default function MeetingRoomClient() {
       setToken(data.token);
       setIsHost(data.isHost || false);
       setParticipantIdentity(data.participantIdentity);
-      // If not a host, they're in waiting room (can subscribe but not publish)
-      setIsInWaitingRoom(!data.isHost);
+      // Chat calls never use a waiting room — all peers join directly
+      setIsInWaitingRoom(!data.isHost && !fromChat);
     } catch (err: any) {
       console.error("Error fetching token:", err);
       const errorMessage =
@@ -863,7 +865,7 @@ export default function MeetingRoomClient() {
       const data = await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || undefined);
       setToken(data.token);
       setIsHost(data.isHost || false);
-      setIsInWaitingRoom(!data.isHost);
+      setIsInWaitingRoom(!data.isHost && !fromChat);
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
       console.error("Error fetching token during reconnect:", err);
@@ -1021,6 +1023,7 @@ export default function MeetingRoomClient() {
         hasPermissionError={hasPermissionError}
         roomName={decodeURIComponent(roomId)}
         isHost={isHost}
+        isChatCall={fromChat}
       />
     </LiveKitRoom>
   );

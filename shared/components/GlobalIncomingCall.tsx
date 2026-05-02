@@ -102,7 +102,7 @@ async function startSyntheticRing(
 function GlobalIncomingCallInner() {
   const { user } = useAuth();
   const pathname = usePathname();
-  const { onIncomingCall, onCallEnded, incomingCall, setIncomingCall, registerIncomingCallDismiss } = useChatSocket();
+  const { onIncomingCall, onCallEnded, incomingCall, setIncomingCall, registerIncomingCallDismiss, emitCallAccept, emitCallDecline } = useChatSocket();
   const [soundUnavailable, setSoundUnavailable] = useState(false);
   const [ringtoneErrorMessage, setRingtoneErrorMessage] = useState<string | null>(null);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | null>(
@@ -235,29 +235,17 @@ function GlobalIncomingCallInner() {
       window.open(`/support/camera/join/${encodeURIComponent(t)}`, "_blank", "noopener");
       return;
     }
-    const convId = incomingCall.conversationId;
-    const callType = incomingCall.callType || "video";
-    const params = new URLSearchParams();
-    if (convId) params.set("conv", convId);
-    params.set("from", "chat");
-    if (incomingCall.callId) params.set("callId", incomingCall.callId);
-    if (callType === "audio") params.set("video", "0");
-    else params.set("video", "1");
-    const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
+    // Socket-based flow: emit accept; context auto-navigates on call:start
+    emitCallAccept(incomingCall.callId);
     clearIncomingCall();
-    window.open(url, "_blank", "noopener");
-  }, [incomingCall, clearIncomingCall]);
+  }, [incomingCall, clearIncomingCall, emitCallAccept]);
 
   const declineCall = useCallback(() => {
     const call = incomingCall;
     clearIncomingCall();
     if (call?.callSource === "support_camera") return;
-    if (call?.callId) {
-      updateCall(call.callId, { status: "declined" }).catch(() => {
-        // Call may already be ended; ignore
-      });
-    }
-  }, [incomingCall, clearIncomingCall]);
+    if (call?.callId) emitCallDecline(call.callId);
+  }, [incomingCall, clearIncomingCall, emitCallDecline]);
 
   // Subscribe to incoming_call (only when user is present). Popup shows only for the callee (person receiving the call).
   useEffect(() => {
@@ -642,7 +630,7 @@ export function GlobalIncomingCall() {
 
 /** Top “signal strip” when there is an incoming call (every page). Syncs countdown with modal ring timeout. */
 function IncomingCallBarInner() {
-  const { incomingCall, dismissIncomingCall } = useChatSocket();
+  const { incomingCall, dismissIncomingCall, emitCallAccept, emitCallDecline } = useChatSocket();
   const [remainingMs, setRemainingMs] = useState(RING_TIMEOUT_MS);
 
   useEffect(() => {
@@ -663,24 +651,16 @@ function IncomingCallBarInner() {
       window.open(`/support/camera/join/${encodeURIComponent(t)}`, "_blank", "noopener");
       return;
     }
-    const convId = incomingCall.conversationId;
-    const callType = incomingCall.callType || "video";
-    const params = new URLSearchParams();
-    if (convId) params.set("conv", convId);
-    params.set("from", "chat");
-    if (incomingCall.callId) params.set("callId", incomingCall.callId);
-    if (callType === "audio") params.set("video", "0");
-    else params.set("video", "1");
-    const url = `/meetings/room/${encodeURIComponent(incomingCall.roomName)}?${params.toString()}`;
+    // Socket-based flow: emit accept; context auto-navigates on call:start
+    emitCallAccept(incomingCall.callId);
     dismissIncomingCall();
-    window.open(url, "_blank", "noopener");
-  }, [incomingCall, dismissIncomingCall]);
+  }, [incomingCall, dismissIncomingCall, emitCallAccept]);
   const declineFromBar = useCallback(() => {
     const call = incomingCall;
     dismissIncomingCall();
     if (call?.callSource === "support_camera") return;
-    if (call?.callId) updateCall(call.callId, { status: "declined" }).catch(() => {});
-  }, [incomingCall, dismissIncomingCall]);
+    if (call?.callId) emitCallDecline(call.callId);
+  }, [incomingCall, dismissIncomingCall, emitCallDecline]);
 
   if (!incomingCall) return null;
 

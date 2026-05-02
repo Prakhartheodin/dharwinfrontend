@@ -44,7 +44,7 @@ export function CreateOfferForm({
     base: 0,
     hra: 0,
     gross: 0,
-    currency: "INR" as "INR" | "USD",
+    currency: "USD" as "INR" | "USD",
     joiningDate: "",
     offerValidityDate: "",
     notes: "",

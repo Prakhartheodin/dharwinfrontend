@@ -10,15 +10,9 @@ import { useAuth } from '@/shared/contexts/auth-context';
 import { ROUTES } from '@/shared/lib/constants';
 import { isPublicLayoutPath } from '@/shared/lib/public-layout-paths';
 import { usePathname } from 'next/navigation';
-import {
-  getNotifications,
-  getUnreadCount,
-  markAsRead,
-  markAllAsRead,
-  openNotificationStream,
-  type Notification,
-} from '@/shared/lib/api/notifications';
+import { type Notification } from '@/shared/lib/api/notifications';
 import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
+import { useNotificationContext } from '@/shared/contexts/NotificationContext';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -124,8 +118,8 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     createdAt: n.createdAt,
   });
 
-  const [notificationItems, setNotificationItems] = useState<Array<ReturnType<typeof mapNotificationToItem>>>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const { notifications: allNotifications, unreadCount, markRead, markAllRead } = useNotificationContext();
+  const notificationItems = allNotifications.filter((n) => !n.read).slice(0, 5).map(mapNotificationToItem);
   const [bellRinging, setBellRinging] = useState(false);
   const prevUnreadRef = useRef(0);
 
@@ -140,74 +134,18 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   }, [unreadCount]);
 
   const handleMarkAsRead = useCallback(async (id: string) => {
-    try {
-      await markAsRead(id);
-      setNotificationItems((prev) => prev.map((n) => n._id === id ? { ...n, read: true } : n));
-      setUnreadCount((c) => Math.max(0, c - 1));
-    } catch (err) {
-      console.warn('Failed to mark notification as read:', err);
-    }
-  }, []);
+    await markRead(id);
+  }, [markRead]);
 
   const handleMarkAllAsRead = useCallback(async () => {
-    try {
-      await markAllAsRead();
-      setNotificationItems((prev) => prev.map((n) => ({ ...n, read: true })));
-      setUnreadCount(0);
-    } catch (err) {
-      console.warn('Failed to mark all notifications as read:', err);
-    }
-  }, []);
-
-  const loadNotifications = useCallback(async () => {
-    try {
-      const [listRes, count] = await Promise.all([
-        getNotifications({ limit: 5, unreadOnly: true }),
-        getUnreadCount(),
-      ]);
-      setNotificationItems((listRes.results || []).map(mapNotificationToItem));
-      setUnreadCount(count);
-    } catch (_) {
-      setNotificationItems([]);
-      setUnreadCount(0);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id) {
-      setNotificationItems([]);
-      setUnreadCount(0);
-      return;
-    }
-    loadNotifications();
-    const stream = openNotificationStream((event) => {
-      if (event.type === 'unread_count') setUnreadCount(event.count);
-      if (event.type === 'notification') {
-        setNotificationItems((prev) => [mapNotificationToItem(event.notification), ...prev].slice(0, 5));
-        setUnreadCount((c) => c + 1);
-      }
-    });
-    const onUnreadUpdate = (e: CustomEvent<{ count: number }>) => {
-      setUnreadCount(e.detail?.count ?? 0);
-    };
-    window.addEventListener('dharwin:notifications-unread-count', onUnreadUpdate as EventListener);
-    return () => {
-      stream.close();
-      window.removeEventListener('dharwin:notifications-unread-count', onUnreadUpdate as EventListener);
-    };
-  }, [user?.id, loadNotifications]);
+    await markAllRead();
+  }, [markAllRead]);
 
   const handleNotificationClose = async (index: number, event: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
     if (event) event.stopPropagation();
     const item = notificationItems[index];
     if (!item?._id) return;
-    try {
-      await markAsRead(item._id);
-      setNotificationItems((prev) => prev.filter((_, i) => i !== index));
-      setUnreadCount((c) => Math.max(0, c - 1));
-    } catch (_) {
-      setNotificationItems((prev) => prev.filter((_, i) => i !== index));
-    }
+    await markRead(item._id);
   };
 
   const notifications = notificationItems;

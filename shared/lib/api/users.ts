@@ -152,17 +152,28 @@ export async function registerCandidateFromInvite(
   return data;
 }
 
-/** Notification email preferences (matches backend user.notificationPreferences). */
+/** Notification preferences per channel (matches backend user.notificationPreferences). */
 export interface NotificationPreferences {
   leaveUpdates?: boolean;
+  leaveUpdatesInApp?: boolean;
   taskAssignments?: boolean;
+  taskAssignmentsInApp?: boolean;
   applicationUpdates?: boolean;
+  applicationUpdatesInApp?: boolean;
   offerUpdates?: boolean;
+  offerUpdatesInApp?: boolean;
   meetingInvitations?: boolean;
+  meetingInvitationsInApp?: boolean;
   meetingReminders?: boolean;
+  meetingRemindersInApp?: boolean;
   certificates?: boolean;
+  certificatesInApp?: boolean;
   courseUpdates?: boolean;
+  courseUpdatesInApp?: boolean;
   recruiterUpdates?: boolean;
+  recruiterUpdatesInApp?: boolean;
+  supportTicketUpdates?: boolean;
+  supportTicketUpdatesInApp?: boolean;
 }
 
 export interface ProfilePicturePayload {

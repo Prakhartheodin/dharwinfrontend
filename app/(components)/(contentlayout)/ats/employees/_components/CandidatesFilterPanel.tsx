@@ -1,9 +1,9 @@
 "use client"
-import React, { useMemo } from 'react'
+import React, { useMemo, useRef, useLayoutEffect, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { AgentOption } from '@/shared/lib/api/candidates'
 
 interface CandidatesFilterPanelProps {
-  /** Controlled by parent — avoids Preline HSOverlay init missing after client navigations / DOM moves */
   layoutOpen: boolean
   onCloseLayout: () => void
   filters: {
@@ -31,6 +31,62 @@ interface CandidatesFilterPanelProps {
   activeFilterCount: number
 }
 
+const COMPACT_INPUT = 'form-control !h-[34px] !py-[5px] !px-3 !text-[0.8125rem] !rounded-md w-full'
+const COMPACT_INPUT_ICON = 'form-control !h-[34px] !py-[5px] !ps-7 !pe-3 !text-[0.8125rem] !rounded-md w-full'
+const COMPACT_SELECT = 'form-select !h-[34px] !py-[5px] !ps-3 !pe-8 !text-[0.8125rem] !rounded-md w-full'
+const SECTION_LABEL = 'block text-[0.7rem] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5'
+const DROPDOWN_MENU = 'max-h-40 overflow-y-auto rounded-lg border border-defaultborder/70 bg-white py-1 shadow-lg dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5'
+const DROPDOWN_ITEM_BASE = 'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs font-medium transition-colors'
+const CHIP_BASE = 'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium max-w-full'
+
+interface PortalDropdownProps {
+  open: boolean
+  inputRef: React.RefObject<HTMLInputElement | null>
+  children: React.ReactNode
+}
+
+function PortalDropdown({ open, inputRef, children }: PortalDropdownProps) {
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [ready, setReady] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => { setMounted(true) }, [])
+
+  useLayoutEffect(() => {
+    if (!open || !inputRef.current) { setReady(false); return }
+    const r = inputRef.current.getBoundingClientRect()
+    setPos({ top: r.bottom + 2, left: r.left, width: r.width })
+    setReady(true)
+  }, [open, inputRef])
+
+  useEffect(() => {
+    if (!open) return
+    const update = () => {
+      const r = inputRef.current?.getBoundingClientRect()
+      if (r) setPos({ top: r.bottom + 2, left: r.left, width: r.width })
+    }
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  }, [open, inputRef])
+
+  if (!mounted || !open || !ready) return null
+
+  return createPortal(
+    <div
+      role="listbox"
+      style={{ position: 'fixed', top: pos.top, left: pos.left, width: pos.width, zIndex: 9999 }}
+      className={DROPDOWN_MENU}
+    >
+      {children}
+    </div>,
+    document.body
+  )
+}
+
 const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   layoutOpen,
   onCloseLayout,
@@ -50,285 +106,236 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   handleRemoveFilter,
   handleResetFilters,
 }) => {
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const agentInputRef = useRef<HTMLInputElement>(null)
+
   const agentLabel = (id: string) => agentOptions.find((a) => a.id === id)?.name ?? id
 
   const nameQueryTrimmed = searchName.trim()
   const showNameSuggestions = nameQueryTrimmed.length > 0
-  /** Cap suggestions height; full list stays server-side filtered in parent when typing */
   const nameSuggestionRows = useMemo(() => filteredNames.slice(0, 100), [filteredNames])
 
   const agentQueryTrimmed = searchAgent.trim()
   const showAgentSuggestions = agentQueryTrimmed.length > 0
   const agentSuggestionRows = useMemo(() => filteredAgents.slice(0, 100), [filteredAgents])
 
-  /** Full-width panel under the Employees toolbar — expands downward (Preline overlay not used for open state). */
+  const selectName = (name: string) => {
+    handleMultiSelectChange('name', name)
+    setSearchName('')
+  }
+
+  const selectAgent = (id: string) => {
+    handleMultiSelectChange('agentIds', id)
+    setSearchAgent('')
+  }
+
   return (
-      <div
-        id="candidates-filter-panel"
-        role="region"
-        aria-hidden={!layoutOpen}
-        tabIndex={-1}
-        className={
-          'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +
-          (layoutOpen
-            ? 'pointer-events-auto max-h-[min(92vh,52rem)] overflow-hidden border-x border-b border-defaultborder/80 opacity-100'
-            : 'pointer-events-none max-h-0 overflow-hidden border-0 opacity-0')
-        }
-      >
-        <div className="flex items-center justify-between gap-3 border-b border-defaultborder/60 bg-gradient-to-r from-gray-50/95 to-transparent px-4 py-2.5 dark:from-black/25 dark:to-transparent">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2 !mb-0">
-            <i className="ri-search-line text-primary text-base"></i>
-            Search &amp; filters
-          </h6>
-          <button 
-            type="button" 
-            className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1" 
-            onClick={handleResetFilters}
-          >
-            <i className="ri-refresh-line me-1.5"></i>Reset
+    <div
+      id="candidates-filter-panel"
+      role="region"
+      aria-hidden={!layoutOpen}
+      tabIndex={-1}
+      className={
+        'w-full shrink-0 origin-top transform-gpu rounded-b-xl bg-white/98 shadow-[0_28px_60px_-28px_rgba(0,0,0,0.35)] transition-[max-height,opacity] duration-300 ease-out dark:bg-bodybg/98 z-[40] motion-reduce:transition-none ' +
+        (layoutOpen
+          ? 'pointer-events-auto max-h-[min(92vh,52rem)] overflow-hidden border-x border-b border-defaultborder/80 opacity-100'
+          : 'pointer-events-none max-h-0 overflow-hidden border-0 opacity-0')
+      }
+    >
+      {/* Compact header */}
+      <div className="flex items-center justify-between gap-2 border-b border-defaultborder/60 bg-gradient-to-r from-gray-50/95 to-transparent px-4 py-2 dark:from-black/25 dark:to-transparent">
+        <span className="text-[0.8125rem] font-semibold flex items-center gap-1.5 text-gray-800 dark:text-white">
+          <i className="ri-filter-3-line text-primary text-sm" aria-hidden />
+          Filters
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button type="button" className="ti-btn !py-0.5 !px-2.5 !text-[0.75rem] ti-btn-light" onClick={handleResetFilters}>
+            <i className="ri-refresh-line me-1" aria-hidden />Reset
+          </button>
+          <button type="button" className="ti-btn !py-0.5 !px-2 !text-[0.75rem] ti-btn-light" onClick={onCloseLayout} aria-label="Close filters">
+            <i className="ri-close-line" aria-hidden />
           </button>
         </div>
-        <div className="max-h-[min(82vh,48rem)] overflow-y-auto px-4 py-4">
-          <div className="space-y-5">
-            {/* Employment Status: Current / Resigned / All */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-user-search-line text-primary text-base"></i>
-                Employment Status
-              </label>
-              <select
-                className="form-control !py-1.5 !text-sm"
-                value={filters.employmentStatus}
-                onChange={(e) => setFilters((prev) => ({ ...prev, employmentStatus: e.target.value as 'current' | 'resigned' | 'all' }))}
-              >
-                <option value="current">Current</option>
-                <option value="resigned">Resigned</option>
-                <option value="all">All</option>
-              </select>
-            </div>
+      </div>
 
-            {/* Name Filter — suggestions only appear while typing (no full scrollable roster) */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-user-line text-primary text-base"></i>
-                Name
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({allNames.length})</span>
-              </label>
-              <div className="space-y-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    className="form-control !py-1.5 !text-sm"
-                    placeholder="Start typing to search names…"
-                    value={searchName}
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    onChange={(e) => setSearchName(e.target.value)}
-                  />
-                  {showNameSuggestions && (
-                    <div
-                      role="listbox"
-                      className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-defaultborder/70 bg-white py-1 shadow-lg dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5"
-                    >
-                      {filterOptionsLoading ? (
-                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">Loading names…</div>
-                      ) : nameSuggestionRows.length > 0 ? (
-                        nameSuggestionRows.map((name) => {
-                          const selected = filters.name.includes(name)
-                          return (
-                            <button
-                              key={name}
-                              type="button"
-                              role="option"
-                              aria-selected={selected}
-                              className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium transition-colors hover:bg-primary/10 dark:hover:bg-primary/15 ${
-                                selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'
-                              }`}
-                              onMouseDown={(e) => {
-                                e.preventDefault()
-                              }}
-                              onClick={() => handleMultiSelectChange('name', name)}
-                            >
-                              <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current opacity-70">
-                                {selected ? <i className="ri-check-line text-[0.65rem]" aria-hidden /> : null}
-                              </span>
-                              <span className="min-w-0 flex-1 truncate">{name}</span>
-                            </button>
-                          )
-                        })
-                      ) : (
-                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
-                          No names match “{searchName.trim()}”.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <p className="mb-0 text-[0.65rem] text-gray-500 dark:text-gray-500">
-                  Type above to see suggestions; selected names appear as chips below.
-                </p>
-                {filters.name.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.name.map((name) => (
-                      <span
-                        key={name}
-                        className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm"
-                      >
-                        {name}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('name', name)}
-                          className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+      {/* 2-column grid content */}
+      <div className="max-h-[min(82vh,44rem)] overflow-y-auto px-4 py-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
 
-            {/* Email Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-mail-line text-warning text-base"></i>
-                Email
-              </label>
-              <input
-                type="text"
-                className="form-control border-gray-200 dark:border-defaultborder/10 focus:ring-2 focus:ring-primary/20 !py-1.5 !text-sm"
-                placeholder="Search by email..."
-                value={filters.email}
-                onChange={(e) => setFilters(prev => ({ ...prev, email: e.target.value }))}
-              />
-            </div>
-
-            {/* Employee ID Filter */}
-            <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-id-card-line text-primary text-base"></i>
-                Employee ID
-              </label>
-              <input
-                type="text"
-                className="form-control border-gray-200 dark:border-defaultborder/10 focus:ring-2 focus:ring-primary/20 !py-1.5 !text-sm"
-                placeholder="Search by employee ID..."
-                value={filters.employeeId}
-                onChange={(e) => setFilters(prev => ({ ...prev, employeeId: e.target.value }))}
-              />
-            </div>
-
-            {/* Agent — suggestions only while typing (same pattern as Name) */}
-            <div className="pb-4">
-              <label className="form-label mb-2.5 block font-semibold text-sm text-gray-800 dark:text-white flex items-center gap-2">
-                <i className="ri-user-settings-line text-primary text-base"></i>
-                Agent
-                <span className="text-xs font-normal text-gray-500 dark:text-gray-400">({agentOptions.length})</span>
-              </label>
-              <div className="space-y-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    className="form-control !py-1.5 !text-sm"
-                    placeholder="Start typing to search agents…"
-                    value={searchAgent}
-                    autoComplete="off"
-                    aria-autocomplete="list"
-                    onChange={(e) => setSearchAgent(e.target.value)}
-                  />
-                  {showAgentSuggestions && (
-                    <div
-                      role="listbox"
-                      className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-defaultborder/70 bg-white py-1 shadow-lg dark:border-white/15 dark:bg-bodybg ring-1 ring-black/5"
-                    >
-                      {agentsLoading ? (
-                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">Loading agents…</div>
-                      ) : agentSuggestionRows.length > 0 ? (
-                        agentSuggestionRows.map((a) => {
-                          const selected = filters.agentIds.includes(a.id)
-                          return (
-                            <button
-                              key={a.id}
-                              type="button"
-                              role="option"
-                              aria-selected={selected}
-                              className={`flex w-full items-start gap-2 px-3 py-2 text-left transition-colors hover:bg-primary/10 dark:hover:bg-primary/15 ${
-                                selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'
-                              }`}
-                              onMouseDown={(e) => {
-                                e.preventDefault()
-                              }}
-                              onClick={() => handleMultiSelectChange('agentIds', a.id)}
-                            >
-                              <span className="mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded border border-current opacity-70">
-                                {selected ? <i className="ri-check-line text-[0.65rem]" aria-hidden /> : null}
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-xs font-medium leading-tight">{a.name}</span>
-                                <span
-                                  className="block truncate text-[0.65rem] font-normal text-gray-500 dark:text-gray-400"
-                                  title={a.email}
-                                >
-                                  {a.email}
-                                </span>
-                              </span>
-                            </button>
-                          )
-                        })
-                      ) : (
-                        <div className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400">
-                          No agents match “{searchAgent.trim()}”.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <p className="mb-0 text-[0.65rem] text-gray-500 dark:text-gray-500">
-                  Type above to see suggestions; selected agents appear as chips below.
-                </p>
-                {filters.agentIds.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 pt-1.5">
-                    {filters.agentIds.map((id) => (
-                      <span
-                        key={id}
-                        className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-1 rounded-full flex items-center gap-1.5 text-xs font-medium shadow-sm max-w-full"
-                      >
-                        <span className="truncate">{agentLabel(id)}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFilter('agentIds', id)}
-                          className="hover:text-primary-hover hover:bg-primary/20 rounded-full p-0.5 transition-colors shrink-0"
-                        >
-                          <i className="ri-close-line text-xs"></i>
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Filter Actions */}
-            <div className="flex gap-2 pt-4 border-t border-gray-200 dark:border-defaultborder/10">
-              <button
-                type="button"
-                className="ti-btn ti-btn-primary flex-1 font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                onClick={handleResetFilters}
-              >
-                <i className="ri-refresh-line me-1.5"></i>Reset
-              </button>
-              <button
-                type="button"
-                className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                onClick={onCloseLayout}
-              >
-                <i className="ri-close-line me-1.5"></i>Close
-              </button>
-            </div>
+          {/* Employment Status */}
+          <div>
+            <label className={SECTION_LABEL}>
+              <i className="ri-user-search-line text-primary me-1" aria-hidden />Employment Status
+            </label>
+            <select
+              className={COMPACT_SELECT}
+              value={filters.employmentStatus}
+              onChange={(e) => setFilters((prev: any) => ({ ...prev, employmentStatus: e.target.value as 'current' | 'resigned' | 'all' }))}
+            >
+              <option value="current">Current</option>
+              <option value="resigned">Resigned</option>
+              <option value="all">All</option>
+            </select>
           </div>
+
+          {/* Employee ID */}
+          <div>
+            <label className={SECTION_LABEL}>
+              <i className="ri-id-card-line text-primary me-1" aria-hidden />Employee ID
+            </label>
+            <input
+              type="text"
+              className={COMPACT_INPUT}
+              placeholder="Search by ID…"
+              value={filters.employeeId}
+              onChange={(e) => setFilters((prev: any) => ({ ...prev, employeeId: e.target.value }))}
+            />
+          </div>
+
+          {/* Name */}
+          <div>
+            <label className={SECTION_LABEL}>
+              <i className="ri-user-line text-primary me-1" aria-hidden />
+              Name
+              <span className="font-normal ms-1 text-gray-400 dark:text-gray-500">({allNames.length})</span>
+            </label>
+            <div className="relative">
+              <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-[0.7rem] pointer-events-none" aria-hidden />
+              <input
+                ref={nameInputRef}
+                type="text"
+                className={COMPACT_INPUT_ICON}
+                placeholder="Search names…"
+                value={searchName}
+                autoComplete="off"
+                aria-autocomplete="list"
+                onChange={(e) => setSearchName(e.target.value)}
+                onBlur={() => setTimeout(() => setSearchName(''), 150)}
+              />
+              <PortalDropdown open={showNameSuggestions} inputRef={nameInputRef}>
+                {filterOptionsLoading ? (
+                  <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Loading…</div>
+                ) : nameSuggestionRows.length > 0 ? (
+                  nameSuggestionRows.map((name) => {
+                    const selected = filters.name.includes(name)
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`${DROPDOWN_ITEM_BASE} hover:bg-primary/10 dark:hover:bg-primary/15 ${selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectName(name)}
+                      >
+                        <span className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-current opacity-70">
+                          {selected ? <i className="ri-check-line text-[0.6rem]" aria-hidden /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">{name}</span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">No matches for &ldquo;{nameQueryTrimmed}&rdquo;</div>
+                )}
+              </PortalDropdown>
+            </div>
+            {filters.name.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {filters.name.map((name) => (
+                  <span key={name} className={`${CHIP_BASE} bg-primary/10 border-primary/25 text-primary`}>
+                    <span className="truncate">{name}</span>
+                    <button type="button" onClick={() => handleRemoveFilter('name', name)} className="shrink-0 hover:bg-primary/20 rounded-full p-0.5 transition-colors">
+                      <i className="ri-close-line text-[0.6rem]" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className={SECTION_LABEL}>
+              <i className="ri-mail-line text-warning me-1" aria-hidden />Email
+            </label>
+            <input
+              type="text"
+              className={COMPACT_INPUT}
+              placeholder="Search by email…"
+              value={filters.email}
+              onChange={(e) => setFilters((prev: any) => ({ ...prev, email: e.target.value }))}
+            />
+          </div>
+
+          {/* Agent — full width */}
+          <div className="sm:col-span-2">
+            <label className={SECTION_LABEL}>
+              <i className="ri-user-settings-line text-primary me-1" aria-hidden />
+              Agent
+              <span className="font-normal ms-1 text-gray-400 dark:text-gray-500">({agentOptions.length})</span>
+            </label>
+            <div className="relative">
+              <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-[0.7rem] pointer-events-none" aria-hidden />
+              <input
+                ref={agentInputRef}
+                type="text"
+                className={COMPACT_INPUT_ICON}
+                placeholder="Search agents…"
+                value={searchAgent}
+                autoComplete="off"
+                aria-autocomplete="list"
+                onChange={(e) => setSearchAgent(e.target.value)}
+                onBlur={() => setTimeout(() => setSearchAgent(''), 150)}
+              />
+              <PortalDropdown open={showAgentSuggestions} inputRef={agentInputRef}>
+                {agentsLoading ? (
+                  <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">Loading…</div>
+                ) : agentSuggestionRows.length > 0 ? (
+                  agentSuggestionRows.map((a) => {
+                    const selected = filters.agentIds.includes(a.id)
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`${DROPDOWN_ITEM_BASE} items-start hover:bg-primary/10 dark:hover:bg-primary/15 ${selected ? 'bg-primary/8 text-primary' : 'text-gray-800 dark:text-gray-200'}`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectAgent(a.id)}
+                      >
+                        <span className="mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border border-current opacity-70">
+                          {selected ? <i className="ri-check-line text-[0.6rem]" aria-hidden /> : null}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-medium leading-tight">{a.name}</span>
+                          <span className="block truncate text-[0.65rem] font-normal text-gray-500 dark:text-gray-400" title={a.email}>{a.email}</span>
+                        </span>
+                      </button>
+                    )
+                  })
+                ) : (
+                  <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">No matches for &ldquo;{agentQueryTrimmed}&rdquo;</div>
+                )}
+              </PortalDropdown>
+            </div>
+            {filters.agentIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {filters.agentIds.map((id) => (
+                  <span key={id} className={`${CHIP_BASE} bg-primary/10 border-primary/25 text-primary`}>
+                    <span className="truncate">{agentLabel(id)}</span>
+                    <button type="button" onClick={() => handleRemoveFilter('agentIds', id)} className="shrink-0 hover:bg-primary/20 rounded-full p-0.5 transition-colors">
+                      <i className="ri-close-line text-[0.6rem]" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       </div>
+    </div>
   )
 }
 
