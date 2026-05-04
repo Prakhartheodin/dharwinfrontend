@@ -584,12 +584,12 @@ export default function SettingsAttendanceHolidaysPage() {
 
         {showForm && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-[10100] flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto"
             onClick={resetForm}
             role="presentation"
           >
             <div
-              className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto"
+              className="my-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl shadow-black/30 w-full max-w-md max-h-[calc(100vh-3rem)] overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
               role="presentation"
             >

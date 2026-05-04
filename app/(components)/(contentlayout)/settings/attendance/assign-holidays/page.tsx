@@ -584,7 +584,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
                       filterOption={filterAssignPersonSelectOption}
                       menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                       menuPosition="fixed"
-                      styles={{ menuPortal: (base) => ({ ...base, zIndex: 10000 }) }}
+                      styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
                     />
                   </div>
                 )}

@@ -270,6 +270,7 @@ export default function SettingsAttendanceAssignLeavePage() {
                       filterOption={filterAssignPersonSelectOption}
                       menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                       menuPosition="fixed"
+                      styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
                     />
                   </div>
                   {selectedPeople.length > 0 && (
