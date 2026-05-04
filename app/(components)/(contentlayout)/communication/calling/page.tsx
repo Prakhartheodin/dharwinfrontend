@@ -582,7 +582,15 @@ const Calling = () => {
                             </td>
                             {(sourceFilter === "telephony" || sourceFilter === "all") && (
                               <td className="text-nowrap">
-                                {isTelephony ? telephonyCategory : "–"}
+                                {isTelephony
+                                  ? telephonyCategory
+                                  : (() => {
+                                      const c = r as ChatCall;
+                                      const isGroup =
+                                        Array.isArray(c.participants) && c.participants.length > 1;
+                                      const kind = c.callType === "video" ? "Video Chat" : "Audio Chat";
+                                      return `${isGroup ? "Group" : "Direct"} ${kind}`;
+                                    })()}
                               </td>
                             )}
                             <td className="text-nowrap">{formatDate(getUnifiedDate(u))}</td>
@@ -595,16 +603,39 @@ const Calling = () => {
                                   </div>
                                 </div>
                               ) : (
-                                (r as ChatCall).caller?.name || "–"
+                                <div className="leading-tight">
+                                  <div className="font-medium break-words">
+                                    {(r as ChatCall).caller?.name || "–"}
+                                  </div>
+                                  {(r as ChatCall).caller?.email && (
+                                    <div className="text-[0.75rem] text-defaulttextcolor/60 break-all">
+                                      {(r as ChatCall).caller.email}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </td>
                             <td className="min-w-[170px] break-words">
-                              {isTelephony
-                                ? (r as CallRecord).fromPhoneNumber || (r as CallRecord).userNumber || "–"
-                                : (r as ChatCall).participants
-                                    ?.map((p) => p?.name)
-                                    .filter(Boolean)
-                                    .join(", ") || "–"}
+                              {isTelephony ? (
+                                (r as CallRecord).fromPhoneNumber || (r as CallRecord).userNumber || "–"
+                              ) : (() => {
+                                const ps = (r as ChatCall).participants ?? [];
+                                if (!ps.length) return "–";
+                                return (
+                                  <ul className="leading-tight space-y-1">
+                                    {ps.map((p, idx) => (
+                                      <li key={p?.id || idx}>
+                                        <div className="font-medium">{p?.name || "Unknown"}</div>
+                                        {p?.email && (
+                                          <div className="text-[0.75rem] text-defaulttextcolor/60 break-all">
+                                            {p.email}
+                                          </div>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                );
+                              })()}
                             </td>
                             <td className="text-nowrap">
                               {isTelephony
@@ -903,6 +934,17 @@ const Calling = () => {
                     <span className="badge bg-info/10 text-info me-2">In-App</span>
                   </div>
                   <div>
+                    <p className="text-defaulttextcolor/60 mb-1">Category</p>
+                    <p>
+                      {(() => {
+                        const c = selectedCall.data as ChatCall;
+                        const isGroup = Array.isArray(c.participants) && c.participants.length > 1;
+                        const kind = c.callType === "video" ? "Video Chat" : "Audio Chat";
+                        return `${isGroup ? "Group" : "Direct"} ${kind}`;
+                      })()}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-defaulttextcolor/60 mb-1">Call Type</p>
                     <p>{(selectedCall.data as ChatCall).callType === "video" ? "Video" : "Audio"}</p>
                   </div>
@@ -912,16 +954,31 @@ const Calling = () => {
                   </div>
                   <div>
                     <p className="text-defaulttextcolor/60 mb-1">Caller</p>
-                    <p>{(selectedCall.data as ChatCall).caller?.name || "–"}</p>
+                    <p className="font-medium">{(selectedCall.data as ChatCall).caller?.name || "–"}</p>
+                    {(selectedCall.data as ChatCall).caller?.email && (
+                      <p className="text-[0.75rem] text-defaulttextcolor/60 break-all">
+                        {(selectedCall.data as ChatCall).caller.email}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-defaulttextcolor/60 mb-1">Participants</p>
-                    <p>
-                      {(selectedCall.data as ChatCall).participants
-                        ?.map((p) => p?.name)
-                        .filter(Boolean)
-                        .join(", ") || "–"}
-                    </p>
+                    {(() => {
+                      const ps = (selectedCall.data as ChatCall).participants ?? [];
+                      if (!ps.length) return <p>–</p>;
+                      return (
+                        <ul className="space-y-1">
+                          {ps.map((p, idx) => (
+                            <li key={p?.id || idx}>
+                              <p className="font-medium">{p?.name || "Unknown"}</p>
+                              {p?.email && (
+                                <p className="text-[0.75rem] text-defaulttextcolor/60 break-all">{p.email}</p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
                   </div>
                   <div>
                     <p className="text-defaulttextcolor/60 mb-1">Duration</p>

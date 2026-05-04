@@ -327,6 +327,40 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Salary</div>
                       <div className="font-semibold text-gray-800 dark:text-white">{previewJob.salary}</div>
                     </div>
+                    {(previewJob.postedBy || previewJob.postedByEmail) && (
+                      <div className="col-span-2 md:col-span-1">
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Posted By</div>
+                        <div className="font-semibold text-gray-800 dark:text-white truncate" title={previewJob.postedBy || previewJob.postedByEmail}>
+                          {previewJob.postedBy || previewJob.postedByEmail}
+                        </div>
+                        {previewJob.postedBy && previewJob.postedByEmail && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={previewJob.postedByEmail}>
+                            {previewJob.postedByEmail}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {previewJob.postingDate && (() => {
+                      const d = new Date(previewJob.postingDate);
+                      if (Number.isNaN(d.getTime())) return null;
+                      const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+                      const diffDays = Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000));
+                      let relative = '';
+                      if (diffDays === 0) relative = 'Today';
+                      else if (diffDays === 1) relative = 'Yesterday';
+                      else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`;
+                      else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`;
+                      else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`;
+                      return (
+                        <div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Posted Date</div>
+                          <div className="font-semibold text-gray-800 dark:text-white">{formatted}</div>
+                          {relative && (
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{relative}</div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Company Information */}

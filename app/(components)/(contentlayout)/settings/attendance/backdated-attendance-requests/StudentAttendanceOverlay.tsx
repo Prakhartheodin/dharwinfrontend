@@ -545,7 +545,7 @@ export default function StudentAttendanceOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)]"
+      className="fixed inset-0 z-[10100] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.55)_0%,_rgba(15,23,42,0.4)_55%,_rgba(15,23,42,0.3)_100%)] backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="student-attendance-title"

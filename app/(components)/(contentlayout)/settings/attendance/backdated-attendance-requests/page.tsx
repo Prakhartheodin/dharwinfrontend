@@ -805,6 +805,7 @@ return (
                     classNamePrefix="react-select"
                     menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                     menuPosition="fixed"
+                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
                   />
                 </div>
                 {addResolvingProfile && (
@@ -1042,6 +1043,7 @@ return (
                     classNamePrefix="react-select"
                     menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                     menuPosition="fixed"
+                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
                   />
                 </div>
               </div>

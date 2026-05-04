@@ -283,8 +283,8 @@ export default function SettingsAttendanceStudentGroupsPage() {
             )}
 
             {showForm && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowForm(false)} role="presentation">
-              <div className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-xl max-h-[90vh] w-full max-w-xl overflow-y-auto" onClick={(e) => e.stopPropagation()} role="presentation">
+            <div className="fixed inset-0 z-[10100] flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-6 overflow-y-auto" onClick={() => setShowForm(false)} role="presentation">
+              <div className="my-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl shadow-black/30 w-full max-w-2xl max-h-[calc(100vh-3rem)] overflow-y-auto" onClick={(e) => e.stopPropagation()} role="presentation">
                 <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10" aria-hidden>
@@ -348,7 +348,7 @@ export default function SettingsAttendanceStudentGroupsPage() {
                         isSearchable
                         menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
                         menuPosition="fixed"
-                        styles={{ menuPortal: (base) => ({ ...base, zIndex: 10000 }) }}
+                        styles={{ menuPortal: (base) => ({ ...base, zIndex: 10200 }) }}
                       />
                     </div>
                   </div>

@@ -603,12 +603,35 @@ const Jobs = () => {
         Header: 'Experience',
         accessor: 'experience',
       },
-      /** Hidden column: keeps `setSortBy({ id: 'postingDate' })` working for date sorts (toolbar). Not shown in the table. */
       {
-        Header: '',
+        Header: 'Posted Date',
         accessor: 'postingDate',
         id: 'postingDate',
-        Cell: () => null,
+        Cell: ({ row }: any) => {
+          const raw: string | undefined = row.original.postingDate
+          if (!raw) return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
+          const d = new Date(raw)
+          if (Number.isNaN(d.getTime())) {
+            return <span className="text-sm text-defaulttextcolor">{raw}</span>
+          }
+          const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+          const dayMs = 24 * 60 * 60 * 1000
+          const diffDays = Math.floor((Date.now() - d.getTime()) / dayMs)
+          let relative = ''
+          if (diffDays === 0) relative = 'Today'
+          else if (diffDays === 1) relative = 'Yesterday'
+          else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`
+          else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
+          else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
+          return (
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium text-defaulttextcolor whitespace-nowrap">{formatted}</span>
+              {relative && (
+                <span className="text-[11px] text-defaulttextcolor/60">{relative}</span>
+              )}
+            </div>
+          )
+        },
       },
       {
         Header: 'Salary',
@@ -637,6 +660,43 @@ const Jobs = () => {
             >
               {ext ? 'External' : 'Internal'}
             </span>
+          )
+        },
+      },
+      {
+        Header: 'Posted By',
+        accessor: 'postedBy',
+        Cell: ({ row }: any) => {
+          const name: string | undefined = row.original.postedBy
+          const email: string | undefined = row.original.postedByEmail
+          if (!name && !email) {
+            return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
+          }
+          const initials = (name ?? email ?? '?')
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((s: string) => s[0]?.toUpperCase() ?? '')
+            .join('') || '?'
+          return (
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary text-[10px] font-semibold ring-1 ring-primary/15"
+                aria-hidden
+              >
+                {initials}
+              </span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm font-medium text-defaulttextcolor truncate" title={name || email}>
+                  {name || email || '—'}
+                </span>
+                {name && email && (
+                  <span className="text-[11px] text-defaulttextcolor/60 truncate" title={email}>
+                    {email}
+                  </span>
+                )}
+              </div>
+            </div>
           )
         },
       },
@@ -1244,8 +1304,8 @@ const Jobs = () => {
                           const headerSortCompany = column.id === 'company'
                           const headerSortLocation = column.id === 'location'
                           const headerSortExperience = column.id === 'experience'
-                          /** Date sort uses toolbar only; postingDate column stays hidden — no header click UX. */
-                          const hidePostingCol = column.id === 'postingDate'
+                          /** postingDate is visible now; header click sort kept off here (toolbar handles ordering). */
+                          const hidePostingCol = false
                           const clickableHeader =
                             headerSortTitle ||
                             headerSortCompany ||
@@ -1413,7 +1473,7 @@ const Jobs = () => {
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
                             const isLocation = cell.column.id === 'location'
-                            const hidePostingCell = cell.column.id === 'postingDate'
+                            const hidePostingCell = false
                             const cellProps = cell.getCellProps()
                             return (
                               <td

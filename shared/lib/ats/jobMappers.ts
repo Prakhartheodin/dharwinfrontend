@@ -38,9 +38,28 @@ export interface DisplayJob {
   urgency?: string;
   salaryTier?: string;
   jobOrigin?: "internal" | "external";
+  postedBy?: string;
+  postedByEmail?: string;
+  postedById?: string;
 }
 
 export function mapJobToDisplay(apiJob: Job): DisplayJob {
+  // createdBy may arrive as a populated object ({ _id|id, name, email }) or a bare ObjectId string.
+  const cb = apiJob.createdBy as
+    | { _id?: string; id?: string; name?: string; email?: string }
+    | string
+    | undefined;
+  let postedBy: string | undefined;
+  let postedByEmail: string | undefined;
+  let postedById: string | undefined;
+  if (cb && typeof cb === "object") {
+    postedBy = cb.name?.trim() || cb.email?.trim() || undefined;
+    postedByEmail = cb.email?.trim() || undefined;
+    postedById = cb._id || cb.id || undefined;
+  } else if (typeof cb === "string") {
+    postedById = cb;
+  }
+
   return {
     id: apiJob._id ?? apiJob.id ?? "",
     jobTitle: apiJob.title ?? "",
@@ -54,5 +73,8 @@ export function mapJobToDisplay(apiJob: Job): DisplayJob {
     description: apiJob.jobDescription,
     companyInfo: apiJob.organisation ? { ...apiJob.organisation } : undefined,
     jobOrigin: apiJob.jobOrigin === "external" ? "external" : "internal",
+    postedBy,
+    postedByEmail,
+    postedById,
   };
 }
