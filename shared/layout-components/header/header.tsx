@@ -13,6 +13,7 @@ import { usePathname } from 'next/navigation';
 import { type Notification } from '@/shared/lib/api/notifications';
 import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
 import { useNotificationContext } from '@/shared/contexts/NotificationContext';
+import { hasPermission } from '@/shared/lib/permissions';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -42,6 +43,8 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
+  const [avatarError, setAvatarError] = useState(false);
+  useEffect(() => { setAvatarError(false); }, [user?.profilePicture?.url]);
 
 
   const data=  <span className="font-[600] py-[0.25rem] px-[0.45rem] rounded-[0.25rem] bg-pinkmain/10 text-pinkmain text-[0.625rem]">Free shipping</span>
@@ -469,9 +472,9 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     <Fragment>
       <div className="app-header">
         <nav className="main-header !h-[3.75rem]" aria-label="Global">
-          <div className="main-header-container ps-[0.725rem] pe-[1rem] ">
+          <div className="main-header-container ps-[0.725rem] pe-[1rem] flex items-center justify-between gap-2 h-full">
 
-            <div className="header-content-left">
+            <div className="header-content-left flex items-center">
               <div className="header-element header-logo-container">
                 <div className="horizontal-logo">
                   <Link href="/apps/projects/project-list" className="header-logo">
@@ -484,14 +487,14 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   </Link>
                 </div>
               </div>
-              <div className="header-element md:px-[0.325rem] !items-center" onClick={() => toggleSidebar()}>
+              <div className="header-element flex items-center md:px-[0.325rem] !items-center" onClick={() => toggleSidebar()}>
                 <Link aria-label="Hide Sidebar"
-                  className="sidemenu-toggle animated-arrow  hor-toggle horizontal-navtoggle inline-flex items-center" href="#!" scroll={false}><span></span></Link>
+                  className="sidemenu-toggle animated-arrow  hor-toggle horizontal-navtoggle inline-flex items-center min-h-[2.75rem] min-w-[2.75rem] justify-center" href="#!" scroll={false}><span></span></Link>
               </div>
             </div>
-            <div className="header-content-right">
+            <div className="header-content-right flex items-center !ms-auto">
               {impersonation && (
-                <div className="header-element py-[0.6rem] md:px-[0.85rem] px-2 flex items-center">
+                <div className="header-element flex items-center md:px-[0.85rem] px-2">
                   <div className="inline-flex items-center gap-2 rounded-full bg-amber-50 border border-amber-300 px-3 py-1 shadow-sm">
                     <span className="inline-flex items-center gap-1 text-[0.75rem] font-medium text-amber-700">
                       <i className="ri-user-switch-line text-[0.9rem]" aria-hidden></i>
@@ -508,14 +511,14 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     <button
                       type="button"
                       onClick={() => stopImpersonation()}
-                      className="ti-btn ti-btn-xs ti-btn-outline-warning !py-0.5 !px-3 !text-[0.7rem] !rounded-full mt-1"
+                      className="ti-btn ti-btn-xs ti-btn-outline-warning !py-0.5 !px-3 !text-[0.7rem] !rounded-full"
                     >
                       Exit
                     </button>
                   </div>
                 </div>
               )}
-              <div className="header-element py-[1rem] md:px-[0.65rem] px-2 header-search">
+              <div className="header-element flex items-center md:px-[0.65rem] px-2 header-search">
                 <button
                   aria-label="Open search"
                   type="button"
@@ -526,23 +529,21 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 </button>
               </div>
              
-              <div className="header-element header-theme-mode hidden !items-center sm:block !py-[1rem] md:!px-[0.65rem] px-2" onClick={() => ToggleDark()}>
-                <button aria-label="anchor"
-                  className="hs-dark-mode-active:hidden flex hs-dark-mode group flex-shrink-0 justify-center items-center gap-2  rounded-full font-medium transition-all text-xs dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10"
-                   data-hs-theme-click-value="dark">
-                  <i className="bx bx-moon header-link-icon"></i>
-                </button>
-                <button aria-label="anchor"
-                  className="hs-dark-mode-active:flex hidden hs-dark-mode group flex-shrink-0 justify-center items-center gap-2  rounded-full font-medium text-defaulttextcolor  transition-all text-xs  dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10"
-                  data-hs-theme-click-value="light">
-                  <i className="bx bx-sun header-link-icon"></i>
+              <div className="header-element header-theme-mode hidden sm:flex !items-center md:!px-[0.65rem] px-2">
+                <button
+                  type="button"
+                  aria-label={local_varaiable?.class === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                  onClick={() => ToggleDark()}
+                  className="inline-flex group flex-shrink-0 justify-center items-center min-h-[2.75rem] min-w-[2.75rem] rounded-full font-medium transition-all text-xs hover:bg-black/5 dark:hover:bg-black/20 text-defaulttextcolor dark:text-white/70 dark:hover:text-white"
+                >
+                  <i className={`bx ${local_varaiable?.class === "dark" ? "bx-sun" : "bx-moon"} header-link-icon text-[1.125rem]`}></i>
                 </button>
               </div>
        
               {!guestPublicLayout && (
               <div
                 ref={notificationMenuRef}
-                className="header-element relative z-[60] py-[1rem] md:px-[0.65rem] px-2 notifications-dropdown header-notification ti-dropdown [--placement:bottom-right]"
+                className="header-element flex items-center relative z-[60] md:px-[0.65rem] px-2 notifications-dropdown header-notification ti-dropdown [--placement:bottom-right]"
               >
                 <button
                   id="dropdown-notification"
@@ -695,7 +696,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                 </Link>
               </div>
               ) : (
-              <div ref={profileMenuRef} className="header-element md:!px-[0.65rem] px-2 relative !items-center ti-dropdown [--placement:bottom-left]">
+              <div ref={profileMenuRef} className="header-element md:!px-[0.65rem] px-2 relative flex !items-center ti-dropdown [--placement:bottom-left]">
                 <button
                   id="dropdown-profile"
                   type="button"
@@ -709,8 +710,16 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   }}
                   className="ti-dropdown-toggle inline-flex items-center !gap-2 !p-0 flex-shrink-0 sm:me-2 me-0 !rounded-full !shadow-none text-xs align-middle !border-0 !shadow-transparent "
                 >
-                  {user?.profilePicture?.url ? (
-                    <img className="inline-block rounded-full object-cover" src={user.profilePicture.url} width="32" height="32" alt="" />
+                  {user?.profilePicture?.url && !avatarError ? (
+                    <img
+                      className="inline-block rounded-full object-cover w-8 h-8 bg-primary/10"
+                      src={user.profilePicture.url}
+                      width="32"
+                      height="32"
+                      alt={user?.name ?? "Profile"}
+                      onError={() => setAvatarError(true)}
+                      referrerPolicy="no-referrer"
+                    />
                   ) : (
                     <span className="inline-flex justify-center items-center w-8 h-8 rounded-full bg-primary/10 text-primary font-semibold text-[0.875rem]">
                       {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
@@ -746,7 +755,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                       </Link>
                     </li>
                     <li>
-                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={user?.role === "admin" ? "/task/kanban-board" : "/task/my-tasks"} onClick={() => setIsProfileMenuOpen(false)}>
+                      <Link className="w-full ti-dropdown-item !text-[0.8125rem] !gap-x-0 !p-[0.65rem]" href={hasPermission(user as any, "view_tasks") && (user?.isAdministrator || user?.isPlatformSuperUser) ? "/task/kanban-board" : "/task/my-tasks"} onClick={() => setIsProfileMenuOpen(false)}>
                         <i className="ti ti-clipboard-check text-[1.125rem] me-2 opacity-[0.7] !inline-flex"></i>Task Manager
                       </Link>
                     </li>

@@ -479,147 +479,182 @@ export default function SettingsUsersPage() {
   return (
     <Fragment>
       <Seo title="Users" />
-      <div className="flex items-center justify-between flex-wrap gap-4 mb-4 px-4 pt-4">
-        <h5 className="box-title mb-0">
-          Users
-          <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
-            {totalResults}
-          </span>
-        </h5>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <label htmlFor="users-page-size" className="sr-only">
-            Rows per page
-          </label>
-          <select
-            id="users-page-size"
-            className="form-control select-show-page-size !w-auto !py-1.5 !text-[0.75rem] leading-tight"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-          >
-            {[10, 25, 50, 100].map((size) => (
-              <option key={size} value={size}>
-                Show {size}
-              </option>
-            ))}
-          </select>
-          {canCreateUsers && (
-            <Link
-              href={ROUTES.settingsUsersAdd}
-              className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.8125rem] shrink-0"
-            >
-              <i className="ri-add-line me-1 align-middle"></i>Add User
-            </Link>
-          )}
-        </div>
-      </div>
-      <div className="box-body px-4 pb-4">
-        {error && (
-          <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
-            {error}
-          </div>
-        )}
+      <div className="relative mt-4 space-y-6 min-h-[50vh] w-full">
+        <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]" aria-hidden />
 
-        {/* Client-side filters (no API calls) */}
-        <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-wrap items-end gap-3">
-          <div className="flex items-center gap-2 text-defaulttextcolor/80">
-            <i className="ri-filter-3-line text-[1.25rem]"></i>
-            <span className="text-[0.8125rem] font-medium">Filter</span>
+        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden transition-shadow duration-300 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+            <div className="flex items-center gap-4 min-w-0">
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20" aria-hidden>
+                <i className="ri-team-line text-2xl" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight flex items-center gap-2">
+                  Users
+                  <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-2 rounded-full text-[0.6875rem] font-semibold bg-primary/10 text-primary tabular-nums">
+                    {totalResults}
+                  </span>
+                </h2>
+                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Manage user accounts, roles, and access</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="users-page-size" className="sr-only">Rows per page</label>
+              <select
+                id="users-page-size"
+                className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3 py-2 text-xs font-medium text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value))}
+              >
+                {[10, 25, 50, 100].map((size) => (
+                  <option key={size} value={size}>Show {size}</option>
+                ))}
+              </select>
+              {canCreateUsers && (
+                <Link
+                  href={ROUTES.settingsUsersAdd}
+                  className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-primary/90 hover:shadow-md hover:shadow-primary/20 active:scale-[0.98] shrink-0"
+                >
+                  <i className="ri-add-line text-base" />
+                  Add User
+                </Link>
+              )}
+            </div>
           </div>
-          <div className="min-w-[12rem]">
-            <label htmlFor="users-search" className="form-label !text-[0.75rem] mb-1">Search by name or email</label>
-            <input
-              id="users-search"
-              type="text"
-              className="form-control !py-1.5 !text-[0.8125rem]"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <div className="min-w-[10rem]">
-            <label htmlFor="users-filter-role" className="form-label !text-[0.75rem] mb-1">Role</label>
-            <select
-              id="users-filter-role"
-              className="form-control form-select !py-1.5 !text-[0.8125rem]"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-            >
-              <option value="">All roles</option>
-              <option value="__unassigned__">Unassigned</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="min-w-[10rem]">
-            <label htmlFor="users-filter-status" className="form-label !text-[0.75rem] mb-1">Status</label>
-            <select
-              id="users-filter-status"
-              className="form-control form-select !py-1.5 !text-[0.8125rem]"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value || "all"} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          {hasActiveFilters && (
-            <button type="button" onClick={handleClearFilters} className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem]">
-              Clear filters
-            </button>
-          )}
-        </div>
 
-        <div className="table-responsive overflow-x-auto">
-          <table className="table min-w-full table-bordered border-defaultborder">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-800/50">
-                <th className="px-4 py-2.5 text-start font-semibold">User Name</th>
-                <th className="px-4 py-2.5 text-start font-semibold">Email</th>
-                <th className="px-4 py-2.5 text-start font-semibold">Role</th>
-                <th className="px-4 py-2.5 text-start font-semibold">Permissions</th>
-                <th className="px-4 py-2.5 text-start font-semibold">Status</th>
-                <th className="px-4 py-2.5 text-start font-semibold">Date Created</th>
-                <th className="px-4 py-2.5 text-center font-semibold min-w-[11rem] whitespace-nowrap">Action</th>
-              </tr>
-            </thead>
-            <tbody>
+          <div className="px-6 py-6 space-y-5 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+            {error && (
+              <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger flex items-start gap-2">
+                <i className="ri-error-warning-line text-lg shrink-0" aria-hidden />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-defaultborder/60 bg-white dark:bg-white/[0.03] p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden>
+                  <i className="ri-filter-3-line text-base" />
+                </span>
+                <p className="text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">Filters</p>
+                {hasActiveFilters && (
+                  <button type="button" onClick={handleClearFilters} className="ms-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[0.6875rem] font-medium text-primary hover:bg-primary/10 transition-colors">
+                    <i className="ri-close-circle-line" /> Clear
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <label htmlFor="users-search" className="mb-1.5 block text-xs font-semibold text-defaulttextcolor">Search</label>
+                  <input
+                    id="users-search"
+                    type="text"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    placeholder="Name or email…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="users-filter-role" className="mb-1.5 block text-xs font-semibold text-defaulttextcolor">Role</label>
+                  <select
+                    id="users-filter-role"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[2.75rem]"
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value)}
+                  >
+                    <option value="">All roles</option>
+                    <option value="__unassigned__">Unassigned</option>
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="users-filter-status" className="mb-1.5 block text-xs font-semibold text-defaulttextcolor">Status</label>
+                  <select
+                    id="users-filter-status"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all min-h-[2.75rem]"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-white/5">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-defaultborder/70 bg-slate-50/80 dark:bg-white/5">
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">User</th>
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Email</th>
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Role</th>
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Permissions</th>
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3">Status</th>
+                    <th className="text-start text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3 whitespace-nowrap">Created</th>
+                    <th className="text-end text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70 px-4 py-3 min-w-[11rem] whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                    Loading...
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3 ring-1 ring-primary/10">
+                      <i className="ri-loader-4-line animate-spin text-2xl" />
+                    </div>
+                    <p className="text-sm text-defaulttextcolor/70">Loading users…</p>
                   </td>
                 </tr>
               ) : paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                    {hasActiveFilters ? "No users match your filters." : "No users found."}
+                  <td colSpan={7} className="px-4 py-12 text-center">
+                    <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3 ring-1 ring-primary/10">
+                      <i className="ri-user-search-line text-3xl" />
+                    </div>
+                    <p className="text-sm text-defaulttextcolor/70">{hasActiveFilters ? "No users match your filters." : "No users found."}</p>
                   </td>
                 </tr>
               ) : (
                 paginatedUsers.map((user) => {
                   const isPrimaryAdmin = user.email === "admin@gmail.com";
                   const roleIds = user.roleIds ?? [];
+                  const initial = (user.name ?? user.email ?? "?").charAt(0).toUpperCase();
                   return (
-                    <tr key={user.id} className="border-b border-defaultborder">
-                      <td className="px-4 py-2.5 align-middle font-medium">
-                        {user.name ?? user.email ?? "—"}
+                    <tr key={user.id} className="border-b border-defaultborder/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
+                      <td className="px-4 py-3 align-middle max-w-[240px]">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold ring-1 ${
+                            isPrimaryAdmin
+                              ? "bg-amber-500/10 text-amber-600 ring-amber-500/20"
+                              : "bg-primary/10 text-primary ring-primary/15"
+                          }`} aria-hidden>
+                            {initial}
+                          </span>
+                          <div className="min-w-0">
+                            <span className="block truncate font-semibold text-defaulttextcolor dark:text-white" title={user.name ?? user.email ?? ""}>{user.name ?? user.email ?? "—"}</span>
+                            {isPrimaryAdmin && (
+                              <span className="inline-flex items-center gap-1 text-[0.6rem] uppercase tracking-wider font-semibold text-amber-600 dark:text-amber-400 mt-0.5">
+                                <i className="ri-shield-star-line" /> Primary admin
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
-                      <td className="px-4 py-2.5 align-middle">{user.email ?? "—"}</td>
-                      <td className="px-4 py-2.5 align-middle">
+                      <td className="px-4 py-3 align-middle max-w-[220px]">
+                        <span className="block truncate text-defaulttextcolor/85 text-xs" title={user.email ?? ""}>{user.email ?? "—"}</span>
+                      </td>
+                      <td className="px-4 py-3 align-middle">
                         {roleIds.length === 0 ? (
-                          "—"
+                          <span className="text-xs text-defaulttextcolor/50 italic">—</span>
                         ) : (
                           <div className="flex flex-wrap gap-1">
                             {roleIds.map((id) => (
                               <span
                                 key={id}
-                                className="badge bg-primary/10 text-primary border border-primary/30 px-2 py-0.5 rounded-full text-xs font-medium"
+                                className="inline-flex items-center px-2 py-0.5 rounded-full text-[0.6875rem] font-medium bg-primary/10 text-primary ring-1 ring-primary/15"
                               >
                                 {rolesById.get(id)?.name ?? id}
                               </span>
@@ -627,124 +662,105 @@ export default function SettingsUsersPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 align-middle text-[0.8125rem] text-defaulttextcolor">
-                        {getPermissionSummaryFromRoles(user)}
+                      <td className="px-4 py-3 align-middle text-xs text-defaulttextcolor/80 max-w-[200px]">
+                        <span className="block truncate" title={getPermissionSummaryFromRoles(user)}>{getPermissionSummaryFromRoles(user)}</span>
                       </td>
-                      <td className="px-4 py-2.5 align-middle">
+                      <td className="px-4 py-3 align-middle">
                         <span
-                          className={`badge rounded-full text-[0.75rem] ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[0.6875rem] font-semibold ${
                             user.status === "active"
-                              ? "bg-success/10 text-success border border-success/30"
+                              ? "bg-success/10 text-success ring-1 ring-success/20"
                               : user.status === "disabled"
-                                ? "bg-warning/10 text-warning border border-warning/30"
-                                : "bg-default/10 text-default"
+                                ? "bg-warning/10 text-warning ring-1 ring-warning/20"
+                                : "bg-defaultborder/40 text-defaulttextcolor/70"
                           }`}
                         >
+                          {user.status === "active" && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
                           {user.status ?? "—"}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 align-middle text-[0.8125rem] text-defaulttextcolor">
+                      <td className="px-4 py-3 align-middle text-xs text-defaulttextcolor/80 whitespace-nowrap tabular-nums">
                         {formatDate(user.createdAt)}
                       </td>
-                      <td className="px-4 py-2.5 align-middle">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="hs-tooltip ti-main-tooltip">
-                            <button
-                              type="button"
-                              onClick={() => setViewUser(user)}
-                              className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                              aria-label={`View ${user.name ?? user.email}`}
-                            >
-                              <i className="ri-eye-line"></i>
-                              <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                View
-                              </span>
-                            </button>
-                          </div>
+                      <td className="px-4 py-3 align-middle text-end">
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setViewUser(user)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-success hover:bg-success/10 transition-colors"
+                            title="View"
+                            aria-label={`View ${user.name ?? user.email}`}
+                          >
+                            <i className="ri-eye-line text-[1rem]" />
+                          </button>
                           {isAdministrator &&
                             currentUser?.id !== user.id &&
                             user.status === "active" && (
-                              <div className="hs-tooltip ti-main-tooltip">
-                                <button
-                                  type="button"
-                                  onClick={() => handleImpersonate(user)}
-                                  disabled={authLoading || impersonatingUserId === user.id}
-                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                                  aria-label={`Login as ${user.name ?? user.email}`}
-                                >
-                                  <i className="ri-login-box-line"></i>
-                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                    Login as
-                                  </span>
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleImpersonate(user)}
+                                disabled={authLoading || impersonatingUserId === user.id}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-emerald-600 hover:bg-emerald-500/10 disabled:opacity-40 transition-colors"
+                                title="Login as"
+                                aria-label={`Login as ${user.name ?? user.email}`}
+                              >
+                                <i className="ri-login-box-line text-[1rem]" />
+                              </button>
                             )}
                           {isDesignatedSuperadmin &&
                             currentUser?.id !== user.id &&
                             user.status === "active" && (
-                              <div className="hs-tooltip ti-main-tooltip">
-                                <button
-                                  type="button"
-                                  onClick={() => handleSupportCameraInvite(user)}
-                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-warning"
-                                  aria-label={`Request live camera session with ${user.name ?? user.email}`}
-                                >
-                                  <i className="ri-vidicon-line"></i>
-                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                    Request camera session
-                                  </span>
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleSupportCameraInvite(user)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-warning hover:bg-warning/10 transition-colors"
+                                title="Request camera session"
+                                aria-label={`Request live camera session with ${user.name ?? user.email}`}
+                              >
+                                <i className="ri-vidicon-line text-[1rem]" />
+                              </button>
                             )}
                           {canHrmWebRtcFeed &&
                             currentUser?.id !== user.id &&
                             user.status === "active" && (
-                              <div className="hs-tooltip ti-main-tooltip">
-                                <button
-                                  type="button"
-                                  onClick={() => setFeedModalUser(user)}
-                                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-secondary"
-                                  aria-label={`HRM feed in for ${user.name ?? user.email}`}
-                                >
-                                  <i className="ri-live-line"></i>
-                                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                    Feed in (HRM agent)
-                                  </span>
-                                </button>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setFeedModalUser(user)}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-secondary hover:bg-secondary/10 transition-colors"
+                                title="Feed in (HRM agent)"
+                                aria-label={`HRM feed in for ${user.name ?? user.email}`}
+                              >
+                                <i className="ri-live-line text-[1rem]" />
+                              </button>
                             )}
-                          {!isPrimaryAdmin && (
+                          {!isPrimaryAdmin ? (
                             <>
                               {canEditUsers && (!isAgent || !userHasRestrictedRole(user)) && (
-                                <div className="hs-tooltip ti-main-tooltip">
-                                  <Link
-                                    href={ROUTES.settingsUsersEdit(user.id)}
-                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-info inline-flex items-center justify-center"
-                                    aria-label={`Edit ${user.name ?? user.email}`}
-                                  >
-                                    <i className="ri-pencil-line"></i>
-                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                      Edit User
-                                    </span>
-                                  </Link>
-                                </div>
+                                <Link
+                                  href={ROUTES.settingsUsersEdit(user.id)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
+                                  title="Edit"
+                                  aria-label={`Edit ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-pencil-line text-[1rem]" />
+                                </Link>
                               )}
                               {canDeleteUsers && (
-                                <div className="hs-tooltip ti-main-tooltip">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDelete(user)}
-                                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
-                                    aria-label={`Delete ${user.name ?? user.email}`}
-                                  >
-                                    <i className="ri-delete-bin-line"></i>
-                                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700" role="tooltip">
-                                      Delete User
-                                    </span>
-                                  </button>
-                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDelete(user)}
+                                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-danger hover:bg-danger/10 transition-colors"
+                                  title="Delete"
+                                  aria-label={`Delete ${user.name ?? user.email}`}
+                                >
+                                  <i className="ri-delete-bin-line text-[1rem]" />
+                                </button>
                               )}
                             </>
+                          ) : (
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-defaulttextcolor/30" title="Primary admin — system protected" aria-hidden>
+                              <i className="ri-lock-line text-[1rem]" />
+                            </span>
                           )}
                         </div>
                       </td>
@@ -756,33 +772,35 @@ export default function SettingsUsersPage() {
           </table>
         </div>
         {!loading && (users.length > 0 || hasActiveFilters) && (
-          <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-defaultborder">
-            <p className="text-[0.8125rem] text-defaulttextcolor/70 mb-0">
-              Showing {start} to {end} of {totalResults} entries
+          <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-defaultborder/50">
+            <p className="text-xs text-defaulttextcolor/70 mb-0 tabular-nums">
+              Showing <span className="font-semibold text-defaulttextcolor">{start}</span>–<span className="font-semibold text-defaulttextcolor">{end}</span> of <span className="font-semibold text-defaulttextcolor">{totalResults}</span>
             </p>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="ti-btn ti-btn-sm ti-btn-soft-primary"
+                className="inline-flex items-center gap-1 rounded-xl border border-defaultborder/80 px-3 py-2 text-xs font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none transition-colors"
               >
-                Prev
+                <i className="ri-arrow-left-s-line" /> Prev
               </button>
-              <span className="px-2 py-1 text-[0.8125rem]">
+              <span className="px-3 py-2 text-xs font-medium tabular-nums text-defaulttextcolor/80">
                 Page {page} of {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page >= totalPages}
-                className="ti-btn ti-btn-sm ti-btn-soft-primary"
+                className="inline-flex items-center gap-1 rounded-xl border border-defaultborder/80 px-3 py-2 text-xs font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none transition-colors"
               >
-                Next
+                Next <i className="ri-arrow-right-s-line" />
               </button>
             </div>
           </div>
         )}
+          </div>
+        </section>
       </div>
 
       {/* User details modal */}

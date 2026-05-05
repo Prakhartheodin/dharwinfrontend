@@ -1,7 +1,6 @@
 "use client";
 
 import React, { Fragment, useState, useCallback, useEffect, useRef } from "react";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import DynamicProjectForm, {
   type ProjectFormValues,
@@ -511,11 +510,6 @@ const Createproject = () => {
     <Fragment>
       <AiBootstrapProgressOverlay open={aiBootstrapLoading} />
       <Seo title="Create Project" />
-      <Pageheader
-        currentpage="Create Project"
-        activepage="Projects"
-        mainpage="Create Project"
-      />
       <div className="grid grid-cols-12 gap-6">
         <div className="xl:col-span-12 col-span-12">
           <div className="box custom-box">

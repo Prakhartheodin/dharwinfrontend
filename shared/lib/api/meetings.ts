@@ -130,6 +130,10 @@ export interface MeetingRecording {
   status: string;
   startedAt: string;
   completedAt: string | null;
+  /** Duration in milliseconds. Backend computes from completedAt - startedAt when stored value is null. */
+  durationMs?: number | null;
+  /** S3 file size in bytes (when known). */
+  bytes?: number | null;
   playbackUrl?: string | null;
   playbackError?: string;
 }

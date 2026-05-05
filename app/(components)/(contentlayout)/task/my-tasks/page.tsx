@@ -1,9 +1,8 @@
 "use client";
 
-import React, { Fragment, useState, useEffect, useCallback } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePmRefetchOnFocus, PM_DATA_MUTATED_EVENT } from "@/shared/hooks/usePmRefetchOnFocus";
 import Seo from "@/shared/layout-components/seo/seo";
-import dynamic from "next/dynamic";
 import Swal from "sweetalert2";
 import {
   listMyAssignedTasks,
@@ -19,52 +18,65 @@ import {
 import { getProjectById } from "@/shared/lib/api/projects";
 import { TaskCommentsSection } from "../TaskCommentsSection";
 
-const Select = dynamic(() => import("react-select"), { ssr: false });
+const PAGE_SIZE = 15;
 
-const STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
-  { value: "new", label: "NEW" },
-  { value: "todo", label: "TODO" },
-  { value: "on_going", label: "ON GOING" },
-  { value: "in_review", label: "IN REVIEW" },
-  { value: "completed", label: "COMPLETED" },
+const STATUS_OPTIONS: Array<{ value: TaskStatus; label: string }> = [
+  { value: "new", label: "New" },
+  { value: "todo", label: "Todo" },
+  { value: "on_going", label: "On going" },
+  { value: "in_review", label: "In review" },
+  { value: "completed", label: "Completed" },
+];
+
+const STATUS_FILTERS: Array<{ value: TaskStatus | ""; label: string }> = [
+  { value: "", label: "All" },
+  { value: "new", label: "New" },
+  { value: "todo", label: "Todo" },
+  { value: "on_going", label: "On going" },
+  { value: "in_review", label: "Review" },
+  { value: "completed", label: "Done" },
 ];
 
 const SORT_OPTIONS = [
   { value: "-createdAt", label: "Newest" },
   { value: "createdAt", label: "Oldest" },
-  { value: "title", label: "A - Z" },
-  { value: "-title", label: "Z - A" },
-  { value: "dueDate", label: "Due Date (earliest)" },
-  { value: "-dueDate", label: "Due Date (latest)" },
+  { value: "title", label: "A → Z" },
+  { value: "-title", label: "Z → A" },
+  { value: "dueDate", label: "Due (earliest)" },
+  { value: "-dueDate", label: "Due (latest)" },
 ];
 
-const PAGE_SIZE = 15;
+const STATUS_STRIP: Record<TaskStatus, string> = {
+  new: "bg-slate-400",
+  todo: "bg-primary",
+  on_going: "bg-warning",
+  in_review: "bg-info",
+  completed: "bg-success",
+};
 
-function statusBadgeClass(status: TaskStatus): string {
-  switch (status) {
-    case "completed":
-      return "bg-success/10 text-success";
-    case "in_review":
-      return "bg-info/10 text-info";
-    case "on_going":
-      return "bg-warning/10 text-warning";
-    case "todo":
-      return "bg-primary/10 text-primary";
-    case "new":
-      return "bg-secondary/10 text-secondary";
-    default:
-      return "bg-secondary/10 text-secondary";
-  }
-}
+const STATUS_TEXT: Record<TaskStatus, string> = {
+  new: "text-slate-500",
+  todo: "text-primary",
+  on_going: "text-warning",
+  in_review: "text-info",
+  completed: "text-success",
+};
 
-function dueDateBadgeClass(dueDate: string | undefined, status: TaskStatus): string {
+const STATUS_DOT: Record<TaskStatus, string> = {
+  new: "bg-slate-400",
+  todo: "bg-primary",
+  on_going: "bg-warning",
+  in_review: "bg-info",
+  completed: "bg-success",
+};
+
+function dueDatePillClass(dueDate: string | undefined, status: TaskStatus): string {
   if (status === "completed") return "bg-success/10 text-success";
-  if (!dueDate) return "bg-secondary/10 text-secondary";
+  if (!dueDate) return "bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400";
   const d = new Date(dueDate);
-  if (Number.isNaN(d.getTime())) return "bg-secondary/10 text-secondary";
+  if (Number.isNaN(d.getTime())) return "bg-slate-100 text-slate-500";
   const now = new Date();
-  const diffMs = d.getTime() - now.getTime();
-  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const diffDays = Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
   if (diffDays < 0) return "bg-danger/10 text-danger";
   if (diffDays === 0) return "bg-warning/10 text-warning";
   if (diffDays <= 3) return "bg-info/10 text-info";
@@ -74,45 +86,20 @@ function dueDateBadgeClass(dueDate: string | undefined, status: TaskStatus): str
 interface TaskCardProps {
   task: Task;
   onStatusChange: (taskId: string, status: TaskStatus) => Promise<void>;
-  /** Staggered list entrance (matches project cards). */
-  staggerIndex?: number;
-  /** Names for tasks whose API payload had a project id but no embedded name */
   extraProjectNames?: Record<string, string>;
-  /** Whether the optional batch project-name fetch has finished */
   extraProjectNamesStatus?: "idle" | "loading" | "done";
-}
-
-function TaskCardSkeletonTile() {
-  return (
-    <div className="xxl:col-span-4 xl:col-span-6 col-span-12">
-      <div className="box custom-box flex h-full min-h-[220px] flex-col overflow-hidden rounded-xl border border-defaultborder/70 shadow-sm dark:border-white/10">
-        <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-white px-3 py-3 dark:border-white/10 dark:from-white/[0.03] dark:to-transparent sm:px-4">
-          <div className="mb-2.5 h-4 max-w-[85%] rounded-md bg-defaultborder/50 motion-safe:animate-pulse motion-reduce:animate-none" />
-          <div className="mb-1.5 h-3 w-full rounded-md bg-defaultborder/40 motion-safe:animate-pulse motion-reduce:animate-none" />
-          <div className="h-3 w-2/3 rounded-md bg-defaultborder/35 motion-safe:animate-pulse motion-reduce:animate-none" />
-        </div>
-        <div className="flex flex-1 flex-col gap-2.5 px-3 py-2.5 sm:px-4">
-          <div className="h-9 w-full rounded-lg bg-defaultborder/40 motion-safe:animate-pulse motion-reduce:animate-none" />
-          <div className="mt-auto space-y-2">
-            <div className="h-3 w-20 rounded bg-defaultborder/40 motion-safe:animate-pulse motion-reduce:animate-none" />
-            <div className="h-16 w-full rounded-lg bg-defaultborder/30 motion-safe:animate-pulse motion-reduce:animate-none" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 }
 
 function TaskCard({
   task,
   onStatusChange,
-  staggerIndex = 0,
   extraProjectNames = {},
   extraProjectNamesStatus = "idle",
-}: TaskCardProps) {
+}: TaskCardProps): JSX.Element {
   const taskId = getTaskId(task);
   const [updating, setUpdating] = useState(false);
   const [localStatus, setLocalStatus] = useState<TaskStatus>(task.status);
+
   const projectMeta = getTaskProjectMeta(task);
   const needsProjectNameFetch = Boolean(projectMeta.projectId && !projectMeta.embeddedName);
   const resolvedProjectName =
@@ -127,128 +114,147 @@ function TaskCard({
     setLocalStatus(task.status);
   }, [task.status]);
 
-  const handleStatusChange = async (opt: { value: TaskStatus; label: string } | null) => {
-    if (!opt || opt.value === localStatus) return;
+  const handleStatusChange = async (next: TaskStatus): Promise<void> => {
+    if (next === localStatus) return;
     setUpdating(true);
+    const prev = localStatus;
+    setLocalStatus(next);
     try {
-      await onStatusChange(taskId, opt.value);
-      setLocalStatus(opt.value);
+      await onStatusChange(taskId, next);
     } catch {
+      setLocalStatus(prev);
       Swal.fire("Error", "Failed to update task status.", "error");
     } finally {
       setUpdating(false);
     }
   };
 
-  const currentStatusOption = STATUS_OPTIONS.find((o) => o.value === localStatus) ?? STATUS_OPTIONS[0];
   const dueDateDisplay = formatDueDate(task.dueDate, task.status);
   const createdDisplay =
     formatCreatedDate(task.createdAt) || formatCreatedDate(task.updatedAt) || "—";
+  const stripCls = STATUS_STRIP[localStatus] ?? "bg-slate-400";
+  const statusTextCls = STATUS_TEXT[localStatus] ?? "text-slate-500";
+  const statusDotCls = STATUS_DOT[localStatus] ?? "bg-slate-400";
 
   return (
     <div
-      className="box custom-box group flex h-full flex-col overflow-hidden rounded-xl border border-defaultborder/70 shadow-sm transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] hover:-translate-y-0.5 hover:border-primary/20 hover:shadow-md dark:border-white/10 motion-safe:animate-pm-panel-in motion-reduce:animate-none motion-reduce:transition-none motion-reduce:hover:translate-y-0"
-      style={{ animationDelay: `${Math.min(staggerIndex, 24) * 48}ms` }}
+      className={
+        "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg dark:border-white/10 dark:bg-bgdark2 dark:hover:border-white/20 " +
+        (updating ? "opacity-70" : "")
+      }
     >
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2.5 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/30 px-3 py-3 sm:gap-3 sm:px-4 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-        <div className="min-w-0">
-          <p className="mb-0.5 text-[0.9375rem] font-semibold leading-snug text-defaulttextcolor">{task.title}</p>
-          {task.description ? (
-            <p className="mb-1.5 line-clamp-2 text-[0.8125rem] leading-snug text-muted dark:text-white/50">{task.description}</p>
-          ) : null}
-          <div className="mt-0.5 flex min-w-0 items-start gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-primary/10">
-              <i className="ri-folder-line text-base text-primary" aria-hidden />
+      <span className={`absolute left-0 top-0 h-full w-[3px] ${stripCls}`} aria-hidden />
+
+      <div className="px-5 pl-6 pt-5">
+        <div className="flex items-center gap-2">
+          <span className="relative inline-flex h-1.5 w-1.5">
+            {localStatus === "on_going" && (
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warning opacity-75" />
+            )}
+            <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${statusDotCls}`} />
+          </span>
+          <p className={`font-mono text-[10px] font-semibold uppercase tracking-wider ${statusTextCls}`}>
+            {TASK_STATUS_LABELS[localStatus] ?? localStatus}
+          </p>
+          {dueDateDisplay && (
+            <span
+              className={`ms-auto inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${dueDatePillClass(task.dueDate, localStatus)}`}
+            >
+              {dueDateDisplay}
             </span>
-            {resolvedProjectName ? (
+          )}
+        </div>
+
+        <h3 className="mt-2 text-base font-semibold leading-snug tracking-tight text-slate-900 dark:text-white">
+          {task.title}
+        </h3>
+
+        {task.description && (
+          <p className="mt-1.5 line-clamp-2 text-sm text-slate-600 dark:text-slate-300">
+            {task.description}
+          </p>
+        )}
+
+        <div className="mt-3 flex items-center gap-2 text-xs">
+          <i className="ri-folder-line shrink-0 text-slate-400" aria-hidden />
+          {resolvedProjectName ? (
+            <span className="truncate font-medium text-slate-700 dark:text-slate-200" title={resolvedProjectName}>
+              {resolvedProjectName}
+            </span>
+          ) : projectLineLoading ? (
+            <span className="animate-pulse text-slate-400">Loading project…</span>
+          ) : projectLineUnavailable ? (
+            <span
+              className="text-slate-400"
+              title="Project may have been removed or you may no longer have access."
+            >
+              Project unavailable
+            </span>
+          ) : (
+            <span className="text-slate-400" title="Link this task to a project when editing it.">
+              Not linked to a project
+            </span>
+          )}
+        </div>
+
+        {task.tags && task.tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {task.tags.slice(0, 3).map((tag, i) => (
               <span
-                className="min-w-0 truncate pt-0.5 text-[0.75rem] font-medium leading-snug text-defaulttextcolor/85 dark:text-white/65"
-                title={resolvedProjectName}
+                key={i}
+                title={tag}
+                className="inline-flex max-w-[8rem] truncate rounded-full border border-slate-200 px-2 py-0.5 text-[10px] text-slate-600 dark:border-white/10 dark:text-slate-300"
               >
-                {resolvedProjectName}
+                {tag}
               </span>
-            ) : projectLineLoading ? (
-              <span className="min-w-0 pt-0.5 text-[0.75rem] leading-snug text-muted motion-safe:animate-pulse motion-reduce:animate-none dark:text-white/45">
-                Loading project…
-              </span>
-            ) : projectLineUnavailable ? (
-              <span
-                className="min-w-0 pt-0.5 text-[0.75rem] leading-snug text-muted dark:text-white/45"
-                title="The project may have been removed or you may no longer have access."
-              >
-                Project unavailable
-              </span>
-            ) : (
-              <span
-                className="min-w-0 pt-0.5 text-[0.75rem] leading-snug text-muted dark:text-white/45"
-                title="Link this task to a project when editing it so others can find it in context."
-              >
-                Not linked to a project
+            ))}
+            {task.tags.length > 3 && (
+              <span className="inline-flex rounded-full bg-slate-900 px-2 py-0.5 text-[10px] font-semibold text-white dark:bg-white dark:text-slate-900">
+                +{task.tags.length - 3}
               </span>
             )}
           </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
-          {dueDateDisplay ? (
-            <span className={`badge shrink-0 ${dueDateBadgeClass(task.dueDate, task.status)}`}>{dueDateDisplay}</span>
-          ) : null}
-          {task.tags && task.tags.length > 0 ? (
-            <div className="flex max-w-[10rem] flex-wrap justify-end gap-1">
-              {task.tags.slice(0, 2).map((tag, i) => (
-                <span
-                  key={i}
-                  className="inline-flex max-w-full truncate rounded-md border border-defaultborder/60 bg-defaultbackground/80 px-1.5 py-0.5 text-[0.625rem] font-medium text-defaulttextcolor/80 dark:border-white/10 dark:bg-white/[0.06] dark:text-white/70"
-                  title={tag}
-                >
-                  {tag}
-                </span>
-              ))}
-              {task.tags.length > 2 ? (
-                <span className="inline-flex rounded-md border border-defaultborder/60 bg-defaultbackground/80 px-1.5 py-0.5 text-[0.625rem] font-medium text-muted dark:border-white/10">
-                  +{task.tags.length - 2}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-        </div>
+        )}
       </div>
 
-      <div className="flex flex-col gap-2 border-b border-defaultborder/50 bg-[rgb(var(--default-background))]/30 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-4 dark:border-white/10 dark:bg-white/[0.02]">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide text-muted dark:text-white/45">
+      <div className="mt-4 grid grid-cols-1 gap-px border-t border-slate-100 bg-slate-100 sm:grid-cols-[minmax(0,1fr)_auto] dark:border-white/10 dark:bg-white/10">
+        <div className="flex items-center gap-2 bg-white px-5 py-2.5 pl-6 dark:bg-bgdark2">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Status
           </span>
-          <Select
-            options={STATUS_OPTIONS}
-            value={currentStatusOption}
-            onChange={handleStatusChange}
-            isDisabled={updating}
-            className="min-w-0 !min-w-[8.5rem] flex-1 sm:!max-w-[11rem]"
-            classNamePrefix="Select2"
-            placeholder="Change status"
-            menuPlacement="auto"
-            menuPosition="fixed"
-            menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-            styles={{
-              menuPortal: (base) => ({ ...base, zIndex: 13050 }),
-              control: (base) => ({ ...base, minHeight: 40 }),
-            }}
-          />
+          <select
+            value={localStatus}
+            disabled={updating}
+            onChange={(e) => void handleStatusChange(e.target.value as TaskStatus)}
+            aria-label="Change task status"
+            className="h-8 flex-1 min-w-0 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          {updating && <i className="ri-loader-4-line animate-spin text-slate-400" />}
         </div>
-        <div className="flex shrink-0 flex-col gap-0.5 border-t border-defaultborder/40 pt-2 text-end sm:ml-auto sm:border-t-0 sm:pt-0 dark:border-white/10">
-          <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-muted dark:text-white/45">Created</span>
-          <span className="text-[0.8125rem] font-semibold tabular-nums text-defaulttextcolor">{createdDisplay}</span>
+        <div className="bg-white px-5 py-2.5 sm:text-end dark:bg-bgdark2">
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Created
+          </p>
+          <p className="mt-0.5 font-mono text-xs font-semibold text-slate-700 tabular-nums dark:text-slate-200">
+            {createdDisplay}
+          </p>
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col px-3 pb-3 pt-2 sm:px-4 sm:pb-3.5 sm:pt-2.5">
+      <div className="flex flex-1 flex-col px-5 pb-4 pl-6 pt-4">
         <TaskCommentsSection taskId={taskId} initialComments={task.comments} onCommentAdded={undefined} />
       </div>
     </div>
   );
 }
 
-export default function MyTasksPage() {
+export default function MyTasksPage(): JSX.Element {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState("-createdAt");
@@ -278,14 +284,14 @@ export default function MyTasksPage() {
         setLoading(false);
       }
     },
-    [sortBy, page, statusFilter]
+    [sortBy, page]
   );
 
   useEffect(() => {
     fetchTasks({ page, sortBy, status: statusFilter });
-  }, [sortBy, page, statusFilter]);
+  }, [sortBy, page, statusFilter, fetchTasks]);
 
-  /** Resolve project titles when the list returns a project id without an embedded name (common with older tasks). */
+  /** Resolve missing project names when tasks reference a project id without an embedded name. */
   useEffect(() => {
     if (loading) return;
     const ids = new Set<string>();
@@ -333,7 +339,7 @@ export default function MyTasksPage() {
   usePmRefetchOnFocus(refetchVisible);
 
   useEffect(() => {
-    const onPmMutate = () => {
+    const onPmMutate = (): void => {
       refetchVisible();
     };
     window.addEventListener(PM_DATA_MUTATED_EVENT, onPmMutate);
@@ -349,150 +355,320 @@ export default function MyTasksPage() {
     [fetchTasks, page, sortBy, statusFilter]
   );
 
-  const handleSortChange = (opt: { value: string; label: string } | null) => {
-    if (opt) {
-      setSortBy(opt.value);
-      setPage(1);
+  const summary = useMemo(() => {
+    const c = { open: 0, active: 0, review: 0, done: 0 };
+    for (const t of tasks) {
+      switch (t.status) {
+        case "new":
+        case "todo":
+          c.open += 1;
+          break;
+        case "on_going":
+          c.active += 1;
+          break;
+        case "in_review":
+          c.review += 1;
+          break;
+        case "completed":
+          c.done += 1;
+          break;
+      }
     }
-  };
-
-  const handleStatusFilterChange = (opt: { value: TaskStatus | ""; label: string } | null) => {
-    if (opt !== null) {
-      setStatusFilter(opt.value);
-      setPage(1);
-    }
-  };
-
-  const currentSortOption = SORT_OPTIONS.find((o) => o.value === sortBy) ?? SORT_OPTIONS[0];
-  const statusFilterOptions = [
-    { value: "", label: "All Statuses" },
-    ...STATUS_OPTIONS,
-  ];
-  const currentStatusFilterOption = statusFilterOptions.find((o) => o.value === statusFilter) ?? statusFilterOptions[0];
+    return c;
+  }, [tasks]);
 
   return (
     <Fragment>
       <Seo title="My Tasks" />
-      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
-        <div className="col-span-12 space-y-6">
-          <div className="box custom-box rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
-                  Tasks assigned to you. You can update the status of each task.
-                </p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Select
-                    name="status-filter"
-                    options={statusFilterOptions}
-                    className="!w-40 min-w-[10rem]"
-                    menuPlacement="auto"
-                    menuPosition="fixed"
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 13050 }) }}
-                    classNamePrefix="Select2"
-                    placeholder="Filter by status"
-                    value={currentStatusFilterOption}
-                    onChange={(opt) => handleStatusFilterChange(opt as { value: TaskStatus | ""; label: string } | null)}
-                  />
-                  <Select
-                    name="sort"
-                    options={SORT_OPTIONS}
-                    className="!w-48 min-w-[12rem]"
-                    menuPlacement="auto"
-                    menuPosition="fixed"
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 13050 }) }}
-                    classNamePrefix="Select2"
-                    placeholder="Sort By"
-                    value={currentSortOption}
-                    onChange={(opt) => handleSortChange(opt as { value: string; label: string } | null)}
-                  />
-                </div>
-              </div>
-            </div>
+      <div className="relative px-4 py-5 md:px-8 md:py-6 max-w-[1600px] mx-auto">
+
+        {/* HEADER — minimal inline bar */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+              My tasks
+            </span>
+            <span className="hidden h-3 w-px bg-slate-300 sm:inline-block dark:bg-white/15" />
+            <Stat label="Shown" value={tasks.length} />
+            <Stat label="Open" value={summary.open} tone="primary" />
+            <Stat label="Active" value={summary.active} tone="warning" />
+            <Stat label="Review" value={summary.review} tone="info" />
+            <Stat label="Done" value={summary.done} tone="success" />
           </div>
-
-          {loading ? (
-            <div
-              className="grid grid-cols-12 gap-6"
-              role="status"
-              aria-busy="true"
-              aria-label="Loading tasks"
+          <div className="flex flex-wrap items-center gap-2">
+            <Dropdown
+              value={sortBy}
+              options={SORT_OPTIONS}
+              onChange={(v) => {
+                setSortBy(v);
+                setPage(1);
+              }}
+              ariaLabel="Sort tasks"
+            />
+            <button
+              type="button"
+              onClick={() => refetchVisible()}
+              disabled={loading}
+              aria-label="Refresh"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
             >
-              {Array.from({ length: 6 }, (_, i) => (
-                <TaskCardSkeletonTile key={i} />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-12 gap-6">
-              {tasks.map((task, i) => (
-                <div key={getTaskId(task)} className="xxl:col-span-4 xl:col-span-6 col-span-12">
-                  <TaskCard
-                    staggerIndex={i}
-                    task={task}
-                    onStatusChange={handleStatusChange}
-                    extraProjectNames={extraProjectNames}
-                    extraProjectNamesStatus={extraProjectNamesStatus}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+              <i className={`ri-refresh-line ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
 
-          {!loading && tasks.length === 0 && (
-            <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-dashed border-defaultborder/80 bg-gradient-to-br from-slate-50/80 via-white to-primary/[0.03] px-6 py-12 text-center shadow-sm dark:border-white/15 dark:from-white/[0.03] dark:via-transparent dark:to-primary/[0.04]">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
-                <i className="ri-task-line text-2xl text-primary" aria-hidden />
-              </div>
-              <p className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor">You&apos;re all caught up</p>
-              <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
-                No tasks are assigned to you right now. New work will show up here automatically.
-              </p>
-            </div>
-          )}
-
-          {totalPages > 1 && (
-        <div className="flex justify-end">
-        <nav aria-label="Page navigation">
-          <ul className="ti-pagination ltr:float-right rtl:float-left mb-0">
-            <li className={`page-item ${page <= 1 ? "disabled" : ""}`}>
+        {/* FILTER CHIPS */}
+        <div className="mb-6 flex flex-wrap items-center gap-1.5">
+          {STATUS_FILTERS.map((f) => {
+            const active = statusFilter === f.value;
+            return (
               <button
+                key={f.label}
                 type="button"
-                className="page-link px-3 py-[0.375rem]"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
+                onClick={() => {
+                  setPage(1);
+                  setStatusFilter(f.value);
+                }}
+                className={
+                  "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition " +
+                  (active
+                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+                }
               >
-                Previous
+                {f.label}
               </button>
-            </li>
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-              <li key={p} className={`page-item ${p === page ? "active" : ""}`}>
-                <button
-                  type="button"
-                  className="page-link px-3 py-[0.375rem]"
-                  onClick={() => setPage(p)}
-                >
-                  {p}
-                </button>
-              </li>
+            );
+          })}
+        </div>
+
+        {/* GRID */}
+        {loading && tasks.length === 0 ? (
+          <div
+            className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3"
+            role="status"
+            aria-busy="true"
+            aria-label="Loading tasks"
+          >
+            {Array.from({ length: 6 }).map((_, i) => (
+              <SkeletonCard key={i} />
             ))}
-            <li className={`page-item ${page >= totalPages ? "disabled" : ""}`}>
-              <button
-                type="button"
-                className="page-link px-3 py-[0.375rem]"
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-              >
-                Next
-              </button>
-            </li>
-          </ul>
-        </nav>
-        </div>
-          )}
-        </div>
+          </div>
+        ) : tasks.length === 0 ? (
+          <EmptyState />
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            {tasks.map((task) => (
+              <TaskCard
+                key={getTaskId(task)}
+                task={task}
+                onStatusChange={handleStatusChange}
+                extraProjectNames={extraProjectNames}
+                extraProjectNamesStatus={extraProjectNamesStatus}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* PAGINATION */}
+        {totalPages > 1 && (
+          <nav aria-label="Page navigation" className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ← Prev
+            </button>
+            <div className="hidden flex-wrap items-center gap-1 sm:flex">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((n) => n === 1 || n === totalPages || Math.abs(n - page) <= 2)
+                .reduce<Array<number | "…">>((acc, n, idx, arr) => {
+                  const prev = arr[idx - 1];
+                  if (typeof prev === "number" && n - prev > 1) acc.push("…");
+                  acc.push(n);
+                  return acc;
+                }, [])
+                .map((n, i) =>
+                  n === "…" ? (
+                    <span key={`dots-${i}`} className="px-2 text-xs text-slate-400">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setPage(n)}
+                      className={
+                        "min-w-[2rem] rounded-full px-2.5 py-1 font-mono text-xs tabular-nums transition " +
+                        (n === page
+                          ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/5")
+                      }
+                    >
+                      {String(n).padStart(2, "0")}
+                    </button>
+                  )
+                )}
+            </div>
+            <span className="font-mono text-xs text-slate-500 tabular-nums sm:hidden dark:text-slate-400">
+              {String(page).padStart(2, "0")} / {String(totalPages).padStart(2, "0")}
+            </span>
+            <button
+              type="button"
+              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+            >
+              Next →
+            </button>
+          </nav>
+        )}
       </div>
     </Fragment>
+  );
+}
+
+/* ============================================================
+   subcomponents — mirror project pages
+============================================================ */
+
+type StatTone = "slate" | "primary" | "info" | "warning" | "success";
+
+const STAT_VALUE: Record<StatTone, string> = {
+  slate: "text-slate-900 dark:text-white",
+  primary: "text-primary",
+  info: "text-info",
+  warning: "text-warning",
+  success: "text-success",
+};
+
+interface DropdownOption {
+  value: string;
+  label: string;
+}
+
+function Dropdown(props: {
+  value: string;
+  options: DropdownOption[];
+  onChange: (value: string) => void;
+  ariaLabel?: string;
+}): JSX.Element {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  const current = props.options.find((o) => o.value === props.value) ?? props.options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent): void {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent): void {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label={props.ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:hover:border-white/30"
+      >
+        <span>{current?.label ?? "Select"}</span>
+        <i className={`ri-arrow-down-s-line text-sm transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          className="absolute right-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-bgdark2"
+        >
+          {props.options.map((o) => {
+            const active = o.value === props.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  props.onChange(o.value);
+                  setOpen(false);
+                }}
+                className={
+                  "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition " +
+                  (active
+                    ? "bg-slate-100 font-semibold text-slate-900 dark:bg-white/10 dark:text-white"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5")
+                }
+              >
+                <span>{o.label}</span>
+                {active && <i className="ri-check-line text-primary" />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Stat(props: { label: string; value: number; tone?: StatTone }): JSX.Element {
+  const tone = props.tone ?? "slate";
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
+        {props.label}
+      </span>
+      <span className={`font-mono text-sm font-semibold tabular-nums ${STAT_VALUE[tone]}`}>
+        {props.value.toString().padStart(2, "0")}
+      </span>
+    </span>
+  );
+}
+
+function SkeletonCard(): JSX.Element {
+  return (
+    <div className="relative flex h-[280px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-bgdark2">
+      <span className="absolute left-0 top-0 h-full w-[3px] bg-slate-200 dark:bg-white/10" />
+      <div className="flex-1 animate-pulse space-y-3 p-5">
+        <div className="h-2 w-16 rounded bg-slate-200 dark:bg-white/10" />
+        <div className="h-5 w-3/4 rounded bg-slate-200 dark:bg-white/10" />
+        <div className="h-3 w-full rounded bg-slate-100 dark:bg-white/5" />
+        <div className="h-3 w-5/6 rounded bg-slate-100 dark:bg-white/5" />
+        <div className="h-3 w-1/2 rounded bg-slate-200 dark:bg-white/10" />
+      </div>
+      <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100 dark:border-white/10 dark:bg-white/10">
+        <div className="h-12 bg-white dark:bg-bgdark2" />
+        <div className="h-12 bg-white dark:bg-bgdark2" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState(): JSX.Element {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center dark:border-white/15 dark:bg-bgdark2 sm:p-12">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
+        <i className="ri-task-line text-2xl text-slate-400" />
+      </div>
+      <p className="mt-4 text-base font-semibold text-slate-800 dark:text-slate-100">
+        You&apos;re all caught up
+      </p>
+      <p className="mx-auto mt-1.5 max-w-md text-sm text-slate-500 dark:text-slate-400">
+        No tasks assigned to you right now. New work shows up here automatically.
+      </p>
+    </div>
   );
 }

@@ -52,6 +52,8 @@ import {
   ATTENDANCE_PERMISSION_PREFIX,
   hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
+import { hasSalesAgentRole } from "@/shared/lib/roles";
+import SalesAgentDashboard from "./_components/SalesAgentDashboard";
 import type { ApexOptions } from "apexcharts";
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
 
@@ -318,7 +320,15 @@ const NOTIF_ICONS: Record<string, { icon: string; color: string }> = {
 export default function DashboardPage() {
   const searchParams = useSearchParams();
   const unauthorized = searchParams.get("unauthorized") === "1";
-  const { user, permissions, permissionsLoaded, isAdministrator } = useAuth();
+  const { user, permissions, permissionsLoaded, isAdministrator, isPlatformSuperUser, roleNames } = useAuth();
+
+  /* Sales agents get a stripped-down dashboard focused on referrals only.
+     Gate excludes admins / platform super users so they keep the full org view. */
+  const isSalesAgentOnly =
+    permissionsLoaded &&
+    !isAdministrator &&
+    !isPlatformSuperUser &&
+    hasSalesAgentRole(roleNames);
 
   /* ---- State ---- */
   const [atsData, setAtsData] = useState<AtsAnalyticsResponse | null>(null);
@@ -379,9 +389,28 @@ export default function DashboardPage() {
     (hasPermissionForPath(permissions ?? [], "ats.jobs:") || hasPermissionForPath(permissions ?? [], "ats.analytics:"));
   const hasAtsCandidatesAccess =
     permissionsLoaded && hasPermissionForPath(permissions ?? [], "ats.candidates:");
+  /* Roles without these permissions otherwise get 403 spam from the dashboard
+     panels they will never see. The dashboard projects panel hits
+     `/v1/projects` (no `mine=true`), which the backend gates with
+     `project.projects:`; `project.my-projects:` only grants `?mine=true`
+     access, so it does not satisfy this call. */
+  const hasProjectsAccess =
+    permissionsLoaded && hasPermissionForPath(permissions ?? [], "project.projects:");
+  const hasMeetingsAccess =
+    permissionsLoaded && hasPermissionForPath(permissions ?? [], "communication.meetings:");
+  const hasTrainingAnalyticsAccess =
+    permissionsLoaded && hasPermissionForPath(permissions ?? [], "training.analytics:");
 
   /* ---- Data fetching ---- */
   const fetchDashboard = useCallback(async () => {
+    /* Wait for permissions to resolve before firing any role-gated fetches.
+       Without this, the first render fires unconditional calls (projects,
+       meetings, training analytics, tasks) before permissionsLoaded flips true,
+       triggering 403s for non-admin roles like sales_agent. */
+    if (!permissionsLoaded || isSalesAgentOnly) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
 
@@ -399,7 +428,9 @@ export default function DashboardPage() {
       studentRes,
     ] = await Promise.allSettled([
       hasAtsJobsAccess ? getAtsAnalytics() : Promise.resolve(null as AtsAnalyticsResponse | null),
-      getTrainingAnalytics(),
+      hasTrainingAnalyticsAccess
+        ? getTrainingAnalytics()
+        : Promise.resolve(null as TrainingAnalyticsResponse | null),
       hasAtsCandidatesAccess ? listCandidates({ limit: 5 }) : Promise.resolve({ results: [] as CandidateListItem[] }),
       listTasks({ assignedToMe: true, limit: 50 }),
       hasAtsJobsAccess ? listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }) : Promise.resolve({ results: [] as Job[] }),
@@ -415,8 +446,12 @@ export default function DashboardPage() {
             totalPages: 0,
             totalResults: 0,
           }),
-      listProjects({ limit: 100 }),
-      listMeetings({ limit: 5, sortBy: "scheduledAt:asc", status: "scheduled" }),
+      hasProjectsAccess
+        ? listProjects({ limit: 100 })
+        : Promise.resolve({ results: [] as Project[] }),
+      hasMeetingsAccess
+        ? listMeetings({ limit: 5, sortBy: "scheduledAt:asc", status: "scheduled" })
+        : Promise.resolve({ results: [] as Meeting[] }),
       getNotifications({ limit: 5 }),
       getUnreadCount(),
       getMyStudentForAttendance(),
@@ -496,7 +531,15 @@ export default function DashboardPage() {
     }
 
     setLoading(false);
-  }, [hasAtsJobsAccess, hasAtsCandidatesAccess]);
+  }, [
+    hasAtsJobsAccess,
+    hasAtsCandidatesAccess,
+    hasProjectsAccess,
+    hasMeetingsAccess,
+    hasTrainingAnalyticsAccess,
+    isSalesAgentOnly,
+    permissionsLoaded,
+  ]);
 
   useEffect(() => {
     fetchDashboard();
@@ -567,7 +610,7 @@ export default function DashboardPage() {
 
   /* Refetch Recent Jobs when user returns to the tab (only if user has ATS access) */
   useEffect(() => {
-    if (!hasAtsJobsAccess) return;
+    if (!hasAtsJobsAccess || isSalesAgentOnly) return;
     const onFocus = async () => {
       try {
         const [jobsRes, applicationsRes] = await Promise.allSettled([
@@ -604,7 +647,7 @@ export default function DashboardPage() {
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [hasAtsJobsAccess]);
+  }, [hasAtsJobsAccess, isSalesAgentOnly]);
 
   /* ---- Punch in/out handler ---- */
   const handlePunch = async () => {
@@ -668,6 +711,11 @@ export default function DashboardPage() {
   /* ================================================================ */
   /*  RENDER                                                           */
   /* ================================================================ */
+
+  if (isSalesAgentOnly) {
+    return <SalesAgentDashboard />;
+  }
+
   return (
     <Fragment>
       <Seo title="Dashboard" />
@@ -962,8 +1010,8 @@ export default function DashboardPage() {
                                     {t.assignedTo && t.assignedTo.length > 0 && (
                                       <span className="block mt-1">
                                         <span className="avatar-list-stacked">
-                                          {t.assignedTo.slice(0, 3).map((u) => (
-                                            <span key={u._id ?? u.id ?? u.email} className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
+                                          {t.assignedTo.slice(0, 3).map((u, idx) => (
+                                            <span key={`${u._id ?? u.id ?? u.email ?? "u"}-${idx}`} className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
                                               {getInitial(u.name ?? u.email)}
                                             </span>
                                           ))}
@@ -1015,8 +1063,8 @@ export default function DashboardPage() {
                                 )}
                                 {t.assignedTo && t.assignedTo.length > 0 && (
                                   <div className="avatar-list-stacked">
-                                    {t.assignedTo.slice(0, 3).map((u) => (
-                                      <span key={u._id ?? u.id ?? u.email} className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
+                                    {t.assignedTo.slice(0, 3).map((u, idx) => (
+                                      <span key={`${u._id ?? u.id ?? u.email ?? "u"}-${idx}`} className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
                                         {getInitial(u.name ?? u.email)}
                                       </span>
                                     ))}
@@ -1097,8 +1145,8 @@ export default function DashboardPage() {
                                 className="flex-grow min-w-0 text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90"
                                 onClick={() => setSelectedJobDetail(job)}
                               >
-                                <span className="block font-semibold truncate">{job.title ?? "—"}</span>
-                                <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem]">
+                                <span className="block font-semibold truncate" title={job.title ?? ""}>{job.title ?? "—"}</span>
+                                <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate" title={`${job.organisation?.name ?? "—"} • ${count} applicant${count !== 1 ? "s" : ""}`}>
                                   {job.organisation?.name ?? "—"} &bull; {count} applicant{count !== 1 ? "s" : ""}
                                 </span>
                                 {job.status && (

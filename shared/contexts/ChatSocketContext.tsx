@@ -71,6 +71,10 @@ interface ChatSocketContextValue {
   onCallStart: (callback: (data: CallStartData) => void) => () => void;
   onCallDeclined: (callback: (data: { callId: string; conversationId: string }) => void) => () => void;
   onCallCancelled: (callback: (data: { callId: string; conversationId: string }) => void) => () => void;
+  /** Bolna telephony delta — admin dashboard + scoped subscribers receive these. */
+  onCallUpdate: (callback: (data: CallUpdateData) => void) => () => void;
+  emitSubscribeCall: (scope: "candidate" | "job", id: string) => void;
+  emitUnsubscribeCall: (scope: "candidate" | "job", id: string) => void;
   emitCallInitiate: (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => void;
   emitCallAccept: (callId: string, cb?: (res: { success?: boolean; error?: string }) => void) => void;
   emitCallDecline: (callId: string) => void;
@@ -113,6 +117,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const callStartListeners = useRef<Set<(data: CallStartData) => void>>(new Set());
   const callDeclinedListeners = useRef<Set<(data: { callId: string; conversationId: string }) => void>>(new Set());
   const callCancelledListeners = useRef<Set<(data: { callId: string; conversationId: string }) => void>>(new Set());
+  const callUpdateListeners = useRef<Set<(data: CallUpdateData) => void>>(new Set());
   const pendingAcceptCallIdRef = useRef<string | null>(null);
   const pendingInitiateCallIdRef = useRef<string | null>(null);
 
@@ -183,6 +188,25 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     callCancelledListeners.current.add(cb);
     return () => { callCancelledListeners.current.delete(cb); };
   }, []);
+
+  const onCallUpdate = useCallback((cb: (data: CallUpdateData) => void) => {
+    callUpdateListeners.current.add(cb);
+    return () => { callUpdateListeners.current.delete(cb); };
+  }, []);
+
+  const emitSubscribeCall = useCallback(
+    (scope: "candidate" | "job", id: string) => {
+      socket?.emit("subscribe:call", { scope, id });
+    },
+    [socket]
+  );
+
+  const emitUnsubscribeCall = useCallback(
+    (scope: "candidate" | "job", id: string) => {
+      socket?.emit("unsubscribe:call", { scope, id });
+    },
+    [socket]
+  );
 
   const emitCallInitiate = useCallback(
     (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => {
@@ -408,6 +432,11 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           }
         });
 
+        // Bolna telephony — admin dashboard + scoped subscribers see deltas live.
+        sock.on("call:update", (data: CallUpdateData) => {
+          callUpdateListeners.current.forEach((cb) => cb(data));
+        });
+
         sock.on("message_deleted", (data: { conversationId: string; messageId: string; deleteFor?: string }) => {
           messageDeletedListeners.current.forEach((cb) => cb(data));
         });
@@ -482,6 +511,9 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     onCallStart,
     onCallDeclined,
     onCallCancelled,
+    onCallUpdate,
+    emitSubscribeCall,
+    emitUnsubscribeCall,
     emitCallInitiate,
     emitCallAccept,
     emitCallDecline,

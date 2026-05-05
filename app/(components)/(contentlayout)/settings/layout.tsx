@@ -213,7 +213,7 @@ export default function SettingsLayout({
       | "bolna-voice-agent"
       | "company-email"
   ) =>
-    `m-1 block w-full py-2 px-3 flex-grow text-[0.75rem] font-medium rounded-md hover:text-primary ${
+    `m-1 inline-flex shrink-0 items-center py-2 px-3 text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
         ? "bg-primary/10 text-primary"
         : "text-defaulttextcolor dark:text-defaulttextcolor/70"
@@ -255,10 +255,10 @@ export default function SettingsLayout({
       <div className="grid grid-cols-12 gap-6 mb-[3rem]">
         <div className="xl:col-span-12 col-span-12">
           <div className="box">
-            <div className="box-header sm:flex block !justify-start">
+            <div className="box-header !flex !justify-start overflow-x-auto max-w-full">
               <nav
                 aria-label="Settings tabs"
-                className="md:flex block !justify-start whitespace-nowrap"
+                className="flex !justify-start whitespace-nowrap gap-x-1"
                 role="tablist"
               >
                 {showRolesTab && (

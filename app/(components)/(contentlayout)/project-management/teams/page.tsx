@@ -1472,75 +1472,56 @@ const TeamsPage = () => {
     <>
       <Seo title="Teams — Rosters" />
 
-      <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
-        <div className="col-span-12 xl:col-span-12">
-          <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="newproject flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary-full !mb-0 shadow-sm transition-transform duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
-                    onClick={() => openCreateForm()}
-                  >
-                    <i className="ri-add-line me-1 align-middle font-semibold" />
-                    New member
-                  </button>
-                  <p className="max-w-xl text-[0.75rem] leading-snug text-muted dark:text-white/55">
-                    Select a team under{" "}
-                    <strong className="text-defaulttextcolor dark:text-white/75">All teams</strong> to switch squads.
-                    Search filters the roster below.
-                  </p>
-                </div>
-                <div
-                  className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch lg:max-w-xl"
-                  role="search"
-                >
-                  <div className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/15 dark:bg-black/20">
-                    <span
-                      className="flex items-center border-e border-defaultborder/60 bg-defaultbackground/40 px-3 text-muted dark:border-white/10 dark:bg-white/[0.03]"
-                      aria-hidden
-                    >
-                      <i className="ri-search-line text-base" />
-                    </span>
-                    <input
-                      className="form-control !rounded-none border-0 shadow-none focus:ring-0"
-                      type="search"
-                      placeholder="Search by name or role"
-                      aria-label="Search roster"
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary !mb-0 shrink-0 sm:px-5"
-                    onClick={handleSearch}
-                  >
-                    Search
-                  </button>
-                </div>
-              </div>
-              {!loading && selectedTeamId ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
-                  <span className="min-w-0 font-medium text-defaulttextcolor dark:text-white/80">
-                    <span className="truncate" title={selectedTeam?.name || mainTeamTitle}>
-                      {mainTeamTitle}
-                    </span>
-                    <span className="text-muted dark:text-white/45">
-                      {` · ${totalResults} member${totalResults === 1 ? "" : "s"}`}
-                      {totalPages > 1 ? ` · Page ${page} of ${totalPages}` : ""}
-                    </span>
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[0.6875rem] font-medium text-primary ring-1 ring-primary/15">
-                    <i className="ri-team-line" aria-hidden />
-                    Roster
-                  </span>
-                </div>
-              ) : null}
-            </div>
+      <div className="mt-5 mb-4 sm:mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+              Team rosters
+            </span>
+            <span className="hidden h-3 w-px bg-slate-300 sm:inline-block dark:bg-white/15" />
+            <span className="font-mono text-xs tabular-nums text-slate-600 dark:text-slate-300">
+              {totalResults.toString().padStart(2, "0")}{" "}
+              <span className="text-slate-400">member{totalResults === 1 ? "" : "s"}</span>
+            </span>
+            {!loading && selectedTeamId ? (
+              <span
+                className="hidden max-w-[14rem] truncate text-[11px] text-slate-500 sm:inline dark:text-slate-400"
+                title={selectedTeam?.name || mainTeamTitle}
+              >
+                · {mainTeamTitle}
+                {totalPages > 1 ? ` · ${page}/${totalPages}` : ""}
+              </span>
+            ) : null}
           </div>
+          <button
+            type="button"
+            onClick={() => openCreateForm()}
+            className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+          >
+            <i className="ri-add-line" /> New member
+          </button>
+        </div>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2" role="search">
+          <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[26rem]">
+            <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:focus:border-white/40"
+              placeholder="Search by name or role"
+              aria-label="Search roster"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={handleSearch}
+            className="h-9 rounded-full bg-slate-900 px-4 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+          >
+            Search
+          </button>
         </div>
       </div>
 

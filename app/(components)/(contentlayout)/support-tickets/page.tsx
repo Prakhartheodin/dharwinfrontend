@@ -104,7 +104,7 @@ const SupportTicketsPage = () => {
   const [showSaveCannedModal, setShowSaveCannedModal] = useState(false);
   const [saveCannedForm, setSaveCannedForm] = useState({ title: "", category: "General" });
 
-  const isAdmin = user?.role === "admin";
+  const isAdmin = Boolean((user as any)?.isAdministrator || (user as any)?.isPlatformSuperUser || user?.role === "admin");
   const isAgent = roleNames.some((r) => String(r).toLowerCase() === "agent");
   /** Admins see all candidates; agents see only candidates where they are assignedAgent (API filter). */
   const canCreateTicketOnBehalf = isAdmin || isAgent;

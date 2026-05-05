@@ -26,6 +26,8 @@ import { KanbanTaskCard } from "./KanbanTaskCard";
 import { TaskDetailModal } from "./TaskDetailModal";
 import { usePmRefetchOnFocus, PM_DATA_MUTATED_EVENT } from "@/shared/hooks/usePmRefetchOnFocus";
 import styles from "./kanban-board.module.css";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 const kbSans = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -59,6 +61,11 @@ const COLUMN_TOP: Record<TaskStatus, string> = {
 };
 
 const Kanbanboard = () => {
+  const auth = useAuth();
+  /** Permission gates for create / edit / delete task UI. */
+  const canCreateTask = hasPermission(auth, "create_task");
+  const canEditTask = hasPermission(auth, "update_task");
+  const canDeleteTask = hasPermission(auth, "delete_task");
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
@@ -437,205 +444,216 @@ const Kanbanboard = () => {
       <Seo title="Kanban Board" />
       <h1 className="sr-only">Kanban Board</h1>
 
-      {/* Match apps/projects/project-list: outer grid + toolbar card */}
-      <div className="mt-5 grid grid-cols-12 gap-x-6 gap-y-3 sm:mt-6">
-        <div className="col-span-12 xl:col-span-12">
-          <div className="box custom-box motion-safe:animate-pm-panel-in motion-reduce:animate-none rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="newproject flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary-full !mb-0 shadow-sm transition-transform duration-150 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
-                    onClick={() => openAddTask("new")}
-                  >
-                    <i className="ri-add-line me-1 align-middle font-semibold" />
-                    New task
-                  </button>
-                  <div className="min-w-[12rem] max-w-[20rem] flex-1 rounded-xl border border-defaultborder/70 bg-white/90 shadow-sm dark:border-white/10 dark:bg-white/[0.04] sm:min-w-[14rem] sm:max-w-none sm:flex-none sm:min-w-[12rem]">
-                    <Select
-                      name="project"
-                      placeholder="All projects"
-                      options={[
-                        { value: "", label: "All projects" },
-                        ...projects.map((p) => ({ value: p.id, label: p.name })),
-                      ]}
-                      value={
-                        projectFilterId
-                          ? {
-                              value: projectFilterId,
-                              label: projects.find((p) => p.id === projectFilterId)?.name ?? projectFilterId,
-                            }
-                          : { value: "", label: "All projects" }
-                      }
-                      onChange={(opt) => setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")}
-                      className="w-full !rounded-xl"
-                      menuPlacement="auto"
-                      menuPosition="fixed"
-                      menuPortalTarget={selectMenuPortalTarget}
-                      styles={selectMenuLayerStyles}
-                      classNamePrefix="Select2"
-                    />
-                  </div>
-                </div>
-                <div
-                  className="flex w-full flex-col gap-2 sm:flex-row sm:items-stretch lg:max-w-xl"
-                  role="search"
-                >
-                  <div className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-sm dark:border-white/15 dark:bg-black/20">
-                    <span
-                      className="flex items-center border-e border-defaultborder/60 bg-defaultbackground/40 px-3 text-muted dark:border-white/10 dark:bg-white/[0.03]"
-                      aria-hidden
-                    >
-                      <i className="ri-search-line text-base" />
-                    </span>
-                    <input
-                      className="form-control !rounded-none border-0 shadow-none focus:ring-0"
-                      type="search"
-                      placeholder="Search tasks"
-                      aria-label="Search tasks"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light !mb-0 shrink-0 border border-defaultborder/80 dark:border-white/15"
-                    onClick={() => fetchTasks()}
-                    disabled={loading}
-                    title="Refresh board"
-                    aria-busy={loading}
-                  >
-                    <i className="ri-refresh-line text-lg" aria-hidden />
-                    <span className="sr-only">Refresh</span>
-                  </button>
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
-                <label className="mb-0 inline-flex cursor-pointer items-center gap-2 text-defaulttextcolor dark:text-white/80">
-                  <input
-                    type="checkbox"
-                    className="form-check-input !m-0"
-                    checked={assignedToMe}
-                    onChange={(e) => setAssignedToMe(e.target.checked)}
-                  />
-                  <span>Assigned to me</span>
-                </label>
-                <span className={`${styles.kbDragHint} !m-0 border-0 bg-transparent px-0 py-0 shadow-none`}>
-                  <i className="ri-drag-move-2-line text-base shrink-0" aria-hidden />
-                  <span>Drag cards between columns to update status</span>
-                </span>
-              </div>
-            </div>
+      <div className="px-4 py-5 md:px-6 md:py-6">
+        {/* TOOLBAR ROW 1 — kicker + actions */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+              Task board
+            </span>
+            <span className="hidden h-3 w-px bg-slate-300 sm:inline-block dark:bg-white/15" />
+            <span className="font-mono text-xs tabular-nums text-slate-600 dark:text-slate-300">
+              {tasks.length.toString().padStart(2, "0")} <span className="text-slate-400">tasks</span>
+            </span>
+            <span className="hidden items-center gap-1 text-[11px] text-slate-500 sm:inline-flex dark:text-slate-400">
+              <i className="ri-drag-move-2-line text-sm" aria-hidden />
+              Drag cards to update status
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {canCreateTask && (
+              <button
+                type="button"
+                onClick={() => openAddTask("new")}
+                className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+              >
+                <i className="ri-add-line" /> New task
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => fetchTasks()}
+              disabled={loading}
+              aria-label="Refresh"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
+            >
+              <i className={`ri-refresh-line ${loading ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </button>
           </div>
         </div>
 
-        {loading ? (
-        <div
-          className={`col-span-12 ${styles.kbSkeletonBoard}`}
-          role="status"
-          aria-live="polite"
-          aria-busy="true"
-          aria-label="Loading tasks"
-        >
-          {STATUS_COLUMNS.map((col) => (
-            <div key={col.status} className={styles.kbSkeletonCol}>
-              <div className={styles.kbSkeletonLine} style={{ width: "42%" }} />
-              <div className={styles.kbSkeletonLine} style={{ width: "28%" }} />
-              <div className={styles.kbSkeletonCard} />
-              <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.12s" }} />
-              <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.24s" }} />
-            </div>
-          ))}
+        {/* TOOLBAR ROW 2 — filters */}
+        <div className="mb-4 flex flex-wrap items-stretch gap-2">
+          <div className="kb-project-select min-w-0 flex-1 sm:w-[16rem] sm:max-w-[18rem] sm:flex-none">
+            <Select
+              name="project"
+              placeholder="All projects"
+              options={[
+                { value: "", label: "All projects" },
+                ...projects.map((p) => ({ value: p.id, label: p.name })),
+              ]}
+              value={
+                projectFilterId
+                  ? {
+                      value: projectFilterId,
+                      label: projects.find((p) => p.id === projectFilterId)?.name ?? projectFilterId,
+                    }
+                  : { value: "", label: "All projects" }
+              }
+              onChange={(opt) => setProjectFilterId(((opt as { value: string } | null)?.value) ?? "")}
+              className="w-full"
+              menuPlacement="auto"
+              menuPosition="fixed"
+              menuPortalTarget={selectMenuPortalTarget}
+              styles={selectMenuLayerStyles}
+              classNamePrefix="Select2"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setAssignedToMe((v) => !v)}
+            aria-pressed={assignedToMe}
+            className={
+              "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition " +
+              (assignedToMe
+                ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+                : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+            }
+          >
+            <i className={`ri-user-${assignedToMe ? "fill" : "line"}`} aria-hidden />
+            <span>Assigned to me</span>
+            {assignedToMe && <i className="ri-check-line" aria-hidden />}
+          </button>
+
+          <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[22rem]">
+            <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="search"
+              className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:focus:border-white/40"
+              placeholder="Search tasks…"
+              aria-label="Search tasks"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
         </div>
-      ) : (
-        <div
-          className={`col-span-12 dharwin-kanban-board text-defaulttextcolor dark:text-defaulttextcolor/70 text-defaultsize ${styles.kbBoard}`}
-        >
-          {STATUS_COLUMNS.map((col, colIndex) => {
-            const count = (tasksByStatus[col.status] ?? []).length;
-            return (
+
+        {/* BOARD */}
+        {loading ? (
+          <div
+            className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory xl:grid xl:grid-cols-5 xl:gap-4 xl:overflow-visible"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+            aria-label="Loading tasks"
+          >
+            {STATUS_COLUMNS.map((col) => (
               <div
                 key={col.status}
-                className={`kanban-tasks-type ${col.className} ${styles.kbColumn} ${COLUMN_TOP[col.status]}`}
-                role="region"
-                aria-label={`${col.label} column, ${count} tasks`}
+                className={`${styles.kbSkeletonCol} w-[280px] flex-shrink-0 snap-start sm:w-[300px] xl:w-auto xl:flex-1`}
               >
-                <div className={styles.kbColumnHeader}>
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span className="truncate">{col.label}</span>
-                    <span className={styles.kbCount} aria-hidden>
-                      {count}
+                <div className={styles.kbSkeletonLine} style={{ width: "42%" }} />
+                <div className={styles.kbSkeletonLine} style={{ width: "28%" }} />
+                <div className={styles.kbSkeletonCard} />
+                <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.12s" }} />
+                <div className={styles.kbSkeletonCard} style={{ animationDelay: "0.24s" }} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dharwin-kanban-board text-defaulttextcolor dark:text-defaulttextcolor/70 text-defaultsize flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory xl:grid xl:grid-cols-5 xl:gap-4 xl:overflow-visible">
+            {STATUS_COLUMNS.map((col, colIndex) => {
+              const count = (tasksByStatus[col.status] ?? []).length;
+              return (
+                <div
+                  key={col.status}
+                  className={`kanban-tasks-type ${col.className} ${styles.kbColumn} ${COLUMN_TOP[col.status]} w-[280px] flex-shrink-0 snap-start sm:w-[300px] xl:w-auto xl:flex-1`}
+                  role="region"
+                  aria-label={`${col.label} column, ${count} tasks`}
+                >
+                  <div className={styles.kbColumnHeader}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="truncate">{col.label}</span>
+                      <span className={styles.kbCount} aria-hidden>
+                        {count}
+                      </span>
                     </span>
-                  </span>
-                  <button type="button" className={styles.kbBtnGhost} onClick={() => openAddTask(col.status)}>
-                    <i className="ri-add-line align-middle" /> <span className="align-middle">Add</span>
+                    {canCreateTask && (
+                      <button type="button" className={styles.kbBtnGhost} onClick={() => openAddTask(col.status)}>
+                        <i className="ri-add-line align-middle" /> <span className="align-middle">Add</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className={`kanban-tasks ${styles.kbColumnBody}`} id={`${col.status}-tasks`}>
+                    <PerfectScrollbar
+                      className={styles.kbScrollHost}
+                      style={{ height: "100%" }}
+                      containerRef={(el) => {
+                        scrollHostRefs.current[colIndex] = el;
+                      }}
+                    >
+                      <div
+                        ref={(el) => {
+                          columnRefs.current[colIndex] = el;
+                        }}
+                        className={`firstdrag flex flex-col ${styles.kbFirstDrag}`}
+                        data-status={col.status}
+                        data-view-btn={`${col.status}-tasks`}
+                      >
+                        {count === 0 ? (
+                          <div
+                            className={`flex min-h-full flex-1 flex-col items-center justify-center px-4 py-8 text-center min-w-0 ${styles.kbEmpty}`}
+                          >
+                            <p className="text-[0.8125rem] mb-3 max-w-[14rem] leading-relaxed">
+                              No tasks here yet{canCreateTask ? " — add one or drag a card from another column." : "."}
+                            </p>
+                            {canCreateTask && (
+                              <button
+                                type="button"
+                                className={`${styles.kbBtnPrimary} !text-[0.8125rem] !py-2 inline-flex items-center justify-center gap-1`}
+                                onClick={() => openAddTask(col.status)}
+                              >
+                                <i className="ri-add-line shrink-0" aria-hidden />
+                                <span>Add task</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          (tasksByStatus[col.status] ?? []).map((task) => (
+                            <KanbanTaskCard
+                              key={getTaskId(task)}
+                              task={task}
+                              onView={handleView}
+                              onEdit={(id) => {
+                                const t = tasks.find((x) => getTaskId(x) === id);
+                                if (t) openEditModal(t);
+                              }}
+                              onDelete={handleDelete}
+                              allCandidates={users}
+                              projectsMap={projects}
+                              canEdit={canEditTask}
+                              canDelete={canDeleteTask}
+                            />
+                          ))
+                        )}
+                      </div>
+                    </PerfectScrollbar>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.kbViewMore}
+                    onClick={() => scrollColumnToEnd(colIndex)}
+                    aria-label={`Scroll ${col.label} column to the bottom`}
+                  >
+                    View more
                   </button>
                 </div>
-                <div className={`kanban-tasks ${styles.kbColumnBody}`} id={`${col.status}-tasks`}>
-                  <PerfectScrollbar
-                    className={styles.kbScrollHost}
-                    style={{ height: "100%" }}
-                    containerRef={(el) => {
-                      scrollHostRefs.current[colIndex] = el;
-                    }}
-                  >
-                    <div
-                      ref={(el) => {
-                        columnRefs.current[colIndex] = el;
-                      }}
-                      className={`firstdrag flex flex-col ${styles.kbFirstDrag}`}
-                      data-status={col.status}
-                      data-view-btn={`${col.status}-tasks`}
-                    >
-                      {count === 0 ? (
-                        <div
-                          className={`flex min-h-full flex-1 flex-col items-center justify-center px-4 py-8 text-center min-w-0 ${styles.kbEmpty}`}
-                        >
-                          <p className="text-[0.8125rem] mb-3 max-w-[14rem] leading-relaxed">
-                            No tasks here yet — add one or drag a card from another column.
-                          </p>
-                          <button
-                            type="button"
-                            className={`${styles.kbBtnPrimary} !text-[0.8125rem] !py-2 inline-flex items-center justify-center gap-1`}
-                            onClick={() => openAddTask(col.status)}
-                          >
-                            <i className="ri-add-line shrink-0" aria-hidden />
-                            <span>Add task</span>
-                          </button>
-                        </div>
-                      ) : (
-                        (tasksByStatus[col.status] ?? []).map((task) => (
-                          <KanbanTaskCard
-                            key={getTaskId(task)}
-                            task={task}
-                            onView={handleView}
-                            onEdit={(id) => {
-                              const t = tasks.find((x) => getTaskId(x) === id);
-                              if (t) openEditModal(t);
-                            }}
-                            onDelete={handleDelete}
-                            allCandidates={users}
-                            projectsMap={projects}
-                          />
-                        ))
-                      )}
-                    </div>
-                  </PerfectScrollbar>
-                </div>
-                <button
-                  type="button"
-                  className={styles.kbViewMore}
-                  onClick={() => scrollColumnToEnd(colIndex)}
-                  aria-label={`Scroll ${col.label} column to the bottom`}
-                >
-                  View more
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <TaskDetailModal
@@ -644,8 +662,8 @@ const Kanbanboard = () => {
         loading={detailLoading}
         error={detailError}
         onClose={closeDetailModal}
-        onEdit={handleEditFromDetail}
-        onDelete={handleDelete}
+        onEdit={canEditTask ? handleEditFromDetail : undefined}
+        onDelete={canDeleteTask ? handleDelete : undefined}
         allCandidates={users}
         onCommentAdded={
           detailTask

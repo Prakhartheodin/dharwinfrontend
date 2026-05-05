@@ -1,6 +1,47 @@
 import { Itemsdata1 } from "../data/pages/ecommerces/ecommercedata";
 
-let initialState = {
+const THEME_STORAGE_KEY = "dharwin:theme";
+
+const PERSISTED_KEYS = [
+  "class",
+  "dataMenuStyles",
+  "dataNavLayout",
+  "dataHeaderStyles",
+  "dataVerticalStyle",
+  "dataNavStyle",
+  "dataPageStyle",
+  "dataWidth",
+  "dataMenuPosition",
+  "dataHeaderPosition",
+  "lang",
+  "dir",
+] as const;
+
+const loadPersistedTheme = (): Record<string, unknown> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, unknown> = {};
+    for (const k of PERSISTED_KEYS) if (k in parsed) out[k] = parsed[k];
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const persistTheme = (state: Record<string, unknown>) => {
+  if (typeof window === "undefined") return;
+  try {
+    const slim: Record<string, unknown> = {};
+    for (const k of PERSISTED_KEYS) if (k in state) slim[k] = state[k];
+    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(slim));
+  } catch {}
+};
+
+const baseState = {
     lang: "en",
     dir: "ltr",
     class: "light",
@@ -216,17 +257,20 @@ let initialState = {
       },
     ],
   };
-  
-  export default function reducer(state = initialState, action:any) {
+
+  const initialState = { ...baseState, ...loadPersistedTheme() };
+
+  export default function reducer(state: any = initialState, action:any) {
     let { type, payload } = action;
-  
+
     switch (type) {
-  
+
       case "ThemeChanger":
-        state = payload
+        state = { ...state, ...payload }
+        persistTheme(state)
         return state
         break;
-        
+
          return state;
       case "ADD_TO_CART":
          state = {

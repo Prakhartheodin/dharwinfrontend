@@ -232,19 +232,24 @@ const AnalyticsPage = () => {
     return (
       <Fragment>
         <Seo title="Analytics" />
-        <div className="box custom-box mt-5 mb-6 overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm sm:mt-6 dark:border-white/10">
-          <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h1 className="mb-1 text-[1rem] font-semibold text-defaulttextcolor">Project Analytics</h1>
-                <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
-                  Progress, delivery risk, and execution health at a glance.
-                </p>
-              </div>
-              <button type="button" className="ti-btn ti-btn-sm ti-btn-light !mb-0" disabled title="Refreshing data">
-                <i className="ri-refresh-line motion-safe:animate-spin motion-reduce:animate-none" />
-              </button>
+        <div className="mt-5 mb-6 sm:mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                Project analytics
+              </span>
+              <span className="hidden h-3 w-px bg-slate-300 sm:inline-block dark:bg-white/15" />
+              <span className="text-xs text-slate-500 dark:text-slate-400">Loading…</span>
             </div>
+            <button
+              type="button"
+              disabled
+              aria-label="Refreshing data"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300"
+            >
+              <i className="ri-refresh-line animate-spin" />
+              <span>Refresh</span>
+            </button>
           </div>
         </div>
         <div className="grid grid-cols-12 gap-x-2 gap-y-6">
@@ -275,20 +280,37 @@ const AnalyticsPage = () => {
   return (
     <Fragment>
       <Seo title="Analytics" />
-      <div className="box custom-box mt-5 mb-6 overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm sm:mt-6 dark:border-white/10 motion-safe:animate-pm-panel-in motion-reduce:animate-none">
-        <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white to-slate-50/40 px-4 py-4 sm:px-5 dark:border-white/10 dark:from-white/[0.04] dark:via-transparent dark:to-transparent">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="mb-1 text-[1rem] font-semibold text-defaulttextcolor">Project Analytics</h1>
-              <p className="mb-0 text-[0.8125rem] text-muted dark:text-white/50">
-                Delivery health for projects, tasks, and risk indicators.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                className="ti-btn ti-btn-outline-secondary !mb-0 shrink-0 whitespace-nowrap !px-3"
-                onClick={() => {
+      <div className="mt-5 mb-6 sm:mt-6">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+              Project analytics
+            </span>
+            <span className="hidden h-3 w-px bg-slate-300 sm:inline-block dark:bg-white/15" />
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                {kpis.totalProjects.toString().padStart(2, "0")}
+              </span>
+              <span className="text-slate-400">projects</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span className="font-mono tabular-nums text-slate-700 dark:text-slate-200">
+                {kpis.totalTasks.toString().padStart(2, "0")}
+              </span>
+              <span className="text-slate-400">tasks</span>
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs">
+              <span className="font-mono tabular-nums text-warning">
+                {overdueTasks.length.toString().padStart(2, "0")}
+              </span>
+              <span className="text-slate-400">overdue</span>
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
+              onClick={() => {
             const rows: string[] = [
               "Projects Overview",
               "Project,Status,Priority,Progress,Tasks",
@@ -335,34 +357,20 @@ const AnalyticsPage = () => {
           }}
                 title="Export to CSV"
               >
-                <i className="ri-file-download-line me-1" /> Export
+                <i className="ri-file-download-line" /> Export
               </button>
               <button
                 type="button"
-                className="ti-btn ti-btn-light !mb-0 shrink-0 whitespace-nowrap !px-2.5"
                 onClick={fetchData}
-                title="Refresh"
+                aria-label="Refresh"
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
               >
                 <i className="ri-refresh-line" />
+                <span>Refresh</span>
               </button>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-defaultborder/40 pt-3 text-[0.75rem] text-muted dark:border-white/10 dark:text-white/55">
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 font-medium text-primary ring-1 ring-primary/15">
-              <i className="ri-folder-chart-line" aria-hidden />
-              {kpis.totalProjects} projects
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-info/10 px-2.5 py-0.5 font-medium text-info ring-1 ring-info/15">
-              <i className="ri-task-line" aria-hidden />
-              {kpis.totalTasks} tasks
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2.5 py-0.5 font-medium text-warning ring-1 ring-warning/15">
-              <i className="ri-alarm-warning-line" aria-hidden />
-              {overdueTasks.length} overdue
-            </span>
-          </div>
         </div>
-      </div>
       <div className="grid grid-cols-12 gap-x-2 gap-y-6">
         <StatCard
           title="Total Projects"

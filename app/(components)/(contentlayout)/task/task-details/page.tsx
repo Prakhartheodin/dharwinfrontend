@@ -15,6 +15,8 @@ import {
 } from "@/shared/lib/api/tasks";
 import { TaskCommentsSection } from "../TaskCommentsSection";
 import Swal from "sweetalert2";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 function getProjectId(projectId: Task["projectId"]): string {
   if (!projectId) return "";
@@ -23,6 +25,9 @@ function getProjectId(projectId: Task["projectId"]): string {
 }
 
 const Taskdetails = () => {
+  const auth = useAuth();
+  const canEditTask = hasPermission(auth, "update_task");
+  const canDeleteTask = hasPermission(auth, "delete_task");
   const searchParams = useSearchParams();
   const taskId = searchParams.get("taskId");
   const [task, setTask] = useState<Task | null>(null);
@@ -86,21 +91,25 @@ const Taskdetails = () => {
               <div className="btn-list flex gap-2">
                 {task && (
                   <>
-                    <Link
-                      href={`/task/kanban-board?editTaskId=${getTaskId(task)}`}
-                      className="ti-btn bg-primary !py-1 !px-2 !font-medium text-white !text-[0.75rem]"
-                    >
-                      <i className="ri-edit-line me-1 align-middle" />
-                      Edit Task
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={handleDelete}
-                      className="ti-btn bg-danger !py-1 !px-2 !font-medium text-white !text-[0.75rem]"
-                    >
-                      <i className="ri-delete-bin-line me-1 align-middle" />
-                      Delete
-                    </button>
+                    {canEditTask && (
+                      <Link
+                        href={`/task/kanban-board?editTaskId=${getTaskId(task)}`}
+                        className="ti-btn bg-primary !py-1 !px-2 !font-medium text-white !text-[0.75rem]"
+                      >
+                        <i className="ri-edit-line me-1 align-middle" />
+                        Edit Task
+                      </Link>
+                    )}
+                    {canDeleteTask && (
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        className="ti-btn bg-danger !py-1 !px-2 !font-medium text-white !text-[0.75rem]"
+                      >
+                        <i className="ri-delete-bin-line me-1 align-middle" />
+                        Delete
+                      </button>
+                    )}
                   </>
                 )}
                 <Link

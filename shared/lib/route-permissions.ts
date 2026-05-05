@@ -65,6 +65,8 @@ const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
   "training.courses:": ["training.modules:", "training.categories:"],
   /** Referral leads matrix row uses ats.referralLeads:*; legacy roles only have ats.candidates:view. */
   "ats.referralLeads:": ["ats.candidates:"],
+  /** Kanban board: backend grants tasks.read → kanban.read, so any role with project.tasks:* can render the page. */
+  "project.kanban:": ["project.tasks:"],
 };
 
 /** Path prefixes that require permission, sorted by length descending for longest-match. */
@@ -94,25 +96,6 @@ export function getRequiredPermissionForPath(pathname: string): string | null {
 }
 
 /**
- * Same as getRequiredPermissionForPath, but treats project-list with ?mine=1 as My Projects permission.
- */
-export function getRequiredPermissionForPathWithSearch(
-  pathname: string,
-  searchParams: URLSearchParams | ReadonlyURLSearchParams | null | undefined
-): string | null {
-  const normalized = pathname.replace(/\/$/, "") || "/";
-  const mine = (searchParams?.get("mine") || "").toLowerCase();
-  const mineOn = mine === "1" || mine === "true" || mine === "yes";
-  if (
-    mineOn &&
-    (normalized === "/apps/projects/project-list" || normalized.startsWith("/apps/projects/project-list/"))
-  ) {
-    return "project.my-projects:";
-  }
-  return getRequiredPermissionForPath(pathname);
-}
-
-/**
  * Returns true if the user has at least one permission that starts with the required prefix
  * or any of its aliases (e.g. training.modules: grants access for training.courses: paths).
  */
@@ -126,29 +109,6 @@ export function hasPermissionForPath(
   ];
   return userPermissions.some((p) =>
     prefixes.some((prefix) => p.startsWith(prefix))
-  );
-}
-
-/**
- * My Projects workspace (list with ?mine=1, etc.): explicit `project.my-projects:*` **or**
- * legacy `project.projects:*` only (so old roles keep access until admins add my-projects).
- * Do **not** use this for sidebar nav visibility — use {@link hasExplicitMyProjectsNavPermission}.
- */
-export function hasMyProjectsWorkspaceAccess(userPermissions: string[]): boolean {
-  return (
-    userPermissions.some(
-      (p) => typeof p === "string" && p.startsWith(PROJECT_MY_PROJECTS_PREFIX)
-    ) ||
-    userPermissions.some(
-      (p) => typeof p === "string" && p.startsWith(PROJECT_PROJECTS_PREFIX)
-    )
-  );
-}
-
-/** Sidebar / nav: show My Projects only when the role includes `project.my-projects:*`. */
-export function hasExplicitMyProjectsNavPermission(userPermissions: string[]): boolean {
-  return userPermissions.some(
-    (p) => typeof p === "string" && p.startsWith(PROJECT_MY_PROJECTS_PREFIX)
   );
 }
 

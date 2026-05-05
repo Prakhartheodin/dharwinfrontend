@@ -635,10 +635,14 @@ export default function SettingsAttendanceManageShiftsPage() {
                   <tbody>
                     {shifts.map((s) => (
                       <tr key={s._id ?? s.id} className="border-b border-defaultborder/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
-                        <td className="font-medium text-defaulttextcolor px-4 py-3">{s.name}</td>
-                        <td className="px-4 py-3 text-defaulttextcolor/90">{s.timezone}</td>
-                        <td className="px-4 py-3">{s.startTime}</td>
-                        <td className="px-4 py-3">{s.endTime}</td>
+                        <td className="font-medium text-defaulttextcolor px-4 py-3 max-w-[200px]">
+                          <span className="block truncate" title={s.name}>{s.name}</span>
+                        </td>
+                        <td className="px-4 py-3 text-defaulttextcolor/90 max-w-[200px]">
+                          <span className="block truncate" title={s.timezone}>{s.timezone}</span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">{s.startTime}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{s.endTime}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${s.isActive ? "bg-success/10 text-success" : "bg-defaultborder/80 text-defaulttextcolor/70"}`}>
                             {s.isActive ? "Active" : "Inactive"}

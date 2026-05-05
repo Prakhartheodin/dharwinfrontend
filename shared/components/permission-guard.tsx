@@ -1,14 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import {
-  getRequiredPermissionForPathWithSearch,
-  hasMyProjectsWorkspaceAccess,
+  getRequiredPermissionForPath,
   hasPermissionForPath,
-  PROJECT_MY_PROJECTS_PREFIX,
 } from "@/shared/lib/route-permissions";
 import { isDesignatedSuperadminPath } from "@/shared/lib/designated-superadmin-paths";
 import { usePathname, useRouter } from "next/navigation";
@@ -43,24 +41,6 @@ function PermissionGuardInner({
   const targetRedirect =
     redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
 
-  /**
-   * Do not use `useSearchParams()` here: it suspends the subtree behind Suspense, and the same
-   * "Checking access…" copy appears as the loading UI — often indefinitely after a full
-   * document load (e.g. window.location.assign) in dev. Read the query string on the client only.
-   */
-  const [searchKey, setSearchKey] = useState(() =>
-    typeof window !== "undefined" ? (window.location.search ?? "") : ""
-  );
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setSearchKey(window.location.search ?? "");
-  }, [pathname]);
-
-  const searchParamsForRules = useMemo(
-    () => new URLSearchParams(searchKey.replace(/^\?/, "")),
-    [searchKey]
-  );
-
   const allowed = useMemo(() => {
     if (!permissionsLoaded) return null;
     if (isPublicLayoutPath(pathname ?? "")) return true;
@@ -77,19 +57,12 @@ function PermissionGuardInner({
       return isDesignatedSuperadmin;
     }
     if (isAdministrator || isPlatformSuperUser) return true;
-    const required = getRequiredPermissionForPathWithSearch(
-      pathname ?? "",
-      searchParamsForRules
-    );
+    const required = getRequiredPermissionForPath(pathname ?? "");
     if (required == null) return true;
-    if (required === PROJECT_MY_PROJECTS_PREFIX) {
-      return hasMyProjectsWorkspaceAccess(userPermissions);
-    }
     return hasPermissionForPath(userPermissions, required);
   }, [
     permissionsLoaded,
     pathname,
-    searchKey,
     userPermissions,
     isAdministrator,
     isPlatformSuperUser,

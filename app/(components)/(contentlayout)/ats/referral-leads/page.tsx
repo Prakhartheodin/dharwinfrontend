@@ -19,11 +19,7 @@ import {
 import { listUsers } from "@/shared/lib/api/users";
 import type { User } from "@/shared/lib/types";
 import { LINK_TYPE, STATUS_META, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
-
-/** Matches backend `SALES_AGENT_ROLE_NAMES` / canonical `sales_agent`. */
-function isSalesAgentRoleName(name: string): boolean {
-  return name.trim().toLowerCase().replace(/\s+/g, "_") === "sales_agent";
-}
+import { isSalesAgentRoleName } from "@/shared/lib/roles";
 
 function canManageCandidatesFromPermissions(permissions: string[]): boolean {
   return permissions.some(

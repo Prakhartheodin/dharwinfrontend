@@ -59,6 +59,24 @@ export default function RecordingsPage() {
     }
   };
 
+  const formatDuration = (ms?: number | null, startedAt?: string | null, completedAt?: string | null) => {
+    // Cap at 24h. Old webhook bug stored completedAt as ns*1000 (year 58000+),
+    // producing diffs of millions of hours. Anything past 24h is clearly wrong.
+    const MAX_MS = 24 * 60 * 60 * 1000;
+    let total = ms ?? null;
+    if (total == null && startedAt && completedAt) {
+      const diff = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+      if (Number.isFinite(diff) && diff >= 0) total = diff;
+    }
+    if (total == null || !Number.isFinite(total) || total < 0 || total > MAX_MS) return "–";
+    const totalSec = Math.floor(total / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
+
   const getFilename = (rec: RecordingWithMeeting) => {
     const parts = rec.filePath?.split("/").pop() || `recording-${rec.meetingId}`;
     return parts.endsWith(".mp4") ? parts : `${parts}.mp4`;
@@ -131,6 +149,7 @@ export default function RecordingsPage() {
                       <tr>
                         <th>Meeting</th>
                         <th>Started</th>
+                        <th>Duration</th>
                         <th>Status</th>
                         <th className="text-end">Play / Save</th>
                       </tr>
@@ -144,6 +163,7 @@ export default function RecordingsPage() {
                             </span>
                           </td>
                           <td>{formatDate(rec.startedAt)}</td>
+                          <td className="tabular-nums">{formatDuration(rec.durationMs, rec.startedAt, rec.completedAt)}</td>
                           <td>
                             <span
                               className={`badge ${
