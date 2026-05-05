@@ -935,6 +935,7 @@ interface TrainingFolderRow {
 
 const TrainingModules = () => {
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sortValue, setSortValue] = useState(SORT_OPTIONS[0])
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -980,20 +981,24 @@ const TrainingModules = () => {
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
+  const fetchRequestIdRef = useRef(0)
   const fetchModules = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current
     setLoading(true)
     try {
       const params: trainingModulesApi.ListTrainingModulesParams = {
         page: currentPage,
         limit: pageSize,
         sortBy: sortValue?.value,
-        ...(search.trim() && { search: search.trim() }),
+        ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
       }
-      
+
       const response = await trainingModulesApi.listTrainingModules(params)
+      if (requestId !== fetchRequestIdRef.current) return
       setModules(response.results)
       setTotalPages(response.totalPages)
     } catch (err) {
+      if (requestId !== fetchRequestIdRef.current) return
       console.error('Error fetching modules:', err)
       const msg =
         err instanceof AxiosError && err.response?.data?.message
@@ -1011,9 +1016,9 @@ const TrainingModules = () => {
       })
       setModules([])
     } finally {
-      setLoading(false)
+      if (requestId === fetchRequestIdRef.current) setLoading(false)
     }
-  }, [currentPage, pageSize, sortValue, search])
+  }, [currentPage, pageSize, sortValue, debouncedSearch])
 
   const handleBulkStatus = useCallback(async (status: ModuleLifecycleStatus) => {
     if (selectedIds.size === 0) return
@@ -1127,6 +1132,11 @@ const TrainingModules = () => {
   useEffect(() => {
     fetchCategories()
   }, [fetchCategories])
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     fetchModules()
@@ -1279,13 +1289,17 @@ const TrainingModules = () => {
       }
     }
     const sortedCats = [...categories].sort((a, b) => a.name.localeCompare(b.name))
-    const rows: TrainingFolderRow[] = sortedCats.map((cat) => ({
+    const isSearching = debouncedSearch.trim().length > 0
+    let rows: TrainingFolderRow[] = sortedCats.map((cat) => ({
       id: cat.id,
       name: cat.name,
       modules: modules
         .filter((m) => m.categories?.some((c) => c.id === cat.id))
         .sort(sortModules),
     }))
+    // While searching, drop empty folders so the result set is not visually swamped by
+    // every category showing zero matches (which read like "search did nothing").
+    if (isSearching) rows = rows.filter((r) => r.modules.length > 0)
     const uncategorized = modules.filter((m) => !m.categories?.length).sort(sortModules)
     if (uncategorized.length > 0) {
       rows.push({
@@ -1296,7 +1310,7 @@ const TrainingModules = () => {
       })
     }
     return rows
-  }, [modules, categories, sortValue])
+  }, [modules, categories, sortValue, debouncedSearch])
 
   const handleCreateFolder = async () => {
     const name = newFolderName.trim()
@@ -1443,7 +1457,10 @@ const TrainingModules = () => {
                     placeholder="Search modules"
                     aria-label="Search"
                     value={search}
-                    onChange={(e) => setSearch(e.target.value)}
+                    onChange={(e) => {
+                      setSearch(e.target.value)
+                      setCurrentPage(1)
+                    }}
                   />
                   <button className="ti-btn ti-btn-light !mb-0" type="button">
                     Search
@@ -1595,11 +1612,11 @@ const TrainingModules = () => {
         <div className="box custom-box text-center py-12">
           <p className="text-[#8c9097] dark:text-white/50 mb-0">Loading modules...</p>
         </div>
-      ) : search.trim() && modules.length === 0 ? (
+      ) : debouncedSearch.trim() && modules.length === 0 ? (
         <div className="box custom-box text-center py-12">
           <p className="text-[#8c9097] dark:text-white/50 mb-0">No modules match your search.</p>
         </div>
-      ) : !search.trim() && modules.length === 0 && categories.length === 0 ? (
+      ) : !debouncedSearch.trim() && modules.length === 0 && categories.length === 0 ? (
         <div className="box custom-box text-center py-12">
           <p className="text-[#8c9097] dark:text-white/50 mb-0">
             No modules yet. Create a folder (optional) and add your first module to get started.

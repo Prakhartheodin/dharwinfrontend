@@ -393,9 +393,13 @@ export default function SettingsAttendanceStudentGroupsPage() {
                     <tbody>
                       {groups.map((g) => (
                         <tr key={g._id ?? g.id} className="border-b border-defaultborder/50 last:border-0 hover:bg-slate-50/50 dark:hover:bg-white/[0.02] transition-colors">
-                          <td className="font-medium text-defaulttextcolor px-4 py-3">{g.name}</td>
-                          <td className="px-4 py-3 text-defaulttextcolor/90">{g.description ?? "—"}</td>
-                          <td className="px-4 py-3">{g.studentCount ?? (g.students ?? []).length}</td>
+                          <td className="font-medium text-defaulttextcolor px-4 py-3 max-w-[220px]">
+                            <span className="block truncate" title={g.name}>{g.name}</span>
+                          </td>
+                          <td className="px-4 py-3 text-defaulttextcolor/90 max-w-[320px]">
+                            <span className="block truncate" title={g.description ?? ""}>{g.description ?? "—"}</span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">{g.studentCount ?? (g.students ?? []).length}</td>
                           <td className="text-end px-4 py-3">
                             <button type="button" onClick={() => handleEdit(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors" title="Edit"><i className="ri-edit-line text-lg" /></button>
                             <button type="button" onClick={() => handleDelete(g)} className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 transition-colors ml-1" title="Delete"><i className="ri-delete-bin-line text-lg" /></button>

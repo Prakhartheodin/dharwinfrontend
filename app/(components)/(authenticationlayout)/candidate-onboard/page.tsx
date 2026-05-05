@@ -58,6 +58,7 @@ export default function CandidateOnboardPage() {
   const [adminId, setAdminId] = useState("");
   const [isValidToken, setIsValidToken] = useState(false);
   const [referralRef, setReferralRef] = useState<string | null>(null);
+  const [emailFromLink, setEmailFromLink] = useState(false);
 
   useEffect(() => {
     const refParam = searchParams.get("ref");
@@ -68,7 +69,7 @@ export default function CandidateOnboardPage() {
     const expiresParam = searchParams.get("expires");
     const adminIdParam = searchParams.get("adminId");
 
-    if (!token || !emailParam || !expiresParam) {
+    if (!token || !expiresParam) {
       setLinkError("Invalid or missing link parameters. Please use the link from your invitation email.");
       return;
     }
@@ -81,19 +82,31 @@ export default function CandidateOnboardPage() {
       setLinkError("Invalid token format.");
       return;
     }
-    let decodedEmail = "";
     let decodedAdminId = "";
     try {
-      decodedEmail = emailParam.includes("@") ? decodeURIComponent(emailParam) : decryptBase64(emailParam);
       decodedAdminId = adminIdParam ? decryptBase64(adminIdParam) : "";
     } catch {
-      decodedEmail = emailParam;
+      decodedAdminId = "";
     }
-    if (!decodedEmail || !decodedEmail.includes("@")) {
-      setLinkError("Invalid or missing email in link.");
-      return;
+
+    if (emailParam) {
+      let decodedEmail = "";
+      try {
+        decodedEmail = emailParam.includes("@") ? decodeURIComponent(emailParam) : decryptBase64(emailParam);
+      } catch {
+        decodedEmail = emailParam;
+      }
+      if (!decodedEmail || !decodedEmail.includes("@")) {
+        setLinkError("Invalid or missing email in link.");
+        return;
+      }
+      setEmail(decodedEmail);
+      setEmailFromLink(true);
+    } else {
+      setEmail("");
+      setEmailFromLink(false);
     }
-    setEmail(decodedEmail);
+
     setAdminId(decodedAdminId);
     setIsValidToken(true);
   }, [searchParams]);
@@ -296,12 +309,19 @@ export default function CandidateOnboardPage() {
                 <input
                   id="email"
                   type="email"
-                  className="form-control bg-gray-100 dark:bg-black/20"
+                  className={`form-control ${emailFromLink ? "bg-gray-100 dark:bg-black/20" : ""}`}
                   value={email}
-                  readOnly
-                  aria-readonly
+                  onChange={(e) => !emailFromLink && setEmail(e.target.value)}
+                  readOnly={emailFromLink}
+                  aria-readonly={emailFromLink}
+                  placeholder={emailFromLink ? undefined : "Enter your email"}
+                  required
                 />
-                <p className="text-xs text-defaulttextcolor/60 mt-1">This email was sent in your invitation.</p>
+                <p className="text-xs text-defaulttextcolor/60 mt-1">
+                  {emailFromLink
+                    ? "This email was sent in your invitation."
+                    : "Enter the email you'd like to use for your account."}
+                </p>
               </div>
               <div>
                 <label htmlFor="phone" className="form-label">Phone Number</label>

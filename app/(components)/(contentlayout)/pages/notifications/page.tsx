@@ -206,7 +206,7 @@ const Notifications = () => {
                 {filteredList.map((n) => (
                   <li key={n._id}>
                     <div
-                      className={`box border rounded-lg ${n.read ? 'border-defaultborder' : 'un-read border-primary/30 bg-primary/5'}`}
+                      className={`box border rounded-lg ${n.read ? 'border-defaultborder dark:border-white/10' : 'un-read border-primary/30 dark:border-primary/40 bg-primary/5 dark:bg-primary/10'}`}
                     >
                       <div className="box-body !p-4">
                         <div className="flex items-start gap-4">
@@ -223,8 +223,8 @@ const Notifications = () => {
                                     {TYPE_LABELS[n.type]}
                                   </span>
                                 </div>
-                                <p className="mb-0 text-[.875rem] font-semibold">{n.title}</p>
-                                <p className="mb-0 text-[#8c9097] dark:text-white/50 text-[0.8125rem] whitespace-pre-line">{n.message}</p>
+                                <p className="mb-0 text-[.875rem] font-semibold text-defaulttextcolor dark:text-white truncate" title={n.title}>{n.title}</p>
+                                <p className="mb-0 text-[#8c9097] dark:text-white/70 text-[0.8125rem] whitespace-pre-line">{n.message}</p>
                                 <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
                                   {formatTimeAgo(n.createdAt)}
                                 </span>

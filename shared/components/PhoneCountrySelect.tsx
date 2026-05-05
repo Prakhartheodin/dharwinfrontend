@@ -24,7 +24,7 @@ export function PhoneCountrySelect({ value, onChange, name, className = "", id }
     OPTIONS.find((o) => o.value === value) ?? OPTIONS.find((o) => o.value === DEFAULT_PHONE_COUNTRY) ?? OPTIONS[0];
 
   return (
-    <div className={className} style={{ minWidth: 140 }}>
+    <div className={`phone-country-select ${className}`} style={{ minWidth: 140 }}>
       <input type="hidden" name={name} value={value} />
       <Select
         inputId={id}
@@ -46,10 +46,38 @@ export function PhoneCountrySelect({ value, onChange, name, className = "", id }
             ...base,
             minHeight: 38,
             borderRadius: 6,
+            backgroundColor: "rgb(var(--body-bg) / 1)",
+            borderColor: "rgb(var(--default-border) / 1)",
+            color: "rgb(var(--default-text-color) / 1)",
+          }),
+          singleValue: (base) => ({
+            ...base,
+            color: "rgb(var(--default-text-color) / 1)",
+          }),
+          input: (base) => ({
+            ...base,
+            color: "rgb(var(--default-text-color) / 1)",
+          }),
+          placeholder: (base) => ({
+            ...base,
+            color: "rgb(var(--default-text-color) / 0.6)",
           }),
           menu: (base) => ({
             ...base,
             zIndex: 50,
+            backgroundColor: "rgb(var(--body-bg) / 1)",
+            color: "rgb(var(--default-text-color) / 1)",
+            border: "1px solid rgb(var(--default-border) / 1)",
+          }),
+          option: (base, state) => ({
+            ...base,
+            backgroundColor: state.isSelected
+              ? "rgba(99, 102, 241, 0.15)"
+              : state.isFocused
+                ? "rgb(var(--default-text-color) / 0.08)"
+                : "transparent",
+            color: "rgb(var(--default-text-color) / 1)",
+            cursor: "pointer",
           }),
         }}
       />

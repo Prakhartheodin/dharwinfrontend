@@ -813,36 +813,46 @@ export default function InternalMeetingsClient() {
                     <div className="table-responsive">
                       <table {...getTableProps()} className="table table-hover whitespace-nowrap min-w-full">
                         <thead>
-                          {headerGroups.map((headerGroup: any) => (
-                            <tr {...headerGroup.getHeaderGroupProps()} key={headerGroup.id}>
-                              {headerGroup.headers.map((column: any) => (
-                                <th {...column.getHeaderProps(column.getSortByToggleProps?.())} key={column.id} className="!text-[0.75rem]">
-                                  {column.id === "checkbox" ? (
-                                    <input
-                                      type="checkbox"
-                                      className="form-check-input"
-                                      checked={isAllSelected}
-                                      onChange={handleSelectAll}
-                                      aria-label="Select all"
-                                    />
-                                  ) : (
-                                    column.render("Header")
-                                  )}
-                                </th>
-                              ))}
-                            </tr>
-                          ))}
+                          {headerGroups.map((headerGroup: any) => {
+                            const { key: hgKey, ...hgRest } = headerGroup.getHeaderGroupProps()
+                            return (
+                              <tr key={hgKey ?? headerGroup.id} {...hgRest}>
+                                {headerGroup.headers.map((column: any) => {
+                                  const { key: colKey, ...colRest } = column.getHeaderProps(column.getSortByToggleProps?.())
+                                  return (
+                                    <th key={colKey ?? column.id} {...colRest} className="!text-[0.75rem]">
+                                      {column.id === "checkbox" ? (
+                                        <input
+                                          type="checkbox"
+                                          className="form-check-input"
+                                          checked={isAllSelected}
+                                          onChange={handleSelectAll}
+                                          aria-label="Select all"
+                                        />
+                                      ) : (
+                                        column.render("Header")
+                                      )}
+                                    </th>
+                                  )
+                                })}
+                              </tr>
+                            )
+                          })}
                         </thead>
                         <tbody {...getTableBodyProps()}>
                           {page.map((row: any) => {
                             prepareRow(row)
+                            const { key: rowKey, ...rowRest } = row.getRowProps()
                             return (
-                              <tr {...row.getRowProps()} key={row.id}>
-                                {row.cells.map((cell: any) => (
-                                  <td {...cell.getCellProps()} key={cell.column.id} className="!text-[0.8125rem] align-middle">
-                                    {cell.render("Cell")}
-                                  </td>
-                                ))}
+                              <tr key={rowKey ?? row.id} {...rowRest}>
+                                {row.cells.map((cell: any) => {
+                                  const { key: cellKey, ...cellRest } = cell.getCellProps()
+                                  return (
+                                    <td key={cellKey ?? cell.column.id} {...cellRest} className="!text-[0.8125rem] align-middle">
+                                      {cell.render("Cell")}
+                                    </td>
+                                  )
+                                })}
                               </tr>
                             )
                           })}

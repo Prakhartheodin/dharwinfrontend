@@ -18,6 +18,9 @@ export interface KanbanTaskCardProps {
   allCandidates?: { id: string; name: string; email: string }[];
   /** Optional project lookup for name when projectId is not populated. */
   projectsMap?: { id: string; name: string }[];
+  /** Permission flags drive Edit/Delete dropdown visibility. */
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 export function KanbanTaskCard({
@@ -27,6 +30,8 @@ export function KanbanTaskCard({
   onDelete,
   allCandidates,
   projectsMap,
+  canEdit = true,
+  canDelete = true,
 }: KanbanTaskCardProps) {
   const taskId = getTaskId(task);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -190,24 +195,28 @@ export function KanbanTaskCard({
                     <i className="ri-eye-line me-1 align-middle" /> View
                   </button>
                 </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item w-full text-left !py-2 !px-3"
-                    onClick={handleEdit}
-                  >
-                    <i className="ri-edit-line me-1 align-middle" /> Edit
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    className="ti-dropdown-item w-full text-left text-danger !py-2 !px-3"
-                    onClick={handleDelete}
-                  >
-                    <i className="ri-delete-bin-line me-1 align-middle" /> Delete
-                  </button>
-                </li>
+                {canEdit && (
+                  <li>
+                    <button
+                      type="button"
+                      className="ti-dropdown-item w-full text-left !py-2 !px-3"
+                      onClick={handleEdit}
+                    >
+                      <i className="ri-edit-line me-1 align-middle" /> Edit
+                    </button>
+                  </li>
+                )}
+                {canDelete && (
+                  <li>
+                    <button
+                      type="button"
+                      className="ti-dropdown-item w-full text-left text-danger !py-2 !px-3"
+                      onClick={handleDelete}
+                    >
+                      <i className="ri-delete-bin-line me-1 align-middle" /> Delete
+                    </button>
+                  </li>
+                )}
               </ul>
             </div>
           </div>

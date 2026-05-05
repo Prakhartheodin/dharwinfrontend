@@ -1,4 +1,103 @@
 /**
+ * Semantic action → role permission prefix + required action(s) mapping.
+ * Mirrors backend src/config/actionPermissions.js. Use action keys in components
+ * instead of raw permission strings so the mapping rule lives in one place.
+ *
+ * Each entry lists the role-matrix prefixes (e.g. 'project.tasks') and the actions
+ * required (any of). 'view' alone implies read; create/edit/delete imply write.
+ */
+type RbacAction = "view" | "create" | "edit" | "delete";
+
+interface ActionRule {
+  /** One or more role-matrix prefixes (without trailing colon). */
+  prefixes: string[];
+  /** Actions that satisfy the rule (any of). */
+  anyOf: RbacAction[];
+}
+
+export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
+  // Projects
+  view_projects: { prefixes: ["project.projects"], anyOf: ["view", "create", "edit", "delete"] },
+  create_project: { prefixes: ["project.projects"], anyOf: ["create"] },
+  update_project: { prefixes: ["project.projects"], anyOf: ["edit"] },
+  delete_project: { prefixes: ["project.projects"], anyOf: ["delete"] },
+  assign_project: { prefixes: ["project.projects"], anyOf: ["create", "edit"] },
+
+  // Tasks
+  view_tasks: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["view", "create", "edit", "delete"] },
+  create_task: { prefixes: ["project.tasks"], anyOf: ["create"] },
+  update_task: { prefixes: ["project.tasks"], anyOf: ["edit"] },
+  delete_task: { prefixes: ["project.tasks"], anyOf: ["delete"] },
+  assign_task: { prefixes: ["project.tasks"], anyOf: ["create", "edit"] },
+  comment_on_task: { prefixes: ["project.tasks"], anyOf: ["view", "create", "edit", "delete"] },
+
+  // Teams
+  view_teams: { prefixes: ["project.teams"], anyOf: ["view", "create", "edit", "delete"] },
+  create_team: { prefixes: ["project.teams"], anyOf: ["create"] },
+  update_team: { prefixes: ["project.teams"], anyOf: ["edit"] },
+  delete_team: { prefixes: ["project.teams"], anyOf: ["delete"] },
+
+  // ATS Jobs
+  view_jobs: { prefixes: ["ats.jobs"], anyOf: ["view", "create", "edit", "delete"] },
+  view_internal_jobs: { prefixes: ["ats.jobs"], anyOf: ["view", "create", "edit", "delete"] },
+  create_job: { prefixes: ["ats.jobs"], anyOf: ["create"] },
+  update_job: { prefixes: ["ats.jobs"], anyOf: ["edit"] },
+  delete_job: { prefixes: ["ats.jobs"], anyOf: ["delete"] },
+
+  // ATS Candidates
+  view_candidates: { prefixes: ["ats.candidates"], anyOf: ["view", "create", "edit", "delete"] },
+  manage_candidates: { prefixes: ["ats.candidates"], anyOf: ["create", "edit", "delete"] },
+});
+
+/**
+ * Flat semantic-action gate. Resolves the action to the role-matrix rule then
+ * checks the user's raw permissions. Treats platformSuperUser / Administrator
+ * as universal allow.
+ *
+ * Usage:
+ *   const auth = useAuth();
+ *   if (hasPermission(auth, 'assign_task')) {
+ *     // render Assign button
+ *   }
+ *
+ * @param user Auth context shape: { permissions, isAdministrator, isPlatformSuperUser }
+ * @param action Semantic action key (e.g. 'create_project', 'view_internal_jobs')
+ */
+export function hasPermission(
+  user:
+    | {
+        permissions?: string[] | null;
+        isAdministrator?: boolean;
+        isPlatformSuperUser?: boolean;
+      }
+    | null
+    | undefined,
+  action: string
+): boolean {
+  if (!user) return false;
+  if (user.isPlatformSuperUser || user.isAdministrator) return true;
+  const rule = ACTION_PERMISSIONS[action];
+  if (!rule) {
+    if (typeof console !== "undefined") {
+      // eslint-disable-next-line no-console
+      console.warn(`hasPermission: unknown action "${action}"`);
+    }
+    return false;
+  }
+  const perms = user.permissions ?? [];
+  return perms.some((p) => {
+    const [keyRaw, actionsPart] = p.split(":");
+    const key = keyRaw?.trim();
+    if (!key || !actionsPart || !rule.prefixes.includes(key)) return false;
+    const actions = actionsPart
+      .split(",")
+      .map((a) => a.trim().toLowerCase())
+      .filter(Boolean);
+    return rule.anyOf.some((needed) => actions.includes(needed));
+  });
+}
+
+/**
  * Raw domain permissions from GET /auth/my-permissions (e.g. settings.users:view,create,edit,delete).
  * Aligns with backend requirePermissions('users.manage'), which is granted by settings.users create/edit/delete.
  */

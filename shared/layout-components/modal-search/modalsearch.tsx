@@ -88,7 +88,7 @@ const Modalsearch = () => {
   const tabsData = [
     {id:1, class:"People", icon:"user"},
     {id:2, class:"Pages", icon:"file-text"},
-    {id:3, class:"Articales", icon:"align-left"},
+    {id:3, class:"Articles", icon:"align-left"},
     {id:4, class:"Tags", icon:"server"},
 
   ]
@@ -102,6 +102,43 @@ const Modalsearch = () => {
 
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
+  const [recentsHidden, setRecentsHidden] = useState<{[k:string]:boolean}>({});
+  const [voiceState, setVoiceState] = useState<"idle"|"listening"|"unsupported">("idle");
+
+  const handleClearRecents = () => {
+    setRecentsHidden({ "dismiss-alert": true, "dismiss-alert1": true, "dismiss-alert2": true });
+    try { localStorage.removeItem("recent-searches"); } catch {}
+  };
+
+  const handleVoiceSearch = () => {
+    if (typeof window === "undefined") return;
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setVoiceState("unsupported");
+      alert("Voice search not supported in this browser. Try Chrome.");
+      return;
+    }
+    try {
+      const rec = new SR();
+      rec.lang = "en-US";
+      rec.interimResults = false;
+      rec.maxAlternatives = 1;
+      setVoiceState("listening");
+      rec.onresult = (e: any) => {
+        const text = e.results?.[0]?.[0]?.transcript ?? "";
+        if (text) {
+          setInputValue(text);
+          myfunction(text);
+        }
+        setVoiceState("idle");
+      };
+      rec.onerror = () => setVoiceState("idle");
+      rec.onend = () => setVoiceState("idle");
+      rec.start();
+    } catch {
+      setVoiceState("idle");
+    }
+  };
 
   useEffect(() => {
     if (!moreMenuOpen) return undefined;
@@ -138,8 +175,14 @@ const Modalsearch = () => {
                 setInputValue(ele.target.value);
               }}/>
   
-            <a aria-label="anchor" href="#!"  className="!border-e-0 flex items-center input-group-text bg-light !py-[0.375rem] !px-[0.75rem]"
-              id="voice-search"><i className="fe fe-mic header-link-icon"></i></a>
+            <button
+              type="button"
+              aria-label={voiceState === "listening" ? "Stop voice search" : "Start voice search"}
+              onClick={(e) => { e.preventDefault(); handleVoiceSearch(); }}
+              className={`!border-e-0 flex items-center input-group-text bg-light !py-[0.375rem] !px-[0.75rem] cursor-pointer ${voiceState === "listening" ? "text-danger animate-pulse" : ""}`}
+              id="voice-search"
+              disabled={voiceState === "unsupported"}
+            ><i className="fe fe-mic header-link-icon" aria-hidden></i></button>
             <div className="relative shrink-0" ref={moreMenuRef}>
               <button
                 type="button"
@@ -244,25 +287,31 @@ const Modalsearch = () => {
           <div className="my-[1.5rem]">
             <p className="font-normal  text-[#8c9097] dark:text-white/50 text-[0.813rem] mb-2">Recent Search :</p>
   
-            <div id="dismiss-alert" role="alert"
-              className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-2 !text-[0.8125rem] alert">
-              <Link href="/pages/notifications/"><span>Notifications</span></Link>
-              <Link aria-label="anchor" className="ms-auto leading-none" href="#!" scroll={false} data-hs-remove-element="#dismiss-alert"><i
-                  className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></Link>
-            </div>
-            <div id="dismiss-alert1" role="alert"
-              className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-2 !text-[0.8125rem] alert">
-              <Link href="/ui-elements/alerts/"><span>Alerts</span></Link>
-              <Link aria-label="anchor" className="ms-auto leading-none" href="#!" scroll={false} data-hs-remove-element="#dismiss-alert1"><i
-                  className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></Link>
-            </div>
-  
-            <div id="dismiss-alert2" role="alert"
-              className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-0 !text-[0.8125rem] alert">
-              <Link href="/pages/email/mail-app/"><span>Mail</span></Link>
-              <Link aria-label="anchor" className="ms-auto lh-1" href="#!" scroll={false} data-hs-remove-element="#dismiss-alert2"><i
-                  className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></Link>
-            </div>
+            {!recentsHidden["dismiss-alert"] && (
+              <div id="dismiss-alert" role="alert"
+                className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-2 !text-[0.8125rem] alert">
+                <Link href="/pages/notifications/"><span>Notifications</span></Link>
+                <button type="button" aria-label="Remove" className="ms-auto leading-none" onClick={(e) => { e.preventDefault(); setRecentsHidden(p => ({...p, "dismiss-alert": true })); }}><i
+                    className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></button>
+              </div>
+            )}
+            {!recentsHidden["dismiss-alert1"] && (
+              <div id="dismiss-alert1" role="alert"
+                className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-2 !text-[0.8125rem] alert">
+                <Link href="/ui-elements/alerts/"><span>Alerts</span></Link>
+                <button type="button" aria-label="Remove" className="ms-auto leading-none" onClick={(e) => { e.preventDefault(); setRecentsHidden(p => ({...p, "dismiss-alert1": true })); }}><i
+                    className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></button>
+              </div>
+            )}
+
+            {!recentsHidden["dismiss-alert2"] && (
+              <div id="dismiss-alert2" role="alert"
+                className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-0 !text-[0.8125rem] alert">
+                <Link href="/pages/email/mail-app/"><span>Mail</span></Link>
+                <button type="button" aria-label="Remove" className="ms-auto lh-1" onClick={(e) => { e.preventDefault(); setRecentsHidden(p => ({...p, "dismiss-alert2": true })); }}><i
+                    className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></button>
+              </div>
+            )}
           </div>
         </div>
   
@@ -273,6 +322,7 @@ const Modalsearch = () => {
               Search
             </button>
             <button type="button"
+              onClick={handleClearRecents}
               className="ti-btn-group  ti-btn-primary-full rounded-e-[0.25rem] dark:border-white/10 !text-[0.75rem] !rounded-s-none !px-[0.75rem] !py-[0.45rem]">
               Clear Recents
             </button>

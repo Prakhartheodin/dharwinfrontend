@@ -12,27 +12,12 @@ import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
 	PATH_PERMISSION_PREFIX,
-	hasExplicitMyProjectsNavPermission,
 	hasPermissionForPath,
 	getRequiredPermissionForPath,
 } from "@/shared/lib/route-permissions";
 
-/** My Projects redirects to project-list?mine=1 — nav must use query, not pathname alone. */
-function isMineProjectsQuery(sp: URLSearchParams): boolean {
-	const v = (sp.get("mine") || "").toLowerCase();
-	return v === "1" || v === "true" || v === "yes";
-}
-
-function menuPathMatchesItem(item: { path?: string }, currentPath: string, sp: URLSearchParams): boolean {
+function menuPathMatchesItem(item: { path?: string }, currentPath: string): boolean {
 	if (!item.path) return false;
-	if (item.path === "/apps/projects/my-projects") {
-		if (currentPath === "/apps/projects/my-projects") return true;
-		return currentPath === "/apps/projects/project-list" && isMineProjectsQuery(sp);
-	}
-	if (item.path === "/apps/projects/project-list") {
-		if (currentPath !== "/apps/projects/project-list") return false;
-		return !isMineProjectsQuery(sp);
-	}
 	return item.path === currentPath;
 }
 
@@ -79,9 +64,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		if (!menuPath) return true;
-		if (menuPath === "/apps/projects/my-projects") {
-			return hasExplicitMyProjectsNavPermission(userPermissions);
-		}
 		const requiredPrefix = getRequiredPermissionForPath(menuPath);
 		if (!requiredPrefix) return true;
 		return hasPermissionForPath(userPermissions, requiredPrefix);
@@ -530,7 +512,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 			items?.forEach((item: any) => {
 				if (item.path == '') { }
-				else if (menuPathMatchesItem(item, currentPath, sp)) {
+				else if (menuPathMatchesItem(item, currentPath)) {
 					setSubmenu(null, item);
 				}
 				setSubmenuRecursively(item.children);

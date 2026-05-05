@@ -11,6 +11,7 @@ import {
 } from "@/shared/lib/api/bolna";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
 
 type SourceFilter = "all" | "telephony" | "in_app";
 type PurposeFilter = "all" | "job_recruiter" | "student_candidate";
@@ -289,6 +290,45 @@ const Calling = () => {
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  // Live updates from backend callSync.service.js. Admin sees every call:update;
+  // non-admins receive only deltas they're scoped to (candidate/job rooms).
+  // Strategy: patch the row in place if known; otherwise refetch first page so
+  // newly-created records pick up enrichment (displayCategory, displayName).
+  const { onCallUpdate } = useChatSocket();
+  useEffect(() => {
+    const off = onCallUpdate((evt: CallUpdateData) => {
+      if (!evt?.executionId) return;
+      let matched = false;
+      setTelephonyRecords((prev) => {
+        const idx = prev.findIndex((r) => r.executionId === evt.executionId);
+        if (idx === -1) return prev;
+        matched = true;
+        const next = prev.slice();
+        next[idx] = {
+          ...next[idx],
+          status: evt.status ?? next[idx].status,
+          duration: evt.duration ?? next[idx].duration,
+          recordingUrl: evt.recordingUrl ?? next[idx].recordingUrl,
+          fromPhoneNumber: evt.fromPhoneNumber ?? next[idx].fromPhoneNumber,
+          toPhoneNumber: evt.toPhoneNumber ?? next[idx].toPhoneNumber,
+          recipientPhoneNumber: evt.recipientPhoneNumber ?? next[idx].recipientPhoneNumber,
+          phone: evt.phone ?? next[idx].phone,
+          businessName: evt.businessName ?? next[idx].businessName,
+          purpose: evt.purpose ?? next[idx].purpose,
+          errorMessage: evt.errorMessage ?? next[idx].errorMessage,
+          completedAt: evt.completedAt ?? next[idx].completedAt,
+        };
+        return next;
+      });
+      // Unknown executionId on first page → refetch so new record appears with
+      // server-side enrichment (displayCategory + displayName).
+      if (!matched) {
+        fetchRecords();
+      }
+    });
+    return off;
+  }, [onCallUpdate, fetchRecords]);
 
   const mergedCalls = useMemo((): UnifiedCall[] => {
     const list: UnifiedCall[] = [];

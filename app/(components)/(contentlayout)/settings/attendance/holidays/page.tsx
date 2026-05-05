@@ -475,8 +475,8 @@ export default function SettingsAttendanceHolidaysPage() {
                 <p className="mb-4 text-sm text-defaulttextcolor/70">
                   Showing {holidays.length} of {totalResults} holiday{totalResults !== 1 ? "s" : ""}
                 </p>
-                <div className="overflow-hidden rounded-xl border border-defaultborder/70">
-                  <table className="min-w-full">
+                <div className="overflow-x-auto rounded-xl border border-defaultborder/70">
+                  <table className="min-w-full table-auto">
                     <thead>
                       <tr className="border-b border-defaultborder/60 bg-slate-50/80 dark:bg-white/[0.04]">
                         <th className="px-5 py-3.5 text-left text-xs font-semibold uppercase tracking-wider text-defaulttextcolor/70">
@@ -502,8 +502,10 @@ export default function SettingsAttendanceHolidaysPage() {
                             style={{ animationDelay: `${index * 40}ms` }}
                             className="holiday-row-enter opacity-0 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition-colors"
                           >
-                            <td className="px-5 py-4 font-medium text-defaulttextcolor">{holiday.title}</td>
-                            <td className="px-5 py-4 text-sm text-defaulttextcolor/85">
+                            <td className="px-5 py-4 font-medium text-defaulttextcolor max-w-[280px]">
+                              <span className="block truncate" title={holiday.title}>{holiday.title}</span>
+                            </td>
+                            <td className="px-5 py-4 text-sm text-defaulttextcolor/85 whitespace-nowrap">
                               {holiday.endDate
                                 ? `${formatDate(holiday.date)} – ${formatDate(holiday.endDate)}`
                                 : formatDate(holiday.date)}

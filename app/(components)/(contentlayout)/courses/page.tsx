@@ -191,17 +191,19 @@ export default function CandidateCoursesPage() {
             </>
           )}
         </div>
-        <div className="flex-1 min-w-[200px] max-w-sm ms-auto flex items-center gap-2">
-          <input
-            type="text"
-            placeholder="Search my courses"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="flex-1 min-w-0 rounded-lg border border-defaultborder bg-bodybg dark:bg-white/5 px-3 py-2 text-[0.875rem] focus:outline-none focus:ring-2 focus:ring-primary/30"
-          />
-          <button type="button" className="flex items-center justify-center w-10 h-[2.25rem] shrink-0 rounded-lg bg-primary text-white" aria-label="Search">
-            <i className="ti ti-search text-[1rem]" />
-          </button>
+        <div className="flex-1 min-w-[200px] max-w-sm ms-auto">
+          <div className="flex items-center rounded-lg border border-defaultborder dark:border-white/15 bg-bodybg dark:bg-white/5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 transition-colors overflow-hidden">
+            <input
+              type="text"
+              placeholder="Search my courses"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 min-w-0 bg-transparent border-0 px-3 py-2 text-[0.875rem] text-defaulttextcolor focus:outline-none focus:ring-0"
+            />
+            <button type="button" className="flex items-center justify-center w-10 h-[2.25rem] shrink-0 bg-primary text-white" aria-label="Search">
+              <i className="ti ti-search text-[1rem]" />
+            </button>
+          </div>
         </div>
         <div className="relative">
           <button
