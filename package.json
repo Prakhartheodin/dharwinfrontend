@@ -5,7 +5,7 @@
   "scripts": {
     "generate-templates": "node scripts/generate-templates.js",
     "dev": "next dev -p 3001",
-    "build": "next build --no-turbopack",
+    "build": "next build --webpack",
     "build:turbo": "next build",
     "postbuild": "node scripts/prune-next-build.js && node scripts/verify-build-output.js && node scripts/check-document-shell.js",
     "start": "next start",
