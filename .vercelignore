@@ -1,0 +1,23 @@
+# Stale build artifacts must never reach the upload tarball.
+# Vercel re-runs `next build` in its build container; uploading a local
+# `.next` tarball is wasteful and can leak stale chunk references whose
+# `.nft.json` manifests do not match the freshly-built ones.
+.next
+out
+.cache
+node_modules/.cache
+
+# Source maps stripped by prune-next-build.js — never ship them.
+*.map
+
+# Local IDE / editor state that should never reach a deploy tarball.
+.vscode
+.idea
+.DS_Store
+
+# Environment + secret files (defence in depth — Vercel sets env via
+# project settings).
+.env
+.env.local
+.env.development.local
+.env.production.local

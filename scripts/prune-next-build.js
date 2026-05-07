@@ -3,13 +3,17 @@
  * deploy-platform size limits (e.g. AWS Amplify's ~220 MB cap).
  *
  * What gets pruned:
- *  1. Source-map files (.map) everywhere inside `.next`
- *  2. `.next/cache` directory
- *  3. `.nft.json` trace files in `.next/server` (~5 MB)
- *  4. Non-essential files in `public/assets/iconfonts/` (~19 MB)
- *     Only .css, .woff2, .woff, .ttf, .eot are kept — everything the
- *     browser actually needs.  SVG font files, JSON manifests, HTML demos,
- *     .fig/.zip/.scss/.less/.styl source, etc. are removed.
+ *  1. Source-map files (.map) everywhere inside `.next`               [always]
+ *  2. `.next/cache` directory                                         [Amplify only]
+ *  3. `.nft.json` trace files in `.next/server` (~5 MB)               [Amplify only]
+ *  4. Non-essential files in `public/assets/iconfonts/` (~19 MB)      [always]
+ *
+ * Vercel deployments depend on `.nft.json`. Vercel's serverless-function
+ * packer reads them to determine which Turbopack / webpack chunks to ship
+ * with each route. Deleting them strands chunks like
+ * `[root-of-the-server]__<hash>.js` outside the function bundle → runtime
+ * MODULE_NOT_FOUND on dynamic routes. We gate the `.nft.json` and
+ * `.next/cache` deletes by deploy-platform env vars.
  */
 const fs = require("fs");
 const path = require("path");
@@ -17,6 +21,10 @@ const path = require("path");
 const rootDir = path.join(__dirname, "..");
 const nextDir = path.join(rootDir, ".next");
 const iconfontsDir = path.join(rootDir, "public", "assets", "iconfonts");
+
+const ON_VERCEL  = !!(process.env.VERCEL || process.env.VERCEL_ENV);
+const ON_AMPLIFY = !!(process.env.AWS_APP_ID || process.env.AWS_BRANCH);
+const PLATFORM   = ON_VERCEL ? "vercel" : ON_AMPLIFY ? "amplify" : "local";
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
@@ -71,14 +79,20 @@ function main() {
   }
 
   /* 2. Clear .next/cache ─────────────────────────────────────────────── */
+  // Amplify only — on Vercel the cache is uploaded to the build cache
+  // store for next deploy, and locally we keep it for incremental dev.
   const cacheDir = path.join(nextDir, "cache");
-  if (fs.existsSync(cacheDir)) {
+  if (ON_AMPLIFY && !ON_VERCEL && fs.existsSync(cacheDir)) {
     try { fs.rmSync(cacheDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 
   /* 3. Remove .nft.json trace files from .next/server ────────────────── */
+  // Amplify only — Vercel REQUIRES these to pack serverless functions.
+  // Removing them on Vercel strands Turbopack / webpack chunks outside
+  // the function bundle and produces runtime MODULE_NOT_FOUND on dynamic
+  // routes (e.g. `[root-of-the-server]__<hash>.js`).
   const serverDir = path.join(nextDir, "server");
-  if (fs.existsSync(serverDir)) {
+  if (ON_AMPLIFY && !ON_VERCEL && fs.existsSync(serverDir)) {
     walk(serverDir, (p) => {
       if (!p.endsWith(".nft.json")) return;
       stats.nftBytes += tryUnlink(p);
@@ -113,12 +127,13 @@ function main() {
   const mb = (b) => (b / 1024 / 1024).toFixed(1);
   console.log(
     [
-      `prune-next-build summary:`,
-      `  .map files removed  : ${stats.maps} (~${mb(stats.mapBytes)} MB)`,
-      `  .nft.json removed   : ${stats.nft} (~${mb(stats.nftBytes)} MB)`,
+      `prune-next-build summary (platform=${PLATFORM}):`,
+      `  .map files removed   : ${stats.maps} (~${mb(stats.mapBytes)} MB)`,
+      `  .nft.json removed    : ${stats.nft} (~${mb(stats.nftBytes)} MB)` +
+        (ON_VERCEL ? "  [skipped — required by Vercel]" : ""),
       `  iconfont junk removed: ${stats.icons} (~${mb(stats.iconBytes)} MB)`,
-      `  .next/cache cleared`,
-      `  total savings       : ~${mb(stats.mapBytes + stats.nftBytes + stats.iconBytes)} MB`,
+      `  .next/cache          : ${ON_AMPLIFY && !ON_VERCEL ? "cleared" : "kept"}`,
+      `  total savings        : ~${mb(stats.mapBytes + stats.nftBytes + stats.iconBytes)} MB`,
     ].join("\n")
   );
 }

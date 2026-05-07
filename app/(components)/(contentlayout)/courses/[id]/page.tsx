@@ -1,10 +1,10 @@
+// SSR dynamic route. No `generateStaticParams` — see
+// training/attendance/student/[studentId]/page.tsx for rationale (placeholder
+// `{ id: "_" }` strands SSR runtime chunks on Vercel after `output: "export"`
+// was removed from next.config.js).
+
 import React from "react";
 import CourseDetailLoader from "./course-detail-loader";
-
-/** Required for static export (output: "export"). At least one param needed; real IDs are loaded at runtime. */
-export async function generateStaticParams() {
-  return [{ id: "_" }];
-}
 
 export default async function CourseDetailPage({
   params,

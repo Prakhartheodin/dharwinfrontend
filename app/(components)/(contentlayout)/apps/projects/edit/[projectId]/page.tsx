@@ -1,11 +1,12 @@
+// SSR dynamic route. We deliberately do NOT export `generateStaticParams`:
+// next.config.js no longer sets `output: "export"`, so the placeholder
+// `{ projectId: "_" }` was producing an unused static prerender that
+// confused Vercel's serverless chunk packer and stranded SSR runtime
+// chunks (`[root-of-the-server]__<hash>.js MODULE_NOT_FOUND`). See
+// training/attendance/student/[studentId]/page.tsx for the same rationale.
+
 import React from "react";
 import { EditProjectClient } from "./EditProjectClient";
-
-export function generateStaticParams() {
-  // With output: "export", dynamic routes require generateStaticParams.
-  // Return one placeholder so build succeeds; real edit URLs are loaded client-side.
-  return [{ projectId: "_" }];
-}
 
 export default async function EditProjectPage({
   params,

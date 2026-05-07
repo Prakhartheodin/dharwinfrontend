@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRoomContext } from "@livekit/components-react";
 import * as livekitApi from "@/shared/lib/api/livekit";
 
@@ -216,31 +217,12 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
             {error}
           </span>
         )}
-        {showStopConfirm && (
-          <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-[#1a1a1f] rounded-xl p-5 shadow-xl max-w-sm w-full border border-white/10">
-              <p className="text-white font-medium mb-1">Stop recording?</p>
-              <p className="text-gray-400 text-sm mb-4">The recording will be saved and available in the recordings list.</p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowStopConfirm(false)}
-                  className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleStopRecording}
-                  disabled={isLoading}
-                  className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50"
-                >
-                  {isLoading ? "Stopping…" : "Stop recording"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <StopRecordingDialog
+          open={showStopConfirm}
+          loading={isLoading}
+          onCancel={() => setShowStopConfirm(false)}
+          onConfirm={handleStopRecording}
+        />
       </div>
     );
   }
@@ -256,36 +238,164 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       >
         {buttonContent}
       </button>
-      {showStopConfirm && (
-        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-[#1a1a1f] rounded-xl p-5 shadow-xl max-w-sm w-full border border-white/10">
-            <p className="text-white font-medium mb-1">Stop recording?</p>
-            <p className="text-gray-400 text-sm mb-4">The recording will be saved and available in the recordings list.</p>
-            <div className="flex gap-2 justify-end">
-              <button
-                type="button"
-                onClick={() => setShowStopConfirm(false)}
-                className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium hover:bg-white/20"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleStopRecording}
-                disabled={isLoading}
-                className="px-4 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 disabled:opacity-50"
-              >
-                {isLoading ? "Stopping…" : "Stop recording"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <StopRecordingDialog
+        open={showStopConfirm}
+        loading={isLoading}
+        onCancel={() => setShowStopConfirm(false)}
+        onConfirm={handleStopRecording}
+      />
       {error && (
         <div className="mt-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-300 text-xs">
           {error}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Stop-recording confirmation. Portaled to document.body so it escapes
+ * the control-bar's `backdrop-filter` containing block (which would otherwise
+ * anchor `position: fixed` to the bar instead of the viewport, parking the
+ * dialog at the bottom of the screen).
+ */
+function StopRecordingDialog({
+  open,
+  loading,
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  loading: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open || typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 3000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "1rem",
+        background: "rgba(6,7,10,0.72)",
+        backdropFilter: "blur(8px)",
+        WebkitBackdropFilter: "blur(8px)",
+        animation: "obsFade 160ms ease-out",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: "min(420px, calc(100vw - 2rem))",
+          padding: "1.75rem",
+          background: "rgba(20,23,26,0.92)",
+          backdropFilter: "blur(24px) saturate(140%)",
+          WebkitBackdropFilter: "blur(24px) saturate(140%)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "18px",
+          boxShadow: "0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05)",
+          fontFamily: "var(--obs-font-body, 'Manrope', system-ui, sans-serif)",
+          color: "#f4f5f6",
+        }}
+      >
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "5px 10px",
+            background: "rgba(255,82,82,0.1)",
+            border: "1px solid rgba(255,82,82,0.28)",
+            borderRadius: "999px",
+            fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
+            fontSize: "10px",
+            letterSpacing: "0.16em",
+            color: "#ff8a8a",
+            marginBottom: "1rem",
+          }}
+        >
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              borderRadius: "50%",
+              background: "#ff5252",
+              boxShadow: "0 0 8px #ff5252",
+              animation: "obsPulse 1.4s ease-in-out infinite",
+            }}
+          />
+          RECORDING ACTIVE
+        </div>
+        <h3
+          style={{
+            fontFamily: "var(--obs-font-display, 'Fraunces', serif)",
+            fontSize: "1.6rem",
+            fontWeight: 500,
+            letterSpacing: "-0.02em",
+            margin: "0 0 0.5rem",
+            lineHeight: 1.1,
+          }}
+        >
+          Stop the recording?
+        </h3>
+        <p style={{ fontSize: "13px", color: "#a8acb1", lineHeight: 1.55, margin: "0 0 1.5rem" }}>
+          The file will be saved and added to the recordings list. You can start a new recording at any time.
+        </p>
+        <div style={{ display: "flex", gap: "0.6rem", justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              padding: "0.7rem 1.2rem",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              borderRadius: "10px",
+              color: "#a8acb1",
+              fontSize: "13px",
+              fontWeight: 600,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              letterSpacing: "-0.005em",
+            }}
+          >
+            Keep recording
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            style={{
+              padding: "0.7rem 1.2rem",
+              background: loading
+                ? "rgba(120,30,30,0.5)"
+                : "linear-gradient(180deg, #ff5252, #d62a2a)",
+              border: "1px solid rgba(255,120,120,0.4)",
+              borderRadius: "10px",
+              color: "#fff",
+              fontSize: "13px",
+              fontWeight: 600,
+              fontFamily: "inherit",
+              cursor: loading ? "not-allowed" : "pointer",
+              letterSpacing: "-0.005em",
+              boxShadow: loading ? "none" : "0 8px 24px -8px rgba(255,82,82,0.5)",
+              opacity: loading ? 0.6 : 1,
+            }}
+          >
+            {loading ? "Stopping…" : "Stop recording"}
+          </button>
+        </div>
+      </div>
+      <style>{`
+        @keyframes obsFade { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
+    </div>,
+    document.body
   );
 }

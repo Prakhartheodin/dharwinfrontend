@@ -10,8 +10,13 @@ import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
 import { getJobById, updateJob, type UpdateJobPayload } from '@/shared/lib/api/jobs'
 import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
-const Select = dynamic(() => import('react-select'), { ssr: false })
-import CreatableSelect from 'react-select/creatable'
+// Both react-select entry points must follow the same SSR boundary —
+// mixing a static import (CreatableSelect) with a dynamic ssr:false
+// import (Select) created an inconsistent chunk graph that confused
+// Turbopack's analyser and contributed to the production
+// `[root-of-the-server]__<hash>.js` MODULE_NOT_FOUND issue.
+const Select          = dynamic(() => import('react-select'),          { ssr: false })
+const CreatableSelect = dynamic(() => import('react-select/creatable'), { ssr: false })
 
 const jobTypeOptions = [
   { value: 'Full-time', label: 'Full Time' },

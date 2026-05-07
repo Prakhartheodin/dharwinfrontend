@@ -2,7 +2,13 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import * as XLSX from "xlsx";
+
+// xlsx is ~600KB and uses dynamic require patterns that confuse Turbopack's
+// chunk graph analyser — eagerly importing it inflated the SSR chunk graph
+// and contributed to `[root-of-the-server]__<hash>.js MODULE_NOT_FOUND` on
+// Vercel. Lazy-load on demand instead — only when the user actually
+// triggers an Excel template download or import.
+const loadXlsx = () => import("xlsx");
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import * as attendanceApi from "@/shared/lib/api/attendance";
@@ -663,7 +669,8 @@ export default function StudentAttendancePage() {
     }
   };
 
-  const downloadExcelTemplate = () => {
+  const downloadExcelTemplate = async () => {
+    const XLSX = await loadXlsx();
     const templateData = [
       { "Date (YYYY-MM-DD)": "2024-01-15", "Punch In Time (HH:MM)": "09:00", "Punch Out Time (HH:MM)": "17:00", "Timezone": "UTC", "Notes (Optional)": "Sample entry" },
       { "Date (YYYY-MM-DD)": "2024-01-16", "Punch In Time (HH:MM)": "09:30", "Punch Out Time (HH:MM)": "18:00", "Timezone": "Asia/Kolkata", "Notes (Optional)": "Another sample" },
@@ -677,6 +684,7 @@ export default function StudentAttendancePage() {
 
   const handleExcelImport = async (file: File) => {
     try {
+      const XLSX = await loadXlsx();
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: "array" });
       const firstSheetName = workbook.SheetNames[0];
