@@ -3,12 +3,11 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
-  /** Keep production artifacts smaller (no client .map in deploy bundle). */
+  /** Keep production artifacts smaller (no client .map in deploy bundle).
+      Server-side source maps are already off by default in production;
+      `experimental.serverSourceMaps` was removed from the Next 16 schema
+      and logged as `⨯` when present. Prune step still strips stray .map. */
   productionBrowserSourceMaps: false,
-  experimental: {
-    /** Avoid emitting server-side .map files (can add 50–100MB+ to `.next`). */
-    serverSourceMaps: false,
-  },
   // basePath: isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
   // assetPrefix : isProd ? "/tailwind/app/dharwin-business-solutions/preview" : undefined,
   basePath: "",

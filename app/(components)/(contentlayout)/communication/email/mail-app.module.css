@@ -569,19 +569,22 @@
   color: var(--mail-ink);
 }
 
-/* Quoted / threaded history inside HTML bodies (Gmail + Outlook) */
-:global(.mail-html-body .mail-quoted) {
+/* Quoted / threaded history inside HTML bodies (Gmail + Outlook).
+   Anchored under .mailRoot (local) so each selector satisfies CSS-Modules
+   pure-selector rule. Bare `:global { ... }` blocks fail Next 16 webpack
+   strict mode with "is not pure" errors. */
+.mailRoot :global(.mail-html-body .mail-quoted) {
   margin-top: 0.75rem;
   padding-top: 0.5rem;
   border-top: 1px solid rgba(120, 113, 108, 0.12);
 }
 
-:global(.dark .mail-html-body .mail-quoted) {
+.mailRoot :global(.dark .mail-html-body .mail-quoted) {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
-:global(.mail-html-body .mail-quoted blockquote),
-:global(.mail-html-body blockquote) {
+.mailRoot :global(.mail-html-body .mail-quoted blockquote),
+.mailRoot :global(.mail-html-body blockquote) {
   margin: 0.5rem 0 0;
   padding: 0.5rem 0 0.5rem 0.875rem;
   border-left: 3px solid rgba(194, 65, 12, 0.45);
@@ -589,8 +592,8 @@
   border-radius: 0 6px 6px 0;
 }
 
-:global(.dark .mail-html-body .mail-quoted blockquote),
-:global(.dark .mail-html-body blockquote) {
+.mailRoot :global(.dark .mail-html-body .mail-quoted blockquote),
+.mailRoot :global(.dark .mail-html-body blockquote) {
   border-left-color: rgba(251, 146, 60, 0.5);
   background: rgba(255, 255, 255, 0.04);
 }
