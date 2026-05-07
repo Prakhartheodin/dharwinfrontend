@@ -1,84 +1,42 @@
-"use client"
-import React, { useContext, useEffect, useMemo, useState } from 'react'
-import { connect } from 'react-redux';
-import  * as switcherdata from '../../shared/data/switcherdata/switcherdata';
-import { ThemeChanger } from '@/shared/redux/action';
-import { Initialload } from '@/shared/contextapi';
-import { basePath } from '@/next.config';
+"use client";
 
-const ICON_STYLESHEETS = [
-  "/assets/iconfonts/RemixIcons/fonts/remixicon.css",
-  "/assets/iconfonts/tabler-icons/iconfont/tabler-icons.css",
-  "/assets/iconfonts/feather/feather.css",
-  "/assets/iconfonts/bootstrap-icons/icons/font/bootstrap-icons.css",
-  "/assets/iconfonts/line-awesome/1.3.0/css/line-awesome.css",
-  "/assets/iconfonts/boxicons/css/boxicons.css",
-] as const;
+// app/(components)/layout.tsx
+//
+// Route-group layout. Previously rendered a nested <html>/<head>/<body>,
+// which is invalid in the App Router (only app/layout.tsx may emit the
+// document shell) and was causing hydration warnings + SSR runtime chunk
+// corruption on Vercel.
+//
+// Now: data-* / dir / className / CSS-var theming is hoisted to the live
+// DOM by ThemeAttrsApplier (subscribes to Redux post-hydration); document
+// shell + iconfont stylesheets + dragula <script> live in app/layout.tsx.
+// This file only kicks off the LocalStorageBackup theme bootstrap and
+// gates first paint behind `theme.pageloading`.
 
-function Layout({children, local_varaiable, ThemeChanger}:any) {
-  const assetBase = process.env.NODE_ENV === "production" ? basePath : "";
-  const customstyles :any= {
-    ...(local_varaiable.colorPrimaryRgb !== '' && { '--primary-rgb': local_varaiable.colorPrimaryRgb }),
-    ...(local_varaiable.colorPrimary !== '' && { '--primary': local_varaiable.colorPrimary }),
-    ...(local_varaiable.darkBg !== '' && { '--dark-bg': local_varaiable.darkBg }),
-    ...(local_varaiable.bodyBg !== '' && { '--body-bg': local_varaiable.bodyBg }),
-    ...(local_varaiable.inputBorder !== '' && { '--input-border': local_varaiable.inputBorder }),
-    ...(local_varaiable.Light !== '' && { '--light': local_varaiable.Light }),
-  };
+import React, { useContext, useEffect } from "react";
+import { useDispatch } from "react-redux";
+import * as switcherdata from "../../shared/data/switcherdata/switcherdata";
+import { ThemeChanger } from "@/shared/redux/action";
+import { Initialload } from "@/shared/contextapi";
+import ThemeAttrsApplier from "./ThemeAttrsApplier";
 
-  const theme :any= useContext(Initialload);
+export default function Layout({ children }: { children: React.ReactNode }) {
+  const theme: any = useContext(Initialload);
+  const dispatch = useDispatch();
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && !theme.pageloading) {
-      switcherdata.LocalStorageBackup(ThemeChanger, theme.setpageloading);
+    if (typeof window !== "undefined" && !theme.pageloading) {
+      switcherdata.LocalStorageBackup(
+        (payload: any) => dispatch(ThemeChanger(payload) as any),
+        theme.setpageloading,
+      );
     }
   }, []);
 
-
   return (
     <>
-         <html
-            suppressHydrationWarning={true} 
-            dir={local_varaiable.dir}
-            className={local_varaiable.class}
-            data-header-styles={local_varaiable.dataHeaderStyles}
-            data-vertical-style={local_varaiable.dataVerticalStyle}
-            data-nav-layout={local_varaiable.dataNavLayout}
-            data-menu-styles={local_varaiable.dataMenuStyles}
-            data-toggled={local_varaiable.dataToggled}
-            data-nav-style={local_varaiable.dataNavStyle}
-            hor-style={local_varaiable.horStyle}
-            data-page-style={local_varaiable.dataPageStyle}
-            data-width={local_varaiable.dataWidth}
-            data-menu-position={local_varaiable.dataMenuPosition}
-            data-header-position={local_varaiable.dataHeaderPosition}
-            data-icon-overlay={local_varaiable.iconOverlay}
-            bg-img={local_varaiable.bgImg}
-            data-icon-text={local_varaiable.iconText}
-
-            //Styles
-            style={customstyles}>
-              <head>
-              <link rel="icon" href={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} type="image/png" />
-              {ICON_STYLESHEETS.map((path) => {
-                const href = `${assetBase}${path}`;
-                return <link key={path} rel="stylesheet" href={href} />;
-              })}
-              <link href="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.css" rel="stylesheet"/>
-              <meta name="keywords" content=" nextjs app router, nextjs template, tailwind nextjs, next js themes, next js tailwind,  tailwind, admin, tailwindcss nextjs, nextjs admin templates, tailwind admin template, nextjs admin template, nextjs typescript, admin template, tailwind dashboard, tailwind css dashboard" />
-              </head>
-              {/* Browser extensions (e.g. Grammarly: data-gr-ext-installed) mutate <body> before React hydrates; suppressHydrationWarning avoids a false mismatch on this node only. */}
-              <body suppressHydrationWarning className={local_varaiable?.body ?? ""}>
-              {theme.pageloading && children}
-              <script src="https://cdn.jsdelivr.net/npm/dragula@3.7.3/dist/dragula.min.js"></script>
-             </body>
-          </html>
+      <ThemeAttrsApplier />
+      {theme.pageloading && children}
     </>
-  )
+  );
 }
-
-const mapStateToProps = (state: any) => ({
-  local_varaiable: state
-});
-
-export default connect(mapStateToProps, {ThemeChanger})(Layout);

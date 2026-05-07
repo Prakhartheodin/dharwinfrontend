@@ -151,6 +151,10 @@ export async function endMeetingPublic(roomName: string, hostEmail: string): Pro
 
 export interface RecordingWithMeeting extends MeetingRecording {
   meetingTitle?: string;
+  /** Backend exposes for aborted/failed/missing rows so UI can surface the failure reason. */
+  lastError?: string;
+  /** LiveKit egress identifier (sparse). Surfaced for ops/debug copy actions. */
+  egressId?: string | null;
 }
 
 export interface RecordingsListResponse {
@@ -167,5 +171,30 @@ export async function listAllRecordings(params?: {
   limit?: number;
 }): Promise<RecordingsListResponse> {
   const { data } = await apiClient.get<RecordingsListResponse>("/recordings", { params });
+  return data;
+}
+
+export interface SyncFromLiveKitResult {
+  swept: number;
+  upserted: number;
+  skipped: number;
+  stuckScanned?: number;
+  backfilled?: number;
+  stuckSkipped?: number;
+  results: Array<{
+    egressId: string;
+    meetingId: string;
+    meetingTitle?: string | null;
+    matched?: boolean;
+    status: string;
+    livekitStatus?: string;
+    filePath?: string | null;
+    bytes?: number | null;
+  }>;
+}
+
+/** Pull every egress from LiveKit + upsert Recording rows. Idempotent. */
+export async function syncRecordingsFromLiveKit(): Promise<SyncFromLiveKitResult> {
+  const { data } = await apiClient.post<SyncFromLiveKitResult>("/recordings/sync");
   return data;
 }

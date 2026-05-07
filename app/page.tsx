@@ -50,8 +50,6 @@ export default function Home() {
   };
   return (
     <>
-    <html>
-      <body>
       <div className="container">
         <div className="flex justify-center authentication authentication-basic items-center h-full text-defaultsize text-defaulttextcolor">
           <div className="grid grid-cols-12">
@@ -181,8 +179,6 @@ export default function Home() {
           </div>
         </div>
       </div>
-      </body>
-    </html>
     </>
   );
 }

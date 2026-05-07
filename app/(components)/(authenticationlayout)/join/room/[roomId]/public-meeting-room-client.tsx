@@ -9,7 +9,7 @@ import {
 } from "@livekit/components-react";
 import { createPortal } from "react-dom";
 import "@livekit/components-styles";
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import Swal from "sweetalert2";
@@ -327,6 +327,782 @@ function MeetingScheduleCountdown({
     </div>,
     document.body
   );
+}
+
+/**
+ * Obsidian Studio aesthetic — shared styles for lobby, waiting overlay, and meeting room.
+ * Loads Fraunces (display), Manrope (body), JetBrains Mono (HUD) once, then defines
+ * a token system used across all surfaces in this file. Idempotent — multiple mounts
+ * collapse on the same `data-obs-styles` marker.
+ */
+function ObsidianStudioStyles() {
+  return (
+    <>
+      <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+      />
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Manrope:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      />
+      <style data-obs-styles dangerouslySetInnerHTML={{ __html: `
+        :root {
+          --obs-bg: #0B0D0E;
+          --obs-bg-2: #15181b;
+          --obs-bg-3: #1c2024;
+          --obs-fg: #f4f5f6;
+          --obs-fg-dim: #a8acb1;
+          --obs-fg-faint: #6b7075;
+          --obs-line: rgba(255,255,255,0.08);
+          --obs-line-2: rgba(255,255,255,0.14);
+          --obs-accent: #00E6C3;
+          --obs-accent-dim: #0a8c77;
+          --obs-warm: #FF8A65;
+          --obs-danger: #ff5252;
+          --obs-font-display: 'Fraunces', 'Times New Roman', serif;
+          --obs-font-body: 'Manrope', system-ui, sans-serif;
+          --obs-font-mono: 'JetBrains Mono', ui-monospace, monospace;
+        }
+
+        .obs-display {
+          font-family: var(--obs-font-display);
+          font-weight: 500;
+          font-variation-settings: "opsz" 96, "SOFT" 50;
+          letter-spacing: -0.02em;
+          line-height: 1.02;
+          color: var(--obs-fg);
+        }
+        .obs-display-italic {
+          font-style: italic;
+          font-variation-settings: "opsz" 144, "SOFT" 100;
+          color: var(--obs-accent);
+        }
+        .obs-mono {
+          font-family: var(--obs-font-mono);
+          font-size: 11px;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--obs-fg-dim);
+        }
+        .obs-eyebrow {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          color: var(--obs-accent);
+          font-weight: 500;
+        }
+        .obs-dot {
+          display: inline-block;
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--obs-warm);
+          box-shadow: 0 0 0 3px rgba(255,138,101,0.18);
+          animation: obsPulse 1.6s ease-in-out infinite;
+        }
+        @keyframes obsPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.55; transform: scale(0.85); }
+        }
+
+        /* ---------- LOBBY (split view) ---------- */
+        .obs-lobby {
+          position: fixed;
+          inset: 0;
+          display: grid;
+          grid-template-columns: minmax(0, 1.4fr) minmax(380px, 1fr);
+          background: radial-gradient(ellipse at 30% 20%, #1a1d20 0%, var(--obs-bg) 60%, #06070a 100%);
+          font-family: var(--obs-font-body);
+          color: var(--obs-fg);
+          overflow: hidden;
+        }
+        .obs-lobby__grain {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>");
+          opacity: 0.04;
+          mix-blend-mode: overlay;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .obs-lobby__vignette {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle at 50% 50%, transparent 40%, rgba(0,0,0,0.45) 100%);
+          pointer-events: none;
+          z-index: 1;
+        }
+        .obs-lobby__hero {
+          position: relative;
+          padding: clamp(1rem, 2.4vw, 2.5rem);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 2;
+        }
+        .obs-lobby__hero-frame {
+          position: relative;
+          width: 100%;
+          max-width: 880px;
+          aspect-ratio: 16 / 10;
+          background: #08090a;
+          border-radius: 20px;
+          overflow: hidden;
+          border: 1px solid var(--obs-line);
+          box-shadow:
+            0 30px 80px -20px rgba(0,0,0,0.7),
+            0 0 0 1px rgba(255,255,255,0.02),
+            inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+        /* Override LobbyDevicePreview's space-y stack: stretch video, float mic bars, hide redundant label */
+        .obs-lobby__hero-frame > div:first-of-type {
+          position: absolute !important;
+          inset: 0 !important;
+          width: 100% !important;
+          height: 100% !important;
+          display: block !important;
+        }
+        .obs-lobby__hero-frame > div:first-of-type > p:first-of-type { display: none !important; }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(1) {
+          position: absolute !important;
+          inset: 0 !important;
+          border-radius: 0 !important;
+          border: none !important;
+        }
+        .obs-lobby__hero-frame video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover;
+        }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(1) > div.absolute > i {
+          font-size: 4rem !important;
+          color: rgba(255,255,255,0.18) !important;
+        }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(1) > div.absolute > span {
+          color: rgba(255,255,255,0.32) !important;
+          font-family: var(--obs-font-display);
+          font-style: italic;
+          font-size: 18px !important;
+        }
+        /* "Mirror preview" label tweak */
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(1) > div.pointer-events-none {
+          background: rgba(11,13,14,0.6) !important;
+          backdrop-filter: blur(8px);
+          font-family: var(--obs-font-mono) !important;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          font-size: 9px !important;
+          padding: 4px 8px !important;
+          border-radius: 4px !important;
+          color: rgba(255,255,255,0.7) !important;
+        }
+        /* Mic level container — float to top-left */
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(2) {
+          position: absolute !important;
+          top: 1rem !important;
+          left: 1rem !important;
+          padding: 0.5rem 0.75rem !important;
+          background: rgba(11,13,14,0.65) !important;
+          backdrop-filter: blur(12px);
+          border: 1px solid var(--obs-line-2) !important;
+          border-radius: 999px !important;
+          z-index: 3;
+          margin: 0 !important;
+        }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(2) > p { display: none !important; }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(2) > div {
+          height: 18px !important;
+          padding: 0 !important;
+          background: transparent !important;
+          border: none !important;
+          gap: 3px !important;
+        }
+        .obs-lobby__hero-frame > div:first-of-type > div:nth-of-type(2) > div > div {
+          background: var(--obs-accent) !important;
+          width: 3px !important;
+        }
+        .obs-lobby__hero-gradient {
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(180deg, rgba(11,13,14,0) 50%, rgba(11,13,14,0.85) 100%);
+          pointer-events: none;
+        }
+        .obs-lobby__hero-meta {
+          position: absolute;
+          left: 1.5rem;
+          right: 1.5rem;
+          bottom: 1.5rem;
+          display: flex;
+          align-items: flex-end;
+          justify-content: space-between;
+          gap: 1rem;
+          z-index: 2;
+        }
+        .obs-lobby__hero-tag {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          background: rgba(11,13,14,0.7);
+          backdrop-filter: blur(12px);
+          border: 1px solid var(--obs-line-2);
+          border-radius: 999px;
+          font-family: var(--obs-font-mono);
+          font-size: 10px;
+          letter-spacing: 0.18em;
+          color: var(--obs-fg);
+        }
+        .obs-lobby__hero-name {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 4px;
+          text-align: right;
+          max-width: 60%;
+        }
+        .obs-lobby__hero-name .obs-display {
+          font-size: clamp(1.5rem, 2.4vw, 2.4rem);
+        }
+        .obs-lobby__hero-email {
+          font-size: 10px;
+          color: var(--obs-fg-faint);
+        }
+        .obs-lobby__hero-corner {
+          position: absolute;
+          width: 28px;
+          height: 28px;
+          border-color: var(--obs-accent);
+          border-style: solid;
+          border-width: 0;
+          opacity: 0.6;
+        }
+        .obs-lobby__hero-corner--tl { top: 12px; left: 12px; border-top-width: 1px; border-left-width: 1px; }
+        .obs-lobby__hero-corner--tr { top: 12px; right: 12px; border-top-width: 1px; border-right-width: 1px; }
+        .obs-lobby__hero-corner--bl { bottom: 12px; left: 12px; border-bottom-width: 1px; border-left-width: 1px; }
+        .obs-lobby__hero-corner--br { bottom: 12px; right: 12px; border-bottom-width: 1px; border-right-width: 1px; }
+
+        .obs-lobby__panel {
+          position: relative;
+          z-index: 2;
+          background: rgba(11,13,14,0.72);
+          backdrop-filter: blur(28px) saturate(140%);
+          -webkit-backdrop-filter: blur(28px) saturate(140%);
+          border-left: 1px solid var(--obs-line);
+          overflow-y: auto;
+          padding: clamp(1.5rem, 3vw, 3rem) clamp(1.25rem, 2.5vw, 2.5rem);
+          display: flex;
+          align-items: center;
+        }
+        .obs-lobby__panel-inner {
+          width: 100%;
+          max-width: 460px;
+          margin: 0 auto;
+        }
+        .obs-lobby__head { margin-bottom: 1.75rem; }
+        .obs-lobby__title {
+          font-size: clamp(2rem, 3.5vw, 2.8rem);
+          margin: 0.6rem 0 0.85rem;
+        }
+        .obs-lobby__subtitle {
+          font-size: 14px;
+          line-height: 1.55;
+          color: var(--obs-fg-dim);
+          max-width: 38ch;
+        }
+
+        .obs-form { display: flex; flex-direction: column; gap: 1.1rem; }
+        .obs-field { display: flex; flex-direction: column; gap: 0.4rem; }
+        .obs-field__label {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--obs-fg-dim);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+        .obs-field__hint { font-size: 9px; color: var(--obs-fg-faint); }
+        .obs-field__note {
+          font-size: 11px;
+          color: var(--obs-fg-faint);
+          line-height: 1.5;
+          margin-top: 4px;
+        }
+        .obs-input {
+          width: 100%;
+          padding: 0.85rem 1rem;
+          font-family: var(--obs-font-body);
+          font-size: 14px;
+          color: var(--obs-fg);
+          background: rgba(255,255,255,0.03);
+          border: 1px solid var(--obs-line);
+          border-radius: 10px;
+          outline: none;
+          transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+        }
+        .obs-input::placeholder { color: var(--obs-fg-faint); }
+        .obs-input:focus {
+          border-color: var(--obs-accent);
+          background: rgba(0,230,195,0.04);
+          box-shadow: 0 0 0 3px rgba(0,230,195,0.12);
+        }
+        .obs-input--readonly {
+          background: rgba(255,255,255,0.015);
+          color: var(--obs-fg-dim);
+          cursor: not-allowed;
+        }
+        .obs-input--readonly:focus {
+          border-color: var(--obs-line);
+          box-shadow: none;
+          background: rgba(255,255,255,0.015);
+        }
+
+        .obs-toggles {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0.6rem;
+        }
+        .obs-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 0.85rem 1rem;
+          background: rgba(255,255,255,0.025);
+          border: 1px solid var(--obs-line);
+          border-radius: 12px;
+          cursor: pointer;
+          transition: border-color 160ms ease, background 160ms ease;
+          font-family: var(--obs-font-body);
+        }
+        .obs-toggle:hover { border-color: var(--obs-line-2); background: rgba(255,255,255,0.04); }
+        .obs-toggle--active {
+          border-color: rgba(0,230,195,0.4);
+          background: rgba(0,230,195,0.06);
+        }
+        .obs-toggle__icon {
+          font-size: 18px;
+          color: var(--obs-fg-dim);
+          transition: color 160ms ease;
+        }
+        .obs-toggle--active .obs-toggle__icon { color: var(--obs-accent); }
+        .obs-toggle__label {
+          flex: 1;
+          margin-left: 12px;
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--obs-fg);
+          letter-spacing: -0.005em;
+        }
+        .obs-toggle__pill {
+          width: 36px;
+          height: 20px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
+          position: relative;
+          transition: background 160ms ease;
+        }
+        .obs-toggle__pill::after {
+          content: '';
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: var(--obs-fg);
+          transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .obs-toggle--active .obs-toggle__pill { background: var(--obs-accent); }
+        .obs-toggle--active .obs-toggle__pill::after { transform: translateX(16px); background: #07120f; }
+
+        .obs-status {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 13px;
+          color: var(--obs-fg-dim);
+          margin: 0;
+        }
+        .obs-spinner {
+          width: 12px;
+          height: 12px;
+          border: 1.5px solid rgba(0,230,195,0.25);
+          border-top-color: var(--obs-accent);
+          border-radius: 50%;
+          animation: obsSpin 700ms linear infinite;
+        }
+        @keyframes obsSpin { to { transform: rotate(360deg); } }
+
+        .obs-alert {
+          padding: 0.85rem 1rem;
+          background: linear-gradient(180deg, rgba(255,82,82,0.08), rgba(255,82,82,0.02));
+          border: 1px solid rgba(255,82,82,0.25);
+          border-radius: 10px;
+        }
+        .obs-alert__title { font-size: 13px; color: #ffb4b4; margin: 0; font-weight: 500; }
+        .obs-alert__body { font-size: 12px; color: rgba(255,180,180,0.75); margin: 6px 0 0; line-height: 1.5; }
+        .obs-alert__body--ok { color: rgba(0,230,195,0.85); }
+
+        .obs-actions {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 0.6rem;
+          padding-top: 0.5rem;
+        }
+        .obs-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 0.85rem 1.25rem;
+          font-family: var(--obs-font-body);
+          font-size: 13px;
+          font-weight: 600;
+          letter-spacing: -0.005em;
+          border-radius: 10px;
+          border: 1px solid transparent;
+          cursor: pointer;
+          text-decoration: none;
+          transition: transform 120ms ease, background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+        }
+        .obs-btn:active:not(:disabled) { transform: translateY(1px); }
+        .obs-btn--ghost {
+          background: rgba(255,255,255,0.03);
+          border-color: var(--obs-line-2);
+          color: var(--obs-fg-dim);
+        }
+        .obs-btn--ghost:hover {
+          background: rgba(255,255,255,0.06);
+          color: var(--obs-fg);
+        }
+        .obs-btn--primary {
+          background: linear-gradient(180deg, #00f0cc 0%, #00c2a4 100%);
+          border-color: rgba(0,230,195,0.5);
+          color: #06120f;
+          box-shadow: 0 8px 24px -8px rgba(0,230,195,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .obs-btn--primary:hover:not(:disabled) {
+          background: linear-gradient(180deg, #1cffd9 0%, #00d6b6 100%);
+        }
+        .obs-btn--primary:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+          background: linear-gradient(180deg, #2a3a36, #1d2826);
+          color: var(--obs-fg-faint);
+          box-shadow: none;
+        }
+
+        @media (max-width: 900px) {
+          .obs-lobby { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 38vh) 1fr; }
+          .obs-lobby__panel { border-left: none; border-top: 1px solid var(--obs-line); }
+          .obs-lobby__hero { padding: 0.75rem; }
+          .obs-lobby__hero-frame { aspect-ratio: 16 / 9; }
+          .obs-lobby__hero-name .obs-display { font-size: 1.1rem; }
+        }
+
+        /* ---------- WAITING (admission) ---------- */
+        .obs-wait {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 200;
+          font-family: var(--obs-font-body);
+          color: var(--obs-fg);
+        }
+        .obs-wait__bg {
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(ellipse at 50% 30%, rgba(0,230,195,0.06) 0%, transparent 55%),
+            radial-gradient(ellipse at 80% 80%, rgba(255,138,101,0.04) 0%, transparent 50%),
+            linear-gradient(180deg, rgba(11,13,14,0.96), rgba(6,7,10,0.98));
+          backdrop-filter: blur(8px);
+        }
+        .obs-wait__grain {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+          opacity: 0.05;
+          mix-blend-mode: overlay;
+          pointer-events: none;
+        }
+        .obs-wait__card {
+          position: relative;
+          width: min(440px, calc(100vw - 2rem));
+          padding: 2.5rem 2rem;
+          background: rgba(20,23,26,0.78);
+          backdrop-filter: blur(28px) saturate(140%);
+          border: 1px solid var(--obs-line-2);
+          border-radius: 18px;
+          box-shadow: 0 30px 80px -20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.06);
+          text-align: center;
+        }
+        .obs-wait__pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          background: rgba(0,230,195,0.08);
+          border: 1px solid rgba(0,230,195,0.25);
+          border-radius: 999px;
+          font-size: 10px;
+          color: var(--obs-accent);
+          letter-spacing: 0.16em;
+        }
+        .obs-wait__pill-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--obs-accent);
+          box-shadow: 0 0 8px var(--obs-accent);
+          animation: obsPulse 1.4s ease-in-out infinite;
+        }
+        .obs-wait__title {
+          font-size: clamp(1.8rem, 3vw, 2.4rem);
+          margin: 1.25rem 0 0.6rem;
+        }
+        .obs-wait__sub {
+          font-size: 14px;
+          color: var(--obs-fg-dim);
+          line-height: 1.55;
+          max-width: 32ch;
+          margin: 0 auto;
+        }
+        .obs-wait__bars {
+          display: flex;
+          justify-content: center;
+          gap: 6px;
+          margin: 2rem auto 1.5rem;
+          height: 28px;
+          align-items: end;
+        }
+        .obs-wait__bars span {
+          display: block;
+          width: 4px;
+          background: linear-gradient(180deg, var(--obs-accent), rgba(0,230,195,0.3));
+          border-radius: 2px;
+          animation: obsBar 1.1s ease-in-out infinite;
+        }
+        @keyframes obsBar {
+          0%, 100% { height: 8px; opacity: 0.4; }
+          50% { height: 28px; opacity: 1; }
+        }
+        .obs-wait__identity {
+          margin-top: 1rem;
+          padding: 0.85rem 1rem;
+          background: rgba(255,255,255,0.025);
+          border: 1px solid var(--obs-line);
+          border-radius: 10px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 4px;
+        }
+        .obs-wait__identity-label {
+          font-size: 9px;
+          color: var(--obs-fg-faint);
+          letter-spacing: 0.2em;
+        }
+        .obs-wait__identity-name {
+          font-family: var(--obs-font-display);
+          font-size: 18px;
+          font-weight: 500;
+          letter-spacing: -0.01em;
+        }
+        .obs-wait__identity-email {
+          font-size: 10px;
+          color: var(--obs-fg-faint);
+        }
+        .obs-wait__cancel { width: 100%; margin-top: 1.5rem; }
+
+        /* ---------- LOADING ---------- */
+        .obs-loading {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: radial-gradient(ellipse at center, var(--obs-bg-2) 0%, var(--obs-bg) 60%, #06070a 100%);
+          font-family: var(--obs-font-body);
+          color: var(--obs-fg);
+        }
+        .obs-loading__inner { text-align: center; }
+        .obs-loading__pulse {
+          width: 64px;
+          height: 64px;
+          margin: 0 auto 1.5rem;
+          position: relative;
+        }
+        .obs-loading__pulse::before,
+        .obs-loading__pulse::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: 50%;
+          border: 1.5px solid var(--obs-accent);
+          animation: obsRing 1.6s ease-out infinite;
+        }
+        .obs-loading__pulse::after { animation-delay: 0.8s; }
+        @keyframes obsRing {
+          0% { transform: scale(0.4); opacity: 1; }
+          100% { transform: scale(1); opacity: 0; }
+        }
+        .obs-loading__pulse > span {
+          position: absolute;
+          inset: 24px;
+          border-radius: 50%;
+          background: var(--obs-accent);
+          box-shadow: 0 0 24px var(--obs-accent);
+        }
+        .obs-loading__label {
+          font-family: var(--obs-font-display);
+          font-style: italic;
+          font-size: 22px;
+          font-weight: 400;
+          color: var(--obs-fg);
+          margin: 0 0 0.4rem;
+          letter-spacing: -0.01em;
+        }
+        .obs-loading__hint {
+          font-family: var(--obs-font-mono);
+          font-size: 10px;
+          color: var(--obs-fg-faint);
+          letter-spacing: 0.2em;
+        }
+
+        /* ---------- ERROR ---------- */
+        .obs-error {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 1rem;
+          background: radial-gradient(ellipse at top, #1d1518 0%, var(--obs-bg) 60%, #06070a 100%);
+          font-family: var(--obs-font-body);
+          color: var(--obs-fg);
+        }
+        .obs-error__grain {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+          opacity: 0.04;
+          pointer-events: none;
+        }
+        .obs-error__card {
+          position: relative;
+          max-width: 460px;
+          width: 100%;
+          padding: 2rem;
+          background: rgba(20,23,26,0.8);
+          backdrop-filter: blur(20px);
+          border: 1px solid rgba(255,82,82,0.2);
+          border-radius: 16px;
+          box-shadow: 0 24px 60px -16px rgba(0,0,0,0.6);
+        }
+        .obs-error__eyebrow { color: var(--obs-danger); }
+        .obs-error__title {
+          font-size: 1.8rem;
+          margin: 0.5rem 0 0.85rem;
+        }
+        .obs-error__msg {
+          font-size: 14px;
+          color: var(--obs-fg-dim);
+          line-height: 1.55;
+          margin: 0 0 1.25rem;
+          padding: 0.75rem 1rem;
+          background: rgba(255,82,82,0.06);
+          border: 1px solid rgba(255,82,82,0.18);
+          border-radius: 8px;
+          font-family: var(--obs-font-mono);
+          font-size: 12px;
+        }
+      `}} />
+    </>
+  );
+}
+
+function DeviceToggle({
+  label,
+  iconOn,
+  iconOff,
+  active,
+  disabled,
+  onToggle,
+}: {
+  label: string;
+  iconOn: string;
+  iconOff: string;
+  active: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={active}
+      aria-label={`${label} ${active ? "on" : "off"}`}
+      disabled={disabled}
+      onClick={onToggle}
+      className={`obs-toggle ${active ? "obs-toggle--active" : ""}`}
+    >
+      <i className={`obs-toggle__icon ${active ? iconOn : iconOff}`} aria-hidden />
+      <span className="obs-toggle__label">{label}</span>
+      <span className="obs-toggle__pill" aria-hidden />
+    </button>
+  );
+}
+
+function ObsLoadingScreen({ label }: { label: string }) {
+  return (
+    <div className="obs-loading">
+      <ObsidianStudioStyles />
+      <div className="obs-loading__inner">
+        <div className="obs-loading__pulse">
+          <span />
+        </div>
+        <p className="obs-loading__label">{label}</p>
+        <p className="obs-loading__hint">— PLEASE WAIT</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Catches LiveKit `useVisualStableUpdate` race in @livekit/components-core
+ * (`tile-array-update.ts:findIndex` throws when placeholder tracks transition
+ * to real tracks across pages). Bumps `key` to remount VideoConference,
+ * which recomputes the tile array from current room state.
+ */
+class VideoConferenceBoundary extends Component<
+  { children: (key: number) => ReactNode },
+  { remountKey: number; recovering: boolean }
+> {
+  state = { remountKey: 0, recovering: false };
+
+  static getDerivedStateFromError(): { recovering: boolean } {
+    return { recovering: true };
+  }
+
+  componentDidCatch(error: Error, _info: ErrorInfo) {
+    if (typeof console !== "undefined") {
+      console.warn("[VideoConferenceBoundary] caught:", error.message);
+    }
+    queueMicrotask(() => {
+      this.setState((s) => ({ remountKey: s.remountKey + 1, recovering: false }));
+    });
+  }
+
+  render() {
+    if (this.state.recovering) return null;
+    return this.props.children(this.state.remountKey);
+  }
 }
 
 function PublicRoomContent({
@@ -777,6 +1553,7 @@ function PublicRoomContent({
 
   return (
     <>
+      <ObsidianStudioStyles />
       <style dangerouslySetInnerHTML={{ __html: `
         .room-page {
           height: 100%;
@@ -788,31 +1565,102 @@ function PublicRoomContent({
           height: 100%;
           min-height: 0;
           width: 100%;
-          background: #202124;
+          background: radial-gradient(ellipse at top, #15181b 0%, #0B0D0E 60%, #06070a 100%);
+          font-family: var(--obs-font-body, 'Manrope'), system-ui, sans-serif;
+          letter-spacing: -0.005em;
+          position: relative;
         }
-        .room-meeting-container .lk-video-conference {
-          flex: 1;
-          min-height: 0;
+        .room-meeting-container { isolation: isolate; }
+        .room-meeting-container::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml;utf8,<svg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' /></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/></svg>");
+          opacity: 0.025;
+          pointer-events: none;
+          mix-blend-mode: overlay;
+          z-index: -1;
         }
-        .room-meeting-container .lk-video-conference-inner {
-          flex: 1;
-          min-height: 0;
-        }
+        .room-meeting-container .lk-video-conference,
+        .room-meeting-container .lk-video-conference-inner,
         .room-meeting-container .lk-focus-layout-wrapper,
         .room-meeting-container .lk-grid-layout-wrapper {
           flex: 1;
           min-height: 0;
+          background: transparent !important;
         }
         .room-meeting-container .lk-grid-layout {
           min-height: 0;
-        }
-        .room-meeting-container .lk-control-bar {
-          flex-shrink: 0;
-          background: #202124;
-          border-top-color: rgba(255,255,255,0.12);
+          padding: 0.75rem;
+          gap: 0.5rem;
         }
         .room-meeting-container .lk-participant-tile {
           min-height: 120px;
+          border-radius: 14px !important;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.06);
+          box-shadow: 0 8px 24px -8px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.03);
+          transition: border-color 200ms ease, box-shadow 200ms ease;
+        }
+        .room-meeting-container .lk-participant-tile[data-lk-speaking="true"] {
+          border-color: var(--obs-accent, #00E6C3) !important;
+          box-shadow: 0 0 0 1px var(--obs-accent, #00E6C3), 0 8px 32px -4px rgba(0,230,195,0.25);
+        }
+        .room-meeting-container .lk-participant-name,
+        .room-meeting-container .lk-participant-metadata {
+          font-family: var(--obs-font-mono, 'JetBrains Mono'), monospace !important;
+          font-size: 11px !important;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          background: rgba(11,13,14,0.55) !important;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          border-radius: 6px !important;
+          padding: 4px 8px !important;
+        }
+        .room-meeting-container .lk-control-bar {
+          flex-shrink: 0;
+          margin: 0 0.75rem 0.75rem 0.75rem;
+          padding: 0.5rem 0.75rem !important;
+          background: rgba(15,17,19,0.72) !important;
+          backdrop-filter: blur(24px) saturate(140%);
+          -webkit-backdrop-filter: blur(24px) saturate(140%);
+          border: 1px solid rgba(255,255,255,0.08) !important;
+          border-radius: 16px !important;
+          box-shadow: 0 12px 48px -12px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+        .room-meeting-container .lk-control-bar .lk-button {
+          border-radius: 10px !important;
+          background: rgba(255,255,255,0.04) !important;
+          border: 1px solid rgba(255,255,255,0.06) !important;
+          color: #f4f5f6 !important;
+          font-family: var(--obs-font-body, 'Manrope'), system-ui, sans-serif !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+          letter-spacing: -0.01em;
+          padding: 0.55rem 0.85rem !important;
+          transition: background 160ms ease, transform 160ms ease, border-color 160ms ease;
+        }
+        .room-meeting-container .lk-control-bar .lk-button:hover {
+          background: rgba(255,255,255,0.08) !important;
+          border-color: rgba(255,255,255,0.14) !important;
+        }
+        .room-meeting-container .lk-control-bar .lk-button[aria-pressed="true"],
+        .room-meeting-container .lk-control-bar .lk-button[data-lk-source-muted="false"] {
+          background: linear-gradient(180deg, rgba(0,230,195,0.18), rgba(0,230,195,0.08)) !important;
+          border-color: rgba(0,230,195,0.4) !important;
+          color: #d6fff6 !important;
+        }
+        .room-meeting-container .lk-control-bar .lk-disconnect-button,
+        .room-meeting-container .lk-control-bar .lk-button[data-lk-button-type="leave"] {
+          background: linear-gradient(180deg, rgba(255,82,82,0.95), rgba(220,40,40,0.95)) !important;
+          border-color: rgba(255,120,120,0.4) !important;
+          color: #fff !important;
+          font-weight: 600 !important;
+        }
+        .room-meeting-container .lk-focus-layout {
+          gap: 0.5rem !important;
+          padding: 0.75rem;
         }
         #recording-button-slot .lk-button {
           position: relative;
@@ -828,9 +1676,14 @@ function PublicRoomContent({
         ${waitingParticipantsCSS}
         @media (max-width: 640px) {
           .room-meeting-container .lk-control-bar {
-            padding-left: max(0.75rem, env(safe-area-inset-left));
-            padding-right: max(0.75rem, env(safe-area-inset-right));
-            padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+            margin: 0;
+            border-radius: 0 !important;
+            border-left: 0 !important;
+            border-right: 0 !important;
+            border-bottom: 0 !important;
+            padding-left: max(0.75rem, env(safe-area-inset-left)) !important;
+            padding-right: max(0.75rem, env(safe-area-inset-right)) !important;
+            padding-bottom: max(0.75rem, env(safe-area-inset-bottom)) !important;
           }
           .room-meeting-container .lk-grid-layout {
             grid-gap: 0.25rem;
@@ -846,7 +1699,9 @@ function PublicRoomContent({
           roomName={roomName}
           onHardEnd={onLeave}
         />
-        <VideoConference />
+        <VideoConferenceBoundary>
+          {(remountKey) => <VideoConference key={remountKey} />}
+        </VideoConferenceBoundary>
         <RoomAudioRenderer />
         {isHost &&
           recordingSlot &&
@@ -859,26 +1714,53 @@ function PublicRoomContent({
             />,
             recordingSlot
           )}
-        {recordingToast && (
+        {recordingToast && isHost && (
           <div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-success/95 text-white text-sm font-medium shadow-lg"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full"
+            style={{
+              background: "rgba(11,13,14,0.82)",
+              backdropFilter: "blur(20px) saturate(140%)",
+              WebkitBackdropFilter: "blur(20px) saturate(140%)",
+              border: "1px solid rgba(255,82,82,0.35)",
+              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,82,82,0.15)",
+              color: "#fff",
+              fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
+              fontSize: "11px",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}
             role="alert"
           >
-            <span className="flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-white animate-pulse" />
-              Recording has started in meeting
-            </span>
+            <span
+              className="inline-block w-2 h-2 rounded-full"
+              style={{
+                background: "#ff5252",
+                boxShadow: "0 0 10px #ff5252",
+                animation: "obsPulse 1.4s ease-in-out infinite",
+              }}
+            />
+            Recording in progress
           </div>
         )}
         {meetingEndedToast && (
           <div
-            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] px-4 py-3 rounded-lg bg-gray-700/95 text-white text-sm font-medium shadow-lg"
+            className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full"
+            style={{
+              background: "rgba(11,13,14,0.82)",
+              backdropFilter: "blur(20px) saturate(140%)",
+              WebkitBackdropFilter: "blur(20px) saturate(140%)",
+              border: "1px solid rgba(255,255,255,0.14)",
+              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.6)",
+              color: "#fff",
+              fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
+              fontSize: "11px",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+            }}
             role="alert"
           >
-            <span className="flex items-center gap-2">
-              <i className="ri-checkbox-circle-line text-lg" />
-              Meeting ended
-            </span>
+            <i className="ri-checkbox-circle-line text-base" style={{ color: "var(--obs-accent, #00E6C3)" }} />
+            Meeting ended
           </div>
         )}
         {isHost && (
@@ -961,6 +1843,7 @@ export default function PublicMeetingRoomClient() {
   const [token, setToken] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const [meetingEnded, setMeetingEnded] = useState(false);
   const [reconnectKey, setReconnectKey] = useState(0);
   const [hasPermissionError, setHasPermissionError] = useState(false);
   /** Normal participant waiting for host to admit; same page with message + loader */
@@ -1213,10 +2096,16 @@ export default function PublicMeetingRoomClient() {
         setShowRoom(false);
       }
     } catch (err: any) {
-      console.error("Error fetching token:", err);
-      setError(
-        err?.response?.data?.message || err?.message || "Failed to connect to room"
-      );
+      const status = err?.response?.status;
+      if (status === 410) {
+        setError("This meeting has already ended.");
+        setMeetingEnded(true);
+      } else {
+        console.error("Error fetching token:", err);
+        setError(
+          err?.response?.data?.message || err?.message || "Failed to connect to room"
+        );
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1363,137 +2252,145 @@ export default function PublicMeetingRoomClient() {
   // Waiting room / lobby: always before connecting; name editable, email prefilled and read-only
   if (!preJoinCommitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
-        <div className="w-full max-w-md bg-gray-800 rounded-xl p-6 shadow-xl">
-          <h1 className="text-xl font-semibold text-white mb-2">Waiting room</h1>
-          <p className="text-gray-400 text-sm mb-6">
-            Check how you&apos;ll appear in the meeting. You can change your display name. Your email comes from your invite link or account and can&apos;t be changed here. Allow microphone and/or camera — you can mute or turn video off inside the call. At least one is required to join.
-          </p>
-          <form onSubmit={handlePreJoinSubmit} className="space-y-4">
-            <div>
-              <label htmlFor="join-name" className="block text-sm font-medium text-gray-300 mb-1">
-                Display name <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="join-name"
-                type="text"
-                value={preJoinName}
-                onChange={(e) => setPreJoinName(e.target.value)}
-                placeholder="e.g. John Doe"
-                className="form-control !py-2 w-full border border-gray-600 rounded-lg bg-gray-700 text-white placeholder-gray-500 focus:ring-2 focus:ring-primary focus:border-primary"
-                required
-                autoComplete="name"
-              />
-            </div>
-            <div>
-              <label htmlFor="join-email" className="block text-sm font-medium text-gray-300 mb-1">
-                Email <span className="text-gray-500 text-xs font-normal">(from invite / account — read only)</span>
-              </label>
-              <input
-                id="join-email"
-                type="email"
-                readOnly
-                aria-readonly="true"
-                value={preJoinEmail}
-                placeholder="—"
-                className="form-control !py-2 w-full border border-gray-600 rounded-lg bg-gray-900/60 text-gray-300 placeholder-gray-600 cursor-not-allowed focus:ring-0 focus:border-gray-600"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Used to recognize hosts. If this is empty, you join as a guest (host may need to admit you).
-              </p>
-            </div>
+      <div className="obs-lobby">
+        <ObsidianStudioStyles />
+        <div className="obs-lobby__grain" aria-hidden />
+        <div className="obs-lobby__vignette" aria-hidden />
+
+        <aside className="obs-lobby__hero">
+          <div className="obs-lobby__hero-frame">
             <LobbyDevicePreview
               enabled
               showVideo={preJoinVideo && videoPermissionGranted}
               showAudio={preJoinAudio && audioPermissionGranted}
             />
-            <div className="flex flex-col sm:flex-row gap-4">
-              <div className="flex items-center justify-end gap-2 sm:justify-between">
-                <i
-                  className={`text-lg ${preJoinAudio ? "ri-mic-line text-primary" : "ri-mic-off-line text-gray-500"}`}
-                  title={preJoinAudio ? "Unmuted" : "Muted"}
-                  aria-hidden
-                />
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={preJoinAudio}
-                  aria-label={preJoinAudio ? "Microphone on" : "Microphone off"}
-                  disabled={preJoinRequesting}
-                  onClick={handleAudioToggle}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    preJoinAudio ? "bg-primary" : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-                      preJoinAudio ? "translate-x-5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
+            <div className="obs-lobby__hero-gradient" aria-hidden />
+            <div className="obs-lobby__hero-meta">
+              <div className="obs-lobby__hero-tag">
+                <span className="obs-dot" /> LIVE PREVIEW
               </div>
-              <div className="flex items-center justify-end gap-2 sm:justify-between">
-                <i
-                  className={`text-lg ${preJoinVideo ? "ri-vidicon-line text-primary" : "ri-camera-off-line text-gray-500"}`}
-                  title={preJoinVideo ? "Video on" : "Video off"}
-                  aria-hidden
-                />
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={preJoinVideo}
-                  aria-label={preJoinVideo ? "Camera on" : "Camera off"}
-                  disabled={preJoinRequesting}
-                  onClick={handleVideoToggle}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed ${
-                    preJoinVideo ? "bg-primary" : "bg-gray-600"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-                      preJoinVideo ? "translate-x-5" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
+              <div className="obs-lobby__hero-name">
+                <span className="obs-display">
+                  {preJoinName.trim() || <em className="obs-display-italic">Your name</em>}
+                </span>
+                {participantEmail && (
+                  <span className="obs-mono obs-lobby__hero-email">{participantEmail}</span>
+                )}
               </div>
             </div>
-            {preJoinRequesting && (
-              <p className="text-blue-400 text-sm">Requesting camera/microphone permissions…</p>
-            )}
-            {preJoinError && (
-              <div className="p-3 rounded-lg bg-red-900/20 border border-red-700/50">
-                <p className="text-red-400 text-sm">{preJoinError}</p>
-                {!audioPermissionGranted && !videoPermissionGranted && (
-                  <p className="text-xs text-red-400/80 mt-2">
-                    Please allow at least one permission (audio or video) in your browser to join. You can turn a device on again above to be asked again.
-                  </p>
-                )}
-                {(audioPermissionGranted || videoPermissionGranted) &&
-                  (!audioPermissionGranted || !videoPermissionGranted) && (
-                    <p className="text-xs text-blue-400 mt-2">
-                      {audioPermissionGranted && !videoPermissionGranted && "You can join with audio. Toggle camera to request video permission again."}
-                      {!audioPermissionGranted && videoPermissionGranted && "You can join with video. Toggle microphone to request audio permission again."}
+            <div className="obs-lobby__hero-corner obs-lobby__hero-corner--tl" aria-hidden />
+            <div className="obs-lobby__hero-corner obs-lobby__hero-corner--tr" aria-hidden />
+            <div className="obs-lobby__hero-corner obs-lobby__hero-corner--bl" aria-hidden />
+            <div className="obs-lobby__hero-corner obs-lobby__hero-corner--br" aria-hidden />
+          </div>
+        </aside>
+
+        <section className="obs-lobby__panel">
+          <div className="obs-lobby__panel-inner">
+            <header className="obs-lobby__head">
+              <span className="obs-mono obs-eyebrow">— PRE&nbsp;FLIGHT</span>
+              <h1 className="obs-display obs-lobby__title">
+                Step <em className="obs-display-italic">into</em> the room.
+              </h1>
+              <p className="obs-lobby__subtitle">
+                Check your name and devices. Mic and camera can be toggled inside the call &mdash; we just need at least one to begin.
+              </p>
+            </header>
+
+            <form onSubmit={handlePreJoinSubmit} className="obs-form">
+              <div className="obs-field">
+                <label htmlFor="join-name" className="obs-field__label">
+                  <span>Display name</span>
+                  <span className="obs-field__hint obs-mono">REQUIRED</span>
+                </label>
+                <input
+                  id="join-name"
+                  type="text"
+                  value={preJoinName}
+                  onChange={(e) => setPreJoinName(e.target.value)}
+                  placeholder="John Doe"
+                  className="obs-input"
+                  required
+                  autoComplete="name"
+                />
+              </div>
+
+              <div className="obs-field">
+                <label htmlFor="join-email" className="obs-field__label">
+                  <span>Email</span>
+                  <span className="obs-field__hint obs-mono">FROM&nbsp;INVITE</span>
+                </label>
+                <input
+                  id="join-email"
+                  type="email"
+                  readOnly
+                  aria-readonly="true"
+                  value={preJoinEmail}
+                  placeholder="—"
+                  className="obs-input obs-input--readonly"
+                />
+                <p className="obs-field__note">
+                  Empty here means you&apos;ll join as a guest. Host will admit you.
+                </p>
+              </div>
+
+              <div className="obs-toggles">
+                <DeviceToggle
+                  label="Microphone"
+                  iconOn="ri-mic-line"
+                  iconOff="ri-mic-off-line"
+                  active={preJoinAudio}
+                  disabled={preJoinRequesting}
+                  onToggle={handleAudioToggle}
+                />
+                <DeviceToggle
+                  label="Camera"
+                  iconOn="ri-vidicon-line"
+                  iconOff="ri-camera-off-line"
+                  active={preJoinVideo}
+                  disabled={preJoinRequesting}
+                  onToggle={handleVideoToggle}
+                />
+              </div>
+
+              {preJoinRequesting && (
+                <p className="obs-status obs-status--info">
+                  <span className="obs-spinner" aria-hidden /> Requesting permissions…
+                </p>
+              )}
+
+              {preJoinError && (
+                <div className="obs-alert">
+                  <p className="obs-alert__title">{preJoinError}</p>
+                  {!audioPermissionGranted && !videoPermissionGranted && (
+                    <p className="obs-alert__body">
+                      Allow at least one permission in your browser, then toggle the device above.
                     </p>
                   )}
+                  {(audioPermissionGranted || videoPermissionGranted) &&
+                    (!audioPermissionGranted || !videoPermissionGranted) && (
+                      <p className="obs-alert__body obs-alert__body--ok">
+                        {audioPermissionGranted && !videoPermissionGranted && "You can join with audio. Toggle camera to retry video."}
+                        {!audioPermissionGranted && videoPermissionGranted && "You can join with video. Toggle mic to retry audio."}
+                      </p>
+                    )}
+                </div>
+              )}
+
+              <div className="obs-actions">
+                <a href="/" className="obs-btn obs-btn--ghost">Cancel</a>
+                <button
+                  type="submit"
+                  disabled={preJoinRequesting || (!audioPermissionGranted && !videoPermissionGranted)}
+                  className="obs-btn obs-btn--primary"
+                >
+                  Join meeting
+                  <i className="ri-arrow-right-line" aria-hidden />
+                </button>
               </div>
-            )}
-            <div className="flex gap-2 pt-2">
-              <a
-                href="/"
-                className="ti-btn ti-btn-light !py-2 !px-4 flex-1 text-center"
-              >
-                Cancel
-              </a>
-              <button
-                type="submit"
-                disabled={preJoinRequesting || (!audioPermissionGranted && !videoPermissionGranted)}
-                className="ti-btn ti-btn-primary !py-2 !px-4 flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Join meeting
-              </button>
-            </div>
-          </form>
-        </div>
+            </form>
+          </div>
+        </section>
       </div>
     );
   }
@@ -1501,7 +2398,8 @@ export default function PublicMeetingRoomClient() {
   // Waiting for host to admit - connect to LiveKit with restricted permissions so host can see them
   if (waitingForAdmission && participantName && token) {
     return (
-      <div className="fixed inset-0 z-50 flex flex-col bg-[#202124]">
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#0B0D0E]">
+        <ObsidianStudioStyles />
         <LiveKitRoom
           key={reconnectKey}
           video={false}
@@ -1517,49 +2415,57 @@ export default function PublicMeetingRoomClient() {
           data-lk-theme="default"
           className="room-page flex flex-col flex-1 min-h-0 w-full"
         >
-          {/* Waiting overlay on top of LiveKit connection */}
-          <div className="absolute inset-0 bg-gray-900/95 flex items-center justify-center z-[200]">
-            <div className="w-full max-w-md bg-gray-800 rounded-xl p-6 shadow-xl mx-4">
-              <h1 className="text-xl font-semibold text-white mb-2">Join Meeting</h1>
-              <p className="text-gray-400 text-sm mb-6">
-                Waiting for the host to admit you into the meeting.
+          <div className="obs-wait">
+            <div className="obs-wait__bg" aria-hidden />
+            <div className="obs-wait__grain" aria-hidden />
+            <div className="obs-wait__card">
+              <div className="obs-wait__pill obs-mono">
+                <span className="obs-wait__pill-dot" />
+                AWAITING ADMISSION
+              </div>
+              <h1 className="obs-display obs-wait__title">
+                Knock <em className="obs-display-italic">knock.</em>
+              </h1>
+              <p className="obs-wait__sub">
+                The host has been notified. The room will open the moment they admit you.
               </p>
+
+              <div className="obs-wait__bars" aria-hidden>
+                <span style={{ animationDelay: "0ms" }} />
+                <span style={{ animationDelay: "120ms" }} />
+                <span style={{ animationDelay: "240ms" }} />
+                <span style={{ animationDelay: "360ms" }} />
+                <span style={{ animationDelay: "480ms" }} />
+              </div>
+
               {(participantName || participantEmail) && (
-                <p className="text-gray-500 text-xs text-center -mt-4 mb-4 px-2">
-                  <span className="text-gray-400">Joining as </span>
-                  {participantName || "Guest"}
-                  {participantEmail ? (
-                    <span className="text-gray-500"> · {participantEmail}</span>
-                  ) : null}
-                </p>
+                <div className="obs-wait__identity">
+                  <span className="obs-mono obs-wait__identity-label">JOINING AS</span>
+                  <span className="obs-wait__identity-name">{participantName || "Guest"}</span>
+                  {participantEmail && (
+                    <span className="obs-mono obs-wait__identity-email">{participantEmail}</span>
+                  )}
+                </div>
               )}
-              <div className="flex flex-col items-center justify-center py-8">
-                <div
-                  className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"
-                  aria-hidden
-                />
-                <p className="text-gray-300 text-sm">Please wait…</p>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (admissionPollRef.current) {
-                      clearInterval(admissionPollRef.current);
-                      admissionPollRef.current = null;
-                    }
-                    setWaitingForAdmission(false);
-                    setToken("");
-                    setParticipantIdentity(null);
-                    participantIdentityRef.current = null;
-                    setPreJoinCommitted(false);
-                    router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
-                  }}
-                  className="ti-btn ti-btn-light !py-2 !px-4 flex-1"
-                >
-                  Cancel
-                </button>
-              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (admissionPollRef.current) {
+                    clearInterval(admissionPollRef.current);
+                    admissionPollRef.current = null;
+                  }
+                  setWaitingForAdmission(false);
+                  setToken("");
+                  setParticipantIdentity(null);
+                  participantIdentityRef.current = null;
+                  setPreJoinCommitted(false);
+                  router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
+                }}
+                className="obs-btn obs-btn--ghost obs-wait__cancel"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </LiveKitRoom>
@@ -1569,30 +2475,34 @@ export default function PublicMeetingRoomClient() {
 
   // Loading token
   if (isLoading && !token) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Connecting to room...</p>
-        </div>
-      </div>
-    );
+    return <ObsLoadingScreen label="Connecting to room" />;
   }
 
   // Token error
   if (error && !token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="bg-red-900 border border-red-700 rounded-lg p-6 max-w-md">
-          <h2 className="text-xl font-bold text-white mb-2">Connection Error</h2>
-          <p className="text-red-200 mb-4">{error}</p>
-          <div className="flex gap-2">
-            <button onClick={fetchToken} className="ti-btn ti-btn-primary">
-              Retry
-            </button>
-            <button onClick={handleLeave} className="ti-btn ti-btn-danger">
-              Go Back
-            </button>
+      <div className="obs-error">
+        <ObsidianStudioStyles />
+        <div className="obs-error__grain" aria-hidden />
+        <div className="obs-error__card">
+          <span className="obs-mono obs-eyebrow obs-error__eyebrow">
+            {meetingEnded ? "— SESSION CLOSED" : "— CONNECTION FAILED"}
+          </span>
+          <h2 className="obs-display obs-error__title">
+            {meetingEnded ? (
+              <>The room has <em className="obs-display-italic">closed.</em></>
+            ) : (
+              <>Couldn&apos;t reach the room.</>
+            )}
+          </h2>
+          <p className="obs-error__msg">{error}</p>
+          <div className="obs-actions">
+            <button onClick={handleLeave} className="obs-btn obs-btn--ghost">Go back</button>
+            {!meetingEnded && (
+              <button onClick={fetchToken} className="obs-btn obs-btn--primary">
+                Try again <i className="ri-refresh-line" aria-hidden />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1602,29 +2512,14 @@ export default function PublicMeetingRoomClient() {
   // If no token but we have participant name, show loading
   if (!token) {
     if (participantName) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-900">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-            <p className="text-white">Connecting to room...</p>
-          </div>
-        </div>
-      );
+      return <ObsLoadingScreen label="Connecting to room" />;
     }
     return null;
   }
 
   // If token exists but showRoom is false, we might be waiting
   if (!showRoom && token) {
-    // This shouldn't happen normally, but show waiting state just in case
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="text-white">Preparing room...</p>
-        </div>
-      </div>
-    );
+    return <ObsLoadingScreen label="Preparing room" />;
   }
 
   return (

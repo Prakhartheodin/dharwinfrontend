@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { streamChatMessage, ChatbotRequestError, type ChatMessage as ChatMsg } from "@/shared/lib/api/chatAssistant";
+import { streamChatMessage, ChatbotRequestError, clearChatConversation, type ChatMessage as ChatMsg, type ChatResponse } from "@/shared/lib/api/chatAssistant";
+import type { Block } from "@/shared/types/chatResponse";
 import { fetchChatbotSettings, isChatbotEnabledForPage, type ChatbotConfig } from "@/shared/lib/api/chatbotSettings";
 import ChatMessage from "./ChatMessage";
 import { useDraggableFab } from "./useDraggableFab";
@@ -13,6 +14,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  blocks?: Block[];
 }
 
 type ViewMode = "closed" | "widget" | "fullscreen";
@@ -20,24 +22,72 @@ type ViewMode = "closed" | "widget" | "fullscreen";
 const MAX_STORED_MESSAGES = 20;
 const FAB_SIZE = 56;
 const FAB_MARGIN = 20;
-const SIDEBAR_WIDTH = 400; // px — desktop sidebar width
-const SIDEBAR_PUSH_BREAKPOINT = 768; // viewport ≥ this pushes body content
+const SIDEBAR_WIDTH = 420;
+const SIDEBAR_PUSH_BREAKPOINT = 768;
 const SIDEBAR_TRANSITION_MS = 320;
 
+const AGENT_CONSOLE_CSS = `
+@keyframes agent-grid-drift {
+  0% { background-position: 0 0, 0 0; }
+  100% { background-position: 32px 32px, 32px 32px; }
+}
+@keyframes agent-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes agent-pulse-ring {
+  0% { transform: scale(0.55); opacity: 0.85; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes agent-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(220%); }
+}
+@keyframes agent-dot {
+  0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes agent-bar {
+  0%, 100% { transform: scaleX(0.2); opacity: 0.45; }
+  50% { transform: scaleX(1); opacity: 1; }
+}
+@keyframes agent-mesh-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-4%, 3%, 0) scale(1.08); }
+}
+.agent-grid-bg {
+  background-image:
+    linear-gradient(rgba(132, 90, 223, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(132, 90, 223, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px, 32px 32px;
+  animation: agent-grid-drift 26s linear infinite;
+}
+.dark .agent-grid-bg {
+  background-image:
+    linear-gradient(rgba(165, 138, 240, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(165, 138, 240, 0.07) 1px, transparent 1px);
+}
+.agent-scrollbar::-webkit-scrollbar { width: 6px; }
+.agent-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.agent-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(132,90,223,0.35), rgba(34,211,238,0.25));
+  border-radius: 999px;
+}
+.agent-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(132,90,223,0.55), rgba(34,211,238,0.45));
+}
+`;
+
 const SUGGESTED_QUESTIONS = [
-  "How many employees do we have?",
-  "List all open job positions",
-  "Who is on leave today?",
-  "Show pending job applications",
-  "What are today's holidays?",
-  "List all active projects",
+  { q: "How many employees do we have?", k: "PEOPLE" },
+  { q: "List all open job positions", k: "JOBS" },
+  { q: "Who is on leave today?", k: "LEAVE" },
+  { q: "Show pending job applications", k: "ATS" },
+  { q: "What are today's holidays?", k: "CAL" },
+  { q: "List all active projects", k: "PROJ" },
 ];
 
-function FloatingChatbotInner({
-  userId,
-}: {
-  userId: string;
-}) {
+function FloatingChatbotInner({ userId }: { userId: string }) {
   const [viewMode, setViewMode] = useState<ViewMode>("closed");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -53,7 +103,6 @@ function FloatingChatbotInner({
   const isOpen = viewMode !== "closed";
   const isFullscreen = viewMode === "fullscreen";
 
-  // Load history once per user
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
@@ -66,7 +115,6 @@ function FloatingChatbotInner({
     }
   }, [storageKey]);
 
-  // Persist history on change
   useEffect(() => {
     if (messages.length === 0) return;
     try {
@@ -76,19 +124,16 @@ function FloatingChatbotInner({
     }
   }, [messages, storageKey]);
 
-  // Auto-scroll
   useEffect(() => {
     if (isOpen && messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
     }
   }, [messages, isOpen]);
 
-  // Cancel in-flight stream when closing
   useEffect(() => {
     if (!isOpen) abortRef.current?.abort();
   }, [isOpen]);
 
-  // ESC: fullscreen → widget → closed
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -99,7 +144,6 @@ function FloatingChatbotInner({
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen]);
 
-  // Auto-grow textarea
   useEffect(() => {
     const ta = textareaRef.current;
     if (!ta) return;
@@ -107,8 +151,6 @@ function FloatingChatbotInner({
     ta.style.height = `${Math.min(ta.scrollHeight, 140)}px`;
   }, [input]);
 
-  // Push body content to the LEFT when widget is open on desktop (Cursor-style — sidebar on right).
-  // Mobile + fullscreen overlay instead of pushing.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const body = document.body;
@@ -132,6 +174,10 @@ function FloatingChatbotInner({
   const clearHistory = () => {
     setMessages([]);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+    // Bust server-side ConversationMemory + per-admin context cache so the next
+    // turn doesn't echo a stale summary or count. Best-effort — failures are
+    // swallowed in the API helper; UI clears regardless.
+    void clearChatConversation();
   };
 
   const stopStreaming = () => {
@@ -164,16 +210,20 @@ function FloatingChatbotInner({
             prev.map((m) => (m.id === assistantId ? { ...m, content: m.content + token } : m))
           );
         },
-        controller.signal
+        controller.signal,
+        (env: ChatResponse) => {
+          if (env.blocks && env.blocks.length > 0) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, blocks: env.blocks } : m))
+            );
+          }
+        }
       );
     } catch (err: unknown) {
       const aborted = err instanceof Error && err.name === "AbortError";
       if (aborted) {
         setMessages((prev) => prev.filter((m) => !(m.id === assistantId && m.content === "")));
       } else {
-        // ChatbotRequestError carries a user-facing string already tuned to the failure
-        // mode (length limit / 401 / 429 / 5xx). Fall back to a soft generic line so the
-        // user never sees the raw "Something went wrong" or HTTP status leak.
         const friendly =
           err instanceof ChatbotRequestError
             ? err.userMessage
@@ -197,8 +247,10 @@ function FloatingChatbotInner({
 
   const lastMsg = messages[messages.length - 1];
   const isPreparing = isLoading && lastMsg?.role === "assistant" && lastMsg.content === "";
+  const isStreaming = isLoading && lastMsg?.role === "assistant" && lastMsg.content !== "";
 
-  // Draggable FAB — toggles widget on click, snap-edges on release
+  const statusLabel = isPreparing ? "Reasoning" : isStreaming ? "Streaming" : "Online";
+
   const fab = useDraggableFab({
     storageKey: fabPosKey,
     fabSize: FAB_SIZE,
@@ -208,9 +260,12 @@ function FloatingChatbotInner({
 
   return (
     <>
-      {/* Mobile + fullscreen backdrop. On desktop widget mode the body shifts instead of dimming. */}
+      {/* Scoped agentic-console keyframes + utilities */}
+      <style dangerouslySetInnerHTML={{ __html: AGENT_CONSOLE_CSS }} />
+
+      {/* Mobile + fullscreen backdrop */}
       <div
-        className={`fixed inset-0 z-[10995] bg-slate-950/40 backdrop-blur-sm transition-opacity duration-300 ${
+        className={`fixed inset-0 z-[10995] bg-slate-950/50 backdrop-blur-md transition-opacity duration-300 ${
           isFullscreen
             ? "opacity-100 pointer-events-auto"
             : viewMode === "widget"
@@ -221,44 +276,97 @@ function FloatingChatbotInner({
         aria-hidden
       />
 
-      {/* Chat sidebar — slides in from RIGHT (Cursor agent style). Pushes body content on ≥md. */}
+      {/* Agent console */}
       <div
         className={[
           "fixed top-0 right-0 z-[11000] flex flex-col overflow-hidden",
-          "bg-white dark:bg-slate-900",
-          "border-l border-slate-200/80 dark:border-slate-700/80",
-          "shadow-[-8px_0_30px_-12px_rgba(15,23,42,0.25)]",
+          "bg-white dark:bg-slate-950",
+          "border-l border-slate-200/70 dark:border-slate-800/80",
+          "shadow-[-12px_0_40px_-14px_rgba(15,23,42,0.28)] dark:shadow-[-12px_0_40px_-14px_rgba(0,0,0,0.7)]",
           "transition-transform duration-[320ms] ease-[cubic-bezier(0.22,1,0.36,1)]",
-          isFullscreen
-            ? "w-screen h-screen"
-            : "h-screen w-[92vw] max-w-[400px]",
+          isFullscreen ? "w-screen h-screen" : "h-screen w-[94vw] max-w-[420px]",
           isOpen ? "translate-x-0" : "translate-x-full",
         ].join(" ")}
         role="dialog"
-        aria-label="Dharwin Assistant"
+        aria-label="Dharwin Agent Console"
         aria-hidden={!isOpen}
       >
-        {/* Header — primary background with soft glass highlight */}
-        <div className="relative flex items-center justify-between px-4 py-3 flex-shrink-0 text-white overflow-hidden bg-primary">
-          <div className="absolute inset-x-0 -top-16 h-32 bg-white/20 blur-2xl rounded-full pointer-events-none" />
+        {/* Ambient backdrop layers */}
+        <div className="agent-grid-bg pointer-events-none absolute inset-0 opacity-60 dark:opacity-100" aria-hidden />
+        <div
+          className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-50"
+          style={{
+            background:
+              "radial-gradient(800px 400px at 100% -10%, rgba(132,90,223,0.18), transparent 60%), radial-gradient(600px 380px at -10% 110%, rgba(34,211,238,0.12), transparent 65%)",
+          }}
+          aria-hidden
+        />
 
-          <div className="flex items-center gap-2.5 min-w-0 relative">
-            <div className="relative w-8 h-8 rounded-full bg-white/15 backdrop-blur-sm flex items-center justify-center text-sm font-bold ring-1 ring-white/30">
-              D
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-primary animate-pulse" />
+        {/* Header */}
+        <div className="relative z-10 flex flex-shrink-0 items-center justify-between gap-2 border-b border-slate-200/70 bg-white/70 px-3.5 py-3 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/60">
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-cyan-400/60" />
+          <span aria-hidden className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden">
+            <span
+              className="block h-full w-1/3 bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent"
+              style={{ animation: "agent-shimmer 4.5s linear infinite" }}
+            />
+          </span>
+
+          <div className="flex min-w-0 items-center gap-3">
+            {/* Agent orb */}
+            <div className="relative h-10 w-10 flex-shrink-0">
+              <span
+                aria-hidden
+                className="absolute inset-0 rounded-full"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
+                  animation: "agent-orbit 7s linear infinite",
+                  WebkitMask: "radial-gradient(circle, transparent 55%, black 56%)",
+                  mask: "radial-gradient(circle, transparent 55%, black 56%)",
+                }}
+              />
+              {(isPreparing || isStreaming) && (
+                <span
+                  aria-hidden
+                  className="absolute inset-0 rounded-full bg-primary/35"
+                  style={{ animation: "agent-pulse-ring 1.6s ease-out infinite" }}
+                />
+              )}
+              <div className="absolute inset-[3px] flex items-center justify-center rounded-full bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-[12px] font-bold text-white ring-1 ring-white/30">
+                <span className="absolute inset-0 rounded-full bg-gradient-to-br from-white/30 to-transparent" />
+                <span className="relative">D</span>
+              </div>
             </div>
+
             <div className="min-w-0">
-              <div className="text-sm font-semibold leading-tight truncate">Dharwin Assistant</div>
-              <div className="text-[10px] uppercase tracking-[0.14em] opacity-75 leading-tight">
-                {isLoading ? "Thinking…" : "Online"}
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-[13.5px] font-semibold text-slate-900 dark:text-slate-50">Dharwin Agent</span>
+                <span className="rounded-md border border-primary/25 bg-primary/[0.08] px-1 py-px font-mono text-[8.5px] uppercase tracking-[0.2em] text-primary/80">v1</span>
+              </div>
+              <div className="mt-0.5 flex items-center gap-1.5">
+                <span className={`relative h-1.5 w-1.5 rounded-full ${isPreparing || isStreaming ? "bg-cyan-400" : "bg-emerald-400"}`}>
+                  <span className={`absolute inset-0 rounded-full ${isPreparing || isStreaming ? "bg-cyan-400" : "bg-emerald-400"} animate-ping opacity-60`} />
+                </span>
+                <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+                  {statusLabel}
+                </span>
+                {(isPreparing || isStreaming) && (
+                  <span className="ml-1 inline-flex h-[3px] w-12 origin-left overflow-hidden rounded-full bg-slate-200/60 dark:bg-slate-800">
+                    <span
+                      className="block h-full w-full bg-gradient-to-r from-primary via-purple-400 to-cyan-400"
+                      style={{ animation: "agent-bar 1.4s ease-in-out infinite" }}
+                    />
+                  </span>
+                )}
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-0.5 relative">
+          <div className="relative flex items-center gap-0.5">
             {messages.length > 0 && !isLoading && (
-              <IconButton onClick={clearHistory} label="Clear history">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <IconButton onClick={clearHistory} label="Clear conversation">
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
               </IconButton>
@@ -268,17 +376,17 @@ function FloatingChatbotInner({
               label={isFullscreen ? "Collapse" : "Expand to fullscreen"}
             >
               {isFullscreen ? (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V5H5m14 0h-4v4M5 15h4v4m6 0v-4h4" />
                 </svg>
               ) : (
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 4h-4v4M4 16v4h4m12-4v4h-4" />
                 </svg>
               )}
             </IconButton>
             <IconButton onClick={() => setViewMode("closed")} label="Close">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </IconButton>
@@ -286,100 +394,151 @@ function FloatingChatbotInner({
         </div>
 
         {/* Messages */}
-        <div className={`flex-1 overflow-y-auto min-h-0 ${isFullscreen ? "px-3 sm:px-6 md:px-10 lg:px-16 py-6" : "px-3.5 py-3"}`}>
-          <div className={isFullscreen ? "w-full max-w-7xl mx-auto" : ""}>
+        <div className={`agent-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto ${isFullscreen ? "px-3 sm:px-6 md:px-10 lg:px-16 py-6" : "px-3.5 py-4"}`}>
+          <div className={isFullscreen ? "mx-auto w-full max-w-7xl" : ""}>
             {messages.length === 0 && (
               <EmptyState fullscreen={isFullscreen} onPick={(q) => handleSend(q)} disabled={isLoading} />
             )}
 
             {messages.map((msg) =>
               msg.role === "assistant" && msg.content === "" ? null : (
-                <ChatMessage key={msg.id} role={msg.role} content={msg.content} fullscreen={isFullscreen} />
+                <ChatMessage key={msg.id} role={msg.role} content={msg.content} fullscreen={isFullscreen} blocks={msg.blocks} />
               )
             )}
 
-            {isPreparing && <TypingIndicator />}
+            {isPreparing && <ReasoningIndicator />}
 
             <div ref={messagesEndRef} />
           </div>
         </div>
 
-        {/* Input row */}
-        <div
-          className={`border-t border-slate-200 dark:border-slate-700/70 flex-shrink-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur ${
-            isFullscreen ? "px-4 sm:px-8 md:px-16 py-4" : "px-3 py-2.5"
-          }`}
-        >
-          <div className={isFullscreen ? "max-w-3xl mx-auto" : ""}>
-            <div className="flex items-end gap-2 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-transparent focus-within:border-primary/40 focus-within:bg-white dark:focus-within:bg-slate-800 transition-colors px-2 py-1.5">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isLoading ? "Generating reply…" : "Ask anything…  (Shift+Enter = newline)"}
-                rows={1}
-                disabled={isLoading}
-                className="flex-1 resize-none text-sm bg-transparent text-slate-900 dark:text-slate-100 px-2 py-1.5 outline-none placeholder:text-slate-400 dark:placeholder:text-slate-500 max-h-36 overflow-y-auto disabled:opacity-60"
+        {/* Input */}
+        <div className={`relative z-10 flex-shrink-0 border-t border-slate-200/70 bg-white/80 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/70 ${isFullscreen ? "px-4 sm:px-8 md:px-16 py-4" : "px-3 py-3"}`}>
+          <div className={isFullscreen ? "mx-auto max-w-3xl" : ""}>
+            <div className="group relative">
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-br from-primary/40 via-purple-400/25 to-cyan-400/40 opacity-0 transition-opacity duration-300 group-focus-within:opacity-100"
+                style={{
+                  WebkitMask: "linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)",
+                  WebkitMaskComposite: "xor",
+                  maskComposite: "exclude",
+                  padding: "1px",
+                }}
               />
-              {isLoading ? (
-                <button
-                  onClick={stopStreaming}
-                  className="p-2.5 rounded-xl bg-rose-500 text-white shadow-sm hover:bg-rose-600 active:scale-95 transition-all flex-shrink-0"
-                  aria-label="Stop generating"
-                  title="Stop"
-                >
-                  <span className="block w-3 h-3 bg-white rounded-sm" />
-                </button>
-              ) : (
-                <button
-                  onClick={() => handleSend()}
-                  disabled={!input.trim()}
-                  className="p-2.5 rounded-xl bg-primary text-white disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 active:scale-95 transition-all flex-shrink-0"
-                  aria-label="Send"
-                  title="Send"
-                >
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-7 14-2-5-5-2z" />
-                  </svg>
-                </button>
-              )}
+              <div className="relative flex items-end gap-2 rounded-2xl border border-slate-200/80 bg-slate-50/80 px-2.5 py-1.5 transition-colors focus-within:border-primary/30 focus-within:bg-white dark:border-slate-800 dark:bg-slate-900/70 dark:focus-within:border-primary/40 dark:focus-within:bg-slate-900">
+                <span aria-hidden className="mb-2 ml-0.5 hidden select-none font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-primary/70 sm:inline">
+                  ›_
+                </span>
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isLoading ? "Generating reply…" : "Ask the agent anything…"}
+                  rows={1}
+                  disabled={isLoading}
+                  className="max-h-36 flex-1 resize-none overflow-y-auto bg-transparent px-1.5 py-2 text-[13px] leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 disabled:opacity-60 dark:text-slate-100 dark:placeholder:text-slate-500"
+                />
+                {isLoading ? (
+                  <button
+                    onClick={stopStreaming}
+                    className="group/btn relative mb-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white shadow-[0_4px_14px_-4px_rgb(244_63_94_/_0.55)] transition-transform hover:bg-rose-600 active:scale-95"
+                    aria-label="Stop generating"
+                    title="Stop"
+                  >
+                    <span className="block h-3 w-3 rounded-sm bg-white" />
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleSend()}
+                    disabled={!input.trim()}
+                    className="group/btn relative mb-1 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-purple-600 text-white shadow-[0_4px_14px_-4px_rgb(132_90_223_/_0.55)] transition-all hover:shadow-[0_6px_18px_-4px_rgb(132_90_223_/_0.7)] active:scale-95 disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none"
+                    aria-label="Send"
+                    title="Send"
+                  >
+                    <span className="absolute inset-0 rounded-xl bg-gradient-to-br from-white/25 to-transparent opacity-60" />
+                    <svg
+                      className="relative h-4 w-4 -translate-x-px translate-y-px transition-transform group-hover/btn:translate-x-0 group-hover/btn:translate-y-0"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2}
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 12l14-7-7 14-2-5-5-2z" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="flex items-center justify-between mt-1.5 px-1 text-[10px] text-slate-400 dark:text-slate-500">
-              <span>AI replies may be inaccurate. Verify before acting.</span>
-              {!isFullscreen && <span className="hidden sm:inline opacity-70">ESC to minimise</span>}
+            <div className="mt-1.5 flex items-center justify-between gap-2 px-1 text-[10px] text-slate-400 dark:text-slate-500">
+              <span className="inline-flex items-center gap-1.5 truncate">
+                <svg className="h-3 w-3 flex-shrink-0 text-amber-500/80" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+                </svg>
+                <span className="truncate">AI replies may be inaccurate. Verify before acting.</span>
+              </span>
+              <span className="hidden flex-shrink-0 items-center gap-1 sm:inline-flex">
+                <Kbd>Enter</Kbd>
+                <span className="opacity-70">send</span>
+                <span className="mx-0.5 opacity-30">·</span>
+                <Kbd>⇧</Kbd>
+                <Kbd>Enter</Kbd>
+                <span className="opacity-70">newline</span>
+                {!isFullscreen && (
+                  <>
+                    <span className="mx-0.5 opacity-30">·</span>
+                    <Kbd>Esc</Kbd>
+                  </>
+                )}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Floating draggable FAB — hidden while sidebar is open to avoid overlap */}
+      {/* Floating draggable FAB */}
       <button
         ref={fab.fabRef}
         {...fab.handlers}
         style={fab.style}
-        aria-label="Open assistant"
+        aria-label="Open Dharwin Agent"
         aria-hidden={isOpen}
         tabIndex={isOpen ? -1 : 0}
         className={[
           "z-[11001] select-none",
-          "w-14 h-14 rounded-full text-white",
-          "bg-primary",
-          "shadow-[0_10px_30px_-10px_rgba(79,70,229,0.6)]",
-          "ring-1 ring-white/10",
-          "flex items-center justify-center",
-          "transition-[transform,box-shadow,opacity] duration-200",
-          isOpen ? "opacity-0 scale-75 pointer-events-none" : "opacity-100 scale-100",
-          fab.isDragging
-            ? "cursor-grabbing scale-110 shadow-[0_18px_40px_-10px_rgba(79,70,229,0.7)]"
-            : "cursor-grab hover:scale-105 active:scale-95",
+          "h-14 w-14 rounded-full text-white",
+          "relative overflow-visible",
+          "transition-[transform,opacity] duration-200",
+          isOpen ? "pointer-events-none scale-75 opacity-0" : "scale-100 opacity-100",
+          fab.isDragging ? "cursor-grabbing scale-110" : "cursor-grab hover:scale-105 active:scale-95",
         ].join(" ")}
       >
         {!fab.isDragging && !isOpen && (
-          <span className="absolute inset-0 rounded-full bg-primary/40 animate-ping opacity-40 pointer-events-none" />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 rounded-full bg-primary/35"
+            style={{ animation: "agent-pulse-ring 2.4s ease-out infinite" }}
+          />
         )}
-        <span className="relative">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -inset-[2px] rounded-full"
+          style={{
+            background:
+              "conic-gradient(from 0deg, rgba(132,90,223,0.85), rgba(34,211,238,0.7), rgba(132,90,223,0.85))",
+            animation: "agent-orbit 6s linear infinite",
+            WebkitMask: "radial-gradient(circle, transparent 62%, black 63%)",
+            mask: "radial-gradient(circle, transparent 62%, black 63%)",
+          }}
+        />
+        <span
+          aria-hidden
+          className="absolute inset-[3px] rounded-full bg-gradient-to-br from-primary via-purple-500 to-cyan-400 shadow-[0_10px_30px_-8px_rgb(132_90_223_/_0.7)] ring-1 ring-white/15"
+        />
+        <span aria-hidden className="absolute inset-[3px] rounded-full bg-gradient-to-br from-white/30 to-transparent" />
+        <span className="relative flex h-full w-full items-center justify-center">
+          <svg className="h-6 w-6 drop-shadow-sm" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
           </svg>
         </span>
@@ -405,23 +564,54 @@ function IconButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="p-1.5 rounded-lg text-white/75 hover:text-white hover:bg-white/15 active:bg-white/25 transition-colors"
+      className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15 dark:text-slate-400 dark:hover:bg-primary/20 dark:hover:text-purple-300"
     >
       {children}
     </button>
   );
 }
 
-function TypingIndicator() {
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex justify-start mb-3">
-      <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold mr-2 flex-shrink-0 mt-0.5">
-        D
+    <kbd className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded border border-slate-200 bg-white px-1 font-mono text-[9px] font-semibold text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+      {children}
+    </kbd>
+  );
+}
+
+function ReasoningIndicator() {
+  return (
+    <div className="mb-4 flex justify-start">
+      <div className="mr-2 flex-shrink-0">
+        <div className="relative h-7 w-7">
+          <span
+            aria-hidden
+            className="absolute inset-0 rounded-full"
+            style={{
+              background:
+                "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
+              animation: "agent-orbit 4s linear infinite",
+              WebkitMask: "radial-gradient(circle, transparent 55%, black 56%)",
+              mask: "radial-gradient(circle, transparent 55%, black 56%)",
+            }}
+          />
+          <div className="absolute inset-[2px] flex items-center justify-center rounded-full bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-[10px] font-bold text-white">
+            D
+          </div>
+        </div>
       </div>
-      <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl rounded-tl-sm px-4 py-3 flex items-center gap-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+      <div className="flex flex-col">
+        <span className="mb-1 px-1 font-mono text-[9px] uppercase tracking-[0.22em] text-primary/75">
+          Agent · Thinking
+        </span>
+        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-200/70 bg-white px-3.5 py-2.5 shadow-[0_3px_14px_-6px_rgba(15,23,42,.08)] dark:border-slate-700/60 dark:bg-slate-800/70">
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-primary" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "0ms" }} />
+            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "180ms" }} />
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "360ms" }} />
+          </span>
+          <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Reasoning over your data…</span>
+        </div>
       </div>
     </div>
   );
@@ -437,36 +627,71 @@ function EmptyState({
   disabled: boolean;
 }) {
   return (
-    <div
-      className={`flex flex-col items-center justify-center text-center gap-4 ${
-        fullscreen ? "py-16" : "h-full py-6 px-1"
-      }`}
-    >
-      <div className="relative">
-        <div className="absolute inset-0 rounded-full bg-primary/30 blur-2xl" />
-        <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-br from-primary to-primary/70 text-white flex items-center justify-center shadow-lg ring-1 ring-white/20">
-          <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
+    <div className={`flex flex-col items-center justify-center text-center ${fullscreen ? "py-20" : "h-full py-6 px-1"}`}>
+      <div className="relative mb-5">
+        <div
+          aria-hidden
+          className="absolute inset-0 -m-6 rounded-full opacity-70 blur-3xl"
+          style={{
+            background:
+              "radial-gradient(circle, rgba(132,90,223,0.55), rgba(34,211,238,0.18) 55%, transparent 70%)",
+            animation: "agent-mesh-drift 9s ease-in-out infinite",
+          }}
+        />
+        <div className="relative">
+          <span
+            aria-hidden
+            className="absolute inset-0 -m-2 rounded-full"
+            style={{
+              background:
+                "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
+              animation: "agent-orbit 8s linear infinite",
+              WebkitMask: "radial-gradient(circle, transparent 60%, black 61%)",
+              mask: "radial-gradient(circle, transparent 60%, black 61%)",
+            }}
+          />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-white shadow-[0_10px_28px_-8px_rgb(132_90_223_/_0.55)] ring-1 ring-white/20">
+            <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/25 to-transparent" />
+            <svg className="relative h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </div>
         </div>
       </div>
-      <div>
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-          Ask me anything about Dharwin
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-          Employees, jobs, attendance, leave, projects &amp; more
-        </p>
-      </div>
-      <div className={`flex flex-wrap justify-center gap-2 ${fullscreen ? "max-w-2xl" : "w-full"}`}>
-        {SUGGESTED_QUESTIONS.map((q) => (
+
+      <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.06] px-2.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-primary/85">
+        <span className="h-1 w-1 rounded-full bg-emerald-400" />
+        Agent Ready
+      </span>
+      <p className="mt-1 text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+        How can I help you today?
+      </p>
+      <p className="mt-1 max-w-sm text-[12px] text-slate-500 dark:text-slate-400">
+        Ask anything about employees, jobs, attendance, leave, projects &amp; more.
+      </p>
+
+      <div className={`mt-5 grid w-full gap-2 ${fullscreen ? "max-w-2xl grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
+        {SUGGESTED_QUESTIONS.map(({ q, k }) => (
           <button
             key={q}
             onClick={() => onPick(q)}
             disabled={disabled}
-            className="text-xs px-3 py-1.5 rounded-full border border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 hover:border-primary/40 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left leading-snug"
+            className="group/sug relative flex items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-left transition-all hover:border-primary/40 hover:shadow-[0_4px_14px_-6px_rgb(132_90_223_/_0.35)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-primary/40"
           >
-            {q}
+            <span aria-hidden className="absolute left-0 top-0 h-full w-[2px] bg-gradient-to-b from-primary to-cyan-400/60 opacity-0 transition-opacity group-hover/sug:opacity-100" />
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="font-mono text-[8.5px] uppercase tracking-[0.2em] text-primary/70">{k}</span>
+              <span className="truncate text-[12.5px] text-slate-700 dark:text-slate-200">{q}</span>
+            </span>
+            <svg
+              className="h-3 w-3 flex-shrink-0 text-slate-300 transition-all group-hover/sug:translate-x-0.5 group-hover/sug:text-primary dark:text-slate-600"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
           </button>
         ))}
       </div>

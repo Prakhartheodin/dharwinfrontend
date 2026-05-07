@@ -1,9 +1,9 @@
-import MeetingRoomClient from "./meeting-room-client";
+// SSR dynamic route. No `generateStaticParams` — see
+// training/attendance/student/[studentId]/page.tsx for rationale (placeholder
+// `{ roomId: "_" }` strands SSR runtime chunks on Vercel after `output: "export"`
+// was removed from next.config.js).
 
-/** Required for static export (output: "export"). Placeholder so the route is built; actual roomId is used at runtime. */
-export async function generateStaticParams() {
-  return [{ roomId: "_" }];
-}
+import MeetingRoomClient from "./meeting-room-client";
 
 export default async function MeetingRoomPage() {
   return <MeetingRoomClient />;

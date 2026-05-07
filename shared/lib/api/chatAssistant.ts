@@ -2,10 +2,33 @@
 
 import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 import { AUTH_ENDPOINTS } from "@/shared/lib/constants";
+import type { ChatResponse, Block, ChatMeta } from "@/shared/types/chatResponse";
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+export type { ChatResponse, Block, ChatMeta } from "@/shared/types/chatResponse";
+
+function emptyMeta(): ChatMeta {
+  return { kind: null, total: null, deterministic: false, tookMs: null };
+}
+
+function normalizeEnvelope(input: Partial<ChatResponse> | { reply?: string } | null | undefined): ChatResponse {
+  const raw = (input ?? {}) as Partial<ChatResponse> & { reply?: string };
+  return {
+    reply: typeof raw.reply === "string" ? raw.reply : "",
+    blocks: Array.isArray(raw.blocks) ? (raw.blocks as Block[]) : [],
+    meta: raw.meta
+      ? {
+          kind: raw.meta.kind ?? null,
+          total: typeof raw.meta.total === "number" ? raw.meta.total : null,
+          deterministic: !!raw.meta.deterministic,
+          tookMs: typeof raw.meta.tookMs === "number" ? raw.meta.tookMs : null,
+        }
+      : emptyMeta(),
+  };
 }
 
 // Match backend Joi limits in validations/chatAssistant.validation.js — keep us under
@@ -69,9 +92,23 @@ async function readErrorMessage(res: Response): Promise<string> {
   }
 }
 
-export async function sendChatMessage(messages: ChatMessage[]): Promise<{ reply: string }> {
+export async function sendChatMessage(messages: ChatMessage[]): Promise<ChatResponse> {
   const res = await apiClient.post("/chat-assistant/message", { messages: prepareMessages(messages) });
-  return res.data.data;
+  return normalizeEnvelope(res.data?.data);
+}
+
+/**
+ * Clear server-side conversation memory + per-admin context cache. Best-effort:
+ * the frontend always proceeds to wipe localStorage and message state regardless
+ * of the server response. Returns whether a memory row was deleted server-side.
+ */
+export async function clearChatConversation(): Promise<{ deletedMemoryRow: boolean }> {
+  try {
+    const res = await apiClient.post("/chat-assistant/clear", {});
+    return { deletedMemoryRow: !!res.data?.deletedMemoryRow };
+  } catch {
+    return { deletedMemoryRow: false };
+  }
 }
 
 async function fetchStream(url: string, messages: ChatMessage[], signal?: AbortSignal): Promise<Response> {
@@ -87,11 +124,15 @@ async function fetchStream(url: string, messages: ChatMessage[], signal?: AbortS
 /**
  * SSE-based streaming. Calls onToken for each text chunk, resolves when done.
  * Throws ChatbotRequestError with .userMessage suitable for direct display.
+ *
+ * When the backend ships a structured envelope with the terminal `done`
+ * event (blocks + meta), it is forwarded to `onDone` if supplied.
  */
 export async function streamChatMessage(
   messages: ChatMessage[],
   onToken: (token: string) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onDone?: (env: ChatResponse) => void
 ): Promise<void> {
   const url = `${normalizeApiBase()}/chat-assistant/stream`;
 
@@ -118,6 +159,7 @@ export async function streamChatMessage(
   const decoder = new TextDecoder();
   let buffer = "";
   let streamError: ChatbotRequestError | null = null;
+  let assembledReply = "";
 
   while (true) {
     const { done, value } = await reader.read();
@@ -131,13 +173,24 @@ export async function streamChatMessage(
       if (!line.startsWith("data: ")) continue;
       const raw = line.slice(6).trim();
       if (!raw) continue;
-      let parsed: { token?: string; error?: string; done?: boolean } | null = null;
+      let parsed:
+        | {
+            token?: string;
+            error?: string;
+            done?: boolean;
+            blocks?: Block[];
+            meta?: Partial<ChatMeta>;
+          }
+        | null = null;
       try {
         parsed = JSON.parse(raw);
       } catch {
         continue;
       }
-      if (parsed?.token) onToken(parsed.token);
+      if (parsed?.token) {
+        assembledReply += parsed.token;
+        onToken(parsed.token);
+      }
       if (parsed?.error) {
         streamError = new ChatbotRequestError(
           200,
@@ -147,10 +200,20 @@ export async function streamChatMessage(
       }
       if (parsed?.done) {
         if (streamError) throw streamError;
+        if (onDone) {
+          onDone(
+            normalizeEnvelope({
+              reply: assembledReply,
+              blocks: parsed.blocks,
+              meta: parsed.meta as ChatMeta | undefined,
+            })
+          );
+        }
         return;
       }
     }
   }
 
   if (streamError) throw streamError;
+  if (onDone) onDone(normalizeEnvelope({ reply: assembledReply }));
 }

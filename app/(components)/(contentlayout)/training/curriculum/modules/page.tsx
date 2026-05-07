@@ -943,7 +943,8 @@ const TrainingModules = () => {
   const [categories, setCategories] = useState<ApiCategory[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  const [pageSize] = useState(100) // Fetch many modules at once
+  // Smaller initial page = faster first paint. Pagination handles depth.
+  const [pageSize] = useState(24)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -1031,16 +1032,13 @@ const TrainingModules = () => {
     if (!confirmResult.isConfirmed) return
 
     setBulkBusy(true)
-    let success = 0
-    let fail = 0
-    for (const id of selectedIds) {
-      try {
-        await trainingModulesApi.updateTrainingModule(id, { status })
-        success++
-      } catch {
-        fail++
-      }
-    }
+    const results = await Promise.allSettled(
+      Array.from(selectedIds).map((id) =>
+        trainingModulesApi.updateTrainingModule(id, { status })
+      )
+    )
+    const success = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - success
     setBulkBusy(false)
     clearSelection()
     fetchModules()
@@ -1068,16 +1066,11 @@ const TrainingModules = () => {
     if (!confirmResult.isConfirmed) return
 
     setBulkBusy(true)
-    let success = 0
-    let fail = 0
-    for (const id of selectedIds) {
-      try {
-        await trainingModulesApi.deleteTrainingModule(id)
-        success++
-      } catch {
-        fail++
-      }
-    }
+    const results = await Promise.allSettled(
+      Array.from(selectedIds).map((id) => trainingModulesApi.deleteTrainingModule(id))
+    )
+    const success = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - success
     setBulkBusy(false)
     clearSelection()
     fetchModules()
@@ -1095,16 +1088,13 @@ const TrainingModules = () => {
   const handleBulkFolderSave = useCallback(async (categoryIds: string[]) => {
     if (selectedIds.size === 0) return
     setBulkBusy(true)
-    let success = 0
-    let fail = 0
-    for (const id of selectedIds) {
-      try {
-        await trainingModulesApi.setTrainingModuleFolders(id, categoryIds)
-        success++
-      } catch {
-        fail++
-      }
-    }
+    const results = await Promise.allSettled(
+      Array.from(selectedIds).map((id) =>
+        trainingModulesApi.setTrainingModuleFolders(id, categoryIds)
+      )
+    )
+    const success = results.filter((r) => r.status === 'fulfilled').length
+    const fail = results.length - success
     setBulkBusy(false)
     clearSelection()
     setBulkFolderOpen(false)
@@ -1675,7 +1665,7 @@ const TrainingModules = () => {
                     <div className="grid grid-cols-12 gap-x-6 gap-y-6 mt-2">
                       {folder.modules.map((m) => (
                         <div
-                          key={m.id}
+                          key={m.id ?? (m as unknown as { _id?: string })._id ?? m.moduleName}
                           className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
                         >
                           <TrainingModuleCard

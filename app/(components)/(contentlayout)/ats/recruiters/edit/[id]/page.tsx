@@ -1,9 +1,9 @@
-import EditRecruiterClient from "./EditRecruiterClient";
+// SSR dynamic route. No `generateStaticParams` — see
+// training/attendance/student/[studentId]/page.tsx for rationale (placeholder
+// `{ id: "_" }` strands SSR runtime chunks on Vercel after `output: "export"`
+// was removed from next.config.js).
 
-/** Required for static export (output: "export"). Placeholder so the route is built; actual id is used at runtime. */
-export async function generateStaticParams() {
-  return [{ id: "_" }];
-}
+import EditRecruiterClient from "./EditRecruiterClient";
 
 export default function EditRecruiterPage() {
   return <EditRecruiterClient />;

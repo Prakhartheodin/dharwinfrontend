@@ -24,10 +24,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/ats/analytics": "ats.analytics:",
   "/ats/external-jobs": "ats.external-jobs:",
   // Communication
-  "/pages/email/mail-app": "communication.emails:",
-  "/pages/chat": "communication.chats:",
   "/communication/calling": "communication.calling:",
-  "/pages/filemanager": "communication.files-storage:",
   // Training Management
   "/training/curriculum": "training.courses:",
   "/training/attendance": "training.attendance:",
@@ -36,15 +33,12 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/training/positions": "training.positions:",
   "/training/evaluation": "training.evaluation:",
   "/training/analytics": "training.analytics:",
-  // Project Management (sidebar uses /apps/... and /task/...; app routes also use /project-management/...)
+  // Project Management
   "/apps/projects/my-projects": "project.my-projects:",
   "/apps/projects/project-list": "project.projects:",
   "/apps/projects/assignment": "project.projects:",
   "/task/my-tasks": "project.tasks:",
   "/task/kanban-board": "project.kanban:",
-  "/pages/team": "project.teams:",
-  "/project-management/projects": "project.projects:",
-  "/project-management/task": "project.kanban:",
   "/project-management/teams": "project.teams:",
   "/project-management/analytics": "project.analytics:",
   // Communication (app routes under /communication/...)

@@ -1,41 +1,18 @@
+// uat.dharwin.frontend/app/(components)/(contentlayout)/training/attendance/student/[studentId]/page.tsx
+//
+// SSR dynamic route. The client component reads `studentId` via
+// `useParams()` at runtime; this server-side wrapper only renders the
+// shell. We deliberately do NOT export `generateStaticParams` because:
+//   - next.config.js does NOT set `output: "export"` — the route is SSR.
+//   - Build-time fetching of student ids was returning placeholder
+//     `{ studentId: "_" }` on auth failure, which produced an unused
+//     static page that confused Vercel's chunk packer.
+//   - Removing the placeholder shrinks the SSR runtime chunk graph and
+//     avoids the `[root-of-the-server]__<hash>.js` MODULE_NOT_FOUND
+//     issue documented in the chunk-corruption audit.
+
 import StudentAttendancePage from "./student-attendance-client";
 
-// Generate static params for static export
-export async function generateStaticParams() {
-  try {
-    // Fetch all students to generate static pages (optional; no auth at build/SSR so 401 is expected)
-    const raw = process.env.NEXT_PUBLIC_API_URL || "";
-    const apiUrl = raw.replace(/\/$/, "");
-    if (!apiUrl) {
-      return [];
-    }
-
-    const response = await fetch(`${apiUrl}/training/students?limit=1000`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
-      // 401 = no auth at build/SSR; 5xx = API down. Use placeholder so build/navigation still works.
-      return [{ studentId: "_" }];
-    }
-    
-    const data = await response.json();
-    return (data.results || []).map((student: { id: string }) => ({
-      studentId: student.id,
-    }));
-  } catch (error) {
-    // If API is not available at build time, return a placeholder
-    // This allows the build to succeed; real IDs are loaded at runtime
-    console.warn("Failed to fetch students for generateStaticParams:", error);
-    return [{ studentId: "_" }];
-  }
-}
-
-export default async function Page({
-  params,
-}: {
-  params: Promise<{ studentId?: string }>;
-}) {
+export default function Page() {
   return <StudentAttendancePage />;
 }
