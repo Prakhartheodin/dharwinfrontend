@@ -1,11 +1,21 @@
 "use client"
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { type JobApplication } from '@/shared/lib/api/jobApplications'
+import { getJobStats, type JobStatsResponse } from '@/shared/lib/api/jobs'
 import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
 } from '@/shared/lib/ats/jobDescriptionHtml'
+
+const FUNNEL_TONES: Record<string, string> = {
+  Applied: 'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-300',
+  Screening: 'bg-sky-500/10 text-sky-700 border-sky-500/20 dark:text-sky-300',
+  Interview: 'bg-violet-500/10 text-violet-700 border-violet-500/20 dark:text-violet-300',
+  Offered: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300',
+  Hired: 'bg-emerald-600/15 text-emerald-800 border-emerald-500/30 dark:text-emerald-200',
+  Rejected: 'bg-rose-500/10 text-rose-700 border-rose-500/20 dark:text-rose-300',
+}
 
 interface JobPreviewPanelProps {
   previewJob: any
@@ -111,6 +121,8 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
 }) => {
   const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set())
   const [callingCandidates, setCallingCandidates] = useState<Set<string>>(new Set())
+  const [jobStats, setJobStats] = useState<JobStatsResponse | null>(null)
+  const [jobStatsLoading, setJobStatsLoading] = useState(false)
 
   // Reset selections when switching tabs or closing panel
   React.useEffect(() => {
@@ -118,6 +130,30 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
       setSelectedCandidates(new Set())
     }
   }, [jobPreviewTab, previewJob])
+
+  // Load per-job analytics drill when previewing
+  useEffect(() => {
+    const id = previewJob?.id
+    if (!id) {
+      setJobStats(null)
+      return
+    }
+    let cancelled = false
+    setJobStatsLoading(true)
+    getJobStats(id)
+      .then((res) => {
+        if (!cancelled) setJobStats(res)
+      })
+      .catch(() => {
+        if (!cancelled) setJobStats(null)
+      })
+      .finally(() => {
+        if (!cancelled) setJobStatsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [previewJob?.id])
 
   const handleSelectCandidate = (candidateId: string) => {
     setSelectedCandidates(prev => {
@@ -297,6 +333,79 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                   {/* Tab content: Job Details */}
                   {jobPreviewTab === 'details' && (
                   <div className="space-y-4">
+                  {/* Per-job analytics card */}
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm dark:border-defaultborder/10 dark:bg-black/30">
+                    <div className="mb-3 flex items-center justify-between">
+                      <h6 className="text-sm font-semibold text-gray-800 dark:text-white flex items-center gap-2">
+                        <i className="ri-bar-chart-2-line text-primary"></i>
+                        Job analytics
+                      </h6>
+                      {jobStats && (
+                        <span className="text-[0.65rem] uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          Conversion: <span className="font-semibold text-emerald-600 dark:text-emerald-300">{jobStats.conversionRate}%</span>
+                        </span>
+                      )}
+                    </div>
+                    {jobStatsLoading ? (
+                      <div className="py-4 text-center text-xs text-gray-500">Loading analytics…</div>
+                    ) : !jobStats ? (
+                      <div className="py-3 text-center text-xs text-gray-400">No analytics available</div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 mb-3">
+                          <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
+                            <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Applications</div>
+                            <div className="text-lg font-bold text-gray-800 dark:text-white">{jobStats.totalApplications}</div>
+                          </div>
+                          <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
+                            <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Hired</div>
+                            <div className="text-lg font-bold text-emerald-600 dark:text-emerald-300">
+                              {jobStats.funnel.find((f) => f.status === 'Hired')?.count ?? 0}
+                            </div>
+                          </div>
+                          <div className="rounded border border-gray-200 dark:border-defaultborder/10 p-2">
+                            <div className="text-[0.65rem] uppercase tracking-wide text-gray-500">Status</div>
+                            <div className="text-sm font-semibold text-gray-800 dark:text-white">{jobStats.jobStatus}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {jobStats.funnel.map((row) => (
+                            <span
+                              key={row.status}
+                              className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[0.7rem] font-medium ${FUNNEL_TONES[row.status] || ''}`}
+                              title={`${row.status}: ${row.count}`}
+                            >
+                              {row.status}
+                              <span className="rounded bg-white/40 px-1 text-[0.65rem] font-bold dark:bg-black/30">{row.count}</span>
+                            </span>
+                          ))}
+                        </div>
+                        {jobStats.recentApplications.length > 0 && (
+                          <div className="mt-3 border-t border-gray-100 pt-3 dark:border-defaultborder/10">
+                            <div className="mb-1.5 text-[0.65rem] uppercase tracking-wide text-gray-500">Recent applications</div>
+                            <ul className="space-y-1 text-xs">
+                              {jobStats.recentApplications.slice(0, 5).map((app) => (
+                                <li key={app.id} className="flex items-center justify-between gap-2">
+                                  <span className="truncate text-gray-700 dark:text-gray-300">
+                                    {app.candidateName || app.candidateEmail || '—'}
+                                  </span>
+                                  <span className="flex items-center gap-2 flex-shrink-0">
+                                    <span className={`rounded px-1.5 py-0.5 text-[0.65rem] ${FUNNEL_TONES[app.status] || 'bg-gray-200 text-gray-700'}`}>
+                                      {app.status}
+                                    </span>
+                                    <span className="text-gray-400">
+                                      {new Date(app.appliedAt).toLocaleDateString()}
+                                    </span>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
                   {/* Key Details Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-gray-50 dark:bg-black/20 rounded-lg">
                     <div>

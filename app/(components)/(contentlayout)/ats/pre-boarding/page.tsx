@@ -43,7 +43,7 @@ const PreBoarding = () => {
   const [listSearch, setListSearch] = useState('')
   const [editModal, setEditModal] = useState<Placement | null>(null)
   const [editForm, setEditForm] = useState<{
-    placementStatus: 'Pending' | 'Joined' | 'Deferred' | 'Cancelled'
+    placementStatus: 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled'
     preBoardingStatus: PreBoardingStatus
     bgvStatus: BGVStatus
     bgvNotes: string
@@ -51,7 +51,6 @@ const PreBoarding = () => {
     itAccess: { system: string; accessLevel: string; notes: string }[]
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [preboardingGateBypassAck, setPreboardingGateBypassAck] = useState(false)
   const [feedbackDialog, setFeedbackDialog] = useState<PreBoardingFeedbackDialog | null>(null)
 
   useEffect(() => {
@@ -82,11 +81,14 @@ const PreBoarding = () => {
   }, [canView, fetchPlacements])
 
   const openEdit = useCallback((p: Placement) => {
-    setPreboardingGateBypassAck(false)
     setEditModal(p)
     const bv = p.backgroundVerification
+    /** Joined is set in Onboarding edit only. Other statuses pass through. */
+    const initialStatus = (p.status === 'Pending' || p.status === 'Onboarding' || p.status === 'Deferred' || p.status === 'Cancelled')
+      ? p.status
+      : 'Pending'
     setEditForm({
-      placementStatus: (p.status as 'Pending' | 'Joined' | 'Deferred' | 'Cancelled') || 'Pending',
+      placementStatus: initialStatus as 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled',
       preBoardingStatus: (p.preBoardingStatus as PreBoardingStatus) || 'Pending',
       bgvStatus: (bv?.status as BGVStatus) || 'Pending',
       bgvNotes: bv?.notes || '',
@@ -153,27 +155,11 @@ const PreBoarding = () => {
       })
       return
     }
-    const needsGateBypass =
-      editForm.placementStatus === 'Joined' && editForm.preBoardingStatus !== 'Completed'
-    if (needsGateBypass && !preboardingGateBypassAck) {
-      setFeedbackDialog({
-        variant: 'validation',
-        title: 'Finish pre-boarding before marking Joined',
-        intro:
-          'Placement is set to Joined while pre-boarding is not Complete. Choose one of the following:',
-        bullets: [
-          'Set Pre-boarding status to Completed (recommended), or',
-          'Turn on Override pre-boarding gate below if your role allows an exception.',
-        ],
-      })
-      return
-    }
     setSubmitting(true)
     try {
       await updatePlacement(placementId, {
         status: editForm.placementStatus,
         preBoardingStatus: editForm.preBoardingStatus,
-        ...(needsGateBypass && preboardingGateBypassAck ? { preboardingGateBypass: true } : {}),
         backgroundVerification: {
           status: editForm.bgvStatus,
           notes: editForm.bgvNotes || undefined,
@@ -598,7 +584,7 @@ const PreBoarding = () => {
                     <div className="border-b border-slate-200/90 bg-slate-50/90 px-4 py-2.5 dark:border-white/10 dark:bg-slate-900/50 sm:px-5">
                       <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Placement &amp; pre-boarding</h3>
                       <p className="mb-0 mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                        Set Joined to move this hire to the Onboarding list when ready.
+                        Complete pre-boarding here. The Joined transition happens in Onboarding edit.
                       </p>
                     </div>
                     <div className="p-4 sm:p-5">
@@ -614,12 +600,12 @@ const PreBoarding = () => {
                             onChange={(e) =>
                               setEditForm({
                                 ...editForm,
-                                placementStatus: e.target.value as 'Pending' | 'Joined' | 'Deferred' | 'Cancelled',
+                                placementStatus: e.target.value as 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled',
                               })
                             }
                           >
                             <option value="Pending">Pending</option>
-                            <option value="Joined">Joined</option>
+                            <option value="Onboarding">Move to Onboarding</option>
                             <option value="Deferred">Deferred</option>
                             <option value="Cancelled">Cancelled</option>
                           </select>
@@ -660,22 +646,6 @@ const PreBoarding = () => {
                             )
                           })()
                         : null}
-                      {editForm.placementStatus === 'Joined' && editForm.preBoardingStatus !== 'Completed' && (
-                        <div className="mt-4 rounded-lg border border-amber-200/90 bg-amber-50/90 p-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
-                          <label className="flex cursor-pointer items-start gap-2">
-                            <input
-                              type="checkbox"
-                              className="mt-1"
-                              checked={preboardingGateBypassAck}
-                              onChange={(e) => setPreboardingGateBypassAck(e.target.checked)}
-                            />
-                            <span>
-                              Override pre-boarding gate (requires permission). Use only when pre-boarding is intentionally
-                              incomplete but the hire should still be marked Joined.
-                            </span>
-                          </label>
-                        </div>
-                      )}
                     </div>
                   </div>
 

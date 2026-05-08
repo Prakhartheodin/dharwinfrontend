@@ -30,6 +30,7 @@ export interface DisplayJob {
   experience: string;
   salary: string;
   active: boolean;
+  status: string;
   postingDate: string;
   jobType: string;
   description?: string;
@@ -68,6 +69,7 @@ export function mapJobToDisplay(apiJob: Job): DisplayJob {
     experience: mapExperienceLevel(apiJob.experienceLevel),
     salary: formatSalaryRange(apiJob.salaryRange),
     active: apiJob.status === "Active",
+    status: apiJob.status ?? "",
     postingDate: apiJob.createdAt ? apiJob.createdAt.split("T")[0] ?? "" : "",
     jobType: (apiJob.jobType ?? "").toLowerCase(),
     description: apiJob.jobDescription,

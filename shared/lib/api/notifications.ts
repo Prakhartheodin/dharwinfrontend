@@ -18,7 +18,18 @@ export type NotificationType =
   | "recruiter"
   | "assignment"
   | "sop"
+  | "support_ticket"
+  | "chat_message"
+  | "joining_reminder"
+  | "placement_update"
+  | "onboarding_reminder"
+  | "system"
   | "general";
+
+export interface NotificationRelatedEntity {
+  type?: string | null;
+  id?: string | null;
+}
 
 export interface Notification {
   _id: string;
@@ -30,6 +41,9 @@ export interface Notification {
   read: boolean;
   createdAt: string;
   updatedAt: string;
+  triggeredBy?: string | null;
+  relatedEntity?: NotificationRelatedEntity | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface NotificationsListResponse {

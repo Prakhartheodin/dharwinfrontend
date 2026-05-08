@@ -8,9 +8,12 @@ import {
   listSavedExternalJobs,
   saveExternalJob,
   unsaveExternalJob,
+  listSavedHrContacts,
+  deleteSavedHrContact,
   type ExternalJob,
   type ExternalJobSource,
   type SavedExternalJob,
+  type SavedHrContact,
 } from "@/shared/lib/api/external-jobs";
 import ExternalJobPreviewPanel from "./_components/ExternalJobPreviewPanel";
 import {
@@ -39,11 +42,15 @@ function formatSalary(job: ExternalJob): string {
 }
 
 export default function ExternalJobsPage() {
-  const [activeTab, setActiveTab] = useState<"search" | "saved">("search");
+  const [activeTab, setActiveTab] = useState<"search" | "saved" | "contacts">("search");
   const [searchResults, setSearchResults] = useState<ExternalJob[]>([]);
   const [savedJobs, setSavedJobs] = useState<SavedExternalJob[]>([]);
   const [savedPage, setSavedPage] = useState(1);
   const [savedTotal, setSavedTotal] = useState(0);
+  const [savedContacts, setSavedContacts] = useState<SavedHrContact[]>([]);
+  const [savedContactsLoading, setSavedContactsLoading] = useState(false);
+  const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
+  const [contactCopyFeedback, setContactCopyFeedback] = useState<string | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [savedLoading, setSavedLoading] = useState(false);
   const [searchCooldown, setSearchCooldown] = useState(0);
@@ -79,6 +86,41 @@ export default function ExternalJobsPage() {
   useEffect(() => {
     if (activeTab === "saved") loadSavedJobs(1);
   }, [activeTab, loadSavedJobs]);
+
+  const loadSavedContacts = useCallback(() => {
+    setSavedContactsLoading(true);
+    listSavedHrContacts()
+      .then((res) => setSavedContacts(res.contacts || []))
+      .catch(() => setSavedContacts([]))
+      .finally(() => setSavedContactsLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === "contacts") loadSavedContacts();
+  }, [activeTab, loadSavedContacts]);
+
+  const handleDeleteContact = async (apolloId: string) => {
+    setDeletingContactId(apolloId);
+    try {
+      await deleteSavedHrContact(apolloId);
+      setSavedContacts((prev) => prev.filter((c) => c.apolloId !== apolloId));
+    } catch {
+      // ignore
+    } finally {
+      setDeletingContactId(null);
+    }
+  };
+
+  const copyContactValue = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setContactCopyFeedback(label);
+      setTimeout(() => setContactCopyFeedback(null), 1800);
+    } catch {
+      setContactCopyFeedback("Copy failed");
+      setTimeout(() => setContactCopyFeedback(null), 2000);
+    }
+  };
 
   useEffect(() => {
     if (searchCooldown <= 0) return;
@@ -158,7 +200,10 @@ export default function ExternalJobsPage() {
     setPreviewJob(null);
   };
 
-  const displayData = activeTab === "search" ? searchResults : savedJobs;
+  const displayData = useMemo(
+    () => (activeTab === "search" ? searchResults : activeTab === "saved" ? savedJobs : []),
+    [activeTab, searchResults, savedJobs]
+  );
   const isSaved = (job: ExternalJob) => savedIds.has(job.externalId);
 
   const remoteCount = useMemo(() => searchResults.filter((j) => j.isRemote).length, [searchResults]);
@@ -367,58 +412,63 @@ export default function ExternalJobsPage() {
             </button>
           </div>
         )}
-        {/* Stats row */}
-        <div className="grid grid-cols-12 gap-4 mb-6">
-          {[
-            {
-              icon: "ri-search-line",
-              label: "Search results",
-              value: searchResults.length,
-              accent: "bg-primary/10 text-primary ring-primary/20 dark:bg-primary/20",
-              bar: "bg-primary",
-            },
-            {
-              icon: "ri-bookmark-fill",
-              label: "Saved jobs",
-              value: savedTotal || savedJobs.length,
-              accent: "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:bg-amber-500/15 dark:text-amber-300",
-              bar: "bg-amber-500",
-            },
-            {
-              icon: "ri-home-wifi-line",
-              label: "Remote results",
-              value: remoteCount,
-              accent: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
-              bar: "bg-emerald-500",
-            },
-            {
-              icon: "ri-database-2-line",
-              label: "Data source",
-              value: filters.source === "active-jobs-db" ? "Active Jobs DB" : "LinkedIn Jobs",
-              accent: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:bg-sky-500/15 dark:text-sky-300",
-              bar: "bg-sky-500",
-            },
-          ].map((card) => (
-            <div key={card.label} className="xl:col-span-3 lg:col-span-6 col-span-12">
-              <div className="relative overflow-hidden rounded-2xl border border-defaultborder/60 bg-white/95 p-4 shadow-sm transition-shadow hover:shadow-md dark:bg-bodybg/90">
-                <div className={`absolute inset-y-0 left-0 w-[3px] ${card.bar} rounded-r-full`} />
-                <div className="flex items-center gap-3 ps-1">
-                  <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${card.accent}`}>
-                    <i className={`${card.icon} text-base`} aria-hidden />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="mb-0 text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-textmuted dark:text-white/40">{card.label}</p>
-                    <p className="mb-0 text-[1.35rem] font-bold tabular-nums leading-tight text-defaulttextcolor dark:text-white">{card.value}</p>
+        {/* Stats row — horizontal scroll snap on mobile, grid on lg+ */}
+        <div className="mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+          <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-thin lg:grid lg:grid-cols-4 lg:gap-4 lg:overflow-visible lg:pb-0">
+            {[
+              {
+                icon: "ri-search-line",
+                label: "Search results",
+                value: searchResults.length,
+                accent: "bg-primary/10 text-primary ring-primary/20 dark:bg-primary/20",
+                bar: "bg-primary",
+              },
+              {
+                icon: "ri-bookmark-fill",
+                label: "Saved jobs",
+                value: savedTotal || savedJobs.length,
+                accent: "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:bg-amber-500/15 dark:text-amber-300",
+                bar: "bg-amber-500",
+              },
+              {
+                icon: "ri-home-wifi-line",
+                label: "Remote results",
+                value: remoteCount,
+                accent: "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/15 dark:text-emerald-300",
+                bar: "bg-emerald-500",
+              },
+              {
+                icon: "ri-database-2-line",
+                label: "Data source",
+                value: filters.source === "active-jobs-db" ? "Active Jobs DB" : "LinkedIn Jobs",
+                accent: "bg-sky-500/10 text-sky-700 ring-sky-500/20 dark:bg-sky-500/15 dark:text-sky-300",
+                bar: "bg-sky-500",
+              },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="snap-start shrink-0 basis-[15rem] lg:basis-auto lg:shrink"
+              >
+                <div className="relative h-full overflow-hidden rounded-2xl border border-defaultborder/60 bg-white/95 p-4 shadow-sm transition-shadow hover:shadow-md dark:bg-bodybg/90">
+                  <div className={`absolute inset-y-0 left-0 w-[3px] ${card.bar} rounded-r-full`} />
+                  <div className="flex items-center gap-3 ps-1">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${card.accent}`}>
+                      <i className={`${card.icon} text-base`} aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="mb-0 text-[0.68rem] font-semibold uppercase tracking-[0.13em] text-textmuted dark:text-white/40">{card.label}</p>
+                      <p className="mb-0 truncate text-[1.35rem] font-bold tabular-nums leading-tight text-defaulttextcolor dark:text-white">{card.value}</p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 flex flex-col">
-            <div className="box custom-box flex h-[calc(100vh-8rem)] min-h-[28rem] flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
+            <div className="box custom-box flex min-h-[28rem] flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10 sm:h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-8rem)]">
               <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
@@ -431,15 +481,17 @@ export default function ExternalJobsPage() {
                       </h1>
                       <span
                         className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
-                        title="Rows in the current table view"
+                        title="Rows in the current view"
                       >
-                        {displayData.length} shown
+                        {activeTab === "contacts" ? savedContacts.length : displayData.length} shown
                       </span>
                     </div>
                     <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
                       {activeTab === "search"
                         ? "Search external listings · rate-limited API"
-                        : "Jobs you saved from search"}
+                        : activeTab === "saved"
+                        ? "Jobs you saved from search"
+                        : "HR contacts you saved from job previews"}
                     </p>
                   </div>
                 </div>
@@ -504,6 +556,29 @@ export default function ExternalJobsPage() {
                           }`}
                         >
                           {savedTotal || savedJobs.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === "contacts"}
+                      onClick={() => setActiveTab("contacts")}
+                      className={`inline-flex items-center gap-1.5 rounded-[0.55rem] px-3 py-1.5 text-[0.75rem] font-semibold transition-all ${
+                        activeTab === "contacts"
+                          ? "bg-white text-primary shadow-sm dark:bg-primary dark:text-white"
+                          : "text-textmuted hover:text-defaulttextcolor dark:text-white/45 dark:hover:text-white/70"
+                      }`}
+                    >
+                      <i className="ri-contacts-line text-xs" aria-hidden />
+                      Contacts
+                      {savedContacts.length > 0 && (
+                        <span
+                          className={`inline-flex min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[0.6rem] font-bold tabular-nums ${
+                            activeTab === "contacts" ? "bg-primary/15 text-primary dark:bg-white/20 dark:text-white" : "bg-primary/10 text-primary dark:bg-white/10 dark:text-white/70"
+                          }`}
+                        >
+                          {savedContacts.length}
                         </span>
                       )}
                     </button>
@@ -633,7 +708,132 @@ export default function ExternalJobsPage() {
             )}
 
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
-              {activeTab === "saved" && savedLoading && savedJobs.length === 0 ? (
+              {activeTab === "contacts" ? (
+                <div className="flex-1 overflow-y-auto px-5 py-5">
+                  {contactCopyFeedback && (
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-medium text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      <i className="ri-checkbox-circle-fill text-sm" aria-hidden />
+                      {contactCopyFeedback}
+                    </div>
+                  )}
+                  {savedContactsLoading && savedContacts.length === 0 ? (
+                    <ExternalJobsTableLoader title="Loading saved contacts" hint="Fetching your HR shortlist." />
+                  ) : savedContacts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+                      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                        <i className="ri-contacts-line text-2xl" aria-hidden />
+                      </span>
+                      <div className="max-w-md space-y-1">
+                        <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No saved contacts</p>
+                        <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
+                          Open a job preview and click "Find HR Contact" to enrich and save HR contacts here.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {savedContacts.map((c) => (
+                        <div
+                          key={c.apolloId}
+                          className="overflow-hidden rounded-2xl border border-defaultborder/50 bg-white shadow-sm transition-shadow hover:shadow-md dark:border-white/[0.08] dark:bg-white/[0.04]"
+                        >
+                          <div className="flex items-center gap-3 bg-gradient-to-r from-slate-50/90 to-transparent px-4 py-3 dark:from-white/[0.04] dark:to-transparent">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[0.75rem] font-bold text-primary ring-1 ring-primary/15 dark:bg-primary/20">
+                              {(c.firstName?.[0] || "").toUpperCase()}{(c.lastName?.[0] || "").toUpperCase()}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[0.8125rem] font-semibold leading-tight text-defaulttextcolor dark:text-white">
+                                {c.firstName} {c.lastName}
+                              </p>
+                              {c.title && (
+                                <p className="truncate text-[0.7rem] text-textmuted dark:text-white/40">{c.title}</p>
+                              )}
+                              {c.companyName && (
+                                <p className="mt-0.5 flex items-center gap-1 truncate text-[0.68rem] text-textmuted/70 dark:text-white/30">
+                                  <i className="ri-building-2-line text-[0.6rem]" aria-hidden />
+                                  {c.companyName}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              title="Remove from saved contacts"
+                              disabled={deletingContactId === c.apolloId}
+                              onClick={() => handleDeleteContact(c.apolloId)}
+                              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-50 text-sm text-red-500 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50 dark:bg-red-500/10 dark:text-red-300 dark:hover:bg-red-500/20"
+                            >
+                              <i className={`ri-delete-bin-line ${deletingContactId === c.apolloId ? "animate-pulse" : ""}`} aria-hidden />
+                            </button>
+                          </div>
+                          <div className="flex flex-col gap-2 px-4 pb-3 pt-2">
+                            {c.email ? (
+                              <div className="flex items-center gap-2.5 rounded-xl bg-primary/[0.05] px-3 py-2 dark:bg-primary/[0.09]">
+                                <i className="ri-mail-line shrink-0 text-[0.85rem] text-primary" aria-hidden />
+                                <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-defaulttextcolor dark:text-white/75">{c.email}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => copyContactValue(c.email, "Email copied")}
+                                  className="shrink-0 rounded-md bg-primary/10 px-2 py-0.5 text-[0.6rem] font-bold text-primary transition-all hover:bg-primary/20 active:scale-95 dark:bg-primary/20 dark:hover:bg-primary/30"
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2.5 rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/[0.03]">
+                                <i className="ri-mail-off-line shrink-0 text-[0.85rem] text-textmuted/40" aria-hidden />
+                                <span className="text-[0.7rem] text-textmuted/60 dark:text-white/25">No email</span>
+                              </div>
+                            )}
+                            {c.phoneNumbers && c.phoneNumbers.length > 0 ? (
+                              c.phoneNumbers.map((p, i) => (
+                                <div key={i} className="flex items-center gap-2.5 rounded-xl bg-emerald-50/80 px-3 py-2 dark:bg-emerald-500/[0.08]">
+                                  <i className="ri-phone-line shrink-0 text-[0.85rem] text-emerald-600 dark:text-emerald-400" aria-hidden />
+                                  <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-defaulttextcolor dark:text-white/75">{p.rawNumber}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyContactValue(p.sanitizedNumber, "Phone copied")}
+                                    className="shrink-0 rounded-md bg-emerald-100 px-2 py-0.5 text-[0.6rem] font-bold text-emerald-700 transition-all hover:bg-emerald-200 active:scale-95 dark:bg-emerald-500/15 dark:text-emerald-300 dark:hover:bg-emerald-500/25"
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="flex items-center gap-2.5 rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/[0.03]">
+                                <i className="ri-phone-off-line shrink-0 text-[0.85rem] text-textmuted/40" aria-hidden />
+                                <span className="text-[0.7rem] text-textmuted/60 dark:text-white/25">No phone</span>
+                              </div>
+                            )}
+                            {c.linkedinUrl && (
+                              <a
+                                href={c.linkedinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-2.5 rounded-xl bg-sky-50/80 px-3 py-2 transition-colors hover:bg-sky-100/80 dark:bg-sky-500/[0.07] dark:hover:bg-sky-500/[0.13]"
+                              >
+                                <i className="ri-linkedin-box-fill shrink-0 text-[0.85rem] text-sky-600 dark:text-sky-400" aria-hidden />
+                                <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-sky-700 dark:text-sky-300">LinkedIn profile</span>
+                                <i className="ri-external-link-line shrink-0 text-[0.7rem] text-sky-500/60" aria-hidden />
+                              </a>
+                            )}
+                            {c.location && (
+                              <div className="flex items-center gap-2.5 rounded-xl bg-violet-50/80 px-3 py-2 dark:bg-violet-500/[0.07]">
+                                <i className="ri-map-pin-2-line shrink-0 text-[0.85rem] text-violet-600 dark:text-violet-400" aria-hidden />
+                                <span className="min-w-0 flex-1 truncate text-[0.72rem] font-medium text-violet-700 dark:text-violet-300">{c.location}</span>
+                              </div>
+                            )}
+                            {c.savedAt && (
+                              <p className="mt-1 text-[0.65rem] text-textmuted/60 dark:text-white/30">
+                                Saved {new Date(c.savedAt).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === "saved" && savedLoading && savedJobs.length === 0 ? (
                 <ExternalJobsTableLoader
                   title="Restoring your shortlist"
                   hint="Syncing saved roles from Dharwin — almost there."
@@ -658,12 +858,13 @@ export default function ExternalJobsPage() {
                     </div>
                   )}
                   <div
-                    className="table-responsive flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
+                    className="flex-1 overflow-y-auto rounded-b-xl bg-slate-50/40 dark:bg-black/25"
                     style={{ minHeight: 0 }}
                   >
+                    {/* Desktop / tablet: full table */}
                     <table
                       {...getTableProps()}
-                      className="table min-w-full border-separate border-spacing-0 border-0 text-sm"
+                      className="hidden md:table table min-w-full border-separate border-spacing-0 border-0 text-sm"
                     >
                       <colgroup>
                         <col className="min-w-[12rem] sm:min-w-[16rem]" />
@@ -762,6 +963,137 @@ export default function ExternalJobsPage() {
                         )}
                       </tbody>
                     </table>
+
+                    {/* Mobile: stacked cards (one row per job) */}
+                    <div className="md:hidden flex flex-col gap-3 p-3">
+                      {page.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
+                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                            <i
+                              className={`text-xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
+                              aria-hidden
+                            />
+                          </span>
+                          <p className="text-sm font-semibold text-defaulttextcolor dark:text-white">
+                            {activeTab === "search" ? "No results yet" : "No saved jobs"}
+                          </p>
+                          <p className="text-xs leading-relaxed text-textmuted dark:text-white/50">
+                            {activeTab === "search"
+                              ? "Set title or location, then run search."
+                              : "Save roles from search to build a shortlist."}
+                          </p>
+                        </div>
+                      ) : (
+                        page.map((row: any, rowIdx: number) => {
+                          prepareRow(row);
+                          const job: ExternalJob = row.original;
+                          const saved = isSaved(job);
+                          const saving = savingId === job.externalId;
+                          const salaryStr = formatSalary(job);
+                          const postedStr =
+                            job.timePosted ||
+                            (job.postedAt ? new Date(job.postedAt).toLocaleDateString() : null);
+                          return (
+                            <div
+                              role="button"
+                              tabIndex={0}
+                              key={row.id ?? `mrow-${rowIdx}`}
+                              onClick={() => openPreview(job)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  openPreview(job);
+                                }
+                              }}
+                              className="group w-full cursor-pointer text-left rounded-2xl border border-defaultborder/60 bg-white px-4 py-3 shadow-sm transition-all active:scale-[0.99] hover:border-primary/30 hover:shadow-md dark:border-white/10 dark:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[0.875rem] font-semibold leading-snug text-defaulttextcolor dark:text-white">
+                                    {job.title || "—"}
+                                  </p>
+                                  {job.company && (
+                                    <p className="truncate text-[0.75rem] text-textmuted dark:text-white/55">
+                                      {job.company}
+                                    </p>
+                                  )}
+                                  {job.location && (
+                                    <p className="mt-0.5 flex items-center gap-1 truncate text-[0.7rem] text-textmuted/80 dark:text-white/40">
+                                      <i className="ri-map-pin-line text-[0.65rem]" aria-hidden />
+                                      {job.location}
+                                    </p>
+                                  )}
+                                </div>
+                                <div className="flex shrink-0 items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    disabled={saving}
+                                    title={saved ? "Remove from saved" : "Save job"}
+                                    aria-label={saved ? "Remove from saved" : "Save job"}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      saved ? handleUnsave(job.externalId, job.source) : handleSave(job);
+                                    }}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-all active:scale-95 ${
+                                      saved
+                                        ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25 hover:bg-amber-600"
+                                        : "bg-gray-100 text-gray-500 hover:bg-primary/10 hover:text-primary dark:bg-white/8 dark:text-white/50"
+                                    }`}
+                                  >
+                                    <i className={`${saved ? "ri-bookmark-fill" : "ri-bookmark-line"} ${saving ? "animate-pulse" : ""}`} aria-hidden />
+                                  </button>
+                                  {job.platformUrl && (
+                                    <a
+                                      href={job.platformUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      title="Open listing"
+                                      onClick={(e) => e.stopPropagation()}
+                                      aria-label="Open listing"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500 transition-all hover:bg-sky-50 hover:text-sky-600 active:scale-95 dark:bg-white/8 dark:text-white/50"
+                                    >
+                                      <i className="ri-external-link-line" aria-hidden />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-2 py-[2px] text-[0.62rem] font-semibold ring-1 ${
+                                    job.source === "active-jobs-db"
+                                      ? "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/25"
+                                      : "bg-primary/[0.07] text-primary ring-primary/20"
+                                  }`}
+                                >
+                                  <i className={`${job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.55rem]`} aria-hidden />
+                                  {job.source === "active-jobs-db" ? "Active Jobs" : "LinkedIn"}
+                                </span>
+                                {job.jobType && (
+                                  <span className="rounded-full bg-gray-100 px-2 py-[2px] text-[0.62rem] font-medium text-gray-700 ring-1 ring-gray-200/80 dark:bg-white/8 dark:text-white/65 dark:ring-white/10">
+                                    {job.jobType}
+                                  </span>
+                                )}
+                                {job.isRemote && (
+                                  <span className="rounded-full bg-emerald-50 px-2 py-[2px] text-[0.62rem] font-semibold text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
+                                    Remote
+                                  </span>
+                                )}
+                                {salaryStr !== "—" && (
+                                  <span className="rounded-full bg-emerald-50/80 px-2 py-[2px] text-[0.62rem] font-semibold text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
+                                    {salaryStr}
+                                  </span>
+                                )}
+                                {postedStr && (
+                                  <span className="rounded-full bg-amber-50 px-2 py-[2px] text-[0.62rem] font-medium text-amber-700 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20">
+                                    {postedStr}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
 
                   {activeTab === "search" && searchResults.length > 0 && hasMore && (

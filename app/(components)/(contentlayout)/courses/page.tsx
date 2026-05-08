@@ -4,6 +4,11 @@ import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
 import React, { Fragment, useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/shared/contexts/auth-context"
+import {
+  COURSES_PERMISSION_PREFIX,
+  hasPermissionForPath,
+} from "@/shared/lib/route-permissions"
 import {
   getMyStudent,
   listStudentCourses,
@@ -26,6 +31,11 @@ export type CourseCardItem = {
 }
 
 export default function CandidateCoursesPage() {
+  const { permissions: userPermissions, permissionsLoaded } = useAuth()
+  const hasCoursesPermission =
+    permissionsLoaded &&
+    hasPermissionForPath(userPermissions, COURSES_PERMISSION_PREFIX)
+
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
   const [progressFilter, setProgressFilter] = useState("")
@@ -42,6 +52,12 @@ export default function CandidateCoursesPage() {
   const [noStudent, setNoStudent] = useState(false)
 
   useEffect(() => {
+    if (!permissionsLoaded) return
+    if (!hasCoursesPermission) {
+      setLoading(false)
+      setCourses([])
+      return
+    }
     let cancelled = false
     const load = async () => {
       setLoading(true)
@@ -77,7 +93,34 @@ export default function CandidateCoursesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [])
+  }, [permissionsLoaded, hasCoursesPermission])
+
+  if (!permissionsLoaded) {
+    return (
+      <Fragment>
+        <Seo title="My Courses" />
+        <div className="flex justify-center py-12">
+          <div className="ti-btn ti-btn-primary ti-btn-loading">Checking access...</div>
+        </div>
+      </Fragment>
+    )
+  }
+
+  if (!hasCoursesPermission) {
+    return (
+      <Fragment>
+        <Seo title="My Courses" />
+        <div className="rounded-lg border border-defaultborder bg-bodybg dark:bg-white/5 px-4 py-10 text-center my-8">
+          <p className="text-[1rem] font-semibold text-defaulttextcolor dark:text-white mb-2">
+            Access denied
+          </p>
+          <p className="text-[#6a6f73] dark:text-white/60 text-[0.875rem]">
+            You do not have permission to view Courses. Contact your administrator if you believe this is a mistake.
+          </p>
+        </div>
+      </Fragment>
+    )
+  }
 
   const categories = useMemo(() => {
     const set = new Set(courses.map((c) => c.category).filter(Boolean))

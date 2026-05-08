@@ -680,11 +680,12 @@ const Projectlist = (): JSX.Element => {
                 <div
                   key={id || p.name}
                   className={
-                    "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg dark:border-white/10 dark:bg-bgdark2 dark:hover:border-white/20 " +
+                    "group relative flex h-full flex-col rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:z-20 hover:border-slate-300 hover:shadow-lg dark:border-white/10 dark:bg-bgdark2 dark:hover:border-white/20 " +
+                    (isMenuOpen ? "z-30 " : "") +
                     (isUpdating ? "opacity-70" : "")
                   }
                 >
-                  <span className={`absolute left-0 top-0 h-full w-[3px] ${stripCls}`} aria-hidden />
+                  <span className={`absolute left-0 top-0 h-full w-[3px] rounded-l-2xl ${stripCls}`} aria-hidden />
 
                   <div className="flex items-start justify-between gap-3 px-5 pl-6 pt-5">
                     <div className="min-w-0 flex-1">

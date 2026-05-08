@@ -18,23 +18,26 @@ function matchesAtsCandidateSubPermission(
 /**
  * Raw domain permissions (GET /auth/my-permissions) that allow updating a candidate's joining date.
  * Mirrors backend: candidates.manage OR candidates.joiningDate.manage (from ats.candidates.joiningDate:…).
+ *
+ * The named "Administrator" role does NOT auto-bypass — admin must hold the
+ * explicit role-matrix permission, identical to every other role. The
+ * `_isAdministrator` parameter is retained for call-site compatibility.
  */
 export function canEditCandidateJoiningDate(
   rawPermissions: string[],
-  isAdministrator: boolean
+  _isAdministrator: boolean
 ): boolean {
-  if (isAdministrator) return true;
   return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.joiningDate"));
 }
 
 /**
  * Same pattern for resign date (candidates.resignDate.manage from ats.candidates.resignDate:…).
+ * Administrator does NOT auto-bypass; the role must hold the explicit permission.
  */
 export function canEditCandidateResignDate(
   rawPermissions: string[],
-  isAdministrator: boolean
+  _isAdministrator: boolean
 ): boolean {
-  if (isAdministrator) return true;
   return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.resignDate"));
 }
 

@@ -4,7 +4,6 @@ import React, { Fragment, useEffect, useState, useCallback, useRef } from 'react
 import { ThemeChanger } from "../../redux/action";
 import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
-import Modalsearch from '../modal-search/modalsearch';
 import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
 import { ROUTES } from '@/shared/lib/constants';
@@ -14,6 +13,7 @@ import { type Notification } from '@/shared/lib/api/notifications';
 import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
 import { useNotificationContext } from '@/shared/contexts/NotificationContext';
 import { hasPermission } from '@/shared/lib/permissions';
+import { useRouter } from 'next/navigation';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -23,8 +23,7 @@ function formatRelativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString();
 }
 
-type NotifItem = { createdAt?: string; [key: string]: unknown };
-function groupByDate<T extends NotifItem>(items: T[]): Record<string, T[]> {
+function groupByDate<T extends { createdAt?: string }>(items: T[]): Record<string, T[]> {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
   const groups: Record<string, T[]> = {};
@@ -40,6 +39,7 @@ function groupByDate<T extends NotifItem>(items: T[]): Record<string, T[]> {
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
@@ -106,23 +106,14 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     setCartItemCount(updatedCart.length);
   };
 
-  // Notifications: map API shape to existing UI shape { id, class, data, icon, class2, color, color2, link, read }
-  const mapNotificationToItem = (n: Notification) => ({
-    id: n._id,
-    class: n.title,
-    data: n.message,
-    icon: notifTypeToIcon[n.type] || 'bell',
-    class2: '',
-    color: `!bg-${notifTypeToColor[n.type] || 'secondary'}/10`,
-    color2: notifTypeToColor[n.type] || 'secondary',
-    _id: n._id,
-    link: (n.link?.startsWith('/') ? n.link : null) ?? '/pages/notifications/',
-    read: n.read,
-    createdAt: n.createdAt,
-  });
-
-  const { notifications: allNotifications, unreadCount, markRead, markAllRead } = useNotificationContext();
-  const notificationItems = allNotifications.filter((n) => !n.read).slice(0, 5).map(mapNotificationToItem);
+  const {
+    notifications: allNotifications,
+    unreadCount,
+    markRead,
+    markAllRead,
+    openNotification,
+  } = useNotificationContext();
+  const notificationItems = allNotifications.filter((n) => !n.read).slice(0, 5);
   const [bellRinging, setBellRinging] = useState(false);
   const prevUnreadRef = useRef(0);
 
@@ -136,24 +127,28 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
     prevUnreadRef.current = unreadCount;
   }, [unreadCount]);
 
-  const handleMarkAsRead = useCallback(async (id: string) => {
-    await markRead(id);
-  }, [markRead]);
-
   const handleMarkAllAsRead = useCallback(async () => {
     await markAllRead();
   }, [markAllRead]);
 
-  const handleNotificationClose = async (index: number, event: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
+  const handleNotificationClose = async (n: Notification, event: React.MouseEvent) => {
     if (event) event.stopPropagation();
-    const item = notificationItems[index];
-    if (!item?._id) return;
-    await markRead(item._id);
+    if (!n?._id) return;
+    await markRead(n._id);
   };
 
   const notifications = notificationItems;
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
+
+  const handleNotificationClick = useCallback(
+    async (n: Notification) => {
+      setIsNotificationMenuOpen(false);
+      const route = await openNotification(n);
+      router.push(route);
+    },
+    [openNotification, router]
+  );
 
   useEffect(() => {
     setIsProfileMenuOpen(false);
@@ -518,17 +513,6 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   </div>
                 </div>
               )}
-              <div className="header-element flex items-center md:px-[0.65rem] px-2 header-search">
-                <button
-                  aria-label="Open search"
-                  type="button"
-                  data-hs-overlay="#search-modal"
-                  className="inline-flex min-h-[2.75rem] min-w-[2.75rem] flex-shrink-0 touch-manipulation items-center justify-center gap-2 rounded-full font-medium focus:ring-offset-0 focus:ring-offset-white transition-all text-xs dark:bg-bgdark dark:hover:bg-black/20 dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white dark:focus:ring-white/10 dark:focus:ring-offset-white/10"
-                >
-                  <i className="bx bx-search-alt-2 header-link-icon"></i>
-                </button>
-              </div>
-             
               <div className="header-element header-theme-mode hidden sm:flex !items-center md:!px-[0.65rem] px-2">
                 <button
                   type="button"
@@ -612,43 +596,50 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                         <li className="px-4 py-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-[#8c9097] bg-gray-50 dark:bg-bgdark/60 sticky top-0 list-none">
                           {label}
                         </li>
-                        {items.map((idx, index) => (
+                        {items.map((n) => {
+                          const icon = notifTypeToIcon[n.type] || 'bell';
+                          const color = notifTypeToColor[n.type] || 'secondary';
+                          return (
                           <li
-                            className={`ti-dropdown-item dropdown-item transition-colors ${idx.read ? 'bg-white dark:bg-bgdark' : 'bg-secondary/5 dark:bg-secondary/10 border-s-2 border-secondary'}`}
-                            key={idx.id}
+                            className={`ti-dropdown-item dropdown-item transition-all duration-150 cursor-pointer hover:bg-primary/5 active:scale-[0.99] focus-within:bg-primary/5 ${n.read ? 'bg-white dark:bg-bgdark' : 'bg-secondary/5 dark:bg-secondary/10 border-s-2 border-secondary'}`}
+                            key={n._id}
+                            onClick={() => handleNotificationClick(n)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleNotificationClick(n); } }}
+                            aria-label={`${n.title} — open notification`}
                           >
                             <div className="flex items-start">
                               <div className="pe-2">
-                                <span className={`inline-flex text-${idx.color2} justify-center items-center !w-[2.5rem] !h-[2.5rem] !leading-[2.5rem] !text-[0.8rem] ${idx.color} !rounded-[50%]`}>
-                                  <i className={`ti ti-${idx.icon} text-[1.125rem]`}></i>
+                                <span className={`inline-flex text-${color} justify-center items-center !w-[2.5rem] !h-[2.5rem] !leading-[2.5rem] !text-[0.8rem] !bg-${color}/10 !rounded-[50%]`}>
+                                  <i className={`ti ti-${icon} text-[1.125rem]`}></i>
                                 </span>
                               </div>
-                              <div className="grow flex items-center justify-between">
-                                <div>
-                                  <p className="mb-0 text-defaulttextcolor dark:text-white text-[0.8125rem] font-semibold">
-                                    <Link
-                                      href={idx.link as string}
-                                      onClick={() => { handleMarkAsRead(idx._id); setIsNotificationMenuOpen(false); }}
-                                    >
-                                      {idx.class} {idx.class2}
-                                    </Link>
+                              <div className="grow flex items-center justify-between min-w-0">
+                                <div className="min-w-0">
+                                  <p className={`mb-0 text-defaulttextcolor dark:text-white text-[0.8125rem] truncate ${n.read ? 'font-medium' : 'font-semibold'}`}>
+                                    {n.title}
                                   </p>
-                                  <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text whitespace-pre-line">{idx.data}</span>
-                                  {idx.createdAt && (
+                                  <span className="text-[#8c9097] dark:text-white/50 font-normal text-[0.75rem] header-notification-text whitespace-pre-line line-clamp-2">{n.message}</span>
+                                  {n.createdAt && (
                                     <span className="text-[0.65rem] text-[#8c9097]/70 dark:text-white/30 mt-0.5 block">
-                                      {formatRelativeTime(idx.createdAt as string)}
+                                      {formatRelativeTime(n.createdAt)}
                                     </span>
                                   )}
                                 </div>
-                                <div>
-                                  <Link aria-label="anchor" href="#!" scroll={false} className="min-w-fit text-[#8c9097] dark:text-white/50 me-1 dropdown-item-close1" onClick={(event) => handleNotificationClose(notifications.indexOf(idx), event)}>
-                                    <i className="ti ti-x text-[1rem]"></i>
-                                  </Link>
-                                </div>
+                                <button
+                                  type="button"
+                                  aria-label="Mark as read"
+                                  className="min-w-fit text-[#8c9097] dark:text-white/50 me-1 hover:text-defaulttextcolor dark:hover:text-white p-1 rounded transition-colors"
+                                  onClick={(event) => handleNotificationClose(n, event)}
+                                >
+                                  <i className="ti ti-x text-[1rem]"></i>
+                                </button>
                               </div>
                             </div>
                           </li>
-                        ))}
+                          );
+                        })}
                       </Fragment>
                     ));
                   })()}
@@ -656,7 +647,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
 
                   <div className={`empty-header-item1 mt-2 shrink-0 border-t p-4 ${notifications.length > 0 ? 'block' : 'hidden'}`}>
                     <div className="grid">
-                      <Link href="/pages/notifications/" className="ti-btn ti-btn-primary-full !m-0 w-full p-2">View All</Link>
+                      <Link href="/notifications" className="ti-btn ti-btn-primary-full !m-0 w-full p-2">View All</Link>
                     </div>
                   </div>
                   <div className={`empty-item1 shrink-0 p-[3rem] ${notifications.length === 0 ? 'block' : 'hidden'}`}>
@@ -783,7 +774,6 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
           </div>
         </nav>
       </div>
-      <Modalsearch />
     </Fragment>
   )
 }

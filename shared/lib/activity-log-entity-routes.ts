@@ -36,18 +36,22 @@ export function getActivityLogEntityHref(
 }
 
 /**
- * Whether the viewer may open the entity link (mirrors PermissionGuard: admin/super bypass; else path prefix).
+ * Whether the viewer may open the entity link.
+ * Mirrors PermissionGuard: super_admin (platformSuperUser) bypasses; the named
+ * "Administrator" role must hold the explicit prefix permission like any other role.
+ * The `_isAdministrator` parameter is kept for call-site compatibility but is
+ * intentionally NOT consulted — admin must respect RBAC.
  */
 export function canOpenActivityLogEntity(
   entityType: string | null | undefined,
   entityId: string | null | undefined,
   userPermissions: string[],
-  isAdministrator: boolean,
+  _isAdministrator: boolean,
   isPlatformSuperUser: boolean
 ): boolean {
   const href = getActivityLogEntityHref(entityType, entityId);
   if (!href) return false;
-  if (isAdministrator || isPlatformSuperUser) return true;
+  if (isPlatformSuperUser) return true;
   const pathOnly = href.split("?")[0] ?? href;
   const required = getRequiredPermissionForPath(pathOnly);
   if (required == null) return true;

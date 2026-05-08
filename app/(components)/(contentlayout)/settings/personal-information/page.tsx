@@ -421,6 +421,12 @@ export default function PersonalInformationPage() {
   const [skillRoleRecommendLoading, setSkillRoleRecommendLoading] = useState(false);
   const [skillsOpen, setSkillsOpen] = useState(false);
   const resumeExtractInputRef = useRef<HTMLInputElement | null>(null);
+  /** Resume-extraction review modal: extracted skills awaiting user confirm before merge. */
+  const [extractReview, setExtractReview] = useState<{
+    skills: Array<{ name: string; level?: string; category?: string }>;
+    selected: Set<number>;
+    sourceFile: string;
+  } | null>(null);
 
   const [notificationPrefs, setNotificationPrefs] = useState<NotificationPreferences>({
     leaveUpdates: true,
@@ -632,17 +638,25 @@ export default function PersonalInformationPage() {
     setExtractSkillsLoading(true);
     try {
       const res = await authApi.extractSkillsFromResume(file);
-      const n = res.skills?.length ?? 0;
-      setSkillsRows((prev) => mergeExtractedSkillsIntoRows(prev, res.skills || []));
-      await Swal.fire({
-        icon: "success",
-        title: "Skills extracted",
-        text: n ? `Merged ${n} skill${n === 1 ? "" : "s"} into your list. Click Save profile to persist.` : "No new skills found.",
-        toast: true,
-        position: "top-end",
-        showConfirmButton: false,
-        timer: 4500,
-        timerProgressBar: true,
+      const skills = res.skills || [];
+      if (skills.length === 0) {
+        await Swal.fire({
+          icon: "info",
+          title: "No skills found",
+          text: "Resume parsed but no skills detected.",
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          timer: 4000,
+          timerProgressBar: true,
+        });
+        return;
+      }
+      // Open confirmation modal — caller reviews + selects which to merge instead of silent overwrite.
+      setExtractReview({
+        skills,
+        selected: new Set(skills.map((_, i) => i)),
+        sourceFile: file.name,
       });
     } catch (err) {
       const raw = extractApiErrorMessage(err);
@@ -650,6 +664,55 @@ export default function PersonalInformationPage() {
     } finally {
       setExtractSkillsLoading(false);
     }
+  };
+
+  /** True if the extracted skill name already exists on skillsRows (case-insensitive). */
+  const isExtractedSkillExisting = (name: string): boolean => {
+    const k = name.trim().toLowerCase();
+    if (!k) return false;
+    return skillsRows.some((r) => r.name.trim().toLowerCase() === k);
+  };
+
+  const toggleExtractedSkill = (idx: number) => {
+    setExtractReview((prev) => {
+      if (!prev) return prev;
+      const next = new Set(prev.selected);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return { ...prev, selected: next };
+    });
+  };
+
+  const setAllExtractedSelection = (filterFn: (idx: number) => boolean) => {
+    setExtractReview((prev) => {
+      if (!prev) return prev;
+      const next = new Set<number>();
+      prev.skills.forEach((_, i) => {
+        if (filterFn(i)) next.add(i);
+      });
+      return { ...prev, selected: next };
+    });
+  };
+
+  const confirmExtractedSkills = async () => {
+    if (!extractReview) return;
+    const picked = extractReview.skills.filter((_, i) => extractReview.selected.has(i));
+    if (picked.length === 0) {
+      setExtractReview(null);
+      return;
+    }
+    setSkillsRows((prev) => mergeExtractedSkillsIntoRows(prev, picked));
+    setExtractReview(null);
+    await Swal.fire({
+      icon: "success",
+      title: "Skills added",
+      text: `Merged ${picked.length} skill${picked.length === 1 ? "" : "s"} into your list. Click Save profile to persist.`,
+      toast: true,
+      position: "top-end",
+      showConfirmButton: false,
+      timer: 3500,
+      timerProgressBar: true,
+    });
   };
 
   const runSkillRecommendationByRole = async () => {
@@ -2680,6 +2743,131 @@ export default function PersonalInformationPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {extractReview && (
+        <div
+          className="fixed inset-0 z-[1080] flex items-center justify-center bg-black/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="extract-review-title"
+        >
+          <div className="w-full max-w-2xl rounded-lg border border-gray-200 bg-white shadow-xl dark:border-defaultborder/10 dark:bg-bodybg">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-defaultborder/10">
+              <div>
+                <h5 id="extract-review-title" className="m-0 text-base font-semibold text-gray-800 dark:text-white">
+                  Review extracted skills
+                </h5>
+                <p className="m-0 text-xs text-gray-500 dark:text-gray-400">
+                  From <span className="font-medium">{extractReview.sourceFile}</span>. Pick the skills to merge — none will be added until you confirm.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
+                onClick={() => setExtractReview(null)}
+                aria-label="Close review modal"
+              >
+                <i className="ri-close-line"></i>
+              </button>
+            </div>
+
+            <div className="border-b border-gray-200 px-5 py-2 text-xs text-gray-600 dark:border-defaultborder/10 dark:text-gray-300">
+              {extractReview.selected.size} of {extractReview.skills.length} selected ·{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setAllExtractedSelection(() => true)}
+              >
+                Select all
+              </button>{' '}
+              ·{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setAllExtractedSelection(() => false)}
+              >
+                Select none
+              </button>{' '}
+              ·{' '}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() =>
+                  setAllExtractedSelection((i) => !isExtractedSkillExisting(extractReview.skills[i].name))
+                }
+              >
+                Only new
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-y-auto p-5">
+              <ul className="space-y-1.5">
+                {extractReview.skills.map((s, i) => {
+                  const exists = isExtractedSkillExisting(s.name);
+                  const checked = extractReview.selected.has(i);
+                  return (
+                    <li
+                      key={`${s.name}-${i}`}
+                      className={`flex items-center justify-between gap-3 rounded border p-2 text-sm ${
+                        exists
+                          ? 'border-amber-300 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10'
+                          : 'border-gray-200 bg-white dark:border-defaultborder/10 dark:bg-black/30'
+                      }`}
+                    >
+                      <label className="flex flex-1 cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={checked}
+                          onChange={() => toggleExtractedSkill(i)}
+                        />
+                        <span className="font-medium text-gray-800 dark:text-white">{s.name}</span>
+                        {s.level && (
+                          <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[0.65rem] uppercase tracking-wide text-gray-700 dark:bg-black/40 dark:text-gray-200">
+                            {s.level}
+                          </span>
+                        )}
+                        {s.category && (
+                          <span className="text-[0.65rem] uppercase tracking-wide text-gray-500">
+                            {s.category}
+                          </span>
+                        )}
+                      </label>
+                      {exists ? (
+                        <span className="text-[0.65rem] uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                          Already in list
+                        </span>
+                      ) : (
+                        <span className="text-[0.65rem] uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                          New
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-200 px-5 py-3 dark:border-defaultborder/10">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light"
+                onClick={() => setExtractReview(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary"
+                onClick={confirmExtractedSkills}
+                disabled={extractReview.selected.size === 0}
+              >
+                Add {extractReview.selected.size} skill{extractReview.selected.size === 1 ? '' : 's'}
+              </button>
+            </div>
           </div>
         </div>
       )}

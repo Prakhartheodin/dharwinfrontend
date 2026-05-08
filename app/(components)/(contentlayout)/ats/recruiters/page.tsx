@@ -6,6 +6,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { listRecruiters, deleteUser, exportRecruitersToExcel, downloadRecruitersTemplate, importRecruitersFromExcel } from '@/shared/lib/api/users'
 import { mapRecruiterToDisplay, type DisplayRecruiter } from '@/shared/lib/ats/recruiterMappers'
+import { useAuth } from '@/shared/contexts/auth-context'
+import { listRecruiterNotes, createRecruiterNote, deleteRecruiterNote } from '@/shared/lib/api/recruiterNotes'
 
 // Recruiters data loaded from API in component – see recruitersData state below
 
@@ -31,6 +33,7 @@ interface RecruiterNote {
 
 const Recruiters = () => {
   const router = useRouter()
+  const { user: currentUser } = useAuth()
   const [recruitersData, setRecruitersData] = useState<DisplayRecruiter[]>([])
   const [recruitersLoading, setRecruitersLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
@@ -158,33 +161,72 @@ const Recruiters = () => {
     }, 100)
   }
 
+  // Notes loaded from API when sidebar opens for a recruiter
+  useEffect(() => {
+    if (!notesRecruiterId) return
+    let cancelled = false
+    listRecruiterNotes(notesRecruiterId)
+      .then((apiNotes) => {
+        if (cancelled) return
+        const mapped: RecruiterNote[] = apiNotes.map((n) => ({
+          id: n.id,
+          recruiterId: n.recruiter,
+          note: n.note,
+          visibility: n.visibility,
+          postedBy: n.postedByName || 'Unknown',
+          postedDate: n.createdAt,
+        }))
+        setRecruiterNotes((prev) => [
+          ...prev.filter((p) => p.recruiterId !== notesRecruiterId),
+          ...mapped,
+        ])
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRecruiterNotes((prev) => prev.filter((p) => p.recruiterId !== notesRecruiterId))
+        }
+      })
+    return () => { cancelled = true }
+  }, [notesRecruiterId])
+
   // Get notes for a specific recruiter
   const getRecruiterNotes = (recruiterId: string) => {
-    return recruiterNotes.filter(note => note.recruiterId === recruiterId).sort((a, b) => 
+    return recruiterNotes.filter(note => note.recruiterId === recruiterId).sort((a, b) =>
       new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime()
     )
   }
 
   // Add a new note
-  const handleAddNoteSubmit = () => {
+  const handleAddNoteSubmit = async () => {
     if (!notesRecruiterId || !newNote.text.trim()) return
-    
-    const note: RecruiterNote = {
-      id: `note-${Date.now()}`,
-      recruiterId: notesRecruiterId,
-      note: newNote.text,
-      visibility: newNote.visibility,
-      postedBy: 'John Doe', // This would come from user context in real app
-      postedDate: new Date().toISOString()
+    try {
+      const created = await createRecruiterNote(notesRecruiterId, {
+        note: newNote.text,
+        visibility: newNote.visibility,
+      })
+      const mapped: RecruiterNote = {
+        id: created.id,
+        recruiterId: created.recruiter,
+        note: created.note,
+        visibility: created.visibility,
+        postedBy: created.postedByName || (currentUser?.name as string) || (currentUser?.email as string) || 'Unknown',
+        postedDate: created.createdAt,
+      }
+      setRecruiterNotes((prev) => [...prev, mapped])
+      setNewNote({ text: '', visibility: 'public' })
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to add note')
     }
-    
-    setRecruiterNotes([...recruiterNotes, note])
-    setNewNote({ text: '', visibility: 'public' })
   }
 
   // Delete a note
-  const handleDeleteNote = (noteId: string) => {
-    setRecruiterNotes(recruiterNotes.filter(note => note.id !== noteId))
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      await deleteRecruiterNote(noteId)
+      setRecruiterNotes((prev) => prev.filter((note) => note.id !== noteId))
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to delete note')
+    }
   }
 
   // Get recruiter details for the notes sidebar
@@ -198,7 +240,9 @@ const Recruiters = () => {
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/ats/recruiters/${recruiterId}`
     }
-    return `https://example.com/ats/recruiters/${recruiterId}`
+    // B19 fix: SSR-safe fallback uses configured app URL, avoiding the placeholder example.com.
+    const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
+    return `${base}/ats/recruiters/${recruiterId}`
   }
 
   // Download recruiter profile as text file

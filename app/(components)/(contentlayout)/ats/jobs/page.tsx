@@ -8,7 +8,21 @@ import JobsFilterPanel from './_components/JobsFilterPanel'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
-import { listJobs, deleteJob, exportJobsToExcel, importJobsFromExcel, downloadJobsTemplate, applyToJob, shareJobByEmail } from '@/shared/lib/api/jobs'
+import {
+  listJobs,
+  deleteJob,
+  exportJobsToExcel,
+  importJobsFromExcel,
+  downloadJobsTemplate,
+  applyToJob,
+  shareJobByEmail,
+  listJobBookmarks,
+  addJobBookmark,
+  deleteJobBookmark,
+  getJobStats,
+  type JobBookmarkNote,
+  type JobStatsResponse,
+} from '@/shared/lib/api/jobs'
 import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
@@ -33,22 +47,14 @@ interface FilterState {
   experience: [number, number] // [min, max] in years
   location: string[]
   salary: [number, number] // [min, max]
-  active: string // 'all' | 'true' | 'false'
+  status: string // 'all' | actual backend status string (Active, Inactive, Draft, Archived, ...)
   postingDate: string
 }
 
 const salaryRangesConst = DEFAULT_SALARY_RANGE
 const experienceRangesConst = DEFAULT_EXPERIENCE_RANGE
 
-// Note type for bookmark notes
-interface BookmarkNote {
-  id: string
-  jobId: string
-  note: string
-  visibility: 'public' | 'private'
-  postedBy: string
-  postedDate: string
-}
+type BookmarkNote = JobBookmarkNote
 
 /** neutral → A–Z → Z–A → neutral (handlers call `clear-sort` via return value). */
 function nextJobTitleSortToggle(current: string): 'title-asc' | 'title-desc' | 'clear-sort' {
@@ -139,7 +145,12 @@ const Jobs = () => {
   const closeJobsFilterPanel = () => setJobsFilterPanelOpen(false)
 
   const searchParams = useSearchParams()
-  const initialActiveFilter = searchParams.get('status')?.toLowerCase() === 'active' ? 'true' : 'true'
+  // URL ?status=Draft|Archived|Active|... routes directly into the new status filter.
+  // Default keeps prior behavior: show Active jobs only.
+  const rawStatusParam = searchParams.get('status')?.trim()
+  const initialStatusFilter = rawStatusParam && rawStatusParam.toLowerCase() !== 'all'
+    ? (rawStatusParam.charAt(0).toUpperCase() + rawStatusParam.slice(1).toLowerCase())
+    : (rawStatusParam?.toLowerCase() === 'all' ? 'all' : 'Active')
 
   const [filters, setFilters] = useState<FilterState>({
     jobTitle: [],
@@ -147,7 +158,7 @@ const Jobs = () => {
     experience: [experienceRangesConst.min, experienceRangesConst.max],
     location: [],
     salary: [salaryRangesConst.min, salaryRangesConst.max],
-    active: initialActiveFilter,
+    status: initialStatusFilter,
     postingDate: ''
   })
 
@@ -322,50 +333,69 @@ const Jobs = () => {
     setSelectedRows(newSelected)
   }
 
-  // Handle bookmark toggle and open notes sidebar
-  const handleBookmark = (id: string, job?: any) => {
-    // Add to bookmarked if not already bookmarked
+  const [bookmarkNotesLoading, setBookmarkNotesLoading] = useState(false)
+  const [bookmarkSubmitting, setBookmarkSubmitting] = useState(false)
+
+  const fetchBookmarkNotes = async (jobId: string) => {
+    setBookmarkNotesLoading(true)
+    try {
+      const notes = await listJobBookmarks(jobId)
+      setBookmarkNotes((prev) => [
+        ...prev.filter((n) => n.jobId !== jobId),
+        ...notes,
+      ])
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to load notes')
+    } finally {
+      setBookmarkNotesLoading(false)
+    }
+  }
+
+  const handleBookmark = (id: string) => {
     if (!bookmarkedJobs.has(id)) {
       const newBookmarked = new Set(bookmarkedJobs)
       newBookmarked.add(id)
       setBookmarkedJobs(newBookmarked)
     }
-    
-    // Open the bookmark notes sidebar
     setBookmarkNotesJobId(id)
-    
+    fetchBookmarkNotes(id)
     setTimeout(() => {
       ;(window as any).HSOverlay?.open(document.querySelector('#bookmark-notes-panel'))
     }, 100)
   }
 
-  // Get notes for a specific job
   const getJobNotes = (jobId: string) => {
-    return bookmarkNotes.filter(note => note.jobId === jobId).sort((a, b) => 
-      new Date(b.postedDate).getTime() - new Date(a.postedDate).getTime()
-    )
+    return bookmarkNotes
+      .filter((note) => note.jobId === jobId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }
 
-  // Add a new note
-  const handleAddNote = () => {
+  const handleAddNote = async () => {
     if (!bookmarkNotesJobId || !newNote.text.trim()) return
-    
-    const note: BookmarkNote = {
-      id: `note-${Date.now()}`,
-      jobId: bookmarkNotesJobId,
-      note: newNote.text,
-      visibility: newNote.visibility,
-      postedBy: 'John Doe', // This would come from user context in real app
-      postedDate: new Date().toISOString()
+    setBookmarkSubmitting(true)
+    try {
+      const created = await addJobBookmark(bookmarkNotesJobId, {
+        note: newNote.text.trim(),
+        visibility: newNote.visibility,
+      })
+      setBookmarkNotes((prev) => [...prev, created])
+      setNewNote({ text: '', visibility: 'public' })
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to add note')
+    } finally {
+      setBookmarkSubmitting(false)
     }
-    
-    setBookmarkNotes([...bookmarkNotes, note])
-    setNewNote({ text: '', visibility: 'public' })
   }
 
-  // Delete a note
-  const handleDeleteNote = (noteId: string) => {
-    setBookmarkNotes(bookmarkNotes.filter(note => note.id !== noteId))
+  const handleDeleteNote = async (noteId: string) => {
+    if (!bookmarkNotesJobId) return
+    if (!confirm('Delete this note?')) return
+    try {
+      await deleteJobBookmark(bookmarkNotesJobId, noteId)
+      setBookmarkNotes((prev) => prev.filter((n) => n.id !== noteId))
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to delete note')
+    }
   }
 
   // Get job details for the bookmark notes sidebar
@@ -826,10 +856,9 @@ const Jobs = () => {
         }
       }
       
-      // Active filter
-      if (filters.active !== 'all') {
-        const isActive = filters.active === 'true'
-        if (job.active !== isActive) {
+      // Status filter — exact match against backend status string
+      if (filters.status !== 'all') {
+        if ((job.status ?? '') !== filters.status) {
           return false
         }
       }
@@ -856,6 +885,12 @@ const Jobs = () => {
   const uniqueCompanies = useMemo(() => [...new Set(jobsData.map(job => job.company))].filter(Boolean).sort(), [jobsData])
   const uniqueLocations = useMemo(() => [...new Set(jobsData.map(job => job.location))].filter(Boolean).sort(), [jobsData])
   const uniqueJobTitles = useMemo(() => [...new Set(jobsData.map(job => job.jobTitle))].filter(Boolean).sort(), [jobsData])
+  // Status options derived from data so filter always matches what backend actually emits
+  // (Active, Inactive, Draft, Archived, Closed, Published, ...).
+  const uniqueStatuses = useMemo(
+    () => [...new Set(jobsData.map(job => job.status).filter((s): s is string => Boolean(s)))].sort(),
+    [jobsData]
+  )
 
   // Suggestion lists only while typing (same pattern as Employees → Name)
   const filteredJobTitles = useMemo(() => {
@@ -912,12 +947,12 @@ const Jobs = () => {
       experience: [experienceRangesConst.min, experienceRangesConst.max],
       location: [],
       salary: [salaryRangesConst.min, salaryRangesConst.max],
-      active: 'true',
+      status: 'Active',
       postingDate: ''
     })
   }
 
-  /** Default status filter is Active only — counts as “custom” when user picks All or Inactive. */
+  /** Default status filter is Active only — counts as “custom” when user picks All / Draft / Archived / etc. */
   const hasActiveFilters =
     listJobOrigin !== '' ||
     filters.jobTitle.length > 0 ||
@@ -927,7 +962,7 @@ const Jobs = () => {
     filters.location.length > 0 ||
     filters.salary[0] !== salaryRangesConst.min ||
     filters.salary[1] !== salaryRangesConst.max ||
-    filters.active !== 'true' ||
+    filters.status !== 'Active' ||
     filters.postingDate !== ''
 
   const activeFilterCount =
@@ -937,7 +972,7 @@ const Jobs = () => {
     (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0) +
     filters.location.length +
     (filters.salary[0] !== salaryRangesConst.min || filters.salary[1] !== salaryRangesConst.max ? 1 : 0) +
-    (filters.active !== 'true' ? 1 : 0) +
+    (filters.status !== 'Active' ? 1 : 0) +
     (filters.postingDate !== '' ? 1 : 0)
 
   const tableInstance: any = useTable(
@@ -1266,6 +1301,7 @@ const Jobs = () => {
               uniqueJobTitles={uniqueJobTitles}
               uniqueCompanies={uniqueCompanies}
               uniqueLocations={uniqueLocations}
+              uniqueStatuses={uniqueStatuses}
               handleMultiSelectChange={handleMultiSelectChange}
               handleRemoveFilter={handleRemoveFilter}
               handleSalaryRangeChange={handleSalaryRangeChange}
@@ -1889,10 +1925,10 @@ const Jobs = () => {
                     type="button"
                     className="ti-btn ti-btn-primary"
                     onClick={handleAddNote}
-                    disabled={!newNote.text.trim()}
+                    disabled={!newNote.text.trim() || bookmarkSubmitting}
                   >
                     <i className="ri-add-line me-1"></i>
-                    Add Note
+                    {bookmarkSubmitting ? 'Saving…' : 'Add Note'}
                   </button>
                 </div>
               </div>
@@ -1904,7 +1940,9 @@ const Jobs = () => {
                   Notes ({getJobNotes(bookmarkNotesJobId).length})
                 </h6>
                 <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {getJobNotes(bookmarkNotesJobId).length > 0 ? (
+                  {bookmarkNotesLoading ? (
+                    <div className="p-6 text-center text-sm text-gray-500">Loading…</div>
+                  ) : getJobNotes(bookmarkNotesJobId).length > 0 ? (
                     getJobNotes(bookmarkNotesJobId).map((note) => (
                       <div 
                         key={note.id}
@@ -1919,8 +1957,8 @@ const Jobs = () => {
                           </div>
                           <div className="flex items-center gap-3">
                             <div className="text-xs text-gray-500 dark:text-gray-400 text-right">
-                              <div>{new Date(note.postedDate).toLocaleDateString()}</div>
-                              <div>{new Date(note.postedDate).toLocaleTimeString()}</div>
+                              <div>{new Date(note.createdAt).toLocaleDateString()}</div>
+                              <div>{new Date(note.createdAt).toLocaleTimeString()}</div>
                             </div>
                             <button
                               type="button"
@@ -1935,10 +1973,6 @@ const Jobs = () => {
                         <p className="text-sm text-gray-700 dark:text-gray-300 mb-2 whitespace-pre-wrap">
                           {note.note}
                         </p>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
-                          <i className="ri-user-line"></i>
-                          Posted by: <span className="font-medium">{note.postedBy}</span>
-                        </div>
                       </div>
                     ))
                   ) : (

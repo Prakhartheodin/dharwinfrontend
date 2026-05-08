@@ -2,7 +2,7 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
-export type PlacementStatus = "Pending" | "Joined" | "Deferred" | "Cancelled";
+export type PlacementStatus = "Pending" | "Onboarding" | "Joined" | "Deferred" | "Cancelled";
 export type PreBoardingStatus = "Pending" | "In Progress" | "Completed";
 export type BGVStatus = "Pending" | "In Progress" | "Completed" | "Verified";
 

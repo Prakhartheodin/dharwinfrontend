@@ -51,8 +51,13 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
 
 /**
  * Flat semantic-action gate. Resolves the action to the role-matrix rule then
- * checks the user's raw permissions. Treats platformSuperUser / Administrator
- * as universal allow.
+ * checks the user's raw permissions.
+ *
+ * super_admin (platformSuperUser) bypasses the gate. The named "Administrator"
+ * role does NOT auto-bypass — admin must hold the explicit role-matrix
+ * permission, identical to every other role. This keeps RBAC predictable:
+ * unchecking a checkbox on the Administrator role takes effect immediately on
+ * sidebar visibility, route guards, and feature gates that call this helper.
  *
  * Usage:
  *   const auth = useAuth();
@@ -60,7 +65,7 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
  *     // render Assign button
  *   }
  *
- * @param user Auth context shape: { permissions, isAdministrator, isPlatformSuperUser }
+ * @param user Auth context shape: { permissions, isPlatformSuperUser }
  * @param action Semantic action key (e.g. 'create_project', 'view_internal_jobs')
  */
 export function hasPermission(
@@ -75,7 +80,7 @@ export function hasPermission(
   action: string
 ): boolean {
   if (!user) return false;
-  if (user.isPlatformSuperUser || user.isAdministrator) return true;
+  if (user.isPlatformSuperUser) return true;
   const rule = ACTION_PERMISSIONS[action];
   if (!rule) {
     if (typeof console !== "undefined") {

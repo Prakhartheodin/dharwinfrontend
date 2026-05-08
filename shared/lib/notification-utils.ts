@@ -14,6 +14,12 @@ export const notifTypeToIcon: Record<NotificationType | string, string> = {
   recruiter: "user",
   assignment: "user-plus",
   sop: "checklist",
+  support_ticket: "lifebuoy",
+  chat_message: "message-circle",
+  joining_reminder: "calendar-event",
+  placement_update: "trophy",
+  onboarding_reminder: "user-plus",
+  system: "settings",
   general: "bell",
 };
 
@@ -31,5 +37,11 @@ export const notifTypeToColor: Record<NotificationType | string, string> = {
   recruiter: "pinkmain",
   assignment: "primary",
   sop: "primary",
+  support_ticket: "warning",
+  chat_message: "primary",
+  joining_reminder: "success",
+  placement_update: "success",
+  onboarding_reminder: "primary",
+  system: "secondary",
   general: "secondary",
 };
