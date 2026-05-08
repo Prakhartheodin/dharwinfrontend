@@ -266,7 +266,7 @@ export function OfferLetterGeneratorWorkspace({
       jobType: api,
       weeklyHours: ui === 'parttime' ? 25 : 40,
       ...(api === 'INTERN_UNPAID' && f.eligibilityPreset === 'none'
-        ? { eligibilityPreset: 'opt_regular' as EligibilityPresetKey }
+        ? { eligibilityPreset: 'opt_stem' as EligibilityPresetKey }
         : {}),
     }))
   }

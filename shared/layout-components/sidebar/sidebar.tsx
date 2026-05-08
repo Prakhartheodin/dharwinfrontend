@@ -27,8 +27,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		user,
 		permissions: userPermissions,
 		permissionsLoaded,
-		isAdministrator,
-		isPlatformSuperUser,
 		isDesignatedSuperadmin,
 	} = useAuth();
 
@@ -57,8 +55,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			if (!permissionsLoaded) return true;
 			return (
 				isDesignatedSuperadmin ||
-				isAdministrator ||
-				isPlatformSuperUser ||
 				hasPermissionForPath(userPermissions, "logs.activity:")
 			);
 		}
@@ -100,8 +96,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	}, [
 		permissionsLoaded,
 		userPermissions,
-		isAdministrator,
-		isPlatformSuperUser,
 		isDesignatedSuperadmin,
 		user,
 	]);

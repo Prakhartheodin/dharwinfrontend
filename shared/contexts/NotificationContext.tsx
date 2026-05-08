@@ -10,6 +10,7 @@ import {
   type Notification,
 } from "@/shared/lib/api/notifications";
 import { apiClient } from "@/shared/lib/api/client";
+import { resolveNotificationRoute } from "@/shared/lib/notificationRoutes";
 
 interface NotificationContextValue {
   notifications: Notification[];
@@ -19,6 +20,10 @@ interface NotificationContextValue {
   latestNotification: Notification | null;
   markRead: (id: string) => Promise<void>;
   markAllRead: () => Promise<void>;
+  /** Resolve a route for any notification — uses stored link, then central type→route map. */
+  resolveRoute: (n: Notification | null | undefined) => string;
+  /** Mark notification read (best-effort) and return its destination route. Caller navigates. */
+  openNotification: (n: Notification) => Promise<string>;
 }
 
 const NotificationContext = createContext<NotificationContextValue>({
@@ -29,6 +34,8 @@ const NotificationContext = createContext<NotificationContextValue>({
   latestNotification: null,
   markRead: async () => {},
   markAllRead: async () => {},
+  resolveRoute: () => "/notifications",
+  openNotification: async () => "/notifications",
 });
 
 export function useNotificationContext() {
@@ -71,6 +78,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       console.warn("markAllRead failed:", e);
     }
   }, []);
+
+  const resolveRoute = useCallback(
+    (n: Notification | null | undefined) => resolveNotificationRoute(n),
+    []
+  );
+
+  const openNotification = useCallback(
+    async (n: Notification) => {
+      const route = resolveNotificationRoute(n);
+      // Mark read in background; navigation should not wait on the network.
+      if (!n.read && n._id) {
+        markRead(n._id).catch(() => {});
+      }
+      return route;
+    },
+    [markRead]
+  );
 
   useEffect(() => {
     if (!user?.id) {
@@ -137,8 +161,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
                     setUnreadCount(payload.count);
                   } else if (payload.type === "notification") {
                     const n = payload.notification as Notification;
-                    setNotifications((prev) => [n, ...prev].slice(0, 50));
-                    setUnreadCount((c) => c + 1);
+                    // Dedupe: server emits both `notification` and `unread_count`
+                    // and reconnects can replay; prefer the authoritative count
+                    // event for the badge instead of incrementing here.
+                    setNotifications((prev) => {
+                      if (prev.some((p) => p._id === n._id)) return prev;
+                      return [n, ...prev].slice(0, 50);
+                    });
                     setLatestNotification(n);
                   }
                 } catch (_) {}
@@ -164,7 +193,17 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, isConnected, error, latestNotification, markRead, markAllRead }}
+      value={{
+        notifications,
+        unreadCount,
+        isConnected,
+        error,
+        latestNotification,
+        markRead,
+        markAllRead,
+        resolveRoute,
+        openNotification,
+      }}
     >
       {children}
     </NotificationContext.Provider>

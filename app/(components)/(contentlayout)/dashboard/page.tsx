@@ -771,7 +771,7 @@ export default function DashboardPage() {
             )}
             {/* Notifications */}
             <Link
-              href="/pages/notifications"
+              href="/notifications"
               className="relative ti-btn ti-btn-sm ti-btn-light shrink-0 inline-flex items-center justify-center"
             >
               <i className="ti ti-bell text-[1.1rem]"></i>

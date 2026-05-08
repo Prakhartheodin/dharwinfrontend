@@ -54,11 +54,13 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [savedContactIds, setSavedContactIds] = useState<Set<string>>(new Set());
   const [savingContactId, setSavingContactId] = useState<string | null>(null);
+  const [noContactsModal, setNoContactsModal] = useState(false);
   const inFlight = useRef(false);
 
   useEffect(() => {
     setContacts([]);
     setEnrichError(null);
+    setNoContactsModal(false);
     inFlight.current = false;
   }, [job?.externalId]);
 
@@ -83,7 +85,9 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
     setEnrichError(null);
     try {
       const result = await enrichExternalJobContacts(job.company, job.externalId, job.location);
-      setContacts(result.contacts || []);
+      const found = result.contacts || [];
+      setContacts(found);
+      if (found.length === 0) setNoContactsModal(true);
     } catch {
       setEnrichError("Failed to find contacts. Please try again.");
     } finally {
@@ -505,6 +509,53 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
           </>
         ) : null}
       </div>
+
+      {/* ── No HR Contacts modal ── */}
+      {noContactsModal && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/45 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="no-hr-modal-title"
+          onClick={() => setNoContactsModal(false)}
+        >
+          <div
+            className="mx-4 w-full max-w-sm overflow-hidden rounded-2xl border border-defaultborder/60 bg-white shadow-2xl ring-1 ring-black/[0.04] dark:border-white/10 dark:bg-[#141621] dark:ring-white/[0.06]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-col items-center gap-4 px-6 pb-5 pt-7 text-center">
+              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/25">
+                <i className="ri-user-search-line text-2xl" aria-hidden />
+              </span>
+              <div className="space-y-1.5">
+                <h3
+                  id="no-hr-modal-title"
+                  className="text-base font-semibold text-defaulttextcolor dark:text-white"
+                >
+                  No HR contacts found
+                </h3>
+                <p className="text-[0.8125rem] leading-relaxed text-textmuted dark:text-white/55">
+                  Apollo.io returned no recruiting contacts for{" "}
+                  <span className="font-semibold text-defaulttextcolor dark:text-white/85">
+                    {job?.company || "this company"}
+                  </span>
+                  . Try a different role or check the company listing directly.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-center border-t border-defaultborder/50 bg-slate-50/60 px-6 py-3 dark:border-white/[0.06] dark:bg-white/[0.02]">
+              <button
+                type="button"
+                onClick={() => setNoContactsModal(false)}
+                className="inline-flex items-center justify-center rounded-xl bg-primary px-5 py-2 text-[0.8125rem] font-semibold text-white shadow-sm shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-md active:scale-[0.98]"
+                autoFocus
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

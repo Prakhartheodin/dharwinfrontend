@@ -7,9 +7,10 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import { createJob, getJobTemplate, listJobTemplates, type CreateJobPayload } from '@/shared/lib/api/jobs'
+import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, type CreateJobPayload } from '@/shared/lib/api/jobs'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
+import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
 import { getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
 const Select = dynamic(() => import("react-select"), { ssr: false })
@@ -98,11 +99,8 @@ const CreateJob = () => {
     setTemplatesLoading(true)
     getJobTemplate(tid)
       .then((t) => {
-        setJobDescription(normalizeTipTapHtmlFromApi(t.jobDescription))
-        setFormData((prev) => ({
-          ...prev,
-          jobTitle: prev.jobTitle.trim() ? prev.jobTitle : (t.title || ''),
-        }))
+        // Full prefill via shared helper — same code path as in-page picker.
+        applyTemplateToForm(t)
       })
       .catch(() => {
         templateQueryHandled.current = null
@@ -110,16 +108,122 @@ const CreateJob = () => {
       .finally(() => setTemplatesLoading(false))
   }, [searchParams])
 
+  const buildTemplateVarContext = (): TemplateVarContext => ({
+    jobTitle: formData.jobTitle,
+    company: formData.organisationName,
+    location: formData.location,
+    salaryMin: formData.salaryMin,
+    salaryMax: formData.salaryMax,
+    salaryCurrency: formData.salaryCurrency,
+    jobType: formData.jobType?.label,
+    experienceLevel: formData.experienceLevel?.label,
+    education: formData.education,
+  })
+
+  const applyTemplateToForm = (t: Awaited<ReturnType<typeof getJobTemplate>>) => {
+    const raw = normalizeTipTapHtmlFromApi(t.jobDescription)
+    setJobDescription(resolveTemplateVars(raw, buildTemplateVarContext()))
+    setFormData((prev) => {
+      const next = { ...prev }
+      if (!prev.jobTitle?.trim() && t.title) next.jobTitle = t.title
+      if (!prev.location?.trim() && t.location) next.location = t.location
+      if (!prev.jobType && t.jobType) {
+        const opt = jobTypeOptions.find((o) => o.value === t.jobType)
+        if (opt) next.jobType = opt
+      }
+      if (!prev.experienceLevel && t.experienceLevel) {
+        const opt = experienceLevelOptions.find((o) => o.value === t.experienceLevel)
+        if (opt) next.experienceLevel = opt
+      }
+      if (!prev.salaryMin && t.salaryRange?.min != null) next.salaryMin = String(t.salaryRange.min)
+      if (!prev.salaryMax && t.salaryRange?.max != null) next.salaryMax = String(t.salaryRange.max)
+      if (!prev.salaryCurrency && t.salaryRange?.currency) next.salaryCurrency = t.salaryRange.currency
+      if ((!prev.skills || prev.skills.length === 0) && Array.isArray(t.skillTags) && t.skillTags.length > 0) {
+        next.skills = t.skillTags.map((s) => createOption(s))
+      }
+      if (!prev.education?.trim() && t.education) next.education = t.education
+      return next
+    })
+  }
+
   const handleLoadTemplate = (templateId: string) => {
     if (!templateId) return
-    setTemplatesLoading(true)
-    getJobTemplate(templateId)
-      .then((t) => {
-        setJobDescription(normalizeTipTapHtmlFromApi(t.jobDescription))
-        setFormData((prev) => ({ ...prev, jobTitle: prev.jobTitle || t.title || '' }))
+    const proceed = async () => {
+      setTemplatesLoading(true)
+      try {
+        const t = await getJobTemplate(templateId)
+        applyTemplateToForm(t)
+      } finally {
+        setTemplatesLoading(false)
+      }
+    }
+    // Only ask before overwrite if there is meaningful existing content.
+    if (jobDescription && jobDescription.replace(/<[^>]+>/g, '').trim().length > 0) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Replace current description?',
+        text: 'Loading a template replaces the current job description. Continue?',
+        showCancelButton: true,
+        confirmButtonText: 'Load template',
+        cancelButtonText: 'Cancel',
+      }).then((res) => { if (res.isConfirmed) proceed() })
+    } else {
+      proceed()
+    }
+  }
+
+  const [savingTemplate, setSavingTemplate] = useState(false)
+
+  const handleSaveAsTemplate = async () => {
+    const html = jobDescription.trim()
+    if (!html) {
+      Swal.fire({ icon: 'info', title: 'Nothing to save', text: 'Write a job description first.' })
+      return
+    }
+    const { value: title, isConfirmed } = await Swal.fire({
+      title: 'Save as template',
+      input: 'text',
+      inputLabel: 'Template name',
+      inputValue: formData.jobTitle?.trim() || '',
+      inputPlaceholder: 'e.g. Senior Backend Engineer',
+      showCancelButton: true,
+      confirmButtonText: 'Save',
+      inputValidator: (v) => (!v?.trim() ? 'Name is required' : null),
+    })
+    if (!isConfirmed || !title) return
+    try {
+      setSavingTemplate(true)
+      // Capture full structured snapshot — not just description.
+      const minNum = formData.salaryMin ? Number(formData.salaryMin) : undefined
+      const maxNum = formData.salaryMax ? Number(formData.salaryMax) : undefined
+      const salaryRange =
+        minNum != null || maxNum != null
+          ? {
+              ...(Number.isFinite(minNum) ? { min: minNum } : {}),
+              ...(Number.isFinite(maxNum) ? { max: maxNum } : {}),
+              currency: formData.salaryCurrency || 'USD',
+            }
+          : undefined
+      const skillTags = (formData.skills ?? []).map((s) => s.value).filter(Boolean)
+
+      await createJobTemplate({
+        title: title.trim(),
+        jobDescription: html,
+        ...(formData.jobType?.value ? { jobType: formData.jobType.value as any } : {}),
+        ...(formData.location?.trim() ? { location: formData.location.trim() } : {}),
+        ...(skillTags.length ? { skillTags } : {}),
+        ...(salaryRange ? { salaryRange } : {}),
+        ...(formData.experienceLevel?.value ? { experienceLevel: formData.experienceLevel.value as any } : {}),
+        ...(formData.education?.trim() ? { education: formData.education.trim() } : {}),
       })
-      .catch(() => {})
-      .finally(() => setTemplatesLoading(false))
+      const refreshed = await listJobTemplates({ limit: 100 })
+      setTemplates(refreshed.results ?? [])
+      Swal.fire({ icon: 'success', title: 'Saved', text: `“${title.trim()}” saved to your templates.`, timer: 1800, showConfirmButton: false })
+    } catch (e) {
+      Swal.fire({ icon: 'error', title: 'Save failed', text: 'Could not save template. Try again.' })
+    } finally {
+      setSavingTemplate(false)
+    }
   }
 
   const handleSkillsKeyDown = (event: any) => {
@@ -371,49 +475,69 @@ const CreateJob = () => {
                         />
                       </div>
 
-                      {/* Load from template */}
+                      {/* Job Description — stacked: label, controls row, then editor */}
                       <div className="xl:col-span-12 col-span-12">
-                        <label className="form-label">Load from template</label>
-                        {templates.length > 0 ? (
-                          <select
-                            className="form-control !w-auto"
-                            defaultValue=""
-                            onChange={(e) => handleLoadTemplate(e.target.value)}
-                            disabled={templatesLoading}
-                          >
-                            <option value="">-- Select template --</option>
-                            {templates.map((t) => {
-                              const oid = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? ''
-                              return (
-                                <option key={oid} value={oid}>
-                                  {t.title}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        ) : (
-                          <p className="text-sm text-muted mb-0">
-                            No saved templates yet.{` `}
-                            <Link href={ROUTES.settingsJobTemplates} className="text-primary underline">
-                              Add templates in Settings
-                            </Link>
-                          </p>
-                        )}
-                        {templatesLoading && <span className="text-xs text-muted ms-2">Loading...</span>}
-                        {templates.length > 0 ? (
-                          <p className="text-xs text-muted mt-1 mb-0">
-                            <Link href={ROUTES.settingsJobTemplates} className="text-primary underline">
-                              Manage templates in Settings
-                            </Link>
-                          </p>
-                        ) : null}
-                      </div>
-
-                      {/* Job Description */}
-                      <div className="xl:col-span-12 col-span-12">
-                        <label className="form-label">
+                        <label className="form-label mb-1 block">
                           Job Description <span className="text-danger">*</span>
                         </label>
+                        <div className="flex items-center flex-wrap gap-2 mt-2 mb-2">
+                          {templates.length > 0 ? (
+                            <>
+                              <select
+                                className="form-control !w-auto !py-1 !px-2 !text-xs !rounded-md"
+                                defaultValue=""
+                                onChange={(e) => {
+                                  handleLoadTemplate(e.target.value)
+                                  e.target.value = ''
+                                }}
+                                disabled={templatesLoading}
+                                aria-label="Load job template"
+                              >
+                                <option value="">Load template…</option>
+                                {templates.map((t) => {
+                                  const oid = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? ''
+                                  return (
+                                    <option key={oid} value={oid}>
+                                      {t.title}
+                                    </option>
+                                  )
+                                })}
+                              </select>
+                              <button
+                                type="button"
+                                className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
+                                onClick={handleSaveAsTemplate}
+                                disabled={savingTemplate}
+                              >
+                                {savingTemplate ? 'Saving…' : 'Save as template'}
+                              </button>
+                              <Link
+                                href={ROUTES.settingsJobTemplates}
+                                className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
+                              >
+                                Manage
+                              </Link>
+                              {templatesLoading && <span className="text-xs text-muted">Loading…</span>}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
+                                onClick={handleSaveAsTemplate}
+                                disabled={savingTemplate}
+                              >
+                                {savingTemplate ? 'Saving…' : 'Save as template'}
+                              </button>
+                              <Link
+                                href={ROUTES.settingsJobTemplates}
+                                className="ti-btn ti-btn-light !py-1 !px-2 !text-xs !rounded-md"
+                              >
+                                + Add templates
+                              </Link>
+                            </>
+                          )}
+                        </div>
                         <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md">
                           <TiptapEditor
                             content={jobDescription}

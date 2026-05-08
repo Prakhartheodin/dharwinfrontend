@@ -69,10 +69,10 @@ export default function NewOfferLetterPage() {
         const eligLines = o.employmentEligibilityLines || [];
         let eligibilityPreset = detectEligibilityPreset(eligLines, isIntern);
         if (isIntern && eligibilityPreset === "none" && eligLines.length === 0) {
-          eligibilityPreset = "opt_regular";
+          eligibilityPreset = "opt_stem";
         }
         if (!isIntern && eligibilityPreset === "none" && eligLines.length === 0) {
-          eligibilityPreset = "opt_regular";
+          eligibilityPreset = "opt_stem";
         }
         const eligibilityText = eligibilityPreset === "custom" ? eligLines.join("\n") : "";
         const base: OfferLetterFormFields = {

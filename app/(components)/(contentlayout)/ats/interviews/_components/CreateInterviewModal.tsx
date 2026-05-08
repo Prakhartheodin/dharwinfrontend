@@ -9,6 +9,7 @@ import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
+import MeetingCreatedSuccess from '@/shared/components/meeting/MeetingCreatedSuccess'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
   if (!job || typeof job === 'string') return null
@@ -246,111 +247,19 @@ export default function CreateInterviewModal({
             </button>
           </div>
           {createdMeeting ? (
-            <div className="ti-modal-body flex min-h-0 max-h-[min(88vh,40rem)] flex-col overflow-hidden px-6 py-0">
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain py-5 scroll-smooth motion-reduce:scroll-auto">
-              <div className="text-center mb-6">
-                <div className="relative mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/15 text-success shadow-inner ring-2 ring-success/30 motion-safe:transition-transform motion-safe:duration-300 motion-reduce:transition-none">
-                  <i className="ri-check-double-line text-2xl"></i>
-                </div>
-                <h4 className="text-lg font-semibold text-defaulttextcolor dark:text-white mb-1">Meeting Created Successfully!</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{createdMeeting.title}</p>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="form-label block text-xs font-medium text-defaulttextcolor dark:text-white mb-1">
-                    Share link
-                  </label>
-                  <p className="text-[0.6875rem] text-gray-500 dark:text-gray-400 mb-1.5">
-                    Send this link to guests — it does not include your name or email.
-                  </p>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      readOnly
-                      value={shareMeetingUrl}
-                      className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 dark:bg-black/20"
-                      aria-label="Shareable meeting link without host identity"
-                    />
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-primary !py-2 !px-3 !text-sm"
-                      onClick={() => {
-                        if (shareMeetingUrl) {
-                          void navigator.clipboard.writeText(shareMeetingUrl)
-                        }
-                      }}
-                    >
-                      <i className="ri-share-line me-1"></i>Copy
-                    </button>
-                  </div>
-                </div>
-                {personalMeetingUrl && personalMeetingUrl !== shareMeetingUrl && (
-                  <div>
-                    <label className="form-label block text-xs font-medium text-defaulttextcolor dark:text-white mb-1">
-                      Your join link
-                    </label>
-                    <p className="text-[0.6875rem] text-gray-500 dark:text-gray-400 mb-1.5">
-                      Includes your display name and email for a quicker join — keep this for yourself.
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={personalMeetingUrl}
-                        className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 dark:bg-black/20"
-                        aria-label="Personal meeting link with your name and email"
-                      />
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-outline-primary !py-2 !px-3 !text-sm"
-                        onClick={() => {
-                          void navigator.clipboard.writeText(personalMeetingUrl)
-                        }}
-                      >
-                        <i className="ri-file-copy-line me-1"></i>Copy
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-500 dark:text-gray-400">Meeting ID</span>
-                    <p className="font-medium text-defaulttextcolor dark:text-white">{createdMeeting.meetingId}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 dark:text-gray-400">Status</span>
-                    <p className="font-medium text-defaulttextcolor dark:text-white capitalize">{createdMeeting.status}</p>
-                  </div>
-                </div>
-              </div>
-              </div>
-              <div className="shrink-0 border-t border-defaultborder dark:border-defaultborder/10 bg-gray-50/95 px-6 py-4 backdrop-blur-sm dark:bg-black/30">
-                <div className="flex flex-wrap gap-2 justify-end">
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium transition-transform duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100"
-                  onClick={closeCreateInterviewModal}
-                >
-                  Close
-                </button>
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-outline-primary !py-2 !px-4 !text-sm font-medium transition-transform duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100"
-                  onClick={resetCreateMeetingForm}
-                >
-                  <i className="ri-add-line me-1.5"></i>Create Another Meeting
-                </button>
-                <a
-                  href={personalMeetingUrl || shareMeetingUrl || '#'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm font-medium transition-transform duration-150 motion-reduce:transition-none active:scale-[0.98] motion-reduce:active:scale-100"
-                >
-                  <i className="ri-vidicon-line me-1.5"></i>Join Meeting
-                </a>
-                </div>
-              </div>
-            </div>
+            <MeetingCreatedSuccess
+              variant="interview"
+              title={createdMeeting.title}
+              scheduledAt={createdMeeting.scheduledAt}
+              durationMinutes={createdMeeting.durationMinutes}
+              meetingId={createdMeeting.meetingId}
+              status={createdMeeting.status}
+              shareUrl={shareMeetingUrl}
+              personalUrl={personalMeetingUrl}
+              onClose={closeCreateInterviewModal}
+              onAnother={resetCreateMeetingForm}
+              joinHref={personalMeetingUrl || shareMeetingUrl || '#'}
+            />
           ) : (
             <form className="ti-modal-body !p-0 flex min-h-0 max-h-[min(88vh,46rem)] flex-col overflow-hidden" onSubmit={onSubmit} noValidate>
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 space-y-5 scroll-smooth pb-6 motion-reduce:scroll-auto">

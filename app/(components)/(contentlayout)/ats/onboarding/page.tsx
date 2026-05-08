@@ -20,10 +20,14 @@ const Onboarding = () => {
   const [error, setError] = useState<string | null>(null)
   const [listSearch, setListSearch] = useState('')
 
+  /**
+   * Onboarding queue: status=Onboarding (pre-boarding completed, awaiting joining) ∪
+   * status=Joined (already started). Promotion Onboarding → Joined happens in Onboarding edit.
+   */
   const fetchPlacements = () => {
     setLoading(true)
     setError(null)
-    listPlacements({ status: 'Joined', limit: 100, page: 1 })
+    listPlacements({ status: 'Onboarding,Joined', limit: 100, page: 1 })
       .then((res) => setPlacements(res.results ?? []))
       .catch((err) => setError(err?.response?.data?.message || err?.message || 'Failed to load placements'))
       .finally(() => setLoading(false))

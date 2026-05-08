@@ -2,8 +2,16 @@
 
 import React, { Fragment, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
+
+// Match the create/edit pages: both react-select entry points dynamic + ssr:false
+// to keep the chunk graph consistent (Turbopack is sensitive to mixed boundaries).
+const Select = dynamic(() => import("react-select"), { ssr: false });
+const CreatableSelect = dynamic(() => import("react-select/creatable"), { ssr: false });
+
+type SelectOption = { value: string; label: string };
 import { ROUTES } from "@/shared/lib/constants";
 import {
   hasJobsManageAccess,
@@ -67,7 +75,48 @@ export default function SettingsJobTemplatesPage() {
   const [formTitle, setFormTitle] = useState("");
   const [formBody, setFormBody] = useState("");
   const [formVisibility, setFormVisibility] = useState<JobTemplateVisibility>("public");
+  // Optional structured defaults — same option types/shape as ATS Create / Edit Job.
+  const [formJobType, setFormJobType] = useState<SelectOption | null>(null);
+  const [formExperienceLevel, setFormExperienceLevel] = useState<SelectOption | null>(null);
+  const [formLocation, setFormLocation] = useState<string>("");
+  const [formSalaryMin, setFormSalaryMin] = useState<string>("");
+  const [formSalaryMax, setFormSalaryMax] = useState<string>("");
+  const [formSalaryCurrency, setFormSalaryCurrency] = useState<string>("USD");
+  const [formSkills, setFormSkills] = useState<SelectOption[]>([]);
+  const [formSkillsInputValue, setFormSkillsInputValue] = useState<string>("");
+  const [formEducation, setFormEducation] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
+  // Match values + labels used by ATS Create / Edit Job (label != value for jobType).
+  const jobTypeOptions: SelectOption[] = [
+    { value: "Full-time", label: "Full Time" },
+    { value: "Part-time", label: "Part Time" },
+    { value: "Contract", label: "Contract" },
+    { value: "Temporary", label: "Temporary" },
+    { value: "Internship", label: "Internship" },
+    { value: "Freelance", label: "Freelance" },
+  ];
+  const experienceLevelOptions: SelectOption[] = [
+    { value: "Entry Level", label: "Entry Level" },
+    { value: "Mid Level", label: "Mid Level" },
+    { value: "Senior Level", label: "Senior Level" },
+    { value: "Executive", label: "Executive" },
+  ];
+
+  // Hide the dropdown indicator on skills, like the ATS pages do.
+  const skillsSelectComponents = { DropdownIndicator: null };
+  const createSkillOption = (label: string): SelectOption => ({ label, value: label });
+  const handleSkillsKeyDown = (event: any) => {
+    if (!formSkillsInputValue) return;
+    if (event.key === "Enter" || event.key === "Tab") {
+      const v = formSkillsInputValue.trim();
+      if (v && !formSkills.some((s) => s.value.toLowerCase() === v.toLowerCase())) {
+        setFormSkills((prev) => [...prev, createSkillOption(v)]);
+      }
+      setFormSkillsInputValue("");
+      event.preventDefault();
+    }
+  };
 
   const [viewer, setViewer] = useState<JobTemplate | null>(null);
 
@@ -98,11 +147,24 @@ export default function SettingsJobTemplatesPage() {
     if (permissionsLoaded && canView) void load();
   }, [permissionsLoaded, canView, load]);
 
+  const resetExtras = () => {
+    setFormJobType(null);
+    setFormExperienceLevel(null);
+    setFormLocation("");
+    setFormSalaryMin("");
+    setFormSalaryMax("");
+    setFormSalaryCurrency("USD");
+    setFormSkills([]);
+    setFormSkillsInputValue("");
+    setFormEducation("");
+  };
+
   const openCreate = () => {
     setEditingKey(null);
     setFormTitle("");
     setFormBody("<p></p>");
     setFormVisibility("public");
+    resetExtras();
     setModalOpen(true);
   };
 
@@ -114,6 +176,17 @@ export default function SettingsJobTemplatesPage() {
       setFormTitle(t.title || "");
       setFormBody(normalizeTipTapHtmlFromApi(t.jobDescription) || "<p></p>");
       setFormVisibility(t.visibility === "private" ? "private" : "public");
+      setFormJobType(t.jobType ? jobTypeOptions.find((o) => o.value === t.jobType) ?? null : null);
+      setFormExperienceLevel(
+        t.experienceLevel ? experienceLevelOptions.find((o) => o.value === t.experienceLevel) ?? null : null,
+      );
+      setFormLocation(t.location ?? "");
+      setFormSalaryMin(t.salaryRange?.min != null ? String(t.salaryRange.min) : "");
+      setFormSalaryMax(t.salaryRange?.max != null ? String(t.salaryRange.max) : "");
+      setFormSalaryCurrency(t.salaryRange?.currency ?? "USD");
+      setFormSkills(Array.isArray(t.skillTags) ? t.skillTags.map((s) => createSkillOption(s)) : []);
+      setFormSkillsInputValue("");
+      setFormEducation(t.education ?? "");
       setModalOpen(true);
     } catch (e) {
       const msg =
@@ -142,10 +215,36 @@ export default function SettingsJobTemplatesPage() {
     }
     setSaving(true);
     try {
+      const minNum = formSalaryMin ? Number(formSalaryMin) : NaN;
+      const maxNum = formSalaryMax ? Number(formSalaryMax) : NaN;
+      const salaryRange =
+        Number.isFinite(minNum) || Number.isFinite(maxNum)
+          ? {
+              ...(Number.isFinite(minNum) ? { min: minNum } : {}),
+              ...(Number.isFinite(maxNum) ? { max: maxNum } : {}),
+              currency: formSalaryCurrency || "USD",
+            }
+          : undefined;
+      // Flush any pending skill in the search box that the user hasn't pressed Enter on yet.
+      const pendingSkill = formSkillsInputValue.trim();
+      const allSkillOpts = pendingSkill
+        ? [...formSkills, createSkillOption(pendingSkill)]
+        : formSkills;
+      const skillTags = allSkillOpts.map((s) => s.value).filter(Boolean);
+
+      const extras = {
+        ...(formJobType?.value ? { jobType: formJobType.value as any } : {}),
+        ...(formExperienceLevel?.value ? { experienceLevel: formExperienceLevel.value as any } : {}),
+        ...(formLocation.trim() ? { location: formLocation.trim() } : {}),
+        ...(salaryRange ? { salaryRange } : {}),
+        ...(skillTags.length ? { skillTags } : {}),
+        ...(formEducation.trim() ? { education: formEducation.trim() } : {}),
+      };
+
       if (editingKey) {
-        await updateJobTemplate(editingKey, { title, jobDescription, visibility: formVisibility });
+        await updateJobTemplate(editingKey, { title, jobDescription, visibility: formVisibility, ...extras });
       } else {
-        await createJobTemplate({ title, jobDescription, visibility: formVisibility });
+        await createJobTemplate({ title, jobDescription, visibility: formVisibility, ...extras });
       }
       await Swal.fire({ icon: "success", title: "Saved", toast: true, timer: 2000, showConfirmButton: false, position: "top-end" });
       closeModal();
@@ -420,6 +519,104 @@ export default function SettingsJobTemplatesPage() {
                   </label>
                 </div>
               </div>
+              {/* Optional structured defaults — same controls/options as ATS Create / Edit Job. */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="form-label">Job type</label>
+                  <Select
+                    classNamePrefix="react-select"
+                    options={jobTypeOptions}
+                    value={formJobType}
+                    onChange={(v: any) => setFormJobType((v as SelectOption) ?? null)}
+                    placeholder="Select job type"
+                    isClearable
+                    isDisabled={!canManage}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Experience level</label>
+                  <Select
+                    classNamePrefix="react-select"
+                    options={experienceLevelOptions}
+                    value={formExperienceLevel}
+                    onChange={(v: any) => setFormExperienceLevel((v as SelectOption) ?? null)}
+                    placeholder="Select experience"
+                    isClearable
+                    isDisabled={!canManage}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Default location</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={formLocation}
+                    onChange={(e) => setFormLocation(e.target.value)}
+                    placeholder="e.g. Bangalore, Remote"
+                    disabled={!canManage}
+                  />
+                </div>
+                <div>
+                  <label className="form-label">Education</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={formEducation}
+                    onChange={(e) => setFormEducation(e.target.value)}
+                    placeholder="e.g. B.Tech in CS or equivalent"
+                    disabled={!canManage}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="form-label">Default skills</label>
+                  <CreatableSelect
+                    components={skillsSelectComponents}
+                    classNamePrefix="react-select"
+                    inputValue={formSkillsInputValue}
+                    isClearable
+                    isMulti
+                    menuIsOpen={false}
+                    onChange={(v: any) => setFormSkills(Array.isArray(v) ? (v as SelectOption[]) : [])}
+                    onInputChange={(v: string) => setFormSkillsInputValue(v)}
+                    onKeyDown={handleSkillsKeyDown}
+                    placeholder="Type a skill and press Enter (e.g. React, Node.js, PostgreSQL)"
+                    value={formSkills}
+                    isDisabled={!canManage}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="form-label">Default salary range</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formSalaryMin}
+                      onChange={(e) => setFormSalaryMin(e.target.value)}
+                      placeholder="Min"
+                      disabled={!canManage}
+                    />
+                    <input
+                      type="number"
+                      className="form-control"
+                      value={formSalaryMax}
+                      onChange={(e) => setFormSalaryMax(e.target.value)}
+                      placeholder="Max"
+                      disabled={!canManage}
+                    />
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={formSalaryCurrency}
+                      onChange={(e) => setFormSalaryCurrency(e.target.value)}
+                      placeholder="USD"
+                      disabled={!canManage}
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mb-0">
+                These optional fields prefill the matching inputs on <strong>ATS → Create job</strong> when this template is loaded. Leave blank to skip.
+              </p>
               <div>
                 <label className="form-label">Job description</label>
                 <div className="border border-defaultborder rounded-md overflow-hidden">

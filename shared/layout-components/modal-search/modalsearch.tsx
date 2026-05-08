@@ -290,7 +290,7 @@ const Modalsearch = () => {
             {!recentsHidden["dismiss-alert"] && (
               <div id="dismiss-alert" role="alert"
                 className="!p-2 border dark:border-defaultborder/10 rounded-[0.3125rem] flex items-center text-defaulttextcolor dark:text-defaulttextcolor/70 !mb-2 !text-[0.8125rem] alert">
-                <Link href="/pages/notifications/"><span>Notifications</span></Link>
+                <Link href="/notifications"><span>Notifications</span></Link>
                 <button type="button" aria-label="Remove" className="ms-auto leading-none" onClick={(e) => { e.preventDefault(); setRecentsHidden(p => ({...p, "dismiss-alert": true })); }}><i
                     className="fe fe-x !text-[0.8125rem] text-[#8c9097] dark:text-white/50"></i></button>
               </div>

@@ -113,6 +113,13 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                       Share via
                     </label>
                     <div className="space-y-3">
+                      {/*
+                        B14 doc: WhatsApp share is a client-only `wa.me/?text=` deep-link.
+                        The user's local WhatsApp app handles the send — there is no backend
+                        WhatsApp Cloud API / Twilio integration. No delivery confirmation,
+                        no audit log of who shared. If WhatsApp tracking is needed, build a
+                        backend send endpoint and replace `wa.me` with a server call.
+                      */}
                       <button
                         type="button"
                         className="ti-btn ti-btn-success w-full flex items-center justify-center gap-2"

@@ -6,6 +6,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { notifTypeToColor, notifTypeToIcon } from "@/shared/lib/notification-utils";
+import { resolveNotificationRoute } from "@/shared/lib/notificationRoutes";
 
 type ToastKind = "chat" | "system";
 
@@ -203,7 +204,7 @@ export function NotificationToastStack() {
       kind: "system",
       title: n.title,
       body: n.message,
-      link: (n.link?.startsWith("/") ? n.link : null) ?? "/pages/notifications/",
+      link: resolveNotificationRoute(n),
       icon: notifTypeToIcon[n.type] ?? "bell",
       color: notifTypeToColor[n.type] ?? "secondary",
     });

@@ -128,11 +128,20 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    department: string
+    positionId: string
+    agentId: string
+    joiningDate: string
+    placementStatus: 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled'
+    preBoardingStatusComplete: boolean
+  }>({
     department: '',
     positionId: '',
     agentId: '',
     joiningDate: '',
+    placementStatus: 'Onboarding',
+    preBoardingStatusComplete: false,
   })
   const [agents, setAgents] = useState<{ id: string; name: string; email?: string }[]>([])
   const [positions, setPositions] = useState<{ id: string; name: string }[]>([])
@@ -219,11 +228,20 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         const joiningSlice = placement.joiningDate
           ? String(placement.joiningDate).slice(0, 10)
           : ''
+        const loadedStatus = (placement.status === 'Pending' ||
+          placement.status === 'Onboarding' ||
+          placement.status === 'Joined' ||
+          placement.status === 'Deferred' ||
+          placement.status === 'Cancelled')
+          ? placement.status
+          : 'Onboarding'
         setForm({
           department: c.department ?? '',
           positionId: nextPositionId,
           agentId: assignedId || rmId || '',
           joiningDate: joiningSlice,
+          placementStatus: loadedStatus as 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled',
+          preBoardingStatusComplete: placement.preBoardingStatus === 'Completed',
         })
       } catch (err: any) {
         setError(err?.response?.data?.message || err?.message || 'Failed to load placement')
@@ -353,8 +371,17 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         }
       }
       /* Placement joining date last so finalize emails use the Employee row after department/position/agent updates. */
-      if (placementId && form.joiningDate && /^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate)) {
-        await updatePlacement(placementId, { joiningDate: form.joiningDate })
+      if (placementId) {
+        const placementUpdates: Record<string, unknown> = {}
+        if (form.joiningDate && /^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate)) {
+          placementUpdates.joiningDate = form.joiningDate
+        }
+        placementUpdates.status = form.placementStatus
+        placementUpdates.preBoardingStatus = form.preBoardingStatusComplete ? 'Completed' : 'In Progress'
+        if (form.placementStatus === 'Joined' && !form.preBoardingStatusComplete) {
+          placementUpdates.preboardingGateBypass = true
+        }
+        await updatePlacement(placementId, placementUpdates)
       }
       router.push('/ats/onboarding')
     } catch (err: any) {
@@ -613,6 +640,55 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                       Saved on placement; syncs to offer letter and employee. Changing the date emails the
                                       employee and agent.
                                     </p>
+                                  </div>
+                                  <div className="flex min-h-0 min-w-0 flex-col gap-0">
+                                    <label className="form-label mb-2" htmlFor="hrms-placement-status">
+                                      Placement status
+                                    </label>
+                                    <select
+                                      id="hrms-placement-status"
+                                      className="form-control"
+                                      value={form.placementStatus}
+                                      onChange={(e) =>
+                                        setForm({
+                                          ...form,
+                                          placementStatus: e.target.value as
+                                            | 'Pending'
+                                            | 'Onboarding'
+                                            | 'Joined'
+                                            | 'Deferred'
+                                            | 'Cancelled',
+                                        })
+                                      }
+                                    >
+                                      <option value="Onboarding">Onboarding (in progress)</option>
+                                      <option value="Joined">Joined</option>
+                                      <option value="Deferred">Deferred</option>
+                                      <option value="Cancelled">Cancelled</option>
+                                    </select>
+                                    <p className="mb-0 mt-2 text-[0.8125rem] leading-snug text-slate-500 dark:text-slate-400">
+                                      Promote to Joined here once onboarding work is complete. Pre-boarding queue is managed in{' '}
+                                      <a className="text-primary hover:underline" href="/ats/pre-boarding">
+                                        Pre-boarding
+                                      </a>
+                                      .
+                                    </p>
+                                  </div>
+                                  <div className="flex min-h-0 min-w-0 flex-col gap-0 md:col-span-2">
+                                    <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
+                                      <input
+                                        type="checkbox"
+                                        className="mt-1"
+                                        checked={form.preBoardingStatusComplete}
+                                        onChange={(e) =>
+                                          setForm({ ...form, preBoardingStatusComplete: e.target.checked })
+                                        }
+                                      />
+                                      <span>
+                                        Pre-boarding complete (BGV verified, assets allocated, IT access set up).
+                                        Required before marking Joined unless overriding the gate.
+                                      </span>
+                                    </label>
                                   </div>
                                 </div>
                               </section>

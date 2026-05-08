@@ -9,7 +9,7 @@ interface FilterState {
   experience: [number, number]
   location: string[]
   salary: [number, number]
-  active: string
+  status: string
   postingDate: string
 }
 
@@ -32,6 +32,7 @@ interface JobsFilterPanelProps {
   uniqueJobTitles: string[]
   uniqueCompanies: string[]
   uniqueLocations: string[]
+  uniqueStatuses: string[]
   handleMultiSelectChange: (key: 'jobTitle' | 'company' | 'location', value: string) => void
   handleRemoveFilter: (key: 'jobTitle' | 'company' | 'location', value: string) => void
   handleSalaryRangeChange: (values: number[]) => void
@@ -40,6 +41,9 @@ interface JobsFilterPanelProps {
   salaryRangesConst: { min: number; max: number }
   experienceRangesConst: { min: number; max: number }
 }
+
+// Covers full job lifecycle so dropdown stays useful even before backend has emitted these statuses.
+const FALLBACK_STATUS_OPTIONS = ['Active', 'Closed', 'Draft', 'Archived']
 
 const COMPACT_INPUT_ICON = 'form-control !h-[34px] !py-[5px] !ps-7 !pe-3 !text-[0.8125rem] !rounded-md w-full'
 const COMPACT_SELECT = 'form-select !h-[34px] !py-[5px] !ps-3 !pe-8 !text-[0.8125rem] !rounded-md w-full'
@@ -115,6 +119,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
   uniqueJobTitles,
   uniqueCompanies,
   uniqueLocations,
+  uniqueStatuses,
   handleMultiSelectChange,
   handleRemoveFilter,
   handleSalaryRangeChange,
@@ -204,19 +209,26 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
             </select>
           </div>
 
-          {/* Status */}
+          {/* Status — full lifecycle (Active, Inactive, Draft, Published, Archived, Closed, ...) */}
           <div>
             <label className={SECTION_LABEL}>
               <i className="ri-toggle-line text-secondary me-1" aria-hidden />Status
             </label>
             <select
               className={COMPACT_SELECT}
-              value={filters.active}
-              onChange={(e) => setFilters((prev) => ({ ...prev, active: e.target.value }))}
+              value={filters.status}
+              onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}
             >
               <option value="all">All</option>
-              <option value="true">Active</option>
-              <option value="false">Inactive</option>
+              {(() => {
+                // Merge data-derived statuses with fallback so common lifecycle states always appear.
+                const merged = Array.from(
+                  new Set([...(uniqueStatuses ?? []), ...FALLBACK_STATUS_OPTIONS])
+                ).filter(Boolean).sort()
+                return merged.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))
+              })()}
             </select>
           </div>
 

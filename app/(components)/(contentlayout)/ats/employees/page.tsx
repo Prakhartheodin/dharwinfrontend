@@ -799,7 +799,9 @@ const Candidates = () => {
     if (typeof window !== 'undefined') {
       return `${window.location.origin}/ats/employees/${candidateId}`
     }
-    return `https://example.com/ats/employees/${candidateId}`
+    // B19 fix: SSR-safe fallback uses configured app URL, avoiding the placeholder example.com.
+    const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
+    return `${base}/ats/employees/${candidateId}`
   }
 
   const [exportCandidate, setExportCandidate] = useState<CandidateDisplay | null>(null)

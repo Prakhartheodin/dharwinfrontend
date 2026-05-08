@@ -367,7 +367,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           clearImpersonationReturnPath();
         }
-        router.push(ROUTES.defaultAfterLogin);
+        // Land on the impersonated user's profile so the operator immediately
+        // sees who they're acting as and the data that user actually has.
+        router.push(ROUTES.candidateProfile);
       } finally {
         setLoadingMessage(null);
         setIsLoading(false);

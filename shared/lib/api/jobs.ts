@@ -181,11 +181,28 @@ export interface JobTemplate {
   title: string;
   jobDescription: string;
   visibility?: JobTemplateVisibility;
+  // Optional structured defaults (full prefill). All optional — older templates
+  // saved before this field set was added simply return undefined for these.
+  jobType?: 'Full-time' | 'Part-time' | 'Contract' | 'Temporary' | 'Internship' | 'Freelance' | null;
+  location?: string | null;
+  skillTags?: string[];
+  salaryRange?: { min?: number | null; max?: number | null; currency?: string } | null;
+  experienceLevel?: 'Entry Level' | 'Mid Level' | 'Senior Level' | 'Executive' | null;
+  education?: string | null;
   createdAt?: string;
   updatedAt?: string;
   usageCount?: number;
   lastUsedAt?: string | null;
   createdBy?: { _id?: string; name?: string; email?: string };
+}
+
+export interface JobTemplateUpsertExtras {
+  jobType?: JobTemplate['jobType'];
+  location?: string | null;
+  skillTags?: string[];
+  salaryRange?: JobTemplate['salaryRange'];
+  experienceLevel?: JobTemplate['experienceLevel'];
+  education?: string | null;
 }
 
 export interface JobTemplatesResponse {
@@ -210,14 +227,14 @@ export async function createJobTemplate(payload: {
   title: string;
   jobDescription: string;
   visibility?: JobTemplateVisibility;
-}): Promise<JobTemplate> {
+} & JobTemplateUpsertExtras): Promise<JobTemplate> {
   const { data } = await apiClient.post<JobTemplate>("/jobs/templates", payload);
   return data;
 }
 
 export async function updateJobTemplate(
   id: string,
-  payload: { title?: string; jobDescription?: string; visibility?: JobTemplateVisibility },
+  payload: { title?: string; jobDescription?: string; visibility?: JobTemplateVisibility } & JobTemplateUpsertExtras,
 ): Promise<JobTemplate> {
   const { data } = await apiClient.patch<JobTemplate>(`/jobs/templates/${id}`, payload);
   return data;
@@ -374,6 +391,62 @@ export async function publicApplyToJob(
     }
   );
 
+  return data;
+}
+
+export type BookmarkVisibility = "public" | "private";
+
+export interface JobBookmarkNote {
+  id: string;
+  jobId: string;
+  user: string;
+  note: string;
+  visibility: BookmarkVisibility;
+  createdAt: string;
+}
+
+export async function listJobBookmarks(jobId: string): Promise<JobBookmarkNote[]> {
+  const { data } = await apiClient.get<{ results: JobBookmarkNote[] }>(`/jobs/${jobId}/bookmarks`);
+  return data.results ?? [];
+}
+
+export async function addJobBookmark(
+  jobId: string,
+  payload: { note: string; visibility?: BookmarkVisibility }
+): Promise<JobBookmarkNote> {
+  const { data } = await apiClient.post<JobBookmarkNote>(`/jobs/${jobId}/bookmarks`, payload);
+  return data;
+}
+
+export async function deleteJobBookmark(jobId: string, bookmarkId: string): Promise<void> {
+  await apiClient.delete(`/jobs/${jobId}/bookmarks/${bookmarkId}`);
+}
+
+export interface JobStatsFunnelRow {
+  status: "Applied" | "Screening" | "Interview" | "Offered" | "Hired" | "Rejected";
+  count: number;
+}
+
+export interface JobStatsRecentApplication {
+  id: string;
+  candidateName: string;
+  candidateEmail: string;
+  status: string;
+  appliedAt: string;
+}
+
+export interface JobStatsResponse {
+  jobId: string;
+  jobTitle: string;
+  jobStatus: string;
+  totalApplications: number;
+  funnel: JobStatsFunnelRow[];
+  conversionRate: number;
+  recentApplications: JobStatsRecentApplication[];
+}
+
+export async function getJobStats(jobId: string): Promise<JobStatsResponse> {
+  const { data } = await apiClient.get<JobStatsResponse>(`/jobs/${jobId}/stats`);
   return data;
 }
 

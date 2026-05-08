@@ -33,8 +33,6 @@ function PermissionGuardInner({
   const {
     permissions: userPermissions,
     permissionsLoaded,
-    isAdministrator,
-    isPlatformSuperUser,
     isDesignatedSuperadmin,
   } = useAuth();
 
@@ -45,18 +43,20 @@ function PermissionGuardInner({
     if (!permissionsLoaded) return null;
     if (isPublicLayoutPath(pathname ?? "")) return true;
     const n = (pathname ?? "").replace(/\/$/, "") || "/";
+    // platformSuperUser receives the full union of active-role permissions from the
+    // server (see getMyPermissionsForFrontend), so a plain prefix check is enough.
+    // The Administrator role does NOT auto-bypass here: removing a module permission
+    // from Administrator must take effect immediately on this guard, the sidebar,
+    // and the API. Strict prefix matching keeps the three layers in sync.
     if (n === "/logs/logs-activity") {
       return (
         isDesignatedSuperadmin ||
-        isAdministrator ||
-        isPlatformSuperUser ||
         hasPermissionForPath(userPermissions, "logs.activity:")
       );
     }
     if (isDesignatedSuperadminPath(pathname ?? "")) {
       return isDesignatedSuperadmin;
     }
-    if (isAdministrator || isPlatformSuperUser) return true;
     const required = getRequiredPermissionForPath(pathname ?? "");
     if (required == null) return true;
     return hasPermissionForPath(userPermissions, required);
@@ -64,8 +64,6 @@ function PermissionGuardInner({
     permissionsLoaded,
     pathname,
     userPermissions,
-    isAdministrator,
-    isPlatformSuperUser,
     isDesignatedSuperadmin,
   ]);
 
