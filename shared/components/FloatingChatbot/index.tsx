@@ -4,11 +4,29 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { streamChatMessage, ChatbotRequestError, clearChatConversation, type ChatMessage as ChatMsg, type ChatResponse } from "@/shared/lib/api/chatAssistant";
+import {
+  streamChatMessage,
+  ChatbotRequestError,
+  clearChatConversation,
+  type ChatMessage as ChatMsg,
+  type ChatResponse,
+} from "@/shared/lib/api/chatAssistant";
 import type { Block } from "@/shared/types/chatResponse";
-import { fetchChatbotSettings, isChatbotEnabledForPage, type ChatbotConfig } from "@/shared/lib/api/chatbotSettings";
+import {
+  fetchChatbotSettings,
+  isChatbotEnabledForPage,
+  type ChatbotConfig,
+} from "@/shared/lib/api/chatbotSettings";
 import ChatMessage from "./ChatMessage";
 import { useDraggableFab } from "./useDraggableFab";
+import {
+  AgentOrb,
+  ConsoleStyles,
+  EmptyChatState,
+  IconButton,
+  Kbd,
+  ReasoningIndicator,
+} from "./ui";
 
 interface Message {
   id: string;
@@ -25,58 +43,6 @@ const FAB_MARGIN = 20;
 const SIDEBAR_WIDTH = 420;
 const SIDEBAR_PUSH_BREAKPOINT = 768;
 const SIDEBAR_TRANSITION_MS = 320;
-
-const AGENT_CONSOLE_CSS = `
-@keyframes agent-grid-drift {
-  0% { background-position: 0 0, 0 0; }
-  100% { background-position: 32px 32px, 32px 32px; }
-}
-@keyframes agent-orbit {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-@keyframes agent-pulse-ring {
-  0% { transform: scale(0.55); opacity: 0.85; }
-  100% { transform: scale(1.7); opacity: 0; }
-}
-@keyframes agent-shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(220%); }
-}
-@keyframes agent-dot {
-  0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-3px); }
-}
-@keyframes agent-bar {
-  0%, 100% { transform: scaleX(0.2); opacity: 0.45; }
-  50% { transform: scaleX(1); opacity: 1; }
-}
-@keyframes agent-mesh-drift {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(-4%, 3%, 0) scale(1.08); }
-}
-.agent-grid-bg {
-  background-image:
-    linear-gradient(rgba(132, 90, 223, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(132, 90, 223, 0.06) 1px, transparent 1px);
-  background-size: 32px 32px, 32px 32px;
-  animation: agent-grid-drift 26s linear infinite;
-}
-.dark .agent-grid-bg {
-  background-image:
-    linear-gradient(rgba(165, 138, 240, 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(165, 138, 240, 0.07) 1px, transparent 1px);
-}
-.agent-scrollbar::-webkit-scrollbar { width: 6px; }
-.agent-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.agent-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(132,90,223,0.35), rgba(34,211,238,0.25));
-  border-radius: 999px;
-}
-.agent-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, rgba(132,90,223,0.55), rgba(34,211,238,0.45));
-}
-`;
 
 const SUGGESTED_QUESTIONS = [
   { q: "How many employees do we have?", k: "PEOPLE" },
@@ -174,9 +140,6 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
   const clearHistory = () => {
     setMessages([]);
     try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
-    // Bust server-side ConversationMemory + per-admin context cache so the next
-    // turn doesn't echo a stale summary or count. Best-effort — failures are
-    // swallowed in the API helper; UI clears regardless.
     void clearChatConversation();
   };
 
@@ -260,10 +223,9 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
 
   return (
     <>
-      {/* Scoped agentic-console keyframes + utilities */}
-      <style dangerouslySetInnerHTML={{ __html: AGENT_CONSOLE_CSS }} />
+      <ConsoleStyles />
 
-      {/* Mobile + fullscreen backdrop */}
+      {/* Backdrop */}
       <div
         className={`fixed inset-0 z-[10995] bg-slate-950/50 backdrop-blur-md transition-opacity duration-300 ${
           isFullscreen
@@ -291,7 +253,6 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
         aria-label="Dharwin Agent Console"
         aria-hidden={!isOpen}
       >
-        {/* Ambient backdrop layers */}
         <div className="agent-grid-bg pointer-events-none absolute inset-0 opacity-60 dark:opacity-100" aria-hidden />
         <div
           className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-50"
@@ -313,31 +274,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
           </span>
 
           <div className="flex min-w-0 items-center gap-3">
-            {/* Agent orb */}
-            <div className="relative h-10 w-10 flex-shrink-0">
-              <span
-                aria-hidden
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background:
-                    "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
-                  animation: "agent-orbit 7s linear infinite",
-                  WebkitMask: "radial-gradient(circle, transparent 55%, black 56%)",
-                  mask: "radial-gradient(circle, transparent 55%, black 56%)",
-                }}
-              />
-              {(isPreparing || isStreaming) && (
-                <span
-                  aria-hidden
-                  className="absolute inset-0 rounded-full bg-primary/35"
-                  style={{ animation: "agent-pulse-ring 1.6s ease-out infinite" }}
-                />
-              )}
-              <div className="absolute inset-[3px] flex items-center justify-center rounded-full bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-[12px] font-bold text-white ring-1 ring-white/30">
-                <span className="absolute inset-0 rounded-full bg-gradient-to-br from-white/30 to-transparent" />
-                <span className="relative">D</span>
-              </div>
-            </div>
+            <AgentOrb size="md" pulse={isPreparing || isStreaming} />
 
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
@@ -397,7 +334,12 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
         <div className={`agent-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto ${isFullscreen ? "px-3 sm:px-6 md:px-10 lg:px-16 py-6" : "px-3.5 py-4"}`}>
           <div className={isFullscreen ? "mx-auto w-full max-w-7xl" : ""}>
             {messages.length === 0 && (
-              <EmptyState fullscreen={isFullscreen} onPick={(q) => handleSend(q)} disabled={isLoading} />
+              <EmptyChatState
+                fullscreen={isFullscreen}
+                onPick={(q) => handleSend(q)}
+                disabled={isLoading}
+                suggestions={SUGGESTED_QUESTIONS}
+              />
             )}
 
             {messages.map((msg) =>
@@ -412,7 +354,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
           </div>
         </div>
 
-        {/* Input */}
+        {/* Composer */}
         <div className={`relative z-10 flex-shrink-0 border-t border-slate-200/70 bg-white/80 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/70 ${isFullscreen ? "px-4 sm:px-8 md:px-16 py-4" : "px-3 py-3"}`}>
           <div className={isFullscreen ? "mx-auto max-w-3xl" : ""}>
             <div className="group relative">
@@ -546,160 +488,6 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
     </>
   );
 }
-
-// ---------- Sub-components ----------
-
-function IconButton({
-  children,
-  onClick,
-  label,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="rounded-lg p-1.5 text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary active:bg-primary/15 dark:text-slate-400 dark:hover:bg-primary/20 dark:hover:text-purple-300"
-    >
-      {children}
-    </button>
-  );
-}
-
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded border border-slate-200 bg-white px-1 font-mono text-[9px] font-semibold text-slate-500 shadow-[0_1px_0_rgba(15,23,42,0.06)] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
-      {children}
-    </kbd>
-  );
-}
-
-function ReasoningIndicator() {
-  return (
-    <div className="mb-4 flex justify-start">
-      <div className="mr-2 flex-shrink-0">
-        <div className="relative h-7 w-7">
-          <span
-            aria-hidden
-            className="absolute inset-0 rounded-full"
-            style={{
-              background:
-                "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
-              animation: "agent-orbit 4s linear infinite",
-              WebkitMask: "radial-gradient(circle, transparent 55%, black 56%)",
-              mask: "radial-gradient(circle, transparent 55%, black 56%)",
-            }}
-          />
-          <div className="absolute inset-[2px] flex items-center justify-center rounded-full bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-[10px] font-bold text-white">
-            D
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-col">
-        <span className="mb-1 px-1 font-mono text-[9px] uppercase tracking-[0.22em] text-primary/75">
-          Agent · Thinking
-        </span>
-        <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-200/70 bg-white px-3.5 py-2.5 shadow-[0_3px_14px_-6px_rgba(15,23,42,.08)] dark:border-slate-700/60 dark:bg-slate-800/70">
-          <span className="flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-primary" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "0ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-purple-400" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "180ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" style={{ animation: "agent-dot 1.2s ease-in-out infinite", animationDelay: "360ms" }} />
-          </span>
-          <span className="text-[11.5px] text-slate-500 dark:text-slate-400">Reasoning over your data…</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EmptyState({
-  fullscreen,
-  onPick,
-  disabled,
-}: {
-  fullscreen: boolean;
-  onPick: (q: string) => void;
-  disabled: boolean;
-}) {
-  return (
-    <div className={`flex flex-col items-center justify-center text-center ${fullscreen ? "py-20" : "h-full py-6 px-1"}`}>
-      <div className="relative mb-5">
-        <div
-          aria-hidden
-          className="absolute inset-0 -m-6 rounded-full opacity-70 blur-3xl"
-          style={{
-            background:
-              "radial-gradient(circle, rgba(132,90,223,0.55), rgba(34,211,238,0.18) 55%, transparent 70%)",
-            animation: "agent-mesh-drift 9s ease-in-out infinite",
-          }}
-        />
-        <div className="relative">
-          <span
-            aria-hidden
-            className="absolute inset-0 -m-2 rounded-full"
-            style={{
-              background:
-                "conic-gradient(from 0deg, rgba(132,90,223,0.7), rgba(34,211,238,0.6), rgba(132,90,223,0.7))",
-              animation: "agent-orbit 8s linear infinite",
-              WebkitMask: "radial-gradient(circle, transparent 60%, black 61%)",
-              mask: "radial-gradient(circle, transparent 60%, black 61%)",
-            }}
-          />
-          <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-purple-500 to-cyan-400 text-white shadow-[0_10px_28px_-8px_rgb(132_90_223_/_0.55)] ring-1 ring-white/20">
-            <span className="absolute inset-0 rounded-2xl bg-gradient-to-br from-white/25 to-transparent" />
-            <svg className="relative h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-primary/[0.06] px-2.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.22em] text-primary/85">
-        <span className="h-1 w-1 rounded-full bg-emerald-400" />
-        Agent Ready
-      </span>
-      <p className="mt-1 text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-50">
-        How can I help you today?
-      </p>
-      <p className="mt-1 max-w-sm text-[12px] text-slate-500 dark:text-slate-400">
-        Ask anything about employees, jobs, attendance, leave, projects &amp; more.
-      </p>
-
-      <div className={`mt-5 grid w-full gap-2 ${fullscreen ? "max-w-2xl grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}>
-        {SUGGESTED_QUESTIONS.map(({ q, k }) => (
-          <button
-            key={q}
-            onClick={() => onPick(q)}
-            disabled={disabled}
-            className="group/sug relative flex items-center justify-between gap-2 overflow-hidden rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-left transition-all hover:border-primary/40 hover:shadow-[0_4px_14px_-6px_rgb(132_90_223_/_0.35)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:border-primary/40"
-          >
-            <span aria-hidden className="absolute left-0 top-0 h-full w-[2px] bg-gradient-to-b from-primary to-cyan-400/60 opacity-0 transition-opacity group-hover/sug:opacity-100" />
-            <span className="flex min-w-0 items-center gap-2">
-              <span className="font-mono text-[8.5px] uppercase tracking-[0.2em] text-primary/70">{k}</span>
-              <span className="truncate text-[12.5px] text-slate-700 dark:text-slate-200">{q}</span>
-            </span>
-            <svg
-              className="h-3 w-3 flex-shrink-0 text-slate-300 transition-all group-hover/sug:translate-x-0.5 group-hover/sug:text-primary dark:text-slate-600"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ---------- Top-level wrapper ----------
 
 export default function FloatingChatbot() {
   const { user, permissions, permissionsLoaded } = useAuth();
