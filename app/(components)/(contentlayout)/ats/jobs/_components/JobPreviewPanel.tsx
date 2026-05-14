@@ -7,6 +7,14 @@ import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
 } from '@/shared/lib/ats/jobDescriptionHtml'
+import {
+  displayApplicantEmail,
+  isPublicEmail,
+  isInternalRelayEmail,
+  pickPublicEmail,
+  resolveApplicantEmail,
+  dedupeApplicants,
+} from '@/shared/lib/ats/applicant-email'
 
 const FUNNEL_TONES: Record<string, string> = {
   Applied: 'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-300',
@@ -124,6 +132,14 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   const [jobStats, setJobStats] = useState<JobStatsResponse | null>(null)
   const [jobStatsLoading, setJobStatsLoading] = useState(false)
 
+  // Defense-in-depth dedupe: backend dedupes server-side, but legacy responses or stale caches
+  // can still surface multiple applications by the same applicant. Identity priority is
+  // owner.id → user.id → candidate.id → public email.
+  const uniqueApplications = React.useMemo(
+    () => dedupeApplicants(previewJobApplications as any[]),
+    [previewJobApplications]
+  )
+
   // Reset selections when switching tabs or closing panel
   React.useEffect(() => {
     if (jobPreviewTab !== 'applicants' || !previewJob) {
@@ -170,10 +186,10 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   const getCandidateId = (cand: any): string => cand?._id || cand?.id || ''
 
   const handleSelectAllCandidates = () => {
-    if (selectedCandidates.size === previewJobApplications.length) {
+    if (selectedCandidates.size === uniqueApplications.length) {
       setSelectedCandidates(new Set())
     } else {
-      const allIds = previewJobApplications.map(app => getCandidateId(app.candidate)).filter(Boolean)
+      const allIds = uniqueApplications.map(app => getCandidateId(app.candidate)).filter(Boolean)
       setSelectedCandidates(new Set(allIds))
     }
   }
@@ -193,7 +209,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
       return false
     }
 
-    const candidatesToCall = previewJobApplications.filter(app => {
+    const candidatesToCall = uniqueApplications.filter(app => {
       const cand = app.candidate as any
       const cId = getCandidateId(cand)
       return cId && selectedCandidates.has(cId) && cand?.phoneNumber && !isPlaceholder(cand.phoneNumber)
@@ -217,7 +233,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
           await initiateCandidateVerificationCall({
             candidateId: cId,
             candidateName: cand.fullName || 'Applicant',
-            email: cand.email || '',
+            email: pickPublicEmail([cand.email]) ?? '',
             phoneNumber: cand.phoneNumber || '',
             countryCode: cand.countryCode || '',
             jobId: previewJob.id,
@@ -323,7 +339,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                           <i className={tab.icon}></i>
                           {tab.label}
                           {tab.id === 'applicants' && (
-                            <span className="badge bg-primary/10 text-primary !rounded-full text-[0.65rem] px-1.5">{previewJobApplications.length}</span>
+                            <span className="badge bg-primary/10 text-primary !rounded-full text-[0.65rem] px-1.5">{uniqueApplications.length}</span>
                           )}
                         </button>
                       ))}
@@ -387,7 +403,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                               {jobStats.recentApplications.slice(0, 5).map((app) => (
                                 <li key={app.id} className="flex items-center justify-between gap-2">
                                   <span className="truncate text-gray-700 dark:text-gray-300">
-                                    {app.candidateName || app.candidateEmail || '—'}
+                                    {app.candidateName || (isPublicEmail(app.candidateEmail) ? app.candidateEmail : '—')}
                                   </span>
                                   <span className="flex items-center gap-2 flex-shrink-0">
                                     <span className={`rounded px-1.5 py-0.5 text-[0.65rem] ${FUNNEL_TONES[app.status] || 'bg-gray-200 text-gray-700'}`}>
@@ -436,6 +452,15 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Salary</div>
                       <div className="font-semibold text-gray-800 dark:text-white">{previewJob.salary}</div>
                     </div>
+                    {previewJob.vacancies != null && previewJob.vacancies > 0 && (
+                      <div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Vacancies</div>
+                        <div className="font-semibold text-gray-800 dark:text-white">
+                          <i className="ri-team-line me-1 text-primary"></i>
+                          {previewJob.vacancies}
+                        </div>
+                      </div>
+                    )}
                     {(previewJob.postedBy || previewJob.postedByEmail) && (
                       <div className="col-span-2 md:col-span-1">
                         <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Posted By</div>
@@ -472,35 +497,59 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                     })()}
                   </div>
 
-                  {/* Company Information */}
-                  {previewJob.companyInfo && (
-                    <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
-                      <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
-                        <i className="ri-building-line text-primary"></i>
-                        Company Information
-                      </h6>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Industry</div>
-                          <div className="font-medium text-gray-800 dark:text-white">{previewJob.companyInfo.industry}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Company Size</div>
-                          <div className="font-medium text-gray-800 dark:text-white">{previewJob.companyInfo.size} employees</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Founded</div>
-                          <div className="font-medium text-gray-800 dark:text-white">{previewJob.companyInfo.founded}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Website</div>
-                          <a href={`https://${previewJob.companyInfo.website}`} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
-                            {previewJob.companyInfo.website}
-                          </a>
+                  {/* Company Information — sourced from job.organisation
+                      via the create/edit forms. `companySize` is the canonical
+                      backend field; we still read `size` as a legacy fallback
+                      for any pre-migration documents. */}
+                  {previewJob.companyInfo && (() => {
+                    const ci: Record<string, unknown> = previewJob.companyInfo as Record<string, unknown>
+                    const industry = (ci.industry as string) || ''
+                    const founded = ci.founded != null ? String(ci.founded) : ''
+                    const size = (ci.companySize as string) || (ci.size as string) || ''
+                    const website = (ci.website as string) || ''
+                    if (!industry && !founded && !size && !website) return null
+                    return (
+                      <div className="p-4 border border-gray-200 dark:border-defaultborder/10 rounded-lg">
+                        <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
+                          <i className="ri-building-line text-primary"></i>
+                          Company Information
+                        </h6>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          {industry && (
+                            <div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Industry</div>
+                              <div className="font-medium text-gray-800 dark:text-white">{industry}</div>
+                            </div>
+                          )}
+                          {size && (
+                            <div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Company Size</div>
+                              <div className="font-medium text-gray-800 dark:text-white">{size} employees</div>
+                            </div>
+                          )}
+                          {founded && (
+                            <div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Founded</div>
+                              <div className="font-medium text-gray-800 dark:text-white">{founded}</div>
+                            </div>
+                          )}
+                          {website && (
+                            <div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Website</div>
+                              <a
+                                href={/^https?:\/\//i.test(website) ? website : `https://${website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-primary hover:underline"
+                              >
+                                {website}
+                              </a>
+                            </div>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  )}
+                    )
+                  })()}
 
                   {/* Job Description */}
                   {previewJob.description && (
@@ -541,7 +590,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                   <div className="pt-2">
                     <h6 className="font-semibold text-gray-800 dark:text-white mb-3 flex items-center gap-2">
                       <i className="ri-user-add-line text-primary"></i>
-                      Applied ({previewJobApplications.length})
+                      Applied ({uniqueApplications.length})
                       {selectedCandidates.size > 0 && (
                         <span className="text-sm font-normal text-gray-500">
                           ({selectedCandidates.size} selected)
@@ -552,7 +601,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                       <div className="py-1">
                         <ApplicantsLoadingState />
                       </div>
-                    ) : previewJobApplications.length === 0 ? (
+                    ) : uniqueApplications.length === 0 ? (
                       <p className="text-sm text-gray-500 dark:text-gray-400 py-2">No applicants yet.</p>
                     ) : (
                       <div className="table-responsive max-h-[14rem] overflow-y-auto rounded-lg border border-gray-200 dark:border-defaultborder/10">
@@ -563,21 +612,22 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                 <input
                                   type="checkbox"
                                   className="form-check-input"
-                                  checked={selectedCandidates.size === previewJobApplications.length && previewJobApplications.length > 0}
+                                  checked={selectedCandidates.size === uniqueApplications.length && uniqueApplications.length > 0}
                                   onChange={handleSelectAllCandidates}
                                 />
                               </th>
-                              <th className="!py-2 !px-3">Candidate</th>
+                              <th className="!py-2 !px-3">Applicant</th>
                               <th className="!py-2 !px-3">Email</th>
                               <th className="!py-2 !px-3 w-28">Status</th>
                               <th className="!py-2 !px-3 text-center min-w-[12rem]">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {previewJobApplications.map((app) => {
+                            {uniqueApplications.map((app) => {
                               const cand = app.candidate as any
                               const appId = app._id ?? app.id
                               const candidateId = getCandidateId(cand)
+                              const isSynthetic = isInternalRelayEmail(cand?.email)
                               return (
                                 <tr key={appId} className={selectedCandidates.has(candidateId) ? 'bg-primary/5' : ''}>
                                   <td className="!py-2 !px-3">
@@ -586,17 +636,23 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                       className="form-check-input"
                                       checked={selectedCandidates.has(candidateId)}
                                       onChange={() => handleSelectCandidate(candidateId)}
-                                      disabled={!cand?.phoneNumber}
-                                      title={!cand?.phoneNumber ? 'No phone number available' : ''}
+                                      disabled={!cand?.phoneNumber || isSynthetic}
+                                      title={isSynthetic ? 'Internal offer-letter placeholder — not a real applicant' : (!cand?.phoneNumber ? 'No phone number available' : '')}
                                     />
                                   </td>
                                   <td className="font-medium !py-2 !px-3">
-                                    {cand?.fullName ?? '—'}
-                                    {!cand?.phoneNumber && (
+                                    {isSynthetic
+                                      ? (cand?.fullName ? `${cand.fullName} (Internal Applicant)` : 'Internal Applicant')
+                                      : (cand?.fullName || (app as any)?.applicantUser?.name || 'Unknown Applicant')}
+                                    {!cand?.phoneNumber && !isSynthetic && (
                                       <i className="ri-phone-line text-gray-400 ml-1" title="No phone number"></i>
                                     )}
                                   </td>
-                                  <td className="!py-2 !px-3">{cand?.email ?? '—'}</td>
+                                  <td className="!py-2 !px-3">
+                                    {isSynthetic
+                                      ? <span className="text-gray-400 italic">Internal placeholder</span>
+                                      : resolveApplicantEmail({ candidate: cand, application: app as any, applicantUser: (app as any)?.applicantUser })}
+                                  </td>
                                   <td className="!py-2 !px-3">
                                     <select
                                       className="form-select form-select-sm !py-1 !text-[0.75rem] w-full min-w-0 max-w-[7rem]"
@@ -615,7 +671,14 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
                                   <td className="!py-2 !px-3 text-center overflow-visible">
                                     <div className="flex flex-wrap items-center justify-center gap-1.5">
                                       <Link
-                                        href={`/ats/interviews?jobId=${previewJob.id}&candidateId=${candidateId}`}
+                                        href={(() => {
+                                          const params = new URLSearchParams()
+                                          params.set('openSchedule', '1')
+                                          if (appId) params.set('applicationId', String(appId))
+                                          if (candidateId) params.set('candidateId', String(candidateId))
+                                          if (previewJob.id) params.set('jobId', String(previewJob.id))
+                                          return `/ats/interviews?${params.toString()}`
+                                        })()}
                                         className="ti-btn ti-btn-sm ti-btn-primary inline-flex items-center justify-center !py-1 !px-2.5 !text-[0.75rem] whitespace-nowrap min-w-[8.5rem] overflow-visible"
                                       >
                                         Schedule Interview

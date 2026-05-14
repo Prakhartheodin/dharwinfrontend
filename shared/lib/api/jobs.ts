@@ -3,6 +3,25 @@
 import axios from "axios";
 import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 
+export type CompanySizeBucket =
+  | '1-10'
+  | '11-50'
+  | '51-200'
+  | '201-500'
+  | '501-1000'
+  | '1001-5000'
+  | '5000+';
+
+export const COMPANY_SIZE_BUCKETS: readonly CompanySizeBucket[] = [
+  '1-10',
+  '11-50',
+  '51-200',
+  '201-500',
+  '501-1000',
+  '1001-5000',
+  '5000+',
+];
+
 export interface JobOrganisation {
   name: string;
   website?: string;
@@ -10,6 +29,10 @@ export interface JobOrganisation {
   phone?: string;
   address?: string;
   description?: string;
+  /** Company-information fields surfaced in the job details panel. */
+  industry?: string;
+  founded?: number | null;
+  companySize?: CompanySizeBucket | string;
 }
 
 export interface JobSalaryRange {
@@ -29,6 +52,11 @@ export interface Job {
   skillTags?: string[];
   salaryRange?: JobSalaryRange;
   experienceLevel?: string | null;
+  /** Numeric experience-years range (SSoT for the listing/details Experience string). */
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  /** Number of openings for this posting. */
+  vacancies?: number | null;
   status: string;
   /** internal = ATS-created; external = mirrored from saved external listing */
   jobOrigin?: "internal" | "external";
@@ -88,6 +116,9 @@ export interface CreateJobPayload {
   skillTags?: string[];
   salaryRange?: JobSalaryRange;
   experienceLevel?: string | null;
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  vacancies?: number | null;
   status?: string;
 }
 
@@ -105,6 +136,9 @@ export interface UpdateJobPayload {
   skillTags?: string[];
   salaryRange?: JobSalaryRange;
   experienceLevel?: string | null;
+  minExperience?: number | null;
+  maxExperience?: number | null;
+  vacancies?: number | null;
   status?: string;
 }
 

@@ -634,6 +634,21 @@ const Jobs = () => {
         accessor: 'experience',
       },
       {
+        Header: 'Vacancies',
+        accessor: 'vacancies',
+        Cell: ({ value }: { value?: number | null }) => {
+          if (value == null || value <= 0) {
+            return <span className="text-gray-400 dark:text-gray-500">—</span>
+          }
+          return (
+            <span className="inline-flex items-center gap-1 text-gray-800 dark:text-white">
+              <i className="ri-team-line text-primary"></i>
+              <span className="font-medium">{value}</span>
+            </span>
+          )
+        },
+      },
+      {
         Header: 'Posted Date',
         accessor: 'postingDate',
         id: 'postingDate',
@@ -814,7 +829,7 @@ const Jobs = () => {
   const filteredData = useMemo(() => {
     return jobsData.filter((job) => {
       // Job Title filter (array)
-      if (filters.jobTitle.length > 0 && !filters.jobTitle.some(title => 
+      if (filters.jobTitle.length > 0 && !filters.jobTitle.some(title =>
         job.jobTitle.toLowerCase().includes(title.toLowerCase())
       )) {
         return false
@@ -825,32 +840,67 @@ const Jobs = () => {
         return false
       }
       
-      // Experience filter (range)
-      if (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max) {
-        const match = job.experience.match(/(\d+)-(\d+)/)
-        if (match) {
-          const jobMin = parseInt(match[1])
-          const jobMax = parseInt(match[2])
-          // Check if job experience range overlaps with filter range
-          if (jobMax < filters.experience[0] || jobMin > filters.experience[1]) {
+      // Experience filter (range) — overlap test against numeric job range.
+      // Falls back to parsing the formatted string if the numeric range is
+      // missing (legacy rows). Jobs with no detectable experience are kept
+      // (treated as "unspecified", no exclusion).
+      const expMinActive = filters.experience[0] !== experienceRangesConst.min
+      const expMaxActive = filters.experience[1] !== experienceRangesConst.max
+      if (expMinActive || expMaxActive) {
+        let jobMin: number | null = job.minExperienceNum ?? null
+        let jobMax: number | null = job.maxExperienceNum ?? null
+        if (jobMin == null && jobMax == null && job.experience) {
+          const range = job.experience.match(/(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/)
+          const plus = job.experience.match(/(\d+(?:\.\d+)?)\s*\+/)
+          const upTo = job.experience.match(/Up to\s+(\d+(?:\.\d+)?)/i)
+          if (range) {
+            jobMin = parseFloat(range[1])
+            jobMax = parseFloat(range[2])
+          } else if (plus) {
+            jobMin = parseFloat(plus[1])
+            jobMax = experienceRangesConst.max
+          } else if (upTo) {
+            jobMin = 0
+            jobMax = parseFloat(upTo[1])
+          }
+        }
+        if (jobMin != null || jobMax != null) {
+          const lo = jobMin ?? 0
+          const hi = jobMax ?? experienceRangesConst.max
+          if (hi < filters.experience[0] || lo > filters.experience[1]) {
             return false
           }
         }
       }
-      
+
       // Location filter (array)
       if (filters.location.length > 0 && !filters.location.includes(job.location)) {
         return false
       }
-      
-      // Salary filter (range)
-      if (filters.salary[0] !== salaryRangesConst.min || filters.salary[1] !== salaryRangesConst.max) {
-        const match = job.salary.match(/\$([\d,]+)/g)
-        if (match && match.length >= 2) {
-          const jobMin = parseInt(match[0].replace(/[$,]/g, ''))
-          const jobMax = parseInt(match[1].replace(/[$,]/g, ''))
-          // Check if job salary range overlaps with filter range
-          if (jobMax < filters.salary[0] || jobMin > filters.salary[1]) {
+
+      // Salary filter (range) — overlap test against numeric job range.
+      const salMinActive = filters.salary[0] !== salaryRangesConst.min
+      const salMaxActive = filters.salary[1] !== salaryRangesConst.max
+      if (salMinActive || salMaxActive) {
+        let jobMin: number | null = job.salaryMinNum ?? null
+        let jobMax: number | null = job.salaryMaxNum ?? null
+        if (jobMin == null && jobMax == null && job.salary) {
+          const matches = job.salary.match(/[\d,]+(?:\.\d+)?/g)
+          if (matches && matches.length >= 1) {
+            const nums = matches.map((m) => Number(m.replace(/,/g, ''))).filter((n) => Number.isFinite(n))
+            if (nums.length >= 2) {
+              jobMin = nums[0]
+              jobMax = nums[1]
+            } else if (nums.length === 1) {
+              jobMin = nums[0]
+              jobMax = nums[0]
+            }
+          }
+        }
+        if (jobMin != null || jobMax != null) {
+          const lo = jobMin ?? 0
+          const hi = jobMax ?? Number.MAX_SAFE_INTEGER
+          if (hi < filters.salary[0] || lo > filters.salary[1]) {
             return false
           }
         }
@@ -1143,6 +1193,21 @@ const Jobs = () => {
                 </span>
               </div>
               <div className="flex flex-wrap gap-2 items-center">
+                {/* Search — opens right-side filter drawer */}
+                <button
+                  type="button"
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  aria-expanded={jobsFilterPanelOpen}
+                  aria-controls="jobs-filter-panel"
+                  onClick={() => setJobsFilterPanelOpen((v) => !v)}
+                >
+                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
+                  {hasActiveFilters && (
+                    <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
                 <select
                   className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
@@ -1248,20 +1313,6 @@ const Jobs = () => {
                     </li>
                   </ul>
                 </div>
-                <button
-                  type="button"
-                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
-                  aria-expanded={jobsFilterPanelOpen}
-                  onClick={() => setJobsFilterPanelOpen((v) => !v)}
-                >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
-                  {hasActiveFilters && (
-                    <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-              
                 {canDelete && (
                   <button
                     type="button"
@@ -1677,27 +1728,45 @@ const Jobs = () => {
                       <i className="ri-building-line text-primary text-2xl"></i>
                       {companyModal.company}
                     </h6>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Industry</div>
-                        <div className="font-semibold text-gray-800 dark:text-white">{companyModal.companyInfo.industry}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Company Size</div>
-                        <div className="font-semibold text-gray-800 dark:text-white">{companyModal.companyInfo.size} employees</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Founded</div>
-                        <div className="font-semibold text-gray-800 dark:text-white">{companyModal.companyInfo.founded}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Website</div>
-                        <a href={`https://${companyModal.companyInfo.website}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-primary hover:underline flex items-center gap-1">
-                          {companyModal.companyInfo.website}
-                          <i className="ri-external-link-line text-sm"></i>
-                        </a>
-                      </div>
-                    </div>
+                    {(() => {
+                      const ci: Record<string, unknown> = companyModal.companyInfo as Record<string, unknown>
+                      const industry = (ci.industry as string) || ''
+                      const size = (ci.companySize as string) || (ci.size as string) || ''
+                      const founded = ci.founded != null ? String(ci.founded) : ''
+                      const website = (ci.website as string) || ''
+                      return (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                          <div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Industry</div>
+                            <div className="font-semibold text-gray-800 dark:text-white">{industry || '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Company Size</div>
+                            <div className="font-semibold text-gray-800 dark:text-white">{size ? `${size} employees` : '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Founded</div>
+                            <div className="font-semibold text-gray-800 dark:text-white">{founded || '—'}</div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Website</div>
+                            {website ? (
+                              <a
+                                href={/^https?:\/\//i.test(website) ? website : `https://${website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-semibold text-primary hover:underline flex items-center gap-1"
+                              >
+                                {website}
+                                <i className="ri-external-link-line text-sm"></i>
+                              </a>
+                            ) : (
+                              <div className="font-semibold text-gray-800 dark:text-white">—</div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
 
                   {/* Company Description */}

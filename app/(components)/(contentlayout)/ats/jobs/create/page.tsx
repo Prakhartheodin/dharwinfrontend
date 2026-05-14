@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Swal from 'sweetalert2'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
-import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, type CreateJobPayload } from '@/shared/lib/api/jobs'
+import { createJob, createJobTemplate, getJobTemplate, listJobTemplates, COMPANY_SIZE_BUCKETS, type CreateJobPayload } from '@/shared/lib/api/jobs'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
@@ -34,6 +34,9 @@ const CreateJob = () => {
     organisationCountryCode: 'IN',
     organisationPhone: '',
     organisationAddress: '',
+    organisationIndustry: '',
+    organisationFounded: '',
+    organisationCompanySize: '',
     salaryMin: '',
     salaryMax: '',
     salaryCurrency: 'USD',
@@ -44,6 +47,7 @@ const CreateJob = () => {
     skills: [] as { value: string; label: string }[],
     minExperience: '',
     maxExperience: '',
+    vacancies: '1',
     education: '',
   })
 
@@ -261,20 +265,34 @@ const CreateJob = () => {
         return
       }
     }
+    // Founded year sanity check (only if provided)
+    const foundedRaw = (formData.organisationFounded || '').trim()
+    const foundedNum = foundedRaw ? Number(foundedRaw) : undefined
+    if (foundedRaw && (!Number.isInteger(foundedNum) || foundedNum! < 1800 || foundedNum! > new Date().getFullYear())) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: `Founded must be a year between 1800 and ${new Date().getFullYear()}.` })
+      return
+    }
     setSubmitting(true)
     try {
+      // Append only Education + free-form Requirements rich text to the
+      // description. Experience is NOT inlined any more — it lives on the
+      // job document as `minExperience`/`maxExperience` and is rendered
+      // via the shared `formatExperience` SSoT in the listing + details.
       let finalDescription = jobDescription.trim()
       const reqParts: string[] = []
       if (formData.education?.trim()) reqParts.push(`<p><strong>Education:</strong> ${formData.education.trim()}</p>`)
-      if (formData.minExperience || formData.maxExperience) {
-        const min = formData.minExperience ? `${formData.minExperience}` : ''
-        const max = formData.maxExperience ? `${formData.maxExperience}` : ''
-        const range = min && max ? `${min}-${max} years` : min ? `${min}+ years` : `Up to ${max} years`
-        reqParts.push(`<p><strong>Experience:</strong> ${range}</p>`)
-      }
       if (requirements?.trim()) reqParts.push(requirements.trim())
       if (reqParts.length > 0) {
         finalDescription += '\n\n<h3>Requirements & Qualifications</h3>\n' + reqParts.join('\n')
+      }
+
+      const minExpNum = formData.minExperience ? Number(formData.minExperience) : undefined
+      const maxExpNum = formData.maxExperience ? Number(formData.maxExperience) : undefined
+      const vacanciesNum = formData.vacancies ? Number(formData.vacancies) : undefined
+      if (vacanciesNum != null && (!Number.isInteger(vacanciesNum) || vacanciesNum < 1)) {
+        Swal.fire({ icon: 'error', title: 'Validation', text: 'Vacancies must be a whole number ≥ 1.' })
+        setSubmitting(false)
+        return
       }
 
       const payload: CreateJobPayload = {
@@ -285,6 +303,9 @@ const CreateJob = () => {
           email: formData.organisationEmail?.trim() || undefined,
           phone: orgPhoneDigits ? formatPhoneForApi(orgPhoneDigits, formData.organisationCountryCode) : undefined,
           address: formData.organisationAddress?.trim() || undefined,
+          industry: formData.organisationIndustry?.trim() || undefined,
+          founded: foundedNum ?? undefined,
+          companySize: formData.organisationCompanySize || undefined,
         },
         jobDescription: finalDescription,
         jobType: formData.jobType.value,
@@ -296,13 +317,17 @@ const CreateJob = () => {
           currency: formData.salaryCurrency || 'USD',
         },
         experienceLevel: formData.experienceLevel?.value || undefined,
+        ...(Number.isFinite(minExpNum) ? { minExperience: minExpNum } : {}),
+        ...(Number.isFinite(maxExpNum) ? { maxExperience: maxExpNum } : {}),
+        ...(Number.isFinite(vacanciesNum) ? { vacancies: vacanciesNum } : {}),
         status: formData.status?.value || 'Active',
       }
       await createJob(payload)
       await Swal.fire({ icon: 'success', title: 'Job Created', text: 'The job has been created successfully.' })
       router.push('/ats/jobs')
     } catch (err: any) {
-      Swal.fire({ icon: 'error', title: 'Error', text: err?.response?.data?.message || err?.message || 'Failed to create job.' })
+      const message = err?.response?.data?.message || err?.message || 'Failed to create job.'
+      Swal.fire({ icon: 'error', title: 'Error', text: message })
     } finally {
       setSubmitting(false)
     }
@@ -475,6 +500,49 @@ const CreateJob = () => {
                         />
                       </div>
 
+                      {/* Company Information — surfaced in job details panel */}
+                      <div className="xl:col-span-4 col-span-12">
+                        <label htmlFor="org-industry" className="form-label">Industry</label>
+                        <input
+                          type="text"
+                          className="form-control"
+                          id="org-industry"
+                          placeholder="e.g., Software, FinTech, Healthcare"
+                          value={formData.organisationIndustry}
+                          onChange={(e) => handleInputChange('organisationIndustry', e.target.value)}
+                          maxLength={120}
+                        />
+                      </div>
+                      <div className="xl:col-span-4 col-span-12">
+                        <label htmlFor="org-founded" className="form-label">Founded</label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          className="form-control"
+                          id="org-founded"
+                          placeholder="e.g., 2014"
+                          min={1800}
+                          max={new Date().getFullYear()}
+                          step={1}
+                          value={formData.organisationFounded}
+                          onChange={(e) => handleInputChange('organisationFounded', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        />
+                      </div>
+                      <div className="xl:col-span-4 col-span-12">
+                        <label htmlFor="org-company-size" className="form-label">Company Size</label>
+                        <select
+                          id="org-company-size"
+                          className="form-control"
+                          value={formData.organisationCompanySize}
+                          onChange={(e) => handleInputChange('organisationCompanySize', e.target.value)}
+                        >
+                          <option value="">Select size</option>
+                          {COMPANY_SIZE_BUCKETS.map((b) => (
+                            <option key={b} value={b}>{b} employees</option>
+                          ))}
+                        </select>
+                      </div>
+
                       {/* Job Description — stacked: label, controls row, then editor */}
                       <div className="xl:col-span-12 col-span-12">
                         <label className="form-label mb-1 block">
@@ -615,6 +683,28 @@ const CreateJob = () => {
                           onChange={(selected: any) => handleInputChange('jobType', selected)}
                           menuPlacement="auto"
                         />
+                      </div>
+
+                      {/* Vacancies / Number of Openings */}
+                      <div className="xl:col-span-4 col-span-12">
+                        <label htmlFor="vacancies" className="form-label">
+                          Vacancies / Number of Openings
+                        </label>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          className="form-control"
+                          id="vacancies"
+                          placeholder="e.g., 5"
+                          min={1}
+                          max={10000}
+                          step={1}
+                          value={formData.vacancies}
+                          onChange={(e) =>
+                            handleInputChange('vacancies', e.target.value.replace(/\D/g, ''))
+                          }
+                        />
+                        <p className="text-muted text-xs mt-1">Whole number, minimum 1.</p>
                       </div>
 
                       {/* Skills */}
