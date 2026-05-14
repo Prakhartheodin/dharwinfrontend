@@ -472,17 +472,19 @@ export default function PublicJobDetailsPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Phone Number <span className="text-red-500">*</span>
                   </label>
-                  <div className="flex gap-2">
-                    <PhoneCountrySelect
-                      value={countryCode}
-                      onChange={setCountryCode}
-                      className="w-40"
-                    />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                    <div className="w-full shrink-0 sm:w-44">
+                      <PhoneCountrySelect
+                        value={countryCode}
+                        onChange={setCountryCode}
+                        className="w-full"
+                      />
+                    </div>
                     <input
                       type="tel"
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
-                      className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
+                      className="min-w-0 flex-1 w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                       placeholder="Enter phone number"
                       inputMode="numeric"
                       required

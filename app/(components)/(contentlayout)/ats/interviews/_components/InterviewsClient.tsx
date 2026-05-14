@@ -1,6 +1,7 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
@@ -9,8 +10,10 @@ import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
 import { listRecruiters } from '@/shared/lib/api/users'
+import { getJobApplicationById, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
-import CreateInterviewModal from './CreateInterviewModal'
+import { isPublicEmail, pickPublicEmail } from '@/shared/lib/ats/applicant-email'
+import CreateInterviewModal, { type SchedulePrefill } from './CreateInterviewModal'
 import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
 
@@ -142,7 +145,14 @@ interface FilterState {
 
 export default function InterviewsClient() {
   const { user: authUser, permissionsLoaded } = useAuth()
+  const router = useRouter()
   const scheduleDropdownsLoadId = useRef(0)
+  /** Tracks the in-flight loadScheduleDropdowns promise so concurrent callers (mount effect + prefill effect,
+   *  and StrictMode dev double-mounts) share one network round-trip instead of double-fetching jobs/leads/recruiters. */
+  const scheduleDropdownsInflightRef = useRef<Promise<unknown> | null>(null)
+  /** Tracks the in-flight getJobApplicationById call keyed by id so StrictMode double-mount in dev doesn't
+   *  fire two identical application fetches. The map clears when each fetch settles. */
+  const applicationFetchInflightRef = useRef<Map<string, Promise<unknown>>>(new Map())
 
   const defaultScheduleHosts = useMemo(() => {
     const email = authUser?.email?.trim()
@@ -177,6 +187,18 @@ export default function InterviewsClient() {
   const [formError, setFormError] = useState<string | null>(null)
   /** Combined local date+time for Schedule Interview (react-datepicker). */
   const [scheduledInterviewAt, setScheduledInterviewAt] = useState<Date | null>(null)
+  /** Context-aware prefill from the ATS Applications row action; consumed once by the modal. */
+  const [schedulePrefill, setSchedulePrefill] = useState<SchedulePrefill | null>(null)
+  /** ATS candidates injected via prefill (ATS employees absent from referral-leads dropdown); kept
+   * separate from `candidates` so that `loadScheduleDropdowns` resets don't wipe them out. */
+  const [extraScheduleCandidates, setExtraScheduleCandidates] = useState<CandidateListItem[]>([])
+  /** Visible debug status for the prefill flow — shown as a banner so users without DevTools can see what's happening. */
+  const [prefillDebug, setPrefillDebug] = useState<string[]>([])
+  const addPrefillDebug = useCallback((line: string) => {
+    setPrefillDebug((prev) => [...prev, `${new Date().toLocaleTimeString()} ${line}`])
+    // eslint-disable-next-line no-console
+    console.log('[Schedule prefill]', line)
+  }, [])
 
   // Dynamic dropdown data for Schedule Interview modal
   const [jobs, setJobs] = useState<Job[]>([])
@@ -312,11 +334,13 @@ export default function InterviewsClient() {
     [ensurePrelineLoaded, refreshPrelineDom]
   )
 
-  /** Shared by initial mount and "Schedule Interview" so the candidate list is fresh and auth/permissions are ready. */
+  /** Shared by initial mount and "Schedule Interview" so the candidate list is fresh and auth/permissions are ready.
+   *  Concurrent callers (mount effect + prefill effect) share the in-flight promise to avoid duplicate API hits. */
   const loadScheduleDropdowns = useCallback(() => {
+    if (scheduleDropdownsInflightRef.current) return scheduleDropdownsInflightRef.current
     const id = ++scheduleDropdownsLoadId.current
     setDropdownsLoading(true)
-    return Promise.allSettled([
+    const p = Promise.allSettled([
       listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
       fetchReferralLeadsForSchedule(),
       listRecruiters({ limit: 100 }).then((r) => r.results),
@@ -338,13 +362,19 @@ export default function InterviewsClient() {
       })
       .finally(() => {
         if (scheduleDropdownsLoadId.current === id) setDropdownsLoading(false)
+        scheduleDropdownsInflightRef.current = null
       })
+    scheduleDropdownsInflightRef.current = p
+    return p
   }, [])
 
   const openScheduleInterviewModal = useCallback(() => {
     void loadScheduleDropdowns()
     openHsOverlay('#create-interview-modal')
   }, [loadScheduleDropdowns, openHsOverlay])
+
+  /** Stable callback so the modal's prefill useEffect doesn't re-run on every parent render. */
+  const handlePrefillConsumed = useCallback(() => setSchedulePrefill(null), [])
 
   // Re-init Preline so toolbar overlays/dropdowns work (same issue as ATS Offers placement / Jobs listings).
   useEffect(() => {
@@ -476,7 +506,7 @@ export default function InterviewsClient() {
       durationMinutes,
       jobPosition: jobPosition || undefined,
       interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
-      candidate: candidate ? { id: candidate.id ?? candidate._id, name: candidate.fullName ?? '', email: candidate.email ?? '' } : editMeeting.candidate,
+      candidate: candidate ? { id: candidate.id ?? candidate._id, name: candidate.fullName ?? '', email: pickPublicEmail([candidate.email]) ?? '' } : editMeeting.candidate,
       recruiter: recruiter ? { id: recruiter.id, name: recruiter.name ?? '', email: recruiter.email ?? '' } : editMeeting.recruiter,
       notes: notes || undefined,
       status,
@@ -568,6 +598,168 @@ export default function InterviewsClient() {
     void loadScheduleDropdowns()
   }, [permissionsLoaded, loadScheduleDropdowns])
 
+  // Consume context params from /ats/applications row action. Reads window.location.search directly
+  // (more reliable than useSearchParams across SSR/hydration boundaries), opens the modal immediately,
+  // then loads application data + injects candidate option + sets prefill asynchronously.
+  // NOTE: no ref-based early-return — React StrictMode in dev mounts→unmounts→remounts effects,
+  // and a ref guard would let mount 1 start work, cleanup cancel it, then mount 2 bail out, leaving
+  // the modal in "dropdowns loaded; cancelled=true" purgatory. Instead we rely on the per-mount
+  // `cancelled` flag for stale-write protection and the final URL strip to gate re-fires.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const qs = new URLSearchParams(window.location.search)
+    const openFlag = qs.get('openSchedule')
+    addPrefillDebug(`mount: openFlag=${openFlag} search=${window.location.search}`)
+    if (openFlag !== '1') return
+    const applicationId = qs.get('applicationId') ?? ''
+    const urlCandidateId = qs.get('candidateId') ?? ''
+    const urlJobId = qs.get('jobId') ?? ''
+    addPrefillDebug(`consuming params: applicationId=${applicationId} candidateId=${urlCandidateId} jobId=${urlJobId}`)
+    let cancelled = false
+
+    const stripParams = () => {
+      try { router.replace('/ats/interviews', { scroll: false }) } catch { /* ignore */ }
+    }
+
+    // Robust open: poll for window.HSOverlay (Preline) up to ~6s, then attempt open via the static
+    // open() API and a click on a temporary trigger button as a belt-and-suspenders fallback.
+    const openTimers: ReturnType<typeof setTimeout>[] = []
+    const robustOpenModal = (label: string) => {
+      let attempts = 0
+      const tick = () => {
+        if (cancelled) return
+        const modal = document.querySelector('#create-interview-modal') as HTMLElement | null
+        if (!modal) {
+          if (attempts++ < 60) {
+            const t = setTimeout(tick, 100); openTimers.push(t); return
+          }
+          console.warn('[Schedule prefill] modal element never appeared', label)
+          return
+        }
+        // Already open? (Preline removes `hidden` on open.)
+        if (!modal.classList.contains('hidden')) return
+        const HSO = (window as any).HSOverlay
+        if (HSO && typeof HSO.open === 'function') {
+          try { (window as any).HSStaticMethods?.autoInit?.() } catch { /* ignore */ }
+          try { HSO.open(modal); return } catch (e) { console.warn('[Schedule prefill] HSOverlay.open threw', e) }
+        }
+        // Fallback: synthesise a click on a button bound via data-hs-overlay (Preline standard trigger).
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.setAttribute('data-hs-overlay', '#create-interview-modal')
+        btn.style.display = 'none'
+        document.body.appendChild(btn)
+        try { (window as any).HSStaticMethods?.autoInit?.() } catch { /* ignore */ }
+        const tClick = setTimeout(() => {
+          if (cancelled) { document.body.removeChild(btn); return }
+          btn.click()
+          setTimeout(() => { try { document.body.removeChild(btn) } catch { /* ignore */ } }, 200)
+          if (modal.classList.contains('hidden') && attempts++ < 60) {
+            const r = setTimeout(tick, 100); openTimers.push(r)
+          }
+        }, 50)
+        openTimers.push(tClick)
+      }
+      void ensurePrelineLoaded().then(tick)
+    }
+
+    // Kick off the first open attempt immediately; data hydrates next.
+    robustOpenModal('initial')
+
+    void (async () => {
+      try {
+        addPrefillDebug('awaiting loadScheduleDropdowns')
+        // Ensure dropdown data (jobs / referral leads / recruiters) is loaded so prefilled selects render correctly.
+        await loadScheduleDropdowns()
+        addPrefillDebug(`dropdowns loaded; cancelled=${cancelled} applicationId=${applicationId}`)
+        if (cancelled) return
+        if (!applicationId) {
+          addPrefillDebug('applicationId missing — opening blank modal')
+          robustOpenModal('no-applicationId')
+          return
+        }
+        addPrefillDebug(`fetching application ${applicationId}`)
+        // Share fetch across StrictMode double-mount so both effect runs await the same network call.
+        let appPromise = applicationFetchInflightRef.current.get(applicationId) as Promise<JobApplication> | undefined
+        if (!appPromise) {
+          appPromise = getJobApplicationById(applicationId).finally(() => {
+            applicationFetchInflightRef.current.delete(applicationId)
+          })
+          applicationFetchInflightRef.current.set(applicationId, appPromise)
+        }
+        const app = await appPromise
+        addPrefillDebug(`application loaded: candidate=${app?.candidate?.fullName ?? '—'} job=${app?.job?.title ?? '—'} status=${app?.status ?? '—'}`)
+        if (cancelled) return
+        const cand = (app.candidate ?? {}) as {
+          _id?: string; id?: string; fullName?: string; email?: string;
+          phoneNumber?: string; department?: string | null;
+        }
+        const candId = String(cand._id ?? cand.id ?? '') || urlCandidateId
+        const j = (app.job ?? {}) as { _id?: string; id?: string; title?: string }
+        const jId = String(j._id ?? j.id ?? '') || urlJobId
+        if (!candId) {
+          setFormError('Could not load candidate context — please fill the form manually.')
+          return
+        }
+        // Inject candidate as a synthetic option so the controlled select can target it,
+        // even when the candidate is an ATS employee (not a referral lead). Stored separately so
+        // concurrent referral-lead fetches don't overwrite it.
+        const publicCandEmail = pickPublicEmail([cand.email]) ?? ''
+        const synthetic: CandidateListItem = {
+          id: candId,
+          fullName: cand.fullName ?? publicCandEmail ?? 'Candidate',
+          email: publicCandEmail,
+          phoneNumber: cand.phoneNumber ?? '',
+        }
+        setExtraScheduleCandidates((prev) =>
+          prev.some((c) => String(c.id ?? c._id ?? '') === candId) ? prev : [synthetic, ...prev]
+        )
+        const candidateName = (cand.fullName ?? '').trim() || publicCandEmail.trim() || 'Candidate'
+        const jobTitle = (j.title ?? '').trim()
+        const prefill: SchedulePrefill = {
+          applicationId,
+          candidateId: candId,
+          candidateName,
+          candidateEmail: publicCandEmail,
+          candidatePhone: cand.phoneNumber ?? '',
+          jobId: jId || undefined,
+          jobTitle: jobTitle || undefined,
+          department: cand.department ?? undefined,
+          recruiterId: app.appliedBy?._id ?? authUser?.id,
+          applicationStatus: app.status,
+          suggestedTitle: jobTitle ? `${jobTitle} Interview — ${candidateName}` : `Interview — ${candidateName}`,
+          suggestedNotes: [
+            applicationId ? `Application ID: ${applicationId}` : '',
+            app.status ? `Current stage: ${app.status}` : '',
+            jobTitle ? `Job: ${jobTitle}` : '',
+            cand.department ? `Department: ${cand.department}` : '',
+          ].filter(Boolean).join('\n'),
+        }
+        setSchedulePrefill(prefill)
+        setFormError(null)
+        // Re-open in case the user closed it during the async fetch; no-op if already open.
+        robustOpenModal('post-data')
+      } catch (err: any) {
+        addPrefillDebug(`ERROR: ${err?.response?.status ?? ''} ${err?.message ?? err}`)
+        if (cancelled) return
+        const msg = err?.response?.status === 404
+          ? 'This application no longer exists — please pick the candidate manually.'
+          : 'Could not load application context — please fill the form manually.'
+        setFormError(msg)
+        robustOpenModal('error-fallback')
+      } finally {
+        if (!cancelled) stripParams()
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      openTimers.forEach(clearTimeout)
+    }
+  // Run once on mount. searchParams hook unreliable here, so we read window.location directly above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Default interview host = signed-in (or impersonated) user so "Schedule" isn't blocked by empty host row.
   useEffect(() => {
     setHosts((prev) => {
@@ -614,8 +806,32 @@ export default function InterviewsClient() {
     setScheduledInterviewAt(null)
     setHosts(defaultScheduleHosts.map((h) => ({ ...h })))
     setEmailInvites([''])
+    setSchedulePrefill(null)
+    setExtraScheduleCandidates([])
     setInterviewFormResetKey((k) => k + 1)
   }, [defaultScheduleHosts])
+
+  /** Merge ATS-injected candidates with the referral-leads list for the schedule modal. */
+  const scheduleCandidatesMerged = useMemo<CandidateListItem[]>(() => {
+    if (extraScheduleCandidates.length === 0) return candidates
+    const seen = new Set<string>()
+    const merged: CandidateListItem[] = []
+    for (const c of extraScheduleCandidates) {
+      const key = String(c.id ?? c._id ?? '')
+      if (key && !seen.has(key)) {
+        seen.add(key)
+        merged.push(c)
+      }
+    }
+    for (const c of candidates) {
+      const key = String(c.id ?? c._id ?? '')
+      if (key && !seen.has(key)) {
+        seen.add(key)
+        merged.push(c)
+      }
+    }
+    return merged
+  }, [extraScheduleCandidates, candidates])
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
@@ -771,7 +987,7 @@ export default function InterviewsClient() {
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                   <div className="flex items-center gap-1">
                     <i className="ri-mail-line"></i>
-                    {candidate?.email ?? '—'}
+                    {isPublicEmail(candidate?.email) ? candidate?.email : '—'}
                   </div>
                   {candidate?.phone && (
                     <div className="flex items-center gap-1 mt-0.5">
@@ -1201,7 +1417,7 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-      <div className="mt-5 grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] sm:mt-6">
+<div className="mt-5 grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
             <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-3 border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-4 py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
@@ -1753,7 +1969,7 @@ export default function InterviewsClient() {
         onSubmit={handleScheduleInterviewSubmit}
         dropdownsLoading={dropdownsLoading}
         formResetKey={interviewFormResetKey}
-        candidates={candidates}
+        candidates={scheduleCandidatesMerged}
         recruiters={recruiters}
         hosts={hosts}
         setHosts={setHosts}
@@ -1761,6 +1977,8 @@ export default function InterviewsClient() {
         setEmailInvites={setEmailInvites}
         scheduledInterviewAt={scheduledInterviewAt}
         onScheduledInterviewAtChange={setScheduledInterviewAt}
+        prefill={schedulePrefill}
+        onPrefillConsumed={handlePrefillConsumed}
       />
 
       {/* View recordings modal */}
@@ -1971,7 +2189,7 @@ export default function InterviewsClient() {
                     <select id="edit-candidate" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.candidate?.id ?? ''}>
                       <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
                       {candidates.map((c) => (
-                        <option key={c.id ?? c._id} value={c.id ?? c._id}>{c.fullName} - {c.email}</option>
+                        <option key={c.id ?? c._id} value={c.id ?? c._id}>{c.fullName}{isPublicEmail(c.email) ? ` - ${c.email}` : ''}</option>
                       ))}
                     </select>
                   </div>

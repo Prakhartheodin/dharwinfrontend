@@ -440,11 +440,11 @@ const Kanbanboard = () => {
   }, [loading, tasks, fetchTasks]);
 
   return (
-    <div className={`${kbSans.variable} ${kbDisplay.variable} ${styles.kbRoot}`}>
+    <div className={`${kbSans.variable} ${kbDisplay.variable} ${styles.kbRoot} max-w-full overflow-x-hidden`}>
       <Seo title="Kanban Board" />
       <h1 className="sr-only">Kanban Board</h1>
 
-      <div className="px-4 py-5 md:px-6 md:py-6">
+      <div className="px-4 py-5 md:px-6 md:py-6 max-w-full">
         {/* TOOLBAR ROW 1 — kicker + actions */}
         <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">

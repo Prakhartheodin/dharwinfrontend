@@ -69,7 +69,10 @@ const TiptapEditor: React.FC<TiptapEditorProps> = ({
 
   useEffect(() => {
     if (editor && content !== editor.getHTML()) {
-      editor.commands.setContent(content)
+      // emitUpdate:false so this prop-sync does not re-fire onUpdate → parent
+      // setState, which can cause edit-page form state to bounce / append duplicates.
+      // (Tiptap v3 SetContentOptions shape — `false` boolean signature is v2-only.)
+      editor.commands.setContent(content || '', { emitUpdate: false })
     }
   }, [content, editor])
 

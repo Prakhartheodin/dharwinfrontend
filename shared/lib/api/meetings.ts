@@ -198,3 +198,54 @@ export async function syncRecordingsFromLiveKit(): Promise<SyncFromLiveKitResult
   const { data } = await apiClient.post<SyncFromLiveKitResult>("/recordings/sync");
   return data;
 }
+
+export interface TranscriptUtterance {
+  speaker?: string | null;
+  speakerName?: string | null;
+  speakerLabel?: string | null;
+  speakerSource?: "livekit" | "deepgram" | "fallback" | null;
+  text: string;
+  startMs: number;
+  endMs: number;
+  confidence?: number | null;
+}
+
+export interface TranscriptSegment {
+  id: string;
+  sequenceNumber: number;
+  windowStartMs: number;
+  windowEndMs: number;
+  combinedText: string;
+  utteranceCount: number;
+  utterances: TranscriptUtterance[];
+  createdAt?: string;
+}
+
+export interface RecordingTranscriptResponse {
+  recording: {
+    id: string;
+    meetingId: string;
+    egressId?: string | null;
+    status: string;
+    startedAt?: string | null;
+    completedAt?: string | null;
+    durationMs?: number | null;
+    aiProcessingStatus: string;
+    aiProcessingError: string | null;
+  };
+  meetingTitle: string;
+  segments: TranscriptSegment[];
+  totalSegments: number;
+  /** Which key found the segments: `recordingId` (preferred) or `meetingId` (legacy fallback). */
+  source: "recordingId" | "meetingId";
+}
+
+/** Fetch transcript segments for a recording (sequenceNumber asc). */
+export async function getRecordingTranscript(
+  recordingId: string
+): Promise<RecordingTranscriptResponse> {
+  const { data } = await apiClient.get<RecordingTranscriptResponse>(
+    `/recordings/${recordingId}/transcript`
+  );
+  return data;
+}

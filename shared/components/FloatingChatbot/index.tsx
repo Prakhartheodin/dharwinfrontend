@@ -41,7 +41,15 @@ const MAX_STORED_MESSAGES = 20;
 const FAB_SIZE = 56;
 const FAB_MARGIN = 20;
 const SIDEBAR_WIDTH = 420;
-const SIDEBAR_PUSH_BREAKPOINT = 768;
+/**
+ * Only push the body content when the viewport is wide enough that
+ * shrinking by SIDEBAR_WIDTH still leaves a usable canvas for content
+ * (taskboard columns, chat rails, etc.). Below this width, the panel
+ * overlays instead of pushing — preventing the taskboard-overlap bug
+ * where a narrow remaining canvas (e.g. 1024px - 420px = 604px) was
+ * too tight for the 5-column kanban grid + filters.
+ */
+const SIDEBAR_PUSH_BREAKPOINT = 1280;
 const SIDEBAR_TRANSITION_MS = 320;
 
 const SUGGESTED_QUESTIONS = [

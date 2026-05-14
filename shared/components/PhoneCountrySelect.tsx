@@ -24,7 +24,7 @@ export function PhoneCountrySelect({ value, onChange, name, className = "", id }
     OPTIONS.find((o) => o.value === value) ?? OPTIONS.find((o) => o.value === DEFAULT_PHONE_COUNTRY) ?? OPTIONS[0];
 
   return (
-    <div className={`phone-country-select ${className}`} style={{ minWidth: 140 }}>
+    <div className={`phone-country-select w-full min-w-0 ${className}`}>
       <input type="hidden" name={name} value={value} />
       <Select
         inputId={id}

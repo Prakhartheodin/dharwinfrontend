@@ -158,7 +158,7 @@ function SopChecklistPreviewPanel({
                 readOnly
                 checked={s.done}
                 tabIndex={-1}
-                className="form-check-input h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary/30"
+                className="form-check-input h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary/30 dark:border-white/40 dark:bg-bgdark dark:checked:bg-primary dark:checked:border-primary"
                 aria-label={`${s.label}, ${s.done ? "complete" : "not complete"}`}
               />
             </div>
@@ -624,9 +624,9 @@ export default function SettingsCandidateSopPage() {
             </div>
             <div className="px-4 pb-5 pt-12 sm:px-5 sm:pb-6 sm:pt-16">
               {loading ? (
-                <div className="flex items-center gap-3 py-8 text-sm text-gray-500">
+                <div className="flex items-center gap-3 py-8 text-sm text-gray-500 dark:text-gray-400">
                   <span
-                    className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-primary"
+                    className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-gray-200 border-t-primary dark:border-white/15 dark:border-t-primary"
                     aria-hidden
                   />
                   Loading templates…
@@ -859,7 +859,7 @@ export default function SettingsCandidateSopPage() {
                             <label className="inline-flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-1 py-1 text-sm text-gray-700 dark:text-gray-300">
                               <input
                                 type="checkbox"
-                                className="form-check-input h-[1.125rem] w-[1.125rem] shrink-0 rounded border-gray-400 text-primary"
+                                className="form-check-input h-[1.125rem] w-[1.125rem] shrink-0 rounded border-gray-400 text-primary dark:border-white/40 dark:bg-bgdark dark:checked:bg-primary dark:checked:border-primary"
                                 checked={row.enabled !== false}
                                 onChange={(e) => updateStep(i, { enabled: e.target.checked })}
                               />
@@ -1074,7 +1074,7 @@ export default function SettingsCandidateSopPage() {
                     {dispatchLoading ? (
                       <>
                         <span
-                          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-300 border-t-primary dark:border-white/20"
+                          className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-300 border-t-primary dark:border-white/20 dark:border-t-primary"
                           aria-hidden
                         />
                         Notifying…

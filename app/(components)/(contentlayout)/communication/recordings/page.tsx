@@ -9,6 +9,7 @@ import {
   type RecordingsListResponse,
 } from "@/shared/lib/api/meetings";
 import { useRouter } from "next/navigation";
+import TranscriptModal from "./_components/TranscriptModal";
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -136,6 +137,7 @@ export default function RecordingsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusKey>("all");
   const [search, setSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [transcriptTarget, setTranscriptTarget] = useState<{ id: string; title: string } | null>(null);
 
   const fetchRecordings = useCallback(async () => {
     setLoading(true);
@@ -277,6 +279,9 @@ export default function RecordingsPage() {
   const renderActions = (rec: RecordingWithMeeting) => {
     const hasPlay = !!rec.playbackUrl;
     const hasErr = !hasPlay && !!rec.playbackError;
+    // Show transcript action for any terminal row — backend returns
+    // processing/empty notices for rows that don't have segments yet.
+    const showTranscript = rec.status === "completed" || rec.status === "aborted";
     return (
       <div className="flex items-center justify-center gap-2">
         {hasPlay && (
@@ -302,6 +307,18 @@ export default function RecordingsPage() {
             <i className="ri-download-line" />
           </a>
         )}
+        {showTranscript && (
+          <button
+            type="button"
+            onClick={() =>
+              setTranscriptTarget({ id: rec.id, title: rec.meetingTitle || rec.meetingId || "" })
+            }
+            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info-light"
+            title="View transcript"
+          >
+            <i className="ri-file-text-line" />
+          </button>
+        )}
         {rec.egressId && (
           <button
             type="button"
@@ -321,7 +338,7 @@ export default function RecordingsPage() {
             <i className="ri-error-warning-line" />
           </button>
         )}
-        {!hasPlay && !hasErr && !rec.egressId && (
+        {!hasPlay && !hasErr && !rec.egressId && !showTranscript && (
           <span className="text-defaulttextcolor/40 text-sm">—</span>
         )}
       </div>
@@ -709,6 +726,11 @@ export default function RecordingsPage() {
           </div>
         </div>
       </div>
+      <TranscriptModal
+        recordingId={transcriptTarget?.id ?? null}
+        meetingTitle={transcriptTarget?.title}
+        onClose={() => setTranscriptTarget(null)}
+      />
     </Fragment>
   );
 }

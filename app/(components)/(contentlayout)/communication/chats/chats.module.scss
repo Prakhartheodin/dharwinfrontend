@@ -110,12 +110,25 @@
   box-shadow: var(--chat-shadow);
   overflow: hidden;
   min-height: 22rem;
+  /* Full width on mobile/tablet — single-column stack handled by .grid */
+  width: 100%;
 }
 
+/* Tablet/small-desktop (lg, 1024px+) — collapse rail to give thread room.
+   Was previously fixed at 22rem here, squeezing the thread + side panel on
+   1024-1279px viewports. Now scales fluidly with viewport. */
 @media (min-width: 1024px) {
   .rail {
-    width: min(100%, 22rem);
+    width: clamp(15rem, 28vw, 18rem);
+    min-width: 15rem;
     flex-shrink: 0;
+  }
+}
+
+/* Desktop (xl, 1280px+) — full-width rail */
+@media (min-width: 1280px) {
+  .rail {
+    width: min(100%, 22rem);
   }
 }
 
@@ -360,8 +373,9 @@
       opacity 0.22s ease;
   }
 
+  /* lg → xl: scale side panel fluidly so main thread isn't squeezed */
   .sidePanelShellOpen {
-    width: min(100%, 23rem);
+    width: clamp(16rem, 24vw, 20rem);
     min-width: 0;
     opacity: 1;
     pointer-events: auto;
@@ -374,6 +388,18 @@
     pointer-events: none;
     border: none !important;
     box-shadow: none !important;
+  }
+
+  .sidePanelShellOpen :global(.chat-user-details) {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (min-width: 1280px) {
+  .sidePanelShellOpen {
+    width: min(100%, 23rem);
   }
 
   .sidePanelShellOpen :global(.chat-user-details) {
@@ -808,8 +834,14 @@
 
 @media (min-width: 1024px) {
   .sidePanel {
-    width: min(100%, 23rem);
+    width: 100%;
     flex-shrink: 0;
+  }
+}
+
+@media (min-width: 1280px) {
+  .sidePanel {
+    width: min(100%, 23rem);
   }
 }
 

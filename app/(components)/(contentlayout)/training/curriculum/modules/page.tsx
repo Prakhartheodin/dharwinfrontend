@@ -943,8 +943,10 @@ const TrainingModules = () => {
   const [categories, setCategories] = useState<ApiCategory[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  // Smaller initial page = faster first paint. Pagination handles depth.
-  const [pageSize] = useState(24)
+  // Folder grouping happens client-side so the fetch must cover every module
+  // the admin can see — otherwise a category whose modules sit beyond the
+  // first page renders "0 modules" while the cards live on page 2.
+  const [pageSize] = useState(200)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -996,8 +998,19 @@ const TrainingModules = () => {
 
       const response = await trainingModulesApi.listTrainingModules(params)
       if (requestId !== fetchRequestIdRef.current) return
-      setModules(response.results)
-      setTotalPages(response.totalPages)
+      const collected: ApiTrainingModule[] = [...(response.results ?? [])]
+      // Walk remaining pages so folder grouping (client-side) always sees the
+      // full module set instead of a single page slice.
+      for (let p = (response.page ?? 1) + 1; p <= (response.totalPages ?? 1); p += 1) {
+        if (requestId !== fetchRequestIdRef.current) return
+        const next = await trainingModulesApi.listTrainingModules({ ...params, page: p })
+        if (requestId !== fetchRequestIdRef.current) return
+        collected.push(...(next.results ?? []))
+      }
+      setModules(collected)
+      // We now fetch every page in one pass, so there is exactly one logical
+      // page to show — hide the paginator footer.
+      setTotalPages(1)
     } catch (err) {
       if (requestId !== fetchRequestIdRef.current) return
       console.error('Error fetching modules:', err)
@@ -1112,8 +1125,16 @@ const TrainingModules = () => {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const response = await categoriesApi.listCategories({ limit: 100 })
-      setCategories(response.results)
+      // Walk every page so tenants with > 100 folders never silently lose any —
+      // the prior 100-row cap left modules under those missing folders falling
+      // into "Uncategorized" even though they had assignments.
+      const first = await categoriesApi.listCategories({ limit: 200 })
+      const all = [...(first.results ?? [])]
+      for (let p = 2; p <= (first.totalPages ?? 1); p += 1) {
+        const next = await categoriesApi.listCategories({ limit: 200, page: p })
+        all.push(...(next.results ?? []))
+      }
+      setCategories(all)
     } catch (err) {
       console.error('Error fetching categories:', err)
     }
