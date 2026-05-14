@@ -13,10 +13,33 @@ import {
   getJobTemplate,
   listJobTemplates,
   createJobTemplate,
+  COMPANY_SIZE_BUCKETS,
   type UpdateJobPayload,
 } from '@/shared/lib/api/jobs'
 import { ROUTES } from '@/shared/lib/constants'
 import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
+
+/**
+ * Marker the Create / Edit flows insert when appending the Requirements & Qualifications
+ * block to the job description. We use it to split a stored description back into
+ * (jobDescription, requirements) so re-saving an edited job doesn't duplicate the block.
+ *
+ * Matches the literal heading produced by handleSubmit below (case-insensitive,
+ * tolerates an &amp; entity since payloads may pass through xss-clean middleware).
+ */
+const REQUIREMENTS_SECTION_HEADER = '<h3>Requirements & Qualifications</h3>'
+const REQUIREMENTS_SPLIT_REGEX = /<h3>\s*Requirements\s*(?:&amp;|&)\s*Qualifications\s*<\/h3>/i
+
+function splitRequirementsFromDescription(rawHtml: string): { description: string; requirements: string } {
+  if (!rawHtml) return { description: '', requirements: '' }
+  const match = rawHtml.match(REQUIREMENTS_SPLIT_REGEX)
+  if (!match || match.index === undefined) {
+    return { description: rawHtml, requirements: '' }
+  }
+  const before = rawHtml.slice(0, match.index).replace(/\s+$/, '')
+  const after = rawHtml.slice(match.index + match[0].length).replace(/^\s+/, '')
+  return { description: before, requirements: after }
+}
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
 import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
@@ -91,6 +114,9 @@ export default function EditJobClient() {
     organisationCountryCode: 'IN',
     organisationPhone: '',
     organisationAddress: '',
+    organisationIndustry: '',
+    organisationFounded: '',
+    organisationCompanySize: '',
     salaryMin: '',
     salaryMax: '',
     salaryCurrency: 'USD',
@@ -101,6 +127,7 @@ export default function EditJobClient() {
     skills: [] as { value: string; label: string }[],
     minExperience: '',
     maxExperience: '',
+    vacancies: '1',
     education: '',
   })
   const [skillsInputValue, setSkillsInputValue] = useState('')
@@ -258,6 +285,10 @@ export default function EditJobClient() {
           organisationCountryCode: parsedPhone.countryCode,
           organisationPhone: parsedPhone.digits,
           organisationAddress: job.organisation?.address || '',
+          organisationIndustry: job.organisation?.industry || '',
+          organisationFounded:
+            job.organisation?.founded != null ? String(job.organisation.founded) : '',
+          organisationCompanySize: job.organisation?.companySize || '',
           salaryMin: job.salaryRange?.min ? String(job.salaryRange.min) : '',
           salaryMax: job.salaryRange?.max ? String(job.salaryRange.max) : '',
           salaryCurrency: job.salaryRange?.currency || 'USD',
@@ -266,12 +297,58 @@ export default function EditJobClient() {
           experienceLevel: job.experienceLevel ? experienceLevelOptions.find((o) => o.value === job.experienceLevel) || { value: job.experienceLevel, label: job.experienceLevel } : null,
           status: statusOptions.find((o) => o.value === job.status) || { value: 'Active', label: 'Active' },
           skills: (job.skillTags || []).map((s: string) => ({ value: s, label: s })),
-          minExperience: '',
-          maxExperience: '',
+          // Prefer canonical numeric fields when present; legacy regex below
+          // (Experience embedded in description) only fills these if still empty.
+          minExperience: job.minExperience != null ? String(job.minExperience) : '',
+          maxExperience: job.maxExperience != null ? String(job.maxExperience) : '',
+          vacancies: job.vacancies != null ? String(job.vacancies) : '1',
           education: '',
         })
-        setJobDescription(job.jobDescription || '')
-        setRequirements('')
+        // Decode entity-encoded payloads (xss-clean middleware may return `&lt;p&gt;…`)
+        // and split the appended Requirements & Qualifications block back out, so
+        // the editor displays clean description + requirements separately. Without
+        // this split, every save re-appends the block, duplicating it on each edit.
+        const normalized = normalizeTipTapHtmlFromApi(job.jobDescription || '')
+        const { description, requirements: reqHtml } = splitRequirementsFromDescription(normalized)
+        // The submit handler regenerates Education / Experience <p> blocks from the
+        // form fields and prepends them above `requirements`. Strip them out of the
+        // re-loaded `requirements` HTML so they too don't accumulate on resave.
+        let parsedEducation = ''
+        let parsedMinYears = ''
+        let parsedMaxYears = ''
+        let remainingReq = reqHtml
+        const eduMatch = remainingReq.match(/<p>\s*<strong>\s*Education:\s*<\/strong>\s*([^<]*?)\s*<\/p>\s*/i)
+        if (eduMatch) {
+          parsedEducation = (eduMatch[1] || '').trim()
+          remainingReq = remainingReq.replace(eduMatch[0], '')
+        }
+        const expMatch = remainingReq.match(/<p>\s*<strong>\s*Experience:\s*<\/strong>\s*([^<]*?)\s*<\/p>\s*/i)
+        if (expMatch) {
+          const exp = (expMatch[1] || '').trim()
+          const range = exp.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*years?/i)
+          const minOnly = exp.match(/^(\d+(?:\.\d+)?)\+\s*years?/i)
+          const maxOnly = exp.match(/^Up to\s+(\d+(?:\.\d+)?)\s*years?/i)
+          if (range) {
+            parsedMinYears = range[1]
+            parsedMaxYears = range[2]
+          } else if (minOnly) {
+            parsedMinYears = minOnly[1]
+          } else if (maxOnly) {
+            parsedMaxYears = maxOnly[1]
+          }
+          remainingReq = remainingReq.replace(expMatch[0], '')
+        }
+        setFormData((prev) => ({
+          ...prev,
+          education: parsedEducation || prev.education,
+          // Prefer canonical numeric fields from API; only adopt legacy
+          // values parsed from the description body if the API didn't
+          // already provide them.
+          minExperience: prev.minExperience || parsedMinYears,
+          maxExperience: prev.maxExperience || parsedMaxYears,
+        }))
+        setJobDescription(description)
+        setRequirements(remainingReq.trim())
       })
       .catch(() => {
         Swal.fire({ icon: 'error', title: 'Error', text: 'Job not found.' })
@@ -310,20 +387,42 @@ export default function EditJobClient() {
         return
       }
     }
+    const foundedRaw = (formData.organisationFounded || '').trim()
+    const foundedNum = foundedRaw ? Number(foundedRaw) : undefined
+    if (foundedRaw && (!Number.isInteger(foundedNum) || foundedNum! < 1800 || foundedNum! > new Date().getFullYear())) {
+      Swal.fire({ icon: 'error', title: 'Validation', text: `Founded must be a year between 1800 and ${new Date().getFullYear()}.` })
+      return
+    }
     setSubmitting(true)
     try {
+      // Always start from the bare description (no appended Requirements block).
+      // If the user kept the loaded content unchanged, jobDescription is already the
+      // pre-split description — so we never append the block twice.
       let finalDescription = jobDescription.trim()
+      // Safety belt: if jobDescription somehow still carries a Requirements header,
+      // strip everything from it onward before we re-append.
+      const strayHeader = finalDescription.match(REQUIREMENTS_SPLIT_REGEX)
+      if (strayHeader && strayHeader.index !== undefined) {
+        finalDescription = finalDescription.slice(0, strayHeader.index).replace(/\s+$/, '')
+      }
+      // Education + free-form Requirements rich text are still appended for
+      // display continuity. Experience is NOT inlined any more — it lives on
+      // the document as `minExperience`/`maxExperience` and is rendered via
+      // the shared `formatExperience` SSoT.
       const reqParts: string[] = []
       if (formData.education?.trim()) reqParts.push(`<p><strong>Education:</strong> ${formData.education.trim()}</p>`)
-      if (formData.minExperience || formData.maxExperience) {
-        const min = formData.minExperience ? `${formData.minExperience}` : ''
-        const max = formData.maxExperience ? `${formData.maxExperience}` : ''
-        const range = min && max ? `${min}-${max} years` : min ? `${min}+ years` : `Up to ${max} years`
-        reqParts.push(`<p><strong>Experience:</strong> ${range}</p>`)
-      }
       if (requirements?.trim()) reqParts.push(requirements.trim())
       if (reqParts.length > 0) {
-        finalDescription += '\n\n<h3>Requirements & Qualifications</h3>\n' + reqParts.join('\n')
+        finalDescription += '\n\n' + REQUIREMENTS_SECTION_HEADER + '\n' + reqParts.join('\n')
+      }
+
+      const minExpNum = formData.minExperience ? Number(formData.minExperience) : undefined
+      const maxExpNum = formData.maxExperience ? Number(formData.maxExperience) : undefined
+      const vacanciesNum = formData.vacancies ? Number(formData.vacancies) : undefined
+      if (vacanciesNum != null && (!Number.isInteger(vacanciesNum) || vacanciesNum < 1)) {
+        Swal.fire({ icon: 'error', title: 'Validation', text: 'Vacancies must be a whole number ≥ 1.' })
+        setSubmitting(false)
+        return
       }
 
       const payload: UpdateJobPayload = {
@@ -334,6 +433,9 @@ export default function EditJobClient() {
           email: formData.organisationEmail?.trim() || undefined,
           phone: orgPhoneDigits ? formatPhoneForApi(orgPhoneDigits, formData.organisationCountryCode) : undefined,
           address: formData.organisationAddress?.trim() || undefined,
+          industry: formData.organisationIndustry?.trim() || undefined,
+          founded: foundedNum ?? undefined,
+          companySize: formData.organisationCompanySize || undefined,
         },
         jobDescription: finalDescription,
         jobType: formData.jobType.value,
@@ -345,13 +447,17 @@ export default function EditJobClient() {
           currency: formData.salaryCurrency || 'USD',
         },
         experienceLevel: formData.experienceLevel?.value || undefined,
+        minExperience: Number.isFinite(minExpNum) ? minExpNum : null,
+        maxExperience: Number.isFinite(maxExpNum) ? maxExpNum : null,
+        vacancies: Number.isFinite(vacanciesNum) ? vacanciesNum : null,
         status: formData.status?.value || 'Active',
       }
       await updateJob(jobId, payload)
       await Swal.fire({ icon: 'success', title: 'Job Updated', text: 'The job has been updated successfully.' })
       router.push('/ats/jobs')
     } catch (err: any) {
-      Swal.fire({ icon: 'error', title: 'Error', text: err?.response?.data?.message || err?.message || 'Failed to update job.' })
+      const message = err?.response?.data?.message || err?.message || 'Failed to update job.'
+      Swal.fire({ icon: 'error', title: 'Error', text: message })
     } finally {
       setSubmitting(false)
     }
@@ -480,6 +586,23 @@ export default function EditJobClient() {
                               menuPlacement="auto"
                             />
                           </div>
+                          <div className="xl:col-span-3 col-span-12">
+                            <label htmlFor="vacancies" className="form-label">Vacancies / Openings</label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              id="vacancies"
+                              className="form-control !rounded-md"
+                              placeholder="e.g., 5"
+                              min={1}
+                              max={10000}
+                              step={1}
+                              value={formData.vacancies}
+                              onChange={(e) =>
+                                handleInputChange('vacancies', e.target.value.replace(/\D/g, ''))
+                              }
+                            />
+                          </div>
                         </div>
                       </section>
 
@@ -540,6 +663,50 @@ export default function EditJobClient() {
                               value={formData.organisationAddress}
                               onChange={(e) => handleInputChange('organisationAddress', e.target.value)}
                             />
+                          </div>
+                          {/* Company Information — surfaced in job details panel */}
+                          <div className="xl:col-span-4 col-span-12">
+                            <label className="form-label">Industry</label>
+                            <input
+                              type="text"
+                              className="form-control !rounded-md"
+                              placeholder="e.g., Software, FinTech, Healthcare"
+                              value={formData.organisationIndustry}
+                              onChange={(e) => handleInputChange('organisationIndustry', e.target.value)}
+                              maxLength={120}
+                            />
+                          </div>
+                          <div className="xl:col-span-4 col-span-12">
+                            <label className="form-label">Founded</label>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              className="form-control !rounded-md"
+                              placeholder="e.g., 2014"
+                              min={1800}
+                              max={new Date().getFullYear()}
+                              step={1}
+                              value={formData.organisationFounded}
+                              onChange={(e) =>
+                                handleInputChange(
+                                  'organisationFounded',
+                                  e.target.value.replace(/\D/g, '').slice(0, 4),
+                                )
+                              }
+                            />
+                          </div>
+                          <div className="xl:col-span-4 col-span-12">
+                            <label className="form-label">Company Size</label>
+                            <select
+                              className="form-control !rounded-md"
+                              value={formData.organisationCompanySize}
+                              onChange={(e) => handleInputChange('organisationCompanySize', e.target.value)}
+                            >
+                              <option value="">Select size</option>
+                              {COMPANY_SIZE_BUCKETS.map((b) => (
+                                <option key={b} value={b}>{b} employees</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       </section>
