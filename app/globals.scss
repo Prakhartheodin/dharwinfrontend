@@ -247,3 +247,21 @@ select.select-show-page-size {
   margin-left: 0.375rem;
   margin-right: 0.375rem;
 }
+
+/*
+  Global dialog stacking:
+  - Swal2 + custom modals MUST sit above settings sub-nav (z 30/40), header,
+    react-select menu portals (z 10060) and the floating chatbot (z 11000).
+  - Prevent horizontal scroll while a Swal popup is open.
+*/
+.swal2-container {
+  z-index: 12000 !important;
+}
+.swal2-container .swal2-popup {
+  max-width: min(92vw, 32rem);
+}
+body.swal2-shown,
+html.swal2-shown {
+  overflow-x: hidden !important;
+}
+

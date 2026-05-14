@@ -92,6 +92,8 @@ export interface ListTrainingModulesParams {
   search?: string;
   category?: string;
   status?: "draft" | "published" | "archived";
+  /** Restrict to modules the current user is assigned to (as student or mentor). */
+  mine?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;

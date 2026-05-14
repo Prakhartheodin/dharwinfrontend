@@ -2,7 +2,7 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
-export type JobApplicationStatus = "Applied" | "Screening" | "Interview" | "Offered" | "Hired" | "Rejected";
+export type JobApplicationStatus = "Applied" | "Screening" | "Interview" | "Shortlisted" | "Offered" | "Hired" | "Rejected";
 
 export interface JobApplication {
   _id: string;
@@ -24,7 +24,15 @@ export interface JobApplication {
       zipCode?: string;
       country?: string;
     };
+    /** Populated owner User — fallback when applicantUser is missing on legacy rows. */
+    owner?: { _id?: string; id?: string; name?: string; email?: string };
   };
+  /**
+   * Authoritative applicant identity. Set on create from Employee.owner of the candidate;
+   * NULL for synthetic offer-letter standalone applications and pre-migration legacy rows.
+   * Frontend resolvers MUST prefer this over candidate.owner to avoid leaking admin emails.
+   */
+  applicantUser?: { _id?: string; id?: string; name?: string; email?: string } | null;
   status: JobApplicationStatus;
   coverLetter?: string | null;
   appliedBy?: { _id: string; name?: string; email?: string };
@@ -36,9 +44,23 @@ export interface JobApplication {
 export interface JobApplicationsListParams {
   jobId?: string;
   candidateId?: string;
+  recruiterId?: string;
   status?: JobApplicationStatus;
+  /** Text search across candidate name/email and job title (server-side regex). */
+  q?: string;
+  /** Match candidate's Employee.department (case-insensitive exact match). */
+  department?: string;
+  /** ISO 8601 — filters by application createdAt. */
+  dateFrom?: string;
+  dateTo?: string;
   /** When true, only applications tied to jobs that exist with status Active (drops closed/archived/draft and orphans after job delete). */
   activeJobsOnly?: boolean;
+  /** When true, hide synthetic offer-letter placeholder applications (no real applicant). */
+  excludeInternal?: boolean;
+  /** When true, return all applications including duplicates by the same applicant. */
+  includeDuplicates?: boolean;
+  /** When 1/true, backend emits one structured log line per row for applicant-email diagnostics. */
+  debug?: boolean | 1;
   sortBy?: string;
   limit?: number;
   page?: number;

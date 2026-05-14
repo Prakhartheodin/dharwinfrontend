@@ -1,5 +1,5 @@
 "use client"
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
@@ -10,6 +10,7 @@ import type { CandidateListItem } from '@/shared/lib/api/candidates'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
 import MeetingCreatedSuccess from '@/shared/components/meeting/MeetingCreatedSuccess'
+import { isPublicEmail } from '@/shared/lib/ats/applicant-email'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
   if (!job || typeof job === 'string') return null
@@ -73,6 +74,22 @@ const ScheduleInterviewWhenTrigger = React.forwardRef<HTMLButtonElement, WhenTri
     )
   }
 )
+/** Context-aware prefill from ATS Applications page row action. */
+export interface SchedulePrefill {
+  applicationId?: string
+  candidateId: string
+  candidateName: string
+  candidateEmail: string
+  candidatePhone?: string
+  jobId?: string
+  jobTitle?: string
+  department?: string
+  recruiterId?: string
+  applicationStatus?: string
+  suggestedTitle?: string
+  suggestedNotes?: string
+}
+
 export interface CreateInterviewModalProps {
   createdMeeting: Meeting | null
   resetCreateMeetingForm: () => void
@@ -91,6 +108,10 @@ export interface CreateInterviewModalProps {
   /** Local combined date+time for the schedule form (owned by parent so reset/close clears reliably). */
   scheduledInterviewAt: Date | null
   onScheduledInterviewAtChange: (value: Date | null) => void
+  /** Prefill data passed from the Applications page row action; consumed once then cleared by parent. */
+  prefill?: SchedulePrefill | null
+  /** Called after the modal applies prefill so the parent can clear it. */
+  onPrefillConsumed?: () => void
 }
 
 export default function CreateInterviewModal({
@@ -109,6 +130,8 @@ export default function CreateInterviewModal({
   setEmailInvites,
   scheduledInterviewAt,
   onScheduledInterviewAtChange,
+  prefill,
+  onPrefillConsumed,
 }: CreateInterviewModalProps) {
   const { user } = useAuth()
   const [selectedCandidateId, setSelectedCandidateId] = useState('')
@@ -117,7 +140,7 @@ export default function CreateInterviewModal({
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
   const [applicationJobsError, setApplicationJobsError] = useState<string | null>(null)
 
-  const loadApplicationJobs = useCallback(async (candidateId: string) => {
+  const loadApplicationJobs = useCallback(async (candidateId: string, preselectJobId?: string) => {
     if (!candidateId) {
       setJobsForCandidate([])
       return
@@ -126,7 +149,11 @@ export default function CreateInterviewModal({
     setApplicationJobsError(null)
     try {
       const res = await listJobApplications({ candidateId, limit: 200 })
-      setJobsForCandidate(jobOptionsFromApplications(res.results))
+      const list = jobOptionsFromApplications(res.results)
+      setJobsForCandidate(list)
+      if (preselectJobId && list.some((j) => String(j.id ?? j._id) === preselectJobId)) {
+        setSelectedJobId(preselectJobId)
+      }
     } catch {
       setApplicationJobsError('Could not load job applications.')
       setJobsForCandidate([])
@@ -135,12 +162,46 @@ export default function CreateInterviewModal({
     }
   }, [])
 
+  /** Marks the prefill payload we've already applied so re-renders (caused by parent clearing prefill, or by
+   *  onPrefillConsumed identity churn) don't re-fire DOM writes or double-load the job list. */
+  const appliedPrefillRef = useRef<string | null>(null)
+
   useEffect(() => {
     setSelectedCandidateId('')
     setSelectedJobId('')
     setJobsForCandidate([])
     setApplicationJobsError(null)
+    appliedPrefillRef.current = null
   }, [formResetKey])
+
+  // Apply context-aware prefill from Applications page action (candidate, job, title, notes, recruiter).
+  // Gated on !dropdownsLoading so the recruiter <option> elements exist before we set the value.
+  // DOM writes are synchronous because the modal JSX is always mounted (just hidden by Preline) — no RAF needed.
+  useEffect(() => {
+    if (!prefill || !prefill.candidateId) return
+    const key = `${prefill.applicationId ?? ''}|${prefill.candidateId}|${prefill.jobId ?? ''}`
+    if (appliedPrefillRef.current === key) return
+    if (dropdownsLoading) return
+    appliedPrefillRef.current = key
+
+    setSelectedCandidateId(prefill.candidateId)
+    void loadApplicationJobs(prefill.candidateId, prefill.jobId)
+
+    const titleInput = document.querySelector<HTMLInputElement>('#schedule-meeting-title')
+    if (titleInput && !titleInput.value.trim() && prefill.suggestedTitle) {
+      titleInput.value = prefill.suggestedTitle
+    }
+    const notesInput = document.querySelector<HTMLTextAreaElement>('#schedule-notes')
+    if (notesInput && !notesInput.value.trim() && prefill.suggestedNotes) {
+      notesInput.value = prefill.suggestedNotes
+    }
+    const recruiterSelect = document.querySelector<HTMLSelectElement>('#schedule-recruiter')
+    if (recruiterSelect && !recruiterSelect.value && prefill.recruiterId) {
+      const match = Array.from(recruiterSelect.options).some((o) => o.value === prefill.recruiterId)
+      if (match) recruiterSelect.value = prefill.recruiterId
+    }
+    onPrefillConsumed?.()
+  }, [prefill, dropdownsLoading, loadApplicationJobs, onPrefillConsumed])
 
   const onScheduleCandidateChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value
@@ -312,7 +373,7 @@ export default function CreateInterviewModal({
                     <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
                     {candidates.map((c) => (
                       <option key={c.id ?? c._id} value={c.id ?? c._id}>
-                        {c.fullName} - {c.email}
+                        {c.fullName}{isPublicEmail(c.email) ? ` - ${c.email}` : ''}
                       </option>
                     ))}
                   </select>

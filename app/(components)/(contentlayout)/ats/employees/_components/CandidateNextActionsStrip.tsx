@@ -277,8 +277,10 @@ export default function CandidateNextActionsStrip({ candidateId, refreshKey = 0 
                 } ${isFocused ? "rounded-md bg-primary/5 px-2 py-0.5 -mx-2" : ""}`}
               >
                 <span
-                  className={`inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border text-[10px] font-bold ${
-                    s.done ? "border-success/50 text-success" : "border-current"
+                  className={`inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-bold ${
+                    s.done
+                      ? "border-success/70 bg-success/10 text-success dark:border-success dark:bg-success/20 dark:text-success"
+                      : "border-gray-400 bg-white text-gray-600 dark:border-white/50 dark:bg-white/5 dark:text-gray-200"
                   }`}
                   aria-hidden
                 >

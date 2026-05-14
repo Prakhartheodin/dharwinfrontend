@@ -46,6 +46,25 @@ function cellText(v: CellValue): string {
   return String(v);
 }
 
+// IST-safe date display for cells annotated with `format: "date"`. Mongo
+// dates often arrive as UTC ISO strings; `new Date(iso).toLocaleDateString()`
+// in an IST viewer can shift the visible day back by one (issue 8). Bare
+// YYYY-MM-DD → treat as local-day; ISO timestamps → display in Asia/Kolkata.
+function formatDateCell(raw: string): string {
+  if (!raw || raw === "—") return raw || "—";
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const d = ymd
+    ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+    : new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: ymd ? undefined : "Asia/Kolkata",
+  });
+}
+
 function cellTone(v: CellValue): Tone | null {
   if (v && typeof v === "object" && "tone" in v && v.tone) return v.tone;
   return null;
@@ -206,7 +225,8 @@ function RealTable({ columns, rows, startIndex }: { columns: Column[]; rows: Row
               {columns.map((col) => {
                 const v = row[col.key];
                 const tone = cellTone(v);
-                const text = cellText(v);
+                const raw = cellText(v);
+                const text = col.format === "date" ? formatDateCell(raw) : raw;
                 return (
                   <td
                     key={col.key}
@@ -239,8 +259,9 @@ function CardStack({
           <RecordCard key={absoluteIndex} index={absoluteIndex}>
             {columns.map((col) => {
               const v = row[col.key];
-              const text = cellText(v);
-              if (text === "—") return null;
+              const raw = cellText(v);
+              if (raw === "—") return null;
+              const text = col.format === "date" ? formatDateCell(raw) : raw;
               const tone = cellTone(v);
               return (
                 <FieldRow key={col.key} label={col.label}>

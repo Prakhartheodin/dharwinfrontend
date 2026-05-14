@@ -4,14 +4,24 @@ import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
 import React, { Fragment, useState, useMemo, useEffect } from "react"
 import Link from "next/link"
-import { MY_COURSES } from "@/shared/data/training/courses-data"
 import type { Course } from "@/shared/data/training/courses-data"
 import { listTrainingModules, type TrainingModule } from "@/shared/lib/api/training-modules"
 
-function mapModuleToCourse(m: TrainingModule): Course {
-  const totalItems = m.playlist?.length ?? 0
+/**
+ * A module assigned to N categories renders under EVERY category — not only
+ * `categories[0]`. The category filter buckets are keyed by category id so two
+ * users with the same role-assigned modules always see the same counts.
+ */
+type CategoryRef = { id: string; name: string }
+
+interface CurriculumCourse extends Course {
+  categories: CategoryRef[]
+  createdAt: string
+}
+
+function mapModuleToCourse(m: TrainingModule): CurriculumCourse {
   const mentorName = m.mentorsAssigned?.[0]?.user?.name ?? "Instructor"
-  const categoryName = m.categories?.[0]?.name ?? ""
+  const categories: CategoryRef[] = (m.categories ?? []).map((c) => ({ id: c.id, name: c.name }))
   return {
     id: m.id,
     title: m.moduleName,
@@ -24,16 +34,20 @@ function mapModuleToCourse(m: TrainingModule): Course {
       title: item.title,
       duration: item.duration ? `${item.duration} min` : undefined,
     })),
-    category: categoryName,
+    category: categories[0]?.name ?? "",
+    categories,
+    createdAt: m.createdAt,
     rating: 0,
   }
 }
 
 const COURSES_PER_PAGE = 6
+const PAGE_FETCH_SIZE = 100
 
 const TrainingCurriculum = () => {
-  const [courses, setCourses] = useState<Course[]>(MY_COURSES)
+  const [courses, setCourses] = useState<CurriculumCourse[]>([])
   const [apiLoading, setApiLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [scheduleDismissed, setScheduleDismissed] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
@@ -45,22 +59,58 @@ const TrainingCurriculum = () => {
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
 
   useEffect(() => {
-    listTrainingModules({ limit: 200, status: "published" })
-      .then((res) => {
-        const apiCourses = (res.results ?? []).map(mapModuleToCourse)
-        if (apiCourses.length > 0) {
-          setCourses(apiCourses)
+    let cancelled = false
+    setApiLoading(true)
+    setLoadError(null)
+    ;(async () => {
+      try {
+        // Fetch every assigned page so client-side category bucketing is not
+        // truncated by the server page size — the prior implementation read
+        // only page 1 and dropped every module beyond that into 0-counts.
+        const first = await listTrainingModules({
+          limit: PAGE_FETCH_SIZE,
+          status: "published",
+          mine: true,
+          sortBy: "createdAt:desc",
+        })
+        const all: TrainingModule[] = [...(first.results ?? [])]
+        for (let page = 2; page <= (first.totalPages ?? 1); page += 1) {
+          const next = await listTrainingModules({
+            limit: PAGE_FETCH_SIZE,
+            status: "published",
+            mine: true,
+            sortBy: "createdAt:desc",
+            page,
+          })
+          all.push(...(next.results ?? []))
         }
-      })
-      .catch(() => {
-        // Keep fallback MY_COURSES
-      })
-      .finally(() => setApiLoading(false))
+        if (cancelled) return
+        setCourses(all.map(mapModuleToCourse))
+      } catch (err) {
+        if (cancelled) return
+        const message =
+          err instanceof Error ? err.message : "Failed to load your modules."
+        setLoadError(message)
+        setCourses([])
+      } finally {
+        if (!cancelled) setApiLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const categories = useMemo(() => {
-    const set = new Set(courses.map((c) => c.category).filter(Boolean))
-    return Array.from(set) as string[]
+    // Aggregate every assigned category across every module — multi-category
+    // modules participate in every bucket.
+    const map = new Map<string, string>()
+    for (const c of courses) {
+      for (const cat of c.categories) {
+        if (cat?.id && cat?.name) map.set(cat.id, cat.name)
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b))
   }, [courses])
   const instructors = useMemo(() => {
     const set = new Set(courses.map((c) => c.instructor))
@@ -77,7 +127,10 @@ const TrainingCurriculum = () => {
           c.instructor.toLowerCase().includes(q)
       )
     }
-    if (categoryFilter) list = list.filter((c) => c.category === categoryFilter)
+    if (categoryFilter) {
+      // Match any of the module's assigned categories, not just `categories[0]`.
+      list = list.filter((c) => c.categories.some((cat) => cat.name === categoryFilter))
+    }
     if (instructorFilter)
       list = list.filter((c) => c.instructor === instructorFilter)
     if (progressFilter === "completed")
@@ -85,12 +138,20 @@ const TrainingCurriculum = () => {
     if (progressFilter === "in-progress")
       list = list.filter((c) => c.progress > 0 && c.progress < 100)
     if (progressFilter === "not-started") list = list.filter((c) => c.progress === 0)
-    if (sortBy === "recent") list = [...list].reverse()
+    if (sortBy === "recent")
+      list = [...list].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
     if (sortBy === "title") list = [...list].sort((a, b) => a.title.localeCompare(b.title))
     return list
   }, [courses, searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
 
   const totalPages = Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE))
+  useEffect(() => {
+    // Filter/sort changes shrink the page count → clamp page back into range so
+    // the grid never disappears under a stale `currentPage`.
+    if (currentPage > totalPages) setCurrentPage(1)
+  }, [totalPages, currentPage])
   const paginatedCourses = useMemo(() => {
     const start = (currentPage - 1) * COURSES_PER_PAGE
     return filteredCourses.slice(start, start + COURSES_PER_PAGE)
@@ -295,11 +356,23 @@ const TrainingCurriculum = () => {
         </div>
 
       {/* Module grid */}
-      <section className="grid grid-cols-12 gap-4 xl:gap-6 mb-6">
-        {paginatedCourses.map((course) => (
-          <CourseCard key={course.id} course={course} />
-        ))}
-      </section>
+      {apiLoading ? (
+        <div className="text-center py-10 text-[#6a6f73] dark:text-white/50">
+          Loading modules…
+        </div>
+      ) : loadError ? (
+        <div className="text-center py-10 text-danger">{loadError}</div>
+      ) : filteredCourses.length === 0 ? (
+        <div className="text-center py-10 text-[#6a6f73] dark:text-white/50">
+          No modules assigned to your account yet.
+        </div>
+      ) : (
+        <section className="grid grid-cols-12 gap-4 xl:gap-6 mb-6">
+          {paginatedCourses.map((course) => (
+            <CourseCard key={course.id} course={course} />
+          ))}
+        </section>
+      )}
 
       {/* Pagination */}
       {totalPages > 1 && (
@@ -342,7 +415,7 @@ const TrainingCurriculum = () => {
   )
 }
 
-function CourseCard({ course }: { course: Course }) {
+function CourseCard({ course }: { course: CurriculumCourse }) {
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (

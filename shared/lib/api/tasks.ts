@@ -197,11 +197,18 @@ export function formatDueDate(dueDate: string | undefined, status: TaskStatus): 
 
 export function formatCreatedDate(dateStr: string | undefined): string {
   if (!dateStr) return "";
-  const d = new Date(dateStr);
+  // Bare YYYY-MM-DD: build a local-time Date so the IST viewer sees the
+  // same day the server stored, instead of new Date("2026-04-06") parsing
+  // as UTC midnight and shifting back a day in toLocaleDateString (issue 8).
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+  const d = ymd
+    ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+    : new Date(dateStr);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-GB", {
     day: "numeric",
     month: "short",
     year: "numeric",
+    timeZone: ymd ? undefined : "Asia/Kolkata",
   });
 }

@@ -91,11 +91,9 @@ export function WaitingParticipantsPanel({
       } else {
         await livekitApi.admitParticipant(roomName, participant.identity, participant.name);
       }
-      setWaitingParticipants((prev) => {
-        const next = prev.filter((p) => p.identity !== participant.identity);
-        onWaitingParticipantsChange?.(next.map((p) => p.identity));
-        return next;
-      });
+      const nextList = waitingParticipants.filter((p) => p.identity !== participant.identity);
+      setWaitingParticipants(nextList);
+      onWaitingParticipantsChange?.(nextList.map((p) => p.identity));
       onParticipantAdmitted?.(participant.identity);
       setTimeout(fetchWaitingParticipants, 500);
     } catch (err: unknown) {
@@ -139,11 +137,9 @@ export function WaitingParticipantsPanel({
       } else {
         await livekitApi.removeParticipant(roomName, participant.identity);
       }
-      setWaitingParticipants((prev) => {
-        const next = prev.filter((p) => p.identity !== participant.identity);
-        onWaitingParticipantsChange?.(next.map((p) => p.identity));
-        return next;
-      });
+      const nextList = waitingParticipants.filter((p) => p.identity !== participant.identity);
+      setWaitingParticipants(nextList);
+      onWaitingParticipantsChange?.(nextList.map((p) => p.identity));
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setError(e?.response?.data?.message || "Failed to remove participant");

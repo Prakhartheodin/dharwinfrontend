@@ -441,24 +441,24 @@ export default function ReferralLeadsPage() {
         {stats && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase text-slate-500">Total referrals</p>
+              <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Total referrals</p>
               <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">{stats.totalReferrals}</p>
-              <p className="text-xs text-slate-500 mt-0.5">In current filters</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">In current filters</p>
             </div>
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase text-slate-500">Converted</p>
-              <p className="text-2xl font-bold text-emerald-600 mt-1">{stats.converted}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{stats.conversionRate}% rate</p>
+              <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Converted</p>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{stats.converted}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{stats.conversionRate}% rate</p>
             </div>
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase text-slate-500">Pending</p>
-              <p className="text-2xl font-bold text-amber-600 mt-1">{stats.pending}</p>
+              <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Pending</p>
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{stats.pending}</p>
             </div>
             <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase text-slate-500">
+              <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
                 {canSeeReferralLeaderboard ? "Hired + top referrer" : "Hired"}
               </p>
-              <p className="text-2xl font-bold text-violet-600 mt-1">{stats.hired}</p>
+              <p className="text-2xl font-bold text-violet-600 dark:text-violet-400 mt-1">{stats.hired}</p>
               {canSeeReferralLeaderboard && stats.topReferrer && (
                 <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 truncate" title={stats.topReferrer.name}>
                   {stats.topReferrer.name} ({stats.topReferrer.count})
@@ -592,7 +592,7 @@ export default function ReferralLeadsPage() {
         )}
 
         {loading && list.length === 0 && !error && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 p-12 text-center text-slate-500">
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 p-12 text-center text-slate-500 dark:text-slate-400">
             Loading referral leads…
           </div>
         )}
@@ -603,7 +603,7 @@ export default function ReferralLeadsPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-lg mx-auto">
               Leads show after a candidate <strong>completes registration</strong> from a{" "}
               <strong>Share candidate onboarding</strong> link, or from a job/public link that includes a signed{" "}
-              <code className="text-xs bg-slate-100 dark:bg-white/10 px-1 rounded">?ref=</code> token. Invites sent before
+              <code className="text-xs bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-200 px-1 rounded">?ref=</code> token. Invites sent before
               this behavior shipped may not have attribution; send a new invite or add attribution via admin tools if
               needed.
             </p>
@@ -632,7 +632,7 @@ export default function ReferralLeadsPage() {
           <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-white/10">
             <table className="min-w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 text-left text-xs font-semibold uppercase text-slate-500">
+                <tr className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/10 text-left text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
                   <th className="px-4 py-3">Candidate</th>
                   <th className="px-4 py-3">Referred by</th>
                   <th className="px-4 py-3">Link</th>
@@ -650,16 +650,16 @@ export default function ReferralLeadsPage() {
                   >
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-800 dark:text-white">{lead.fullName}</div>
-                      <div className="text-xs text-slate-500">{lead.email}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{lead.email}</div>
                     </td>
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {lead.referralAttributionAnonymised ? (
-                        <span className="text-slate-400">Anonymised</span>
+                        <span className="text-slate-400 dark:text-slate-500">Anonymised</span>
                       ) : (
                         <>
                           {lead.referredBy?.name || "—"}
                           {lead.referredBy?.email && (
-                            <div className="text-xs text-slate-500">{lead.referredBy.email}</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{lead.referredBy.email}</div>
                           )}
                         </>
                       )}
@@ -690,7 +690,7 @@ export default function ReferralLeadsPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                       <div>{fmtDate(lead.referredAt || lead.createdAt)}</div>
-                      <div className="text-xs text-slate-400">{fmtTime(lead.referredAt || lead.createdAt)}</div>
+                      <div className="text-xs text-slate-400 dark:text-slate-500">{fmtTime(lead.referredAt || lead.createdAt)}</div>
                     </td>
                   </tr>
                 ))}
@@ -722,13 +722,13 @@ export default function ReferralLeadsPage() {
             <aside className="relative ml-auto h-full w-full max-w-md bg-white dark:bg-bgdark2 shadow-2xl flex flex-col overflow-y-auto">
               <div className="p-5 border-b border-slate-200 dark:border-white/10 flex justify-between items-start">
                 <div>
-                  <p className="text-xs font-semibold uppercase text-slate-500">Referral detail</p>
+                  <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Referral detail</p>
                   <h2 className="text-lg font-bold text-slate-900 dark:text-white mt-1">{selected.fullName}</h2>
-                  <p className="text-sm text-slate-500">{selected.email}</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">{selected.email}</p>
                 </div>
                 <button
                   type="button"
-                  className="text-slate-400 hover:text-slate-600 text-2xl leading-none"
+                  className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300 text-2xl leading-none"
                   onClick={() => setSelected(null)}
                   aria-label="Close"
                 >
@@ -745,7 +745,7 @@ export default function ReferralLeadsPage() {
                           ? "text-emerald-700 dark:text-emerald-300"
                           : a.tone === "warn"
                             ? "text-amber-700 dark:text-amber-200"
-                            : "text-slate-600"
+                            : "text-slate-600 dark:text-slate-300"
                       }`}
                     >
                       {a.text}
@@ -755,11 +755,11 @@ export default function ReferralLeadsPage() {
 
                 {!selected.referralAttributionAnonymised && (
                   <div>
-                    <p className="text-xs text-slate-500 mb-1">Referred by</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Referred by</p>
                     <p className="font-medium text-slate-800 dark:text-white">
                       {selected.referredBy?.name || "—"}{" "}
                       {selected.referredBy?.email && (
-                        <span className="text-slate-500 text-sm block">{selected.referredBy.email}</span>
+                        <span className="text-slate-500 dark:text-slate-400 text-sm block">{selected.referredBy.email}</span>
                       )}
                     </p>
                   </div>
@@ -767,15 +767,15 @@ export default function ReferralLeadsPage() {
 
                 {selected.referralContext && (
                   <div>
-                    <p className="text-xs text-slate-500 mb-1">Link type</p>
-                    <p>{LINK_TYPE[selected.referralContext] || selected.referralContext}</p>
-                    {selected.job?.title && <p className="text-sm text-slate-600 mt-1">Job: {selected.job.title}</p>}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Link type</p>
+                    <p className="text-slate-800 dark:text-slate-100">{LINK_TYPE[selected.referralContext] || selected.referralContext}</p>
+                    {selected.job?.title && <p className="text-sm text-slate-600 dark:text-slate-300 mt-1">Job: {selected.job.title}</p>}
                   </div>
                 )}
 
                 {selected.referredAt && (
                   <div>
-                    <p className="text-xs text-slate-500 mb-1">Attribution time</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Attribution time</p>
                     <p className="text-slate-800 dark:text-slate-100">
                       {fmtDate(selected.referredAt)} {fmtTime(selected.referredAt)}
                     </p>
@@ -785,7 +785,7 @@ export default function ReferralLeadsPage() {
                 {selected.referralLastOverride?.overriddenAt && (
                   <div className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm space-y-2">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs text-slate-500 mb-0">Last override</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-0">Last override</p>
                       <button
                         type="button"
                         className="text-xs font-medium text-primary hover:underline shrink-0"
@@ -795,29 +795,29 @@ export default function ReferralLeadsPage() {
                       </button>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">By</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">By</p>
                       <p className="text-slate-800 dark:text-slate-100">
                         {userDisplay(selected.referralLastOverride.overriddenByUser)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">When</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">When</p>
                       <p className="text-slate-800 dark:text-slate-100">
                         {fmtDate(selected.referralLastOverride.overriddenAt ?? undefined)}{" "}
                         {fmtTime(selected.referralLastOverride.overriddenAt ?? undefined)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">Referrer change</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Referrer change</p>
                       <p className="text-slate-800 dark:text-slate-100">
-                        <span className="text-slate-500">From</span>{" "}
+                        <span className="text-slate-500 dark:text-slate-400">From</span>{" "}
                         {userDisplay(selected.referralLastOverride.previousReferredBy)}
-                        <span className="text-slate-500 mx-1">→</span>
-                        <span className="text-slate-500">to</span> {userDisplay(selected.referralLastOverride.newReferredBy)}
+                        <span className="text-slate-500 dark:text-slate-400 mx-1">→</span>
+                        <span className="text-slate-500 dark:text-slate-400">to</span> {userDisplay(selected.referralLastOverride.newReferredBy)}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-500">Reason</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Reason</p>
                       <p className="text-slate-700 dark:text-slate-200">
                         {selected.referralLastOverride.reason?.trim() || "—"}
                       </p>
@@ -868,7 +868,7 @@ export default function ReferralLeadsPage() {
             />
             <div className="relative bg-white dark:bg-bgdark2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Override attribution</h3>
-              <p className="text-sm text-slate-500 mt-1">
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                 Current: {selected.referredBy?.name || "—"}. Choose the new referrer from your user directory (same as
                 Settings → Users). You can add an optional reason for the audit log.
               </p>
@@ -915,9 +915,9 @@ export default function ReferralLeadsPage() {
                       aria-label="Matching users"
                     >
                       {referrerLoading ? (
-                        <div className="px-3 py-4 text-center text-sm text-slate-500">Loading users…</div>
+                        <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">Loading users…</div>
                       ) : referrerHits.length === 0 ? (
-                        <div className="px-3 py-4 text-center text-sm text-slate-500">No matching users.</div>
+                        <div className="px-3 py-4 text-center text-sm text-slate-500 dark:text-slate-400">No matching users.</div>
                       ) : (
                         referrerHits.map((u) => {
                           const name = u.name?.trim() ?? "";
@@ -927,7 +927,7 @@ export default function ReferralLeadsPage() {
                               key={u.id}
                               type="button"
                               role="option"
-                              className="block w-full border-0 bg-transparent px-3 py-2.5 text-left text-sm hover:bg-slate-50 dark:hover:bg-white/10"
+                              className="block w-full border-0 bg-transparent px-3 py-2.5 text-left text-sm text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/10"
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 setOverrideUserId(u.id);
@@ -940,7 +940,7 @@ export default function ReferralLeadsPage() {
                                 {u.name?.trim() || u.email}
                               </span>
                               {u.name?.trim() && u.email ? (
-                                <span className="block text-xs text-slate-500">{u.email}</span>
+                                <span className="block text-xs text-slate-500 dark:text-slate-400">{u.email}</span>
                               ) : null}
                             </button>
                           );
@@ -1021,10 +1021,10 @@ export default function ReferralLeadsPage() {
                 </button>
               </div>
               <div className="p-4 overflow-y-auto flex-1 min-h-0">
-                {overrideHistoryLoading && <p className="text-sm text-slate-500 m-0">Loading…</p>}
+                {overrideHistoryLoading && <p className="text-sm text-slate-500 dark:text-slate-400 m-0">Loading…</p>}
                 {overrideHistoryError && <p className="text-sm text-danger m-0">{overrideHistoryError}</p>}
                 {!overrideHistoryLoading && !overrideHistoryError && overrideHistoryRows.length === 0 && (
-                  <p className="text-sm text-slate-500 m-0">No override entries in the audit log yet.</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 m-0">No override entries in the audit log yet.</p>
                 )}
                 {!overrideHistoryLoading && !overrideHistoryError && overrideHistoryRows.length > 0 && (
                   <ul className="space-y-3 list-none p-0 m-0">
@@ -1034,25 +1034,25 @@ export default function ReferralLeadsPage() {
                         className="rounded-lg border border-slate-200 dark:border-white/10 p-3 text-sm space-y-2"
                       >
                         <div>
-                          <p className="text-xs text-slate-500 m-0">When</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 m-0">When</p>
                           <p className="text-slate-800 dark:text-slate-100 m-0">
                             {row.createdAt ? `${fmtDate(row.createdAt)} ${fmtTime(row.createdAt)}` : "—"}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 m-0">By</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 m-0">By</p>
                           <p className="text-slate-800 dark:text-slate-100 m-0">{userDisplay(row.actor)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 m-0">Referrer change</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 m-0">Referrer change</p>
                           <p className="text-slate-800 dark:text-slate-100 m-0">
-                            <span className="text-slate-500">From</span> {userDisplay(row.previousReferredBy)}
-                            <span className="text-slate-500 mx-1">→</span>
-                            <span className="text-slate-500">to</span> {userDisplay(row.newReferredBy)}
+                            <span className="text-slate-500 dark:text-slate-400">From</span> {userDisplay(row.previousReferredBy)}
+                            <span className="text-slate-500 dark:text-slate-400 mx-1">→</span>
+                            <span className="text-slate-500 dark:text-slate-400">to</span> {userDisplay(row.newReferredBy)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-slate-500 m-0">Reason</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 m-0">Reason</p>
                           <p className="text-slate-700 dark:text-slate-200 m-0">{row.reason?.trim() || "—"}</p>
                         </div>
                       </li>

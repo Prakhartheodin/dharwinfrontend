@@ -46,6 +46,7 @@ import { resolveDownloadUrlForBrowser } from '@/shared/lib/api/client'
 import { listUsers } from '@/shared/lib/api/users'
 import { getAllShifts } from '@/shared/lib/api/shifts'
 import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
+import { displayApplicantEmail } from '@/shared/lib/ats/applicant-email'
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import { useRouter } from 'next/navigation'
@@ -1623,7 +1624,7 @@ const Candidates = () => {
                   </div>
                   <div className="mt-0.5 flex items-start gap-1">
                     <i className="ri-mail-line mt-px shrink-0"></i>
-                    <span className="min-w-0 break-all">{candidate.email}</span>
+                    <span className="min-w-0 break-all">{displayApplicantEmail([candidate.email])}</span>
                   </div>
                   <div
                     className={`mt-1.5 flex items-center gap-1.5 rounded-md px-1 py-0.5 text-[0.7rem] text-gray-800 dark:text-gray-200 md:hidden ${

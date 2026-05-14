@@ -1855,6 +1855,8 @@ export default function PublicMeetingRoomClient() {
   const [meetingEndAtIso, setMeetingEndAtIso] = useState<string | null>(null);
   const admissionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const participantIdentityRef = useRef<string | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Pre-join form state (when no name in URL)
   const [preJoinName, setPreJoinName] = useState("");
@@ -1875,6 +1877,15 @@ export default function PublicMeetingRoomClient() {
   useEffect(() => {
     participantIdentityRef.current = participantIdentity;
   }, [participantIdentity]);
+
+  useEffect(() => {
+    return () => {
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Lobby: prefill name/email from invite link, prefill_* params, or signed-in user (email is not editable in UI)
   useEffect(() => {
@@ -2198,6 +2209,10 @@ export default function PublicMeetingRoomClient() {
 
   const handleReconnect = useCallback(async () => {
     if (!participantName || !roomId) return;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     try {
       setIsLoading(true);
       const roomName = decodeURIComponent(roomId);
@@ -2207,6 +2222,7 @@ export default function PublicMeetingRoomClient() {
         participantEmail || undefined,
         participantIdentityRef.current ?? participantIdentity ?? undefined
       );
+      reconnectAttemptsRef.current = 0;
       setToken(data.token);
       setMeetingEndAtIso(data.meetingEndAt ?? null);
       if (data.participantIdentity) {
@@ -2215,12 +2231,63 @@ export default function PublicMeetingRoomClient() {
       }
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
-      console.error("Error fetching token during reconnect:", err);
-      setTimeout(() => handleReconnect(), INITIAL_RECONNECT_DELAY);
+      const status = (err as { response?: { status?: number }; status?: number } | undefined)?.response?.status
+        ?? (err as { status?: number } | undefined)?.status;
+
+      // Terminal: meeting ended/cancelled. Stop retrying, notify, leave room.
+      if (status === 410) {
+        reconnectAttemptsRef.current = 0;
+        setMeetingEnded(true);
+        void Swal.fire({
+          toast: true,
+          position: "top-end",
+          icon: "info",
+          title: "Meeting has ended",
+          showConfirmButton: false,
+          timer: 3500,
+          timerProgressBar: true,
+          background: "#1f2937",
+          color: "#f9fafb",
+        });
+        handleLeave();
+        return;
+      }
+
+      // Cap attempts to avoid hammering the rate limiter (publicWriteLimiter → 429).
+      if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+        console.error("Reconnect attempts exhausted; leaving room.", err);
+        reconnectAttemptsRef.current = 0;
+        void Swal.fire({
+          toast: true,
+          position: "top-end",
+          icon: "warning",
+          title: "Lost connection",
+          text: "Unable to reconnect. Returning to lobby.",
+          showConfirmButton: false,
+          timer: 4000,
+          background: "#1f2937",
+          color: "#f9fafb",
+        });
+        handleLeave();
+        return;
+      }
+
+      // 429 → wait longer (rate limited). Others → exponential backoff.
+      const attempt = reconnectAttemptsRef.current;
+      const base = status === 429
+        ? Math.max(INITIAL_RECONNECT_DELAY * 2, MAX_RECONNECT_DELAY)
+        : INITIAL_RECONNECT_DELAY * Math.pow(2, attempt);
+      const delay = Math.min(base, MAX_RECONNECT_DELAY);
+      reconnectAttemptsRef.current = attempt + 1;
+      console.error(`Reconnect attempt ${attempt + 1}/${MAX_RECONNECT_ATTEMPTS} failed (status=${status ?? "n/a"}); retrying in ${delay}ms`, err);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        handleReconnect();
+      }, delay);
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail, participantIdentity]);
+  }, [roomId, participantName, participantEmail, participantIdentity, handleLeave]);
 
   const handleError = useCallback((error: Error) => {
     const errorMessage = error.message.toLowerCase();

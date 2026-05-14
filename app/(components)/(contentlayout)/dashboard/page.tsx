@@ -8,7 +8,6 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
   getAtsAnalytics,
-  getApplicationsOverTimeByCandidates,
   type AtsAnalyticsResponse,
   type StatusCount,
 } from "@/shared/lib/api/atsAnalytics";
@@ -23,7 +22,7 @@ import {
   TASK_STATUS_LABELS,
 } from "@/shared/lib/api/tasks";
 import { listJobs, type Job } from "@/shared/lib/api/jobs";
-import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobApplications";
+import { listJobApplications, type JobApplication, type JobApplicationStatus } from "@/shared/lib/api/jobApplications";
 import { listProjects, type Project } from "@/shared/lib/api/projects";
 import {
   getMyStudentForAttendance,
@@ -149,6 +148,72 @@ function getStatusBadgeClass(status: string): string {
 function getInitial(name: string | undefined | null): string {
   if (!name) return "?";
   return name.charAt(0).toUpperCase();
+}
+
+function getInitials(name: string | undefined | null): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+function formatRelativeTime(s: string | undefined | null): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) return "just now";
+  const sec = Math.floor(diffMs / 1000);
+  if (sec < 60) return "just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 7) return `${day}d ago`;
+  const wk = Math.floor(day / 7);
+  if (wk < 5) return `${wk}w ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.floor(day / 365)}y ago`;
+}
+
+/** Sorts JobApplications by most-recent activity (updatedAt → createdAt fallback) and returns top N.
+    Used by the dashboard Candidate List widget so we always show fresh ATS pipeline entries. */
+function pickRecentApplications(apps: JobApplication[], n: number): JobApplication[] {
+  return [...apps]
+    .sort((a, b) => {
+      const at = new Date(a.updatedAt ?? a.createdAt ?? 0).getTime();
+      const bt = new Date(b.updatedAt ?? b.createdAt ?? 0).getTime();
+      return bt - at;
+    })
+    .slice(0, n);
+}
+
+function getApplicationJobTitle(app: JobApplication): string {
+  const j = app.job;
+  if (j && typeof j === "object" && j.title) return j.title;
+  return "Open role";
+}
+
+function getApplicationStatusStyles(status: JobApplicationStatus): string {
+  switch (status) {
+    case "Applied":
+      return "bg-primary/10 text-primary";
+    case "Screening":
+      return "bg-warning/10 text-warning";
+    case "Interview":
+      return "bg-info/10 text-info";
+    case "Offered":
+      return "bg-secondary/10 text-secondary";
+    case "Hired":
+      return "bg-success/10 text-success";
+    case "Rejected":
+      return "bg-danger/10 text-danger";
+    default:
+      return "bg-light text-[#8c9097] dark:bg-white/10 dark:text-white/60";
+  }
 }
 
 function getGreeting(): string {
@@ -334,7 +399,10 @@ export default function DashboardPage() {
   const [atsData, setAtsData] = useState<AtsAnalyticsResponse | null>(null);
   const [trainingData, setTrainingData] =
     useState<TrainingAnalyticsResponse | null>(null);
-  const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
+  /** Recent ATS pipeline applicants (NOT employees). Derived from `/job-applications` so the widget shows
+      true candidate records — applied, screening, interview, offered, hired, rejected — instead of
+      onboarded staff that would appear if we pulled `/employees`. */
+  const [recentApplications, setRecentApplications] = useState<JobApplication[]>([]);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [recentJobs, setRecentJobs] = useState<Job[]>([]);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
@@ -342,17 +410,12 @@ export default function DashboardPage() {
   const [applicantsList, setApplicantsList] = useState<JobApplication[] | null>(null);
   const [applicantsLoading, setApplicantsLoading] = useState(false);
   const [statBoxModal, setStatBoxModal] = useState<
-    "activeJobs" | "candidates" | "applications" | null
+    "activeJobs" | "candidates" | null
   >(null);
   const [statBoxList, setStatBoxList] = useState<
     Job[] | CandidateListItem[] | JobApplication[] | null
   >(null);
   const [statBoxLoading, setStatBoxLoading] = useState(false);
-  const [selectedTeamMember, setSelectedTeamMember] = useState<CandidateListItem | null>(null);
-  const [failedAvatarIds, setFailedAvatarIds] = useState<Set<string>>(new Set());
-  const [applicationsOverTimeByCandidate, setApplicationsOverTimeByCandidate] = useState<
-    Record<string, number[]>
-  >({});
   const [applicantCountByJob, setApplicantCountByJob] = useState<
     Record<string, number>
   >({});
@@ -387,8 +450,6 @@ export default function DashboardPage() {
   const hasAtsJobsAccess =
     permissionsLoaded &&
     (hasPermissionForPath(permissions ?? [], "ats.jobs:") || hasPermissionForPath(permissions ?? [], "ats.analytics:"));
-  const hasAtsCandidatesAccess =
-    permissionsLoaded && hasPermissionForPath(permissions ?? [], "ats.candidates:");
   /* Roles without these permissions otherwise get 403 spam from the dashboard
      panels they will never see. The dashboard projects panel hits
      `/v1/projects` (no `mine=true`), which the backend gates with
@@ -417,7 +478,6 @@ export default function DashboardPage() {
     const [
       atsRes,
       trainingRes,
-      candidatesRes,
       tasksRes,
       jobsRes,
       applicationsRes,
@@ -431,7 +491,6 @@ export default function DashboardPage() {
       hasTrainingAnalyticsAccess
         ? getTrainingAnalytics()
         : Promise.resolve(null as TrainingAnalyticsResponse | null),
-      hasAtsCandidatesAccess ? listCandidates({ limit: 5 }) : Promise.resolve({ results: [] as CandidateListItem[] }),
       listTasks({ assignedToMe: true, limit: 50 }),
       hasAtsJobsAccess ? listJobs({ limit: 8, sortBy: "createdAt:desc", status: "Active" }) : Promise.resolve({ results: [] as Job[] }),
       hasAtsJobsAccess
@@ -459,21 +518,6 @@ export default function DashboardPage() {
 
     if (atsRes.status === "fulfilled") setAtsData(atsRes.value);
     if (trainingRes.status === "fulfilled") setTrainingData(trainingRes.value);
-    if (candidatesRes.status === "fulfilled") {
-      const cands = candidatesRes.value.results ?? [];
-      setCandidates(cands);
-      const ids = cands.map((c) => String(c._id ?? c.id ?? "")).filter(Boolean);
-      if (ids.length > 0) {
-        try {
-          const appOverTime = await getApplicationsOverTimeByCandidates(ids);
-          setApplicationsOverTimeByCandidate(appOverTime);
-        } catch {
-          setApplicationsOverTimeByCandidate({});
-        }
-      } else {
-        setApplicationsOverTimeByCandidate({});
-      }
-    }
     if (tasksRes.status === "fulfilled")
       setMyTasks(tasksRes.value.results ?? []);
     if (jobsRes.status === "fulfilled")
@@ -500,8 +544,10 @@ export default function DashboardPage() {
         }
       }
       setApplicantCountByJob(map);
+      setRecentApplications(pickRecentApplications(apps, 5));
     } else {
       setApplicationsListingTotal(null);
+      setRecentApplications([]);
     }
 
     if (projectsRes.status === "fulfilled")
@@ -533,7 +579,6 @@ export default function DashboardPage() {
     setLoading(false);
   }, [
     hasAtsJobsAccess,
-    hasAtsCandidatesAccess,
     hasProjectsAccess,
     hasMeetingsAccess,
     hasTrainingAnalyticsAccess,
@@ -584,17 +629,6 @@ export default function DashboardPage() {
         } else if (statBoxModal === "candidates") {
           const res = await listCandidates({ limit: 100 });
           if (!cancelled) setStatBoxList(res.results ?? []);
-        } else if (statBoxModal === "applications") {
-          const res = await listJobApplications({
-            limit: DASHBOARD_JOB_APPLICATIONS_FETCH_LIMIT,
-            activeJobsOnly: true,
-          });
-          if (!cancelled) {
-            setStatBoxList(res.results ?? []);
-            if (typeof res.totalResults === "number") {
-              setApplicationsListingTotal(res.totalResults);
-            }
-          }
         }
       } catch {
         if (!cancelled) setStatBoxList([]);
@@ -640,6 +674,7 @@ export default function DashboardPage() {
             }
           }
           setApplicantCountByJob(map);
+          setRecentApplications(pickRecentApplications(apps, 5));
         }
       } catch {
         /* ignore */
@@ -871,10 +906,10 @@ export default function DashboardPage() {
                   </Link>
                 </div>
                 <div className="sm:col-span-6 col-span-12">
-                  <button
-                    type="button"
-                    onClick={() => setStatBoxModal("applications")}
-                    className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg"
+                  <Link
+                    href="/ats/applications"
+                    aria-label="Manage all applications"
+                    className="block w-full text-left rounded-lg hover:opacity-90"
                   >
                     <div className="box">
                       <div className="box-body flex justify-between items-center">
@@ -893,7 +928,7 @@ export default function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  </button>
+                  </Link>
                 </div>
                 <div className="xl:col-span-12 col-span-12">
                   <div className="box">
@@ -923,60 +958,123 @@ export default function DashboardPage() {
                   <div className="box">
                     <div className="box-header justify-between">
                       <div className="box-title">Candidate List</div>
-                      <Link href="/ats/employees" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View All" aria-label="View All">
+                      <Link href="/ats/referral-leads" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View referral leads" aria-label="View referral leads">
                         <i className="ri-external-link-line text-[1rem]" />
                       </Link>
                     </div>
                     <div className="box-body">
                       {loading ? (
-                        <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-                      ) : candidates.length === 0 ? (
-                        <p className="text-[#8c9097] dark:text-white/50 text-sm">No candidates yet.</p>
+                        <ul className="list-none mb-0 space-y-1" aria-busy="true" aria-live="polite">
+                          {[...Array(5)].map((_, i) => (
+                            <li key={i} className="flex items-center gap-3 p-2 sm:p-3">
+                              <Skeleton className="h-9 w-9 rounded-md shrink-0" />
+                              <div className="flex-1 min-w-0 space-y-2">
+                                <Skeleton className="h-3 w-2/5" />
+                                <Skeleton className="h-2.5 w-3/5" />
+                              </div>
+                              <Skeleton className="h-5 w-16 rounded-full shrink-0" />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : recentApplications.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                          <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/5 text-primary mb-3">
+                            <i className="ri-user-search-line text-[1.25rem]" />
+                          </span>
+                          <p className="font-semibold text-sm mb-1">No recent candidates</p>
+                          <p className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 mb-3">
+                            New applicants will appear here.
+                          </p>
+                          <Link
+                            href="/ats/jobs"
+                            className="text-[0.75rem] text-primary hover:underline inline-flex items-center gap-1"
+                          >
+                            <i className="ri-briefcase-line" /> View open jobs
+                          </Link>
+                        </div>
                       ) : (
                         <ul className="list-none team-members-card mb-0 space-y-1">
-                          {candidates.map((c, idx) => {
-                            const cId = String(c._id ?? c.id ?? "");
-                            const chartColors = ["#09ad95", "#fb6b27", "#1170e4", "#e82646", "#f7b731"];
-                            const appData = applicationsOverTimeByCandidate[cId] ?? [0, 0, 0, 0, 0];
-                            const chartOptions: ApexOptions = {
-                              ...Projectdata.Team1.options,
-                              colors: [chartColors[idx % 5]],
-                              series: [{ name: "Value", data: appData }],
-                            };
+                          {recentApplications.map((app) => {
+                            const c = app.candidate ?? {};
+                            const appId = String(app._id ?? app.id ?? "");
+                            const candidateId = String(c._id ?? c.id ?? "");
+                            const name = (c.fullName ?? c.email ?? "Unnamed candidate").trim() || "Unnamed candidate";
+                            const jobTitle = getApplicationJobTitle(app);
+                            const status = app.status;
+                            const statusStyles = getApplicationStatusStyles(status);
+                            const relTime = formatRelativeTime(app.updatedAt ?? app.createdAt);
+                            const profileHref = candidateId ? `/ats/employees/edit?id=${candidateId}` : "/ats/jobs";
                             return (
-                              <li key={cId}>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedTeamMember(c)}
-                                  className="w-full flex items-center justify-between p-3 rounded-lg border-0 bg-transparent text-left cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group"
-                                >
-                                  <div className="flex items-start">
-                                    {c.profilePicture?.url && !failedAvatarIds.has(cId) ? (
-                                      <span className="avatar avatar-sm leading-none">
-                                        <img
-                                          src={c.profilePicture.url}
-                                          alt=""
-                                          className="rounded-md"
-                                          onError={() => setFailedAvatarIds((prev) => new Set(prev).add(cId))}
-                                        />
+                              <li key={appId || candidateId}>
+                                <div className="relative group">
+                                  <Link
+                                    href={profileHref}
+                                    aria-label={`View candidate ${name}`}
+                                    className="w-full flex items-center justify-between gap-3 p-2 sm:p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 transition-colors"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                      <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md leading-none flex items-center justify-center text-xs font-semibold shrink-0">
+                                        {getInitials(name)}
                                       </span>
-                                    ) : (
-                                      <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md leading-none flex items-center justify-center text-xs font-semibold">
-                                        {getInitial(c.fullName)}
+                                      <div className="min-w-0 flex-1 leading-tight">
+                                        <span className="font-semibold block truncate group-hover:text-primary transition-colors">
+                                          {name}
+                                        </span>
+                                        <span className="block truncate text-[0.6875rem] text-[#8c9097] dark:text-white/50 mt-1">
+                                          <span className="truncate">{jobTitle}</span>
+                                          <span className="mx-1.5 opacity-60">•</span>
+                                          <span className="truncate">{status}</span>
+                                        </span>
+                                        {relTime && (
+                                          <span className="block truncate text-[0.625rem] text-[#8c9097]/80 dark:text-white/40 mt-0.5">
+                                            Updated {relTime}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span
+                                        className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[0.625rem] font-semibold leading-none transition-opacity group-hover:opacity-0 ${statusStyles}`}
+                                        aria-label={`Stage: ${status}`}
+                                      >
+                                        {status}
                                       </span>
-                                    )}
-                                    <div className="ms-4 leading-none">
-                                      <span className="font-semibold block group-hover:text-primary transition-colors">{c.fullName ?? "—"}</span>
-                                      <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 mt-1">{c.email ?? ""}</span>
                                     </div>
+                                  </Link>
+                                  <div
+                                    className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto group-focus-within:pointer-events-auto"
+                                    role="group"
+                                    aria-label={`Quick actions for ${name}`}
+                                  >
+                                    <Link
+                                      href={profileHref}
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="View profile"
+                                      aria-label="View profile"
+                                      className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] dark:text-white/60 hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                                    >
+                                      <i className="ri-user-3-line text-[0.875rem]" />
+                                    </Link>
+                                    <a
+                                      href={c.email ? `mailto:${c.email}` : "#"}
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Message"
+                                      aria-label="Message candidate"
+                                      className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] dark:text-white/60 hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${c.email ? "" : "pointer-events-none opacity-50"}`}
+                                    >
+                                      <i className="ri-mail-line text-[0.875rem]" />
+                                    </a>
+                                    <Link
+                                      href={candidateId ? `/ats/interviews?candidateId=${candidateId}` : "/ats/interviews"}
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="Schedule interview"
+                                      aria-label="Schedule interview"
+                                      className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] dark:text-white/60 hover:bg-primary/10 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
+                                    >
+                                      <i className="ri-calendar-event-line text-[0.875rem]" />
+                                    </Link>
                                   </div>
-                                  <div className="flex items-center gap-2">
-                                    <div id={`user${idx + 1}`}>
-                                      <ReactApexChart options={chartOptions} series={[{ name: "Value", data: appData }]} type="line" height={20} width={80} />
-                                    </div>
-                                    <i className="ri-arrow-right-s-line text-[#8c9097] dark:text-white/50 group-hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  </div>
-                                </button>
+                                </div>
                               </li>
                             );
                           })}
@@ -1127,10 +1225,10 @@ export default function DashboardPage() {
                               : "badge bg-secondary/10 text-secondary";
                         return (
                           <li key={jobId}>
-                            <div className="flex items-start gap-2">
+                            <div className="flex items-start gap-3 min-w-0 rounded-lg p-2 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                               <button
                                 type="button"
-                                className="flex-shrink-0 cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/30 rounded-full"
+                                className="shrink-0 cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/30 rounded-full"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setApplicantsModal({ jobId, jobTitle: job.title ?? "—" });
@@ -1142,11 +1240,11 @@ export default function DashboardPage() {
                               </button>
                               <button
                                 type="button"
-                                className="flex-grow min-w-0 text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90"
+                                className="flex-1 min-w-0 text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90"
                                 onClick={() => setSelectedJobDetail(job)}
                               >
-                                <span className="block font-semibold truncate" title={job.title ?? ""}>{job.title ?? "—"}</span>
-                                <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate" title={`${job.organisation?.name ?? "—"} • ${count} applicant${count !== 1 ? "s" : ""}`}>
+                                <span className="block font-semibold line-clamp-2 break-words" title={job.title ?? ""}>{job.title ?? "—"}</span>
+                                <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate mt-0.5" title={`${job.organisation?.name ?? "—"} • ${count} applicant${count !== 1 ? "s" : ""}`}>
                                   {job.organisation?.name ?? "—"} &bull; {count} applicant{count !== 1 ? "s" : ""}
                                 </span>
                                 {job.status && (
@@ -1321,7 +1419,7 @@ export default function DashboardPage() {
           onClick={() => setStatBoxModal(null)}
           role="dialog"
           aria-modal="true"
-          aria-label={statBoxModal === "activeJobs" ? "Active Jobs" : statBoxModal === "candidates" ? "Total Candidates" : "Applications"}
+          aria-label={statBoxModal === "activeJobs" ? "Active Jobs" : "Total Candidates"}
         >
           <div
             className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
@@ -1329,11 +1427,7 @@ export default function DashboardPage() {
           >
             <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2 flex-shrink-0">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate flex-1">
-                {statBoxModal === "activeJobs"
-                  ? "Active Jobs"
-                  : statBoxModal === "candidates"
-                    ? "Total Candidates"
-                    : "Applications"}
+                {statBoxModal === "activeJobs" ? "Active Jobs" : "Total Candidates"}
               </h3>
               <button
                 type="button"
@@ -1349,11 +1443,7 @@ export default function DashboardPage() {
                 <p className="text-[#8c9097] dark:text-white/50 text-sm">Loading…</p>
               ) : statBoxList === null ? null : statBoxList.length === 0 ? (
                 <p className="text-[#8c9097] dark:text-white/50 text-sm">
-                  {statBoxModal === "activeJobs"
-                    ? "No jobs yet."
-                    : statBoxModal === "candidates"
-                      ? "No candidates yet."
-                      : "No applications yet."}
+                  {statBoxModal === "activeJobs" ? "No jobs yet." : "No candidates yet."}
                 </p>
               ) : statBoxModal === "activeJobs" ? (
                 <ul className="list-none space-y-3">
@@ -1372,7 +1462,7 @@ export default function DashboardPage() {
                     );
                   })}
                 </ul>
-              ) : statBoxModal === "candidates" ? (
+              ) : (
                 <ul className="list-none space-y-3">
                   {(statBoxList as CandidateListItem[]).map((c) => {
                     const id = String(c._id ?? c.id ?? "");
@@ -1385,28 +1475,6 @@ export default function DashboardPage() {
                         <div className="min-w-0 flex-1">
                           <span className="block font-medium text-gray-900 dark:text-white truncate">{name}</span>
                           {c.email && <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{c.email}</span>}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <ul className="list-none space-y-3">
-                  {(statBoxList as JobApplication[]).map((app, idx) => {
-                    const c = app.candidate;
-                    const j = app.job;
-                    const jobTitle = typeof j === "object" && j !== null ? (j as { title?: string }).title : "—";
-                    const name = (c?.fullName ?? c?.email ?? "—").trim() || "—";
-                    const rowKey = String(app._id ?? app.id ?? `application-${idx}`);
-                    return (
-                      <li key={rowKey} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-white/5">
-                        <span className="avatar avatar-sm avatar-rounded bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center text-xs font-semibold">
-                          {name.charAt(0).toUpperCase()}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <span className="block font-medium text-gray-900 dark:text-white truncate">{name}</span>
-                          <span className="block text-[#8c9097] dark:text-white/50 text-[0.6875rem] truncate">{jobTitle}</span>
-                          {app.status && <span className="inline-block mt-1 badge bg-primary/10 text-primary text-[0.625rem]">{app.status}</span>}
                         </div>
                       </li>
                     );
@@ -1430,93 +1498,6 @@ export default function DashboardPage() {
       )}
 
       {/* Candidate detail modal */}
-      {selectedTeamMember && (() => {
-        const c = selectedTeamMember;
-        const cId = String(c._id ?? c.id ?? "");
-        const skills = c.skills?.map((s) => s.name).filter(Boolean) ?? [];
-        return (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
-            onClick={() => setSelectedTeamMember(null)}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Candidate details"
-          >
-            <div
-              className="bg-white dark:bg-bodybg rounded-lg shadow-xl max-w-md w-full max-h-[85vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="p-4 border-b border-gray-200 dark:border-white/10 flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3 min-w-0">
-                  {c.profilePicture?.url && !failedAvatarIds.has(cId) ? (
-                    <span className="avatar avatar-lg flex-shrink-0">
-                      <img
-                        src={c.profilePicture.url}
-                        alt=""
-                        className="rounded-lg"
-                        onError={() => setFailedAvatarIds((prev) => new Set(prev).add(cId))}
-                      />
-                    </span>
-                  ) : (
-                    <span className="avatar avatar-lg bg-primary/10 text-primary rounded-lg flex-shrink-0 flex items-center justify-center text-lg font-semibold">
-                      {getInitial(c.fullName)}
-                    </span>
-                  )}
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white truncate">{c.fullName ?? "—"}</h3>
-                    <span className="block text-[0.8125rem] text-[#8c9097] dark:text-white/50 truncate">{c.email ?? ""}</span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="flex-shrink-0 text-gray-500 hover:text-gray-700 dark:text-white/70"
-                  onClick={() => setSelectedTeamMember(null)}
-                  aria-label="Close"
-                >
-                  ×
-                </button>
-              </div>
-              <div className="p-4 overflow-y-auto flex-1 space-y-3">
-                {c.phoneNumber && (
-                  <div>
-                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Phone</span>
-                    <span className="text-gray-900 dark:text-white">{c.phoneNumber}</span>
-                  </div>
-                )}
-                {skills.length > 0 && (
-                  <div>
-                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium mb-1">Skills</span>
-                    <div className="flex flex-wrap gap-1">
-                      {skills.slice(0, 8).map((s) => (
-                        <span key={s} className="badge bg-primary/10 text-primary text-[0.6875rem]">{s}</span>
-                      ))}
-                      {skills.length > 8 && <span className="badge bg-secondary/10 text-secondary text-[0.6875rem]">+{skills.length - 8}</span>}
-                    </div>
-                  </div>
-                )}
-                {c.shortBio && (
-                  <div>
-                    <span className="text-[#8c9097] dark:text-white/50 block text-xs font-medium">Bio</span>
-                    <p className="text-gray-900 dark:text-white text-sm line-clamp-3">{c.shortBio}</p>
-                  </div>
-                )}
-              </div>
-              <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
-                <Link
-                  href={`/ats/employees/edit/?id=${cId}`}
-                  className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
-                  onClick={() => setSelectedTeamMember(null)}
-                  title="View full profile"
-                  aria-label="View full profile"
-                >
-                  <i className="ri-external-link-line text-[1.25rem]" />
-                </Link>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
       {/* Projects Summary - full width */}
       <div className="grid grid-cols-12 gap-6">
         <div className="xxl:col-span-12 col-span-12">

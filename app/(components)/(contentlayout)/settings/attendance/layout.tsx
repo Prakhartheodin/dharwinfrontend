@@ -78,10 +78,10 @@ export default function SettingsAttendanceLayout({
       {sidebarStyles}
       <div className="grid grid-cols-12 gap-6 attendance-sidebar">
         {/*
-          Must stack above react-select menuPortal (e.g. week-off / assign use z-index 10000 on document.body);
-          otherwise the last items in this nav can be unclickable when a portal is active or leaves a high-z layer.
+          Sub-nav sits above page content but BELOW any dialog/modal/Swal/menu portal
+          so it never occludes confirmation dialogs (Swal default z-1060) or shift/leave success modals.
         */}
-        <div className="xl:col-span-3 col-span-12 relative z-[10050] min-w-0">
+        <div className="xl:col-span-3 col-span-12 relative z-30 min-w-0">
           <aside
             className="pointer-events-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden sticky top-4 isolate"
             aria-label="Attendance navigation"
@@ -99,7 +99,7 @@ export default function SettingsAttendanceLayout({
                 </h2>
               </div>
             </div>
-            <nav className="pointer-events-auto relative z-[10051] p-2 pb-2.5" aria-label="Attendance settings">
+            <nav className="pointer-events-auto relative z-40 p-2 pb-2.5" aria-label="Attendance settings">
               {/*
                 Native <a> forces a full document navigation. Next.js <Link> soft navigation
                 can fail to swap the page slot in this nested settings layout; full navigation is reliable.
