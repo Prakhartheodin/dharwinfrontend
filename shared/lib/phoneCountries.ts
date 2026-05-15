@@ -119,3 +119,70 @@ export function formatPhoneForApi(digits: string, countryCode: string): string {
   const dial = getDialCodeForApi(countryCode);
   return dial ? `+${dial}${digits}` : digits;
 }
+
+/**
+ * Parse a stored phone field into { countryCode, digits } for UI hydration.
+ * Handles three legacy shapes safely:
+ *  - "+919323423453"          → IN + "9323423453"  (E.164, prefix detected)
+ *  - "919323423453" + IN hint → IN + "9323423453"  (digits-only with dial prefix repeated)
+ *  - "9323423453"   + IN hint → IN + "9323423453"  (clean local digits)
+ * When no countryCode hint is given and no recognised dial prefix matches, falls back
+ * to DEFAULT_PHONE_COUNTRY but keeps the original digits so the user can correct it.
+ * Sorted longest-prefix-first to disambiguate overlapping codes (e.g. +1 vs +1XXX).
+ */
+const DIAL_LOOKUP = PHONE_COUNTRIES.map((c) => ({
+  code: c.code,
+  dialDigits: c.dialCode.replace("+", ""),
+  maxLength: c.maxLength,
+})).sort((a, b) => b.dialDigits.length - a.dialDigits.length);
+
+export function parseStoredPhone(
+  rawPhone: string | null | undefined,
+  storedCountryCode?: string | null,
+): { countryCode: string; digits: string } {
+  const fallback = storedCountryCode && byCode.has(storedCountryCode)
+    ? storedCountryCode
+    : DEFAULT_PHONE_COUNTRY;
+  const trimmed = (rawPhone || "").trim();
+  if (!trimmed) return { countryCode: fallback, digits: "" };
+  const digits = trimmed.replace(/\D/g, "");
+  if (!digits) return { countryCode: fallback, digits: "" };
+
+  const startedWithPlus = trimmed.startsWith("+");
+
+  if (storedCountryCode && byCode.has(storedCountryCode)) {
+    const cfg = byCode.get(storedCountryCode)!;
+    const dial = cfg.dialCode.replace("+", "");
+    // Only strip the dial prefix when the digits are clearly longer than a
+    // local-format number for that country, or the raw input was E.164.
+    // Otherwise a real local number that happens to start with the dial
+    // code (e.g. India "9123456789" starts with "91") would lose its
+    // leading digits.
+    if (
+      dial &&
+      digits.startsWith(dial) &&
+      (startedWithPlus || digits.length > cfg.maxLength) &&
+      digits.length - dial.length <= cfg.maxLength
+    ) {
+      return { countryCode: storedCountryCode, digits: digits.slice(dial.length) };
+    }
+    if (digits.length <= cfg.maxLength) {
+      return { countryCode: storedCountryCode, digits };
+    }
+  }
+
+  if (startedWithPlus || !storedCountryCode) {
+    for (const opt of DIAL_LOOKUP) {
+      if (
+        opt.dialDigits &&
+        digits.startsWith(opt.dialDigits) &&
+        digits.length > opt.dialDigits.length &&
+        digits.length - opt.dialDigits.length <= opt.maxLength
+      ) {
+        return { countryCode: opt.code, digits: digits.slice(opt.dialDigits.length) };
+      }
+    }
+  }
+
+  return { countryCode: fallback, digits };
+}

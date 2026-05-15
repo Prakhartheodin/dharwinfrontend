@@ -10,7 +10,7 @@ import {
   type PublicApplyPayload,
 } from "@/shared/lib/api/jobs";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
-import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCountries";
+import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
 
 const PASSWORD_MIN_LENGTH = 8;
 
@@ -178,7 +178,8 @@ export function PublicJobApplyModal({
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
-        phoneNumber: formatPhoneForApi(phoneNumber, countryCode),
+        // Store local digits only — countryCode is the source of truth for dial prefix.
+        phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
         coverLetter: coverLetter.trim(),
         ...(referralRef?.trim() ? { ref: referralRef.trim() } : {}),
@@ -283,7 +284,7 @@ export function PublicJobApplyModal({
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                className="flex-1 min-w-0 rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-primary dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 placeholder="Phone number"
                 inputMode="numeric"
                 required
