@@ -627,14 +627,14 @@ export default function CreateInterviewModal({
                 </div>
                 <div>
                   <label htmlFor="schedule-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
-                    Recruiter
+                    Agent
                   </label>
                   <select
                     id="schedule-recruiter"
                     className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     disabled={dropdownsLoading}
                   >
-                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select recruiter'}</option>
+                    <option value="">{dropdownsLoading ? 'Loading...' : 'Select agent'}</option>
                     {recruiters.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name ?? r.email} - {r.email}

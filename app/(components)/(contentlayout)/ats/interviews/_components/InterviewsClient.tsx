@@ -354,7 +354,7 @@ export default function InterviewsClient() {
         setCandidates(candidateList)
         setRecruiters(recruiterList)
         const failed = results
-          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Recruiters'][i] : null))
+          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Agents'][i] : null))
           .filter(Boolean) as string[]
         if (failed.length > 0) {
           console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
@@ -1002,7 +1002,7 @@ export default function InterviewsClient() {
         },
       },
       {
-        Header: 'Recruiter',
+        Header: 'Agent',
         accessor: 'recruiter',
         Cell: ({ row }: any) => {
           const recruiter = row.original.recruiter
@@ -1361,6 +1361,15 @@ export default function InterviewsClient() {
 
   const { pageIndex, pageSize } = state
 
+  // Reset to the first page when the filtered dataset shrinks below the
+  // current page window, so applying filters/search never strands the user
+  // on a now-empty page.
+  useEffect(() => {
+    if (pageIndex > 0 && pageIndex * pageSize >= filteredData.length) {
+      gotoPage(0)
+    }
+  }, [filteredData.length, pageIndex, pageSize, gotoPage])
+
   // Handle sort selection
   const handleSortChange = (sortOption: string) => {
     setSelectedSort(sortOption)
@@ -1492,7 +1501,7 @@ export default function InterviewsClient() {
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-asc' ? 'active' : ''}`}
                         onClick={() => handleSortChange('recruiter-asc')}
                       >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Recruiter (A-Z)
+                        <i className="ri-team-line me-2 align-middle inline-block"></i>Agent (A-Z)
                       </button>
                     </li>
                     <li>
@@ -1501,7 +1510,7 @@ export default function InterviewsClient() {
                         className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-desc' ? 'active' : ''}`}
                         onClick={() => handleSortChange('recruiter-desc')}
                       >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Recruiter (Z-A)
+                        <i className="ri-team-line me-2 align-middle inline-block"></i>Agent (Z-A)
                       </button>
                     </li>
                     <li>
@@ -2194,9 +2203,9 @@ export default function InterviewsClient() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="edit-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Recruiter</label>
+                    <label htmlFor="edit-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Agent</label>
                     <select id="edit-recruiter" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.recruiter?.id ?? ''}>
-                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select recruiter'}</option>
+                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select agent'}</option>
                       {recruiters.map((r) => (
                         <option key={r.id} value={r.id}>{r.name ?? r.email} - {r.email}</option>
                       ))}
