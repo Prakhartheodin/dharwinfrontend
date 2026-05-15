@@ -16,8 +16,9 @@ import {
 } from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
 import { useHasEmployeeRole } from "@/shared/hooks/use-has-employee-role";
+import { EmployeeProfileWizard } from "@/shared/workforce-profile";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
-import { DEFAULT_PHONE_COUNTRY } from "@/shared/lib/phoneCountries";
+import { DEFAULT_PHONE_COUNTRY, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import type { CandidateWithProfile, UpdateMeWithCandidatePayload } from "@/shared/lib/api/auth";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
@@ -382,6 +383,7 @@ export default function PersonalInformationPage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
   const [avatarRemoveLoading, setAvatarRemoveLoading] = useState(false);
+  const [showWizardPreview, setShowWizardPreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
@@ -587,12 +589,16 @@ export default function PersonalInformationPage() {
     };
 
     if (hasEmployeeProfile) {
-      setPhoneNumber(candidate.phoneNumber ?? "");
-      setCountryCode(
-        candidate.countryCode ||
-          (typeof user?.countryCode === "string" && user.countryCode ? user.countryCode : null) ||
-          DEFAULT_PHONE_COUNTRY
-      );
+      {
+        // parseStoredPhone unwraps legacy E.164 ("+91...") into countryCode + local digits,
+        // and uses the stored hint when present so India numbers no longer fall back to US.
+        const hint =
+          candidate.countryCode ||
+          (typeof user?.countryCode === "string" && user.countryCode ? user.countryCode : null);
+        const parsed = parseStoredPhone(candidate.phoneNumber, hint);
+        setPhoneNumber(parsed.digits);
+        setCountryCode(parsed.countryCode);
+      }
       setShortBio(candidate.shortBio ?? "");
       setAddress({
         streetAddress: candidate.address?.streetAddress ?? "",
@@ -1243,8 +1249,11 @@ export default function PersonalInformationPage() {
 
     if (!hasEmployeeProfile) {
       const u = user as Record<string, unknown>;
-      setStaffPhone(typeof u.phoneNumber === "string" ? u.phoneNumber : "");
-      setStaffCountryCode(typeof u.countryCode === "string" && u.countryCode ? u.countryCode : DEFAULT_PHONE_COUNTRY);
+      const rawPhone = typeof u.phoneNumber === "string" ? u.phoneNumber : "";
+      const hint = typeof u.countryCode === "string" && u.countryCode ? u.countryCode : null;
+      const parsed = parseStoredPhone(rawPhone, hint);
+      setStaffPhone(parsed.digits);
+      setStaffCountryCode(parsed.countryCode);
       setStaffLocation(typeof u.location === "string" ? u.location : "");
       setStaffProfileSummary(typeof u.profileSummary === "string" ? u.profileSummary : "");
       setStaffEducation(typeof u.education === "string" ? u.education : "");
@@ -1294,10 +1303,69 @@ export default function PersonalInformationPage() {
                     {avatarRemoveLoading ? "Removing…" : "Remove"}
                   </button>
                 )}
+                {hasEmployeeProfile && (
+                  <button
+                    type="button"
+                    onClick={() => setShowWizardPreview((v) => !v)}
+                    className="ti-btn ti-btn-sm ti-btn-soft-info !w-auto !h-auto whitespace-nowrap inline-flex items-center"
+                    title="Preview the new unified profile wizard"
+                  >
+                    <i className="ri-magic-line me-1 align-middle inline-block" />
+                    {showWizardPreview ? "Hide wizard preview" : "Try new wizard"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {hasEmployeeProfile && showWizardPreview && (
+          <div className="box overflow-hidden border border-info/30">
+            <div className="box-header px-4 py-2 border-b border-dashed dark:border-defaultborder/10 flex items-center justify-between gap-2 bg-info/5">
+              <div className="flex items-center gap-2">
+                <i className="ri-magic-line text-info" />
+                <h6 className="font-medium mb-0 text-[0.875rem]">New profile wizard (preview)</h6>
+                <span className="badge bg-info/10 text-info text-[0.6rem] font-medium px-2 py-0.5 rounded-full uppercase tracking-wide">Beta</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWizardPreview(false)}
+                className="ti-btn ti-btn-sm ti-btn-soft-secondary !w-auto !h-auto whitespace-nowrap"
+              >
+                Close preview
+              </button>
+            </div>
+            <div className="box-body px-0 py-0">
+              <EmployeeProfileWizard
+                mode="self-service-employee"
+                role="employee"
+                submitLabel="Save profile"
+                onSubmitSuccess={async (result) => {
+                  // Wizard saved via PATCH /auth/me/with-candidate.
+                  // Refresh legacy state so avatar, header name and the
+                  // duplicated form below all show the updated values.
+                  const next = result.candidate as unknown as CandidateWithProfile | undefined;
+                  if (next) setCandidate(next);
+                  await refreshUser();
+                  await checkAuth();
+                  await Swal.fire({
+                    icon: "success",
+                    title: "Profile updated",
+                    text: "Saved via the new wizard.",
+                    toast: true,
+                    position: "top-end",
+                    showConfirmButton: false,
+                    timer: 2800,
+                    timerProgressBar: true,
+                  });
+                }}
+              />
+            </div>
+            <div className="px-4 py-2 border-t border-dashed dark:border-defaultborder/10 text-[0.7rem] text-[#8c9097] dark:text-white/50">
+              Both the wizard and the existing form below write to the same profile. Use the wizard to preview the new unified flow; the legacy form remains the source of truth until P2.c.
+            </div>
+          </div>
+        )}
 
         {/* ── Account fields (name, username, email) ── */}
         <div className="box overflow-hidden">
@@ -1450,10 +1518,10 @@ export default function PersonalInformationPage() {
                 <div className="col-span-12 sm:col-span-6">
                   <label className="form-label">Phone <span className="text-danger">*</span></label>
                   <div className="flex gap-2">
-                    <PhoneCountrySelect value={countryCode} onChange={setCountryCode} className="flex-shrink-0" />
+                    <PhoneCountrySelect value={countryCode} onChange={setCountryCode} />
                     <input
                       type="tel"
-                      className="form-control w-full !rounded-md"
+                      className="form-control flex-1 min-w-0 !rounded-md"
                       placeholder="Phone number"
                       value={phoneNumber}
                       onChange={(e) => setPhoneNumber(e.target.value)}
