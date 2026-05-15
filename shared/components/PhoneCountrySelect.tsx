@@ -23,8 +23,13 @@ export function PhoneCountrySelect({ value, onChange, name, className = "", id }
   const selected =
     OPTIONS.find((o) => o.value === value) ?? OPTIONS.find((o) => o.value === DEFAULT_PHONE_COUNTRY) ?? OPTIONS[0];
 
+  // Caller may pass an explicit width via className (e.g. "w-40"). If absent,
+  // fall back to a fixed 150px so the sibling phone input keeps room to flex.
+  const callerSetsWidth = /\bw-/.test(className);
+  const widthClass = callerSetsWidth ? "" : "w-[150px]";
+
   return (
-    <div className={`phone-country-select w-full min-w-0 ${className}`}>
+    <div className={`phone-country-select shrink-0 min-w-0 ${widthClass} ${className}`}>
       <input type="hidden" name={name} value={value} />
       <Select
         inputId={id}

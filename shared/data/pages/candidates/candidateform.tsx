@@ -4,7 +4,7 @@ import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
 import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
-import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
@@ -140,36 +140,25 @@ function mergeSupplementalPersonalExcelSheets(
 }
 
 // Wizard Component
-const Wizard = ({ step: currentIndex, onChange, onSubmit, children, validateStep, stepValidationErrors, canNavigateToStep }: any) => {
+const Wizard = ({ step: currentIndex, onChange, onSubmit, children }: any) => {
   const steps = React.Children.toArray(children) as React.ReactElement[];
   const prevStep = currentIndex !== 0 && (steps[currentIndex - 1] as any).props;
   const nextStep = currentIndex !== steps.length - 1 && (steps[currentIndex + 1] as any).props;
 
-  const handleNext = () => {
-    if (validateStep && !validateStep(currentIndex)) {
-      return; // Don't proceed if validation fails
-    }
-    onChange(currentIndex + 1);
-  };
-
-  const handleStepClick = (targetStep: number) => {
-    if (canNavigateToStep && !canNavigateToStep(targetStep)) {
-      return; // Don't allow navigation if step is not accessible
-    }
-    onChange(targetStep);
-  };
+  // Free navigation: no per-step validation gating. Validation runs only at submit.
+  const handleNext = () => onChange(currentIndex + 1);
+  const handleStepClick = (targetStep: number) => onChange(targetStep);
 
   return (
     <div>
       <nav className="btn-group steps basicsteps">
         {steps.map((step: any, index: number) => {
-          const isDisabled = index === currentIndex || (canNavigateToStep && !canNavigateToStep(index));
+          const isActive = index === currentIndex;
           return (
             <Button
               key={index}
               onClick={() => handleStepClick(index)}
-              className={getClsNavBtn(index === currentIndex, isDisabled)}
-              disabled={isDisabled}
+              className={getClsNavBtn(isActive, false)}
             >
               {step.props.title}
             </Button>
@@ -179,32 +168,30 @@ const Wizard = ({ step: currentIndex, onChange, onSubmit, children, validateStep
 
       {steps[currentIndex]}
 
-      <div className="p-3 flex justify-between border-t border-dashed border-defaultborder dark:border-defaultborder/10">
-        <Button
-          visible={prevStep}
-          onClick={() => onChange(currentIndex - 1)}
-          disabled={currentIndex === 0}
-        >
-          Back
-        </Button>
+      <div className="p-3 flex items-center justify-between gap-3 border-t border-dashed border-defaultborder dark:border-defaultborder/10">
+        <div className="flex">
+          {prevStep ? (
+            <Button onClick={() => onChange(currentIndex - 1)}>
+              Back
+            </Button>
+          ) : null}
+        </div>
 
-        {currentIndex === steps.length - 1 ? (
-          <button
-            type="button"
-            onClick={onSubmit}
-            className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md"
-          >
-            Submit
-          </button>
-        ) : (
-          <Button
-            visible={nextStep}
-            onClick={handleNext}
-            disabled={currentIndex === steps.length - 1}
-          >
-            Next
-          </Button>
-        )}
+        <div className="flex ml-auto">
+          {currentIndex === steps.length - 1 ? (
+            <button
+              type="button"
+              onClick={onSubmit}
+              className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md"
+            >
+              Submit
+            </button>
+          ) : (
+            <Button onClick={handleNext}>
+              Next
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -1582,87 +1569,7 @@ export const Basicwizard = ({
     }
   };
 
-  // ------------------------------- Step Navigation Validation -------------------------------
-  const isStepValid = (stepIndex: number): boolean => {
-    switch (stepIndex) {
-      case 0: // Personal Info
-        const validSocialLinks = socialLinks.filter(link => 
-          validateRequired(link.platform) && validateRequired(link.url) && validateURL(link.url)
-        );
-        return validateRequired(formData.fullName) && 
-               validateRequired(formData.email) && 
-               validateEmail(formData.email) &&
-               (userRole === "user" ||
-                 !formData.companyAssignedEmail?.trim() ||
-                 validateEmail(formData.companyAssignedEmail.trim())) &&
-               validateRequired(formData.phoneNumber) && 
-               validatePhone(formData.phoneNumber, formData.countryCode) &&
-               validateRequired(formData.visaType) &&
-               (!formData.supervisorContact || validatePhone(formData.supervisorContact, formData.supervisorCountryCode)) &&
-               (formData.visaType !== "Other" || validateRequired(formData.customVisaType)) &&
-               (initialData || validateRequired(formData.password)) &&
-               validateRequired(formData.streetAddress) &&
-               validateRequired(formData.city) &&
-               validateRequired(formData.state) &&
-               validateRequired(formData.zipCode) &&
-               validateRequired(formData.country) &&
-               validateRequired(formData.salaryRange) &&
-               validSocialLinks.length > 0;
-               
-      case 1: // Qualification
-        const validEducations = educations.filter(edu => 
-          validateRequired(edu.degree) && validateRequired(edu.institute) && validateRequired(edu.location) && validateRequired(edu.startYear) && validateRequired(edu.endYear)
-        );
-        const validSkills = skills.filter(skill => validateRequired(skill.name));
-        const invalidYearRanges = educations.filter(edu => 
-          edu.startYear && edu.endYear && !validateYearRange(edu.startYear, edu.endYear)
-        );
-        return validEducations.length > 0 && validSkills.length > 0 && invalidYearRanges.length === 0;
-        
-      case 2: // Work Experience
-        const validExperiences = experiences.filter(exp => 
-          validateRequired(exp.company) && validateRequired(exp.role) && validateRequired(exp.startDate) && 
-          (exp.currentlyWorking || validateRequired(exp.endDate))
-        );
-        const invalidDateRanges = experiences.filter(exp => 
-          exp.startDate && exp.endDate && !validateDateRange(exp.startDate, exp.endDate)
-        );
-        const futureEndDates = experiences.filter(exp => 
-          exp.endDate && !validateNotFutureDate(exp.endDate)
-        );
-        return validExperiences.length > 0 && invalidDateRanges.length === 0 && futureEndDates.length === 0;
-        
-      case 3: // Documents (Optional)
-        // Documents are now optional, always return true
-        return true;
-        
-      case 4: // Salary Slips (Optional)
-          const validSalarySlips = salarySlips.filter(slip => 
-            validateRequired(slip.month) && validateRequired(slip.year) && (slip.file || slip.documentUrl)
-          );
-          const hasDuplicates = validateSalarySlipDuplicates(salarySlips).length > 0;
-          // Only validate duplicates if salary slips are provided, otherwise always return true
-          return !hasDuplicates;
-        // For non-admin users, this step doesn't exist, so always return true
-        return true;
-        
-      default:
-        return false;
-    }
-  };
-
-  const canNavigateToStep = (targetStep: number): boolean => {
-    // Can always go to step 0
-    if (targetStep === 0) return true;
-    
-    // Check if all previous steps are valid
-    for (let i = 0; i < targetStep; i++) {
-      if (!isStepValid(i)) {
-        return false;
-      }
-    }
-    return true;
-  };
+  // Step navigation is unrestricted. Validation runs at submit via validateStep().
 
   // ------------------------------- Prefill on Edit -------------------------------
   React.useEffect(() => {
@@ -1683,19 +1590,27 @@ export const Basicwizard = ({
     
     if (!initialData) return;
     try {
+      // parseStoredPhone strips any legacy E.164 dial prefix from phoneNumber and supervisorContact
+      // and resolves the country code, so re-opening Edit never shows "+91+91..." or US fallback
+      // for an India number.
+      const parsedPhone = parseStoredPhone(initialData.phoneNumber, initialData.countryCode);
+      const parsedSupervisor = parseStoredPhone(
+        initialData.supervisorContact,
+        initialData.supervisorCountryCode || parsedPhone.countryCode,
+      );
       setFormData({
         fullName: initialData.fullName || "",
         email: initialData.email || "",
-        phoneNumber: initialData.phoneNumber || "",
-        countryCode: initialData.countryCode || "IN",
+        phoneNumber: parsedPhone.digits,
+        countryCode: parsedPhone.countryCode || "IN",
         shortBio: initialData.shortBio || "",
         sevisId: initialData.sevisId || "",
         ead: initialData.ead || "",
         degree: initialData.degree || "",
         designation: initialData.designation || "",
         supervisorName: initialData.supervisorName || "",
-        supervisorContact: initialData.supervisorContact || "",
-        supervisorCountryCode: initialData.supervisorCountryCode || initialData.countryCode || "IN",
+        supervisorContact: parsedSupervisor.digits,
+        supervisorCountryCode: parsedSupervisor.countryCode || "IN",
         visaType: initialData.visaType || "",
         customVisaType: initialData.customVisaType || "",
         salaryRange: initialData.salaryRange || "",
@@ -2268,13 +2183,10 @@ export const Basicwizard = ({
         </div>
       )}
 
-      <Wizard 
-        step={step} 
-        onChange={setStep} 
+      <Wizard
+        step={step}
+        onChange={setStep}
         onSubmit={handleSubmit}
-        validateStep={validateStep}
-        stepValidationErrors={stepValidationErrors}
-        canNavigateToStep={canNavigateToStep}
       >
       <Step title={<><i className="ri-user-3-line basicstep-icon"></i> Personal Info</>}>
         <div className="p-6 w-full">
@@ -2487,7 +2399,7 @@ export const Basicwizard = ({
                     name="supervisorContact"
                     value={formData.supervisorContact}
                     onChange={handleFormChange}
-                    className={`form-control flex-1 !rounded-md ${fieldErrors['supervisorContact'] ? '!border-red-500' : ''}`}
+                    className={`form-control flex-1 min-w-0 !rounded-md ${fieldErrors['supervisorContact'] ? '!border-red-500' : ''}`}
                     id="supervisorContact"
                     placeholder={getPhoneCountry(formData.supervisorCountryCode || formData.countryCode).placeholder}
                     maxLength={getPhoneCountry(formData.supervisorCountryCode || formData.countryCode).maxLength}

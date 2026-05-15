@@ -11,7 +11,6 @@ import Swal from "sweetalert2";
 import {
   getPhoneValidationError,
   getPhoneCountry,
-  formatPhoneForApi,
   DEFAULT_PHONE_COUNTRY,
 } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
@@ -193,7 +192,10 @@ export default function CandidateOnboardPage() {
           name: `${fn} ${ln}`,
           email: em,
           password,
-          phoneNumber: formatPhoneForApi(phone, countryCode),
+          // Store local digits only — countryCode is the source of truth for dial prefix.
+          // Invite path (above) already saves local digits; both paths must agree to avoid
+          // Edit Profile rehydrating "+91..." as a malformed local number.
+          phoneNumber: phone,
           countryCode,
           ...(referralRef ? { ref: referralRef } : {}),
         });
@@ -334,7 +336,7 @@ export default function CandidateOnboardPage() {
                   <input
                     id="phone"
                     type="tel"
-                    className="form-control flex-1"
+                    className="form-control flex-1 min-w-0"
                     placeholder={getPhoneCountry(countryCode).placeholder}
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
