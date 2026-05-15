@@ -165,7 +165,7 @@ export default function InterviewsFilterPanel({
                     ))
                   ) : (
                     <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-3">
-                      No recruiters found
+                      No agents found
                     </div>
                   )}
                 </div>
