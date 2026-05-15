@@ -465,15 +465,16 @@ const CreateJob = () => {
                       </div>
                       <div className="xl:col-span-4 col-span-12">
                         <label htmlFor="org-phone" className="form-label">Organisation Phone</label>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 w-full">
                           <PhoneCountrySelect
                             name="organisationCountryCode"
                             value={formData.organisationCountryCode}
                             onChange={(code) => handleInputChange('organisationCountryCode', code)}
+                            className="!w-44 shrink-0"
                           />
                           <input
                             type="tel"
-                            className="form-control flex-1"
+                            className="form-control flex-1 min-w-0"
                             id="org-phone"
                             placeholder={getPhoneCountry(formData.organisationCountryCode).placeholder}
                             value={formData.organisationPhone}

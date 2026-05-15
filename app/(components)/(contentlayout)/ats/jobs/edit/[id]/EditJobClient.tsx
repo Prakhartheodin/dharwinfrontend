@@ -632,15 +632,16 @@ export default function EditJobClient() {
                           </div>
                           <div className="xl:col-span-4 col-span-12">
                             <label className="form-label">Phone</label>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full">
                               <PhoneCountrySelect
                                 name="organisationCountryCode"
                                 value={formData.organisationCountryCode}
                                 onChange={(code) => handleInputChange('organisationCountryCode', code)}
+                                className="!w-44 shrink-0"
                               />
                               <input
                                 type="tel"
-                                className="form-control flex-1 !rounded-md"
+                                className="form-control flex-1 min-w-0 !rounded-md"
                                 value={formData.organisationPhone}
                                 placeholder={getPhoneCountry(formData.organisationCountryCode).placeholder}
                                 onChange={(e) =>

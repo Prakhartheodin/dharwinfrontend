@@ -146,7 +146,14 @@ export default function ApplicationsPage() {
         setTotalResults(res.totalResults ?? 0);
         setTotalPages(res.totalPages ?? 1);
       })
-      .catch(() => {
+      .catch((err) => {
+        // Surface failure so empty-state ≠ silent backend rejection.
+        // Prior bug: excludeInternal missing from Joi validator → 400 → blank page.
+        console.error("[applications:list] request failed", {
+          params,
+          status: err?.response?.status,
+          message: err?.response?.data?.message ?? err?.message,
+        });
         setRows([]);
         setTotalResults(0);
         setTotalPages(1);

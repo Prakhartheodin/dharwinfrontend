@@ -7,7 +7,7 @@ import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Swal from "sweetalert2";
 import { getUser, updateUser } from "@/shared/lib/api/users";
-import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
+import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 
 const CreatableSelect = dynamic(() => import("react-select/creatable"), { ssr: false });
@@ -52,11 +52,14 @@ export default function EditRecruiterClient() {
       .then((user) => {
         const domain = user.domain;
         const domainArr = Array.isArray(domain) ? domain : domain ? [String(domain)] : [];
+        // Unwrap legacy E.164 ("+91...") so the country dropdown matches stored data
+        // instead of falling back to US for India numbers missing a countryCode hint.
+        const parsedPhone = parseStoredPhone(user.phoneNumber, user.countryCode);
         setFormData({
           name: user.name ?? "",
           email: user.email ?? "",
-          phoneNumber: user.phoneNumber ?? "",
-          countryCode: user.countryCode ?? "IN",
+          phoneNumber: parsedPhone.digits,
+          countryCode: parsedPhone.countryCode || "IN",
           education: user.education ?? "",
           domain: domainArr,
           location: user.location ?? "",
