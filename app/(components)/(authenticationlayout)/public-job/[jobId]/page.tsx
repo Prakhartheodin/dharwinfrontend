@@ -15,7 +15,7 @@ import {
 import { ROUTES } from "@/shared/lib/constants";
 import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/jobReferralRef";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
-import { getPhoneValidationError, formatPhoneForApi } from "@/shared/lib/phoneCountries";
+import { getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
@@ -216,7 +216,9 @@ export default function PublicJobDetailsPage() {
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         password,
-        phoneNumber: formatPhoneForApi(phoneNumber, countryCode),
+        // Store local digits only — countryCode below is the source of truth for dial prefix.
+        // Prepending here would double up at re-hydration ("+91" + "+91...").
+        phoneNumber: (phoneNumber || "").replace(/\D/g, ""),
         countryCode,
         coverLetter: coverLetter.trim(),
         ...(resolvedReferralRef ? { ref: resolvedReferralRef } : {}),

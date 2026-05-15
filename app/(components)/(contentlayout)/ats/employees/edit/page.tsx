@@ -1,7 +1,6 @@
 "use client";
 
 import { Basicwizard } from "@/shared/data/pages/candidates/candidateform";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -13,7 +12,7 @@ import AssignTrainingCourseSopModal from "../_components/AssignTrainingCourseSop
 import { canAssignCandidateAgent, canAssignTrainingCourseFromSop } from "@/shared/lib/candidate-permissions";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 
-const EditCandidate = () => {
+const EditEmployee = () => {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
@@ -121,29 +120,26 @@ const EditCandidate = () => {
 
   return (
     <Fragment>
-      <Seo title="Edit Candidate" />
-      <Pageheader
-        currentpage="Edit Candidate"
-        activepage="Candidates"
-        mainpage="Edit Candidate"
-      />
-      <div className="grid grid-cols-12 gap-6">
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box custom-box overflow-hidden">
-            <div className="box-body !p-0 product-checkout">
-              {loading ? (
-                <div className="p-6 flex items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
-                </div>
-              ) : initialData ? (
-                <>
-                  <Basicwizard initialData={initialData} />
-                </>
-              ) : (
-                <div className="p-6 text-center text-gray-500">
-                  {id ? "Candidate not found." : "No candidate selected."}
-                </div>
-              )}
+      <Seo title="Edit Employee" />
+      <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
+        <div className="grid grid-cols-12 gap-6">
+          <div className="xl:col-span-12 col-span-12">
+            <div className="box custom-box overflow-hidden">
+              <div className="box-body !p-0 product-checkout">
+                {loading ? (
+                  <div className="p-6 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : initialData ? (
+                  <>
+                    <Basicwizard initialData={initialData} />
+                  </>
+                ) : (
+                  <div className="p-6 text-center text-gray-500">
+                    {id ? "Employee not found." : "No employee selected."}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -172,4 +168,4 @@ const EditCandidate = () => {
   );
 };
 
-export default EditCandidate;
+export default EditEmployee;
