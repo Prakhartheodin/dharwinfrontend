@@ -1,6 +1,6 @@
 "use client";
 
-import { apiClient } from "@/shared/lib/api/client";
+import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 
 export type TeamGroup = "team_ui" | "team_react" | "team_testing";
 
@@ -99,5 +99,146 @@ export async function updateTeamMember(
 
 export async function deleteTeamMember(id: string): Promise<void> {
   await apiClient.delete(`/teams/${id}`);
+}
+
+// ---------------------------------------------------------------------------
+// Excel import / export / template / logs
+// ---------------------------------------------------------------------------
+
+export type TeamImportSkipReason =
+  | "employee_not_found"
+  | "inactive_or_resigned"
+  | "dummy_name_pattern"
+  | "dummy_email_pattern"
+  | "ambiguous_employee_name"
+  | "already_in_team"
+  | "missing_identifiers"
+  | "team_lead_unmatched"
+  | "metadata_conflict";
+
+export interface TeamImportSummary {
+  teamsCreated: number;
+  teamsUpdated: number;
+  employeesAdded: number;
+  employeesIgnored: number;
+  duplicatesSkipped: number;
+  ambiguousNames: number;
+  teamLeadSkipped: number;
+  metadataConflicts: number;
+  rowsProcessed: number;
+}
+
+export interface TeamImportResult {
+  summary: TeamImportSummary;
+  details: {
+    skipped: Array<{
+      row?: number;
+      team: string;
+      identifier?: string;
+      reason: TeamImportSkipReason;
+      matchCount?: number;
+    }>;
+    duplicates: Array<{ team: string; employeeId: string; reason: "already_in_team" }>;
+    metadataConflicts: Array<{ team: string; field: string; kept: string; ignored: string[] }>;
+    teamLeadSkipped: Array<{ team: string; providedLeadEmail: string; reason: string }>;
+    warnings: Array<{ type: string; [k: string]: unknown }>;
+  };
+  summaryFileUrl?: string;
+  importLogId: string;
+}
+
+export interface TeamImportLogEntry {
+  id: string;
+  uploadedBy: { id: string; name: string; email: string };
+  fileName?: string;
+  fileSize?: number;
+  fileHash: string;
+  rowsProcessed: number;
+  teamsCreated: number;
+  teamsUpdated: number;
+  employeesAdded: number;
+  employeesIgnored: number;
+  duplicatesSkipped: number;
+  ambiguousNames: number;
+  teamLeadSkipped: number;
+  metadataConflicts: number;
+  summaryFileUrl?: string;
+  createdAt: string;
+}
+
+/**
+ * Upload an Excel file to import teams. Uses XHR (not fetch) so we can report
+ * upload progress; fetch does not expose request upload progress.
+ */
+export async function importTeamsExcel(
+  file: File,
+  onProgress?: (pct: number) => void
+): Promise<TeamImportResult> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${normalizeApiBase()}/teams/import`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      try {
+        const body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        if (xhr.status >= 200 && xhr.status < 300) resolve(body as TeamImportResult);
+        else reject(body);
+      } catch (e) {
+        reject(e);
+      }
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(fd);
+  });
+}
+
+export async function exportTeamsExcel(
+  params: { teamId?: string; department?: string; includeInactive?: boolean } = {}
+): Promise<Blob> {
+  const query: Record<string, string> = {};
+  if (params.teamId) query.teamId = params.teamId;
+  if (params.department) query.department = params.department;
+  if (params.includeInactive) query.includeInactive = "true";
+  const res = await apiClient.get<Blob>("/teams/export", {
+    params: query,
+    responseType: "blob",
+  });
+  return res.data;
+}
+
+export async function downloadImportTemplate(): Promise<Blob> {
+  const res = await apiClient.get<Blob>("/teams/import-template", {
+    responseType: "blob",
+  });
+  return res.data;
+}
+
+export async function listTeamImportLogs(
+  query: { page?: number; limit?: number } = {}
+): Promise<{
+  results: TeamImportLogEntry[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}> {
+  const params: Record<string, string> = {};
+  if (query.page) params.page = String(query.page);
+  if (query.limit) params.limit = String(query.limit);
+  const { data } = await apiClient.get<{
+    results: TeamImportLogEntry[];
+    page: number;
+    limit: number;
+    totalPages: number;
+    totalResults: number;
+  }>("/teams/import-logs", { params });
+  return data;
 }
 
