@@ -38,6 +38,8 @@ import {
 
 import styles from "./teams.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
+import TeamImportButton from "./components/TeamImportButton";
+import TeamExportButton from "./components/TeamExportButton";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -1500,6 +1502,10 @@ const TeamsPage = () => {
           >
             <i className="ri-add-line" /> New member
           </button>
+          <TeamImportButton onComplete={() => fetchMembers()} />
+          <TeamExportButton
+            filter={selectedTeamId ? { teamId: selectedTeamId } : {}}
+          />
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2" role="search">
