@@ -12,7 +12,13 @@ type State =
   | { kind: 'result'; data: TeamImportResult }
   | { kind: 'error'; message: string; errors?: Array<{ type: string; [k: string]: unknown }> };
 
-export default function TeamImportDialog({ onClose }: { onClose: () => void }) {
+export default function TeamImportDialog({
+  onClose,
+  onImportSuccess,
+}: {
+  onClose: () => void;
+  onImportSuccess?: () => void;
+}) {
   const [state, setState] = useState<State>({ kind: 'idle' });
   const [file, setFile] = useState<File | null>(null);
 
@@ -22,6 +28,7 @@ export default function TeamImportDialog({ onClose }: { onClose: () => void }) {
     try {
       const data = await importTeamsExcel(file, (pct) => setState({ kind: 'uploading', pct }));
       setState({ kind: 'result', data });
+      onImportSuccess?.();
     } catch (err: unknown) {
       const e = err as { message?: string; errors?: Array<{ type: string }> };
       setState({ kind: 'error', message: e?.message || 'Upload failed', errors: e?.errors });

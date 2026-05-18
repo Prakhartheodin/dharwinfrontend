@@ -9,12 +9,31 @@ export interface TeamMemberTeamRef {
   name?: string;
 }
 
+/** Populated `employeeId` from GET /teams (Excel / additive merge paths). */
+export type TeamMemberEmployeePopulated = {
+  _id?: string;
+  id?: string;
+  employeeId?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  fullName?: string;
+  isActive?: boolean;
+};
+
+export type TeamMemberAssignmentMode =
+  | "manual"
+  | "excel-import"
+  | "position-auto"
+  | "ai-suggested";
+
 export interface TeamMember {
   _id: string;
   /** Backend toJSON may return id instead of _id */
   id?: string;
-  name: string;
-  email: string;
+  /** Legacy denormalized roster fields; optional when row is keyed by employeeId (import). */
+  name?: string;
+  email?: string;
   memberSinceLabel?: string;
   projectsCount: number;
   position?: string;
@@ -29,6 +48,10 @@ export interface TeamMember {
   isStarred?: boolean;
   createdAt?: string;
   updatedAt?: string;
+  /** Additive: ATS Employee ref (string id or populated object). */
+  employeeId?: string | TeamMemberEmployeePopulated;
+  seniority?: string;
+  assignmentMode?: TeamMemberAssignmentMode;
 }
 
 export interface TeamMembersListParams {

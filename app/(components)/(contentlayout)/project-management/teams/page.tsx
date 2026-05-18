@@ -38,8 +38,10 @@ import {
 
 import styles from "./teams.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 import TeamImportButton from "./components/TeamImportButton";
 import TeamExportButton from "./components/TeamExportButton";
+import TeamImportHistory from "./components/TeamImportHistory";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -1092,12 +1094,16 @@ function TeamMemberFormModal({
 }
 
 const TeamsPage = () => {
-  const { user } = useAuth();
+  const auth = useAuth();
+  const { user } = auth;
+  const canManageTeams = hasPermission(auth, "update_team");
   const sessionUserAvatar = useMemo(() => {
     const url = user?.profilePicture?.url?.trim();
     if (!user?.email || !url) return null;
     return { email: user.email, url };
   }, [user?.email, user?.profilePicture?.url]);
+
+  const [teamsTab, setTeamsTab] = useState<"rosters" | "import-history">("rosters");
 
   const sidebarFetchSeq = useRef(0);
 
@@ -1470,10 +1476,61 @@ const TeamsPage = () => {
 
   const hasMembers = members.length > 0;
 
+  const showImportHistoryTab = canManageTeams && teamsTab === "import-history";
+
+  const handleImportSuccess = useCallback(() => {
+    setPage(1);
+    void fetchSidebarRoster();
+    void fetchMembers({ page: 1, search: searchQuery || undefined });
+  }, [fetchMembers, fetchSidebarRoster, searchQuery]);
+
   return (
     <>
-      <Seo title="Teams — Rosters" />
+      <Seo title={showImportHistoryTab ? "Teams — Import history" : "Teams — Rosters"} />
 
+      {canManageTeams && (
+        <div
+          className="mt-5 flex gap-1 border-b border-slate-200 dark:border-white/10"
+          role="tablist"
+          aria-label="Teams sections"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={teamsTab === "rosters"}
+            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+              teamsTab === "rosters"
+                ? "border-b-2 border-slate-900 text-slate-900 dark:border-white dark:text-white"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+            onClick={() => setTeamsTab("rosters")}
+          >
+            Rosters
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={teamsTab === "import-history"}
+            className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wider transition ${
+              teamsTab === "import-history"
+                ? "border-b-2 border-slate-900 text-slate-900 dark:border-white dark:text-white"
+                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
+            }`}
+            onClick={() => setTeamsTab("import-history")}
+          >
+            Import history
+          </button>
+        </div>
+      )}
+
+      {showImportHistoryTab ? (
+        <div className="mt-4 sm:mt-6">
+          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 p-4 sm:p-6 dark:border-white/10">
+            <TeamImportHistory />
+          </div>
+        </div>
+      ) : (
+      <>
       <div className="mt-5 mb-4 sm:mt-6">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -1502,7 +1559,7 @@ const TeamsPage = () => {
           >
             <i className="ri-add-line" /> New member
           </button>
-          <TeamImportButton onComplete={() => fetchMembers()} />
+          <TeamImportButton onImportSuccess={handleImportSuccess} />
           <TeamExportButton
             filter={selectedTeamId ? { teamId: selectedTeamId } : {}}
           />
@@ -1777,6 +1834,8 @@ const TeamsPage = () => {
             </div>
           </div>
         </div>
+      </>
+      )}
 
       <TeamMemberFormModal
         open={formOpen}

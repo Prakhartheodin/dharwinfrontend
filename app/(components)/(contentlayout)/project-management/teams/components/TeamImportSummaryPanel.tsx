@@ -16,6 +16,8 @@ const REASON_LABEL: Record<TeamImportSkipReason, { label: string; severity: 'inf
 export default function TeamImportSummaryPanel({ result }: { result: TeamImportResult }) {
   const s = result.summary;
   const groupedSkips = groupBy(result.details.skipped, (r) => r.reason);
+  const issuesTotal =
+    (s.ambiguousNames ?? 0) + (s.metadataConflicts ?? 0) + (s.teamLeadSkipped ?? 0);
 
   return (
     <div>
@@ -26,6 +28,25 @@ export default function TeamImportSummaryPanel({ result }: { result: TeamImportR
         <Tile label="Ignored"    value={s.employeesIgnored}  color="bg-amber-100 text-amber-800" />
         <Tile label="Duplicates" value={s.duplicatesSkipped} color="bg-gray-100 text-gray-800" />
       </div>
+
+      {issuesTotal > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/90 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+          <h4 className="mb-2 text-sm font-semibold text-amber-900 dark:text-amber-100">
+            Issues summary
+          </h4>
+          <ul className="mb-0 space-y-1 text-sm text-amber-950/90 dark:text-amber-100/90">
+            {(s.ambiguousNames ?? 0) > 0 && (
+              <li>Ambiguous matches: <strong>{s.ambiguousNames}</strong></li>
+            )}
+            {(s.metadataConflicts ?? 0) > 0 && (
+              <li>Metadata conflicts: <strong>{s.metadataConflicts}</strong></li>
+            )}
+            {(s.teamLeadSkipped ?? 0) > 0 && (
+              <li>Skipped leads: <strong>{s.teamLeadSkipped}</strong></li>
+            )}
+          </ul>
+        </div>
+      )}
 
       {result.details.warnings.length > 0 && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded">
