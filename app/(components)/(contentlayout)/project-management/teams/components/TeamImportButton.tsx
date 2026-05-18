@@ -6,9 +6,9 @@ import { hasPermission } from "@/shared/lib/permissions";
 import TeamImportDialog from "./TeamImportDialog";
 
 export default function TeamImportButton({
-  onComplete,
+  onImportSuccess,
 }: {
-  onComplete: () => void;
+  onImportSuccess: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const auth = useAuth();
@@ -25,10 +25,8 @@ export default function TeamImportButton({
       </button>
       {open && (
         <TeamImportDialog
-          onClose={() => {
-            setOpen(false);
-            onComplete();
-          }}
+          onClose={() => setOpen(false)}
+          onImportSuccess={onImportSuccess}
         />
       )}
     </>
