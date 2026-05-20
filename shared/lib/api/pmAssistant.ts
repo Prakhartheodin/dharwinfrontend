@@ -15,6 +15,8 @@ export interface TaskBreakdownPreviewTask {
   /** Skill/role hints for staffing (from preview or manual edit). */
   requiredSkills?: string[];
   order?: number;
+  /** Project-scoped task code, e.g. "DBS-001" (provisional in preview). */
+  taskCode?: string;
 }
 
 export interface TaskBreakdownPreviewUsage {
@@ -30,6 +32,8 @@ export interface TaskBreakdownPreviewResponse {
   tasks: TaskBreakdownPreviewTask[];
   previewId: string;
   confidenceScore: number;
+  /** True when the project scope likely needs more tasks than this batch. */
+  moreTasksLikely?: boolean;
 }
 
 export async function previewTaskBreakdown(
@@ -39,6 +43,7 @@ export async function previewTaskBreakdown(
     extraBrief?: string;
     feedback?: string;
     priorTasks?: (Pick<TaskBreakdownPreviewTask, "title" | "description" | "status"> & { id?: string })[];
+    continuationOf?: string;
   }
 ): Promise<TaskBreakdownPreviewResponse> {
   const { data } = await apiClient.post(`/pm-assistant/projects/${projectId}/task-breakdown/preview`, body);

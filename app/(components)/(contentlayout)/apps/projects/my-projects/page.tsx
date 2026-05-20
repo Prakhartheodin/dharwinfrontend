@@ -6,6 +6,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import {
   listProjects,
   updateProject,
+  normalizeProjectPriority,
   type Project,
   type ProjectStatus,
   type ProjectPriority,
@@ -32,15 +33,17 @@ const STATUS_TEXT: Record<ProjectStatus, string> = {
 };
 
 const PRIORITY_DOT: Record<ProjectPriority, string> = {
-  High: "bg-danger",
-  Medium: "bg-info",
-  Low: "bg-success",
+  urgent: "bg-danger",
+  high: "bg-orange-500",
+  medium: "bg-info",
+  low: "bg-success",
 };
 
 const PRIORITY_RING: Record<ProjectPriority, string> = {
-  High: "ring-danger/30",
-  Medium: "ring-info/30",
-  Low: "ring-success/30",
+  urgent: "ring-danger/30",
+  high: "ring-orange-500/30",
+  medium: "ring-info/30",
+  low: "ring-success/30",
 };
 
 const STATUS_FILTERS: Array<{ value: "" | ProjectStatus; label: string }> = [
@@ -302,14 +305,21 @@ export default function MyProjectsPage(): JSX.Element {
                   <div className="flex items-start justify-between gap-3 px-5 pl-6 pt-5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[p.priority] ?? "bg-slate-400"} ring-4 ${PRIORITY_RING[p.priority] ?? "ring-slate-200"}`}
-                          title={`${p.priority} priority`}
-                          aria-label={`${p.priority} priority`}
-                        />
-                        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                          {p.priority} priority
-                        </p>
+                        {(() => {
+                          const pri = normalizeProjectPriority(p.priority);
+                          return (
+                            <>
+                              <span
+                                className={`inline-block h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[pri] ?? "bg-slate-400"} ring-4 ${PRIORITY_RING[pri] ?? "ring-slate-200"}`}
+                                title={`${pri} priority`}
+                                aria-label={`${pri} priority`}
+                              />
+                              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                {pri} priority
+                              </p>
+                            </>
+                          );
+                        })()}
                       </div>
                       <h3 className="mt-1.5 truncate text-lg font-semibold tracking-tight text-slate-900 dark:text-white">
                         {p.name}

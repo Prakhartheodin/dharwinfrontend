@@ -250,6 +250,31 @@ export function BreakdownContextForm({ value, onChange, disabled, showFull = tru
         </div>
       </div>
       <div>
+        <label className="form-label" htmlFor={`${baseId}-tpe`}>
+          Tasks per team member
+        </label>
+        <input
+          id={`${baseId}-tpe`}
+          type="number"
+          min={1}
+          max={10}
+          className="form-control w-full max-w-[8rem]"
+          disabled={disabled}
+          value={value.tasksPerEmployee ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const n = Number(raw);
+            set({
+              tasksPerEmployee:
+                raw === "" || !Number.isFinite(n) ? undefined : Math.min(10, Math.max(1, Math.floor(n))),
+            });
+          }}
+        />
+        <p className="text-[0.7rem] text-[#8c9097] dark:text-white/40 mb-0 mt-1">
+          Soft target for AI breakdown (1–10 per member). Leave empty for no target.
+        </p>
+      </div>
+      <div>
         <span className="form-label" id={`${baseId}-del`}>
           Key deliverables
         </span>

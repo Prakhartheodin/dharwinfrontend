@@ -2,14 +2,21 @@
 
 import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
 
-export type TeamGroup = "team_ui" | "team_react" | "team_testing";
+export interface Team {
+  _id: string;
+  id?: string;
+  name: string;
+  department?: string;
+  description?: string;
+  relatedPositions: string[];
+  createdAt?: string;
+}
 
 export interface TeamMemberTeamRef {
   _id: string;
   name?: string;
 }
 
-/** Populated `employeeId` from GET /teams (Excel / additive merge paths). */
 export type TeamMemberEmployeePopulated = {
   _id?: string;
   id?: string;
@@ -29,35 +36,35 @@ export type TeamMemberAssignmentMode =
 
 export interface TeamMember {
   _id: string;
-  /** Backend toJSON may return id instead of _id */
   id?: string;
-  /** Legacy denormalized roster fields; optional when row is keyed by employeeId (import). */
-  name?: string;
-  email?: string;
-  memberSinceLabel?: string;
-  projectsCount: number;
-  position?: string;
-  coverImageUrl?: string;
-  avatarImageUrl?: string;
-  /** Presigned URL from GET /teams when a Candidate with this email has profilePicture (server-enriched). */
-  candidateProfilePictureUrl?: string;
-  teamGroup: TeamGroup;
   teamId?: string | TeamMemberTeamRef;
-  onlineStatus: "online" | "offline";
-  lastSeenLabel?: string;
+  employeeId?: string | TeamMemberEmployeePopulated | null;
+  displayName: string;
+  displayEmail: string;
+  avatarUrl: string | null;
+  isOrphan: boolean;
+  seniority?: string;
+  assignmentMode?: TeamMemberAssignmentMode;
+  isActive: boolean;
+  orphanReason?: string | null;
   isStarred?: boolean;
   createdAt?: string;
   updatedAt?: string;
-  /** Additive: ATS Employee ref (string id or populated object). */
-  employeeId?: string | TeamMemberEmployeePopulated;
-  seniority?: string;
-  assignmentMode?: TeamMemberAssignmentMode;
+  name?: string;
+  email?: string;
+  memberSinceLabel?: string;
+  projectsCount?: number;
+  position?: string;
+  coverImageUrl?: string;
+  avatarImageUrl?: string;
+  candidateProfilePictureUrl?: string;
+  onlineStatus?: "online" | "offline";
+  lastSeenLabel?: string;
 }
 
 export interface TeamMembersListParams {
-  teamGroup?: TeamGroup;
-  /** Filter by TeamGroup _id (project-teams) */
   teamId?: string;
+  includeInactive?: boolean;
   search?: string;
   sortBy?: string;
   limit?: number;
@@ -72,16 +79,18 @@ export interface TeamMembersListResponse {
   totalResults: number;
 }
 
-export const TEAM_GROUP_LABELS: Record<TeamGroup, string> = {
-  team_ui: "TEAM UI",
-  team_react: "TEAM REACT",
-  team_testing: "TEAM TESTING",
-};
+export const TEAM_MEMBERS_API_MAX_LIMIT = 200 as const;
 
 export async function listTeamMembers(
   params?: TeamMembersListParams
 ): Promise<TeamMembersListResponse> {
-  const { data } = await apiClient.get<TeamMembersListResponse>("/teams", { params });
+  const safe =
+    params != null &&
+    params.limit != null &&
+    params.limit > TEAM_MEMBERS_API_MAX_LIMIT
+      ? { ...params, limit: TEAM_MEMBERS_API_MAX_LIMIT }
+      : params;
+  const { data } = await apiClient.get<TeamMembersListResponse>("/teams", { params: safe });
   return data;
 }
 
@@ -91,18 +100,12 @@ export async function getTeamMemberById(id: string): Promise<TeamMember> {
 }
 
 export interface CreateTeamMemberPayload {
-  name: string;
-  email: string;
-  memberSinceLabel?: string;
-  projectsCount?: number;
-  position?: string;
-  coverImageUrl?: string;
-  avatarImageUrl?: string;
-  teamGroup?: TeamGroup;
-  teamId?: string;
-  onlineStatus?: "online" | "offline";
-  lastSeenLabel?: string;
-  isStarred?: boolean;
+  teamId: string;
+  employeeId?: string;
+  legacyName?: string;
+  legacyEmail?: string;
+  seniority?: string;
+  assignmentMode?: TeamMemberAssignmentMode;
 }
 
 export async function createTeamMember(payload: CreateTeamMemberPayload): Promise<TeamMember> {
@@ -110,7 +113,16 @@ export async function createTeamMember(payload: CreateTeamMemberPayload): Promis
   return data;
 }
 
-export interface UpdateTeamMemberPayload extends Partial<CreateTeamMemberPayload> {}
+export interface UpdateTeamMemberPayload {
+  seniority?: string;
+  isStarred?: boolean;
+  onlineStatus?: "online" | "offline";
+  lastSeenLabel?: string;
+  memberSinceLabel?: string;
+  projectsCount?: number;
+  avatarImageUrl?: string;
+  coverImageUrl?: string;
+}
 
 export async function updateTeamMember(
   id: string,
@@ -122,6 +134,36 @@ export async function updateTeamMember(
 
 export async function deleteTeamMember(id: string): Promise<void> {
   await apiClient.delete(`/teams/${id}`);
+}
+
+export async function linkOrphanTeamMember(
+  teamMemberId: string,
+  employeeId: string
+): Promise<TeamMember> {
+  const { data } = await apiClient.post<TeamMember>(`/teams/${teamMemberId}/link`, { employeeId });
+  return data;
+}
+
+
+export async function moveTeamMember(teamMemberId: string, teamId: string): Promise<TeamMember> {
+  const { data } = await apiClient.post<TeamMember>(`/teams/${teamMemberId}/move`, { teamId });
+  return data;
+}
+export async function softRemoveTeamMember(
+  teamMemberId: string,
+  reason?: string
+): Promise<TeamMember> {
+  const { data } = await apiClient.post<TeamMember>(`/teams/${teamMemberId}/remove`, {
+    removedReason: reason ?? "manual",
+  });
+  return data;
+}
+
+export async function retryOrphanMatch(): Promise<{ matched: number; stillOrphan: number }> {
+  const { data } = await apiClient.post<{ matched: number; stillOrphan: number }>(
+    "/teams/orphans/retry-match"
+  );
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,23 +193,91 @@ export interface TeamImportSummary {
   rowsProcessed: number;
 }
 
+export interface TeamImportDetails {
+  skipped: Array<{
+    row?: number;
+    team: string;
+    identifier?: string;
+    reason: TeamImportSkipReason;
+    matchCount?: number;
+  }>;
+  duplicates: Array<{ team: string; employeeId: string; reason: "already_in_team" }>;
+  metadataConflicts: Array<{ team: string; field: string; kept: string; ignored: string[] }>;
+  teamLeadSkipped: Array<{ team: string; providedLeadEmail: string; reason: string }>;
+  warnings: Array<{ type: string; [k: string]: unknown }>;
+}
+
 export interface TeamImportResult {
   summary: TeamImportSummary;
-  details: {
-    skipped: Array<{
-      row?: number;
-      team: string;
-      identifier?: string;
-      reason: TeamImportSkipReason;
-      matchCount?: number;
-    }>;
-    duplicates: Array<{ team: string; employeeId: string; reason: "already_in_team" }>;
-    metadataConflicts: Array<{ team: string; field: string; kept: string; ignored: string[] }>;
-    teamLeadSkipped: Array<{ team: string; providedLeadEmail: string; reason: string }>;
-    warnings: Array<{ type: string; [k: string]: unknown }>;
-  };
+  /** Lifted from API: backend nests the same payload under `summary.details`; always normalized here. */
+  details: TeamImportDetails;
   summaryFileUrl?: string;
   importLogId: string;
+  summaryUploadFailed?: boolean;
+}
+
+function emptyTeamImportDetails(): TeamImportDetails {
+  return {
+    skipped: [],
+    duplicates: [],
+    metadataConflicts: [],
+    teamLeadSkipped: [],
+    warnings: [],
+  };
+}
+
+function emptyTeamImportSummary(): TeamImportSummary {
+  return {
+    teamsCreated: 0,
+    teamsUpdated: 0,
+    employeesAdded: 0,
+    employeesIgnored: 0,
+    duplicatesSkipped: 0,
+    ambiguousNames: 0,
+    teamLeadSkipped: 0,
+    metadataConflicts: 0,
+    rowsProcessed: 0,
+  };
+}
+
+function asArray<T>(v: unknown): T[] {
+  return Array.isArray(v) ? (v as T[]) : [];
+}
+
+/** Backend returns `details` inside `summary`; UI expects top-level `details`. */
+export function normalizeTeamImportResponse(body: unknown): TeamImportResult {
+  if (body == null || typeof body !== "object") {
+    return {
+      summary: emptyTeamImportSummary(),
+      details: emptyTeamImportDetails(),
+      importLogId: "",
+    };
+  }
+  const b = body as Record<string, unknown>;
+  const rawSummary = (b.summary ?? {}) as TeamImportSummary & { details?: TeamImportDetails };
+  const nested = rawSummary.details;
+  const top = b.details as TeamImportDetails | undefined;
+  const raw = top ?? nested ?? emptyTeamImportDetails();
+  const details: TeamImportDetails = {
+    skipped: asArray(raw.skipped),
+    duplicates: asArray(raw.duplicates),
+    metadataConflicts: asArray(raw.metadataConflicts),
+    teamLeadSkipped: asArray(raw.teamLeadSkipped),
+    warnings: asArray(raw.warnings),
+  };
+  const { details: _nested, ...summaryRest } = rawSummary;
+  void _nested;
+  const summary: TeamImportSummary = {
+    ...emptyTeamImportSummary(),
+    ...summaryRest,
+  };
+  return {
+    summary,
+    details,
+    summaryFileUrl: b.summaryFileUrl as string | undefined,
+    importLogId: String(b.importLogId ?? ""),
+    summaryUploadFailed: b.summaryUploadFailed as boolean | undefined,
+  };
 }
 
 export interface TeamImportLogEntry {
@@ -211,7 +321,8 @@ export async function importTeamsExcel(
     xhr.onload = () => {
       try {
         const body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-        if (xhr.status >= 200 && xhr.status < 300) resolve(body as TeamImportResult);
+        if (xhr.status >= 200 && xhr.status < 300)
+          resolve(normalizeTeamImportResponse(body));
         else reject(body);
       } catch (e) {
         reject(e);
@@ -264,4 +375,3 @@ export async function listTeamImportLogs(
   }>("/teams/import-logs", { params });
   return data;
 }
-

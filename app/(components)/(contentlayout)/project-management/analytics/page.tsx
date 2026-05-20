@@ -5,7 +5,7 @@ import React, { Fragment, useState, useEffect, useMemo, useCallback } from "reac
 import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { listProjects, type Project, type ProjectStatus } from "@/shared/lib/api/projects";
+import { listProjects, normalizeProjectPriority, type Project, type ProjectStatus } from "@/shared/lib/api/projects";
 import { listTasks, getTaskId, type Task, type TaskStatus, TASK_STATUS_LABELS } from "@/shared/lib/api/tasks";
 import { listTeamGroups } from "@/shared/lib/api/projectTeams";
 
@@ -501,17 +501,20 @@ const AnalyticsPage = () => {
                               </span>
                             </td>
                             <td>
-                              <span
-                                className={`badge ${
-                                  p.priority === "High"
+                              {(() => {
+                                const pri = normalizeProjectPriority(p.priority);
+                                const cls =
+                                  pri === "urgent"
                                     ? "bg-danger/10 text-danger"
-                                    : p.priority === "Medium"
-                                      ? "bg-info/10 text-info"
-                                      : "bg-success/10 text-success"
-                                }`}
-                              >
-                                {p.priority}
-                              </span>
+                                    : pri === "high"
+                                      ? "bg-orange-500/10 text-orange-600"
+                                      : pri === "medium"
+                                        ? "bg-info/10 text-info"
+                                        : "bg-success/10 text-success";
+                                return (
+                                  <span className={`badge ${cls}`}>{pri}</span>
+                                );
+                              })()}
                             </td>
                             <td>
                               <div className="flex items-center gap-2">

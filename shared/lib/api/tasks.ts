@@ -3,6 +3,7 @@
 import { apiClient } from "@/shared/lib/api/client";
 
 export type TaskStatus = "new" | "todo" | "on_going" | "in_review" | "completed";
+export type TaskPriority = "low" | "medium" | "high" | "urgent";
 
 export interface TaskUser {
   _id: string;
@@ -29,6 +30,8 @@ export interface Task {
   description?: string;
   taskCode?: string;
   status: TaskStatus;
+  priority?: TaskPriority;
+  sprintId?: { _id?: string; id?: string; name?: string } | string | null;
   dueDate?: string;
   tags?: string[];
   /** Staffing hints from PM / AI (may include specialist slugs such as feature-engineer). */
@@ -38,6 +41,7 @@ export interface Task {
   projectId?: { _id?: string; id?: string; name?: string } | string | null;
   likesCount: number;
   commentsCount: number;
+  attachmentsCount?: number;
   comments?: TaskComment[];
   imageUrl?: string;
   order?: number;
@@ -75,6 +79,8 @@ export function getTaskProjectMeta(task: Task): TaskProjectMeta {
 export interface TasksListParams {
   status?: TaskStatus;
   projectId?: string;
+  priority?: string;
+  sprintId?: string;
   search?: string;
   assignedToMe?: boolean;
   sortBy?: string;
@@ -120,6 +126,8 @@ export interface CreateTaskPayload {
   description?: string;
   taskCode?: string;
   status?: TaskStatus;
+  priority?: TaskPriority;
+  sprintId?: string | null;
   dueDate?: string;
   tags?: string[];
   assignedTo?: string[];
@@ -140,6 +148,8 @@ export interface UpdateTaskPayload {
   description?: string;
   taskCode?: string;
   status?: TaskStatus;
+  priority?: TaskPriority;
+  sprintId?: string | null;
   dueDate?: string;
   tags?: string[];
   assignedTo?: string[];

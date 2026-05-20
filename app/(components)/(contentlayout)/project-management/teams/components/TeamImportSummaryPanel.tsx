@@ -13,9 +13,23 @@ const REASON_LABEL: Record<TeamImportSkipReason, { label: string; severity: 'inf
   metadata_conflict:       { label: 'Conflicting team metadata — first kept', severity: 'warning' },
 };
 
+const SUMMARY_ZEROS: TeamImportResult["summary"] = {
+  teamsCreated: 0,
+  teamsUpdated: 0,
+  employeesAdded: 0,
+  employeesIgnored: 0,
+  duplicatesSkipped: 0,
+  ambiguousNames: 0,
+  teamLeadSkipped: 0,
+  metadataConflicts: 0,
+  rowsProcessed: 0,
+};
+
 export default function TeamImportSummaryPanel({ result }: { result: TeamImportResult }) {
-  const s = result.summary;
-  const groupedSkips = groupBy(result.details.skipped, (r) => r.reason);
+  const s = { ...SUMMARY_ZEROS, ...result.summary };
+  const skipped = Array.isArray(result.details?.skipped) ? result.details.skipped : [];
+  const warnings = Array.isArray(result.details?.warnings) ? result.details.warnings : [];
+  const groupedSkips = groupBy(skipped, (r) => r.reason);
   const issuesTotal =
     (s.ambiguousNames ?? 0) + (s.metadataConflicts ?? 0) + (s.teamLeadSkipped ?? 0);
 
@@ -48,12 +62,13 @@ export default function TeamImportSummaryPanel({ result }: { result: TeamImportR
         </div>
       )}
 
-      {result.details.warnings.length > 0 && (
+      {warnings.length > 0 && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-300 rounded">
-          {result.details.warnings.map((w, i) => (
+          {warnings.map((w, i) => (
             <div key={i} className="text-sm">⚠ {w.type === 'duplicate_file_hash'
               ? `Same file imported earlier on ${new Date(String(w.previousImportAt)).toLocaleString()}`
-              : w.type === 'unknown_columns' ? `Ignored columns: ${(w.columns as string[]).join(', ')}`
+              : w.type === 'unknown_columns'
+                ? `Ignored columns: ${Array.isArray(w.columns) ? (w.columns as string[]).join(', ') : ''}`
               : w.type === 'summary_upload_failed' ? `Summary file unavailable: ${String(w.message)}`
               : JSON.stringify(w)}</div>
           ))}
@@ -107,7 +122,8 @@ function badgeClass(sev: 'info'|'warning'|'error'): string {
   return base + 'bg-gray-100 text-gray-800';
 }
 
-function groupBy<T, K extends string>(arr: T[], key: (t: T) => K): Record<K, T[]> {
+function groupBy<T, K extends string>(arr: T[] | undefined | null, key: (t: T) => K): Record<K, T[]> {
+  if (!arr?.length) return {} as Record<K, T[]>;
   return arr.reduce((acc, item) => {
     const k = key(item); (acc[k] ||= []).push(item); return acc;
   }, {} as Record<K, T[]>);

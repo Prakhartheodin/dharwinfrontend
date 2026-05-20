@@ -318,6 +318,7 @@ export function AiTaskBreakdownModal({
   const [applyIdempotencyKey, setApplyIdempotencyKey] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [confidenceScore, setConfidenceScore] = useState<number | null>(null);
+  const [moreTasksLikely, setMoreTasksLikely] = useState(false);
   const [loading, setLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [loadingHintIdx, setLoadingHintIdx] = useState(0);
@@ -330,6 +331,7 @@ export function AiTaskBreakdownModal({
     setApplyIdempotencyKey(null);
     setPreviewId(null);
     setConfidenceScore(null);
+    setMoreTasksLikely(false);
   }, []);
 
   useEffect(() => {
@@ -350,6 +352,7 @@ export function AiTaskBreakdownModal({
   const runPreview = async (opts: {
     feedback?: string;
     priorTasks?: (Pick<TaskBreakdownPreviewTask, "title" | "description" | "status"> & { id?: string })[];
+    continuationOf?: string;
   }) => {
     setLoading(true);
     try {
@@ -358,11 +361,13 @@ export function AiTaskBreakdownModal({
         extraBrief: extraBrief.trim() || undefined,
         feedback: opts.feedback,
         priorTasks: opts.priorTasks,
+        continuationOf: opts.continuationOf,
       });
       setRows(toEditableRows(res.tasks ?? []));
       setApplyIdempotencyKey(newClientKey());
       setPreviewId(res.previewId ?? null);
       setConfidenceScore(typeof res.confidenceScore === "number" ? res.confidenceScore : null);
+      setMoreTasksLikely(!!res.moreTasksLikely);
       if (!res.tasks?.length) {
         Swal.fire("No tasks", "The model returned no tasks. Try adding more context.", "info");
       }
@@ -394,6 +399,7 @@ export function AiTaskBreakdownModal({
       setApplyIdempotencyKey(newClientKey());
       setPreviewId(res.previewId ?? null);
       setConfidenceScore(typeof res.confidenceScore === "number" ? res.confidenceScore : null);
+      setMoreTasksLikely(false);
     } catch {
       Swal.fire("Error", "Refine failed. Your preview may have expired—run Preview again.", "error");
     } finally {
@@ -419,6 +425,27 @@ export function AiTaskBreakdownModal({
       status: r.status,
     }));
     void runPreview({ feedback: feedback.trim() || undefined, priorTasks });
+  };
+
+  const handleGenerateMore = async () => {
+    if (!previewId) return;
+    setLoading(true);
+    try {
+      const res = await previewTaskBreakdown(projectId, {
+        breakdownContext,
+        extraBrief: extraBrief.trim() || undefined,
+        continuationOf: previewId,
+      });
+      setRows(toEditableRows(res.tasks ?? []));
+      setApplyIdempotencyKey(newClientKey());
+      setPreviewId(res.previewId ?? null);
+      setConfidenceScore(typeof res.confidenceScore === "number" ? res.confidenceScore : null);
+      setMoreTasksLikely(!!res.moreTasksLikely);
+    } catch (err) {
+      Swal.fire("Could not generate more", formatApplyError(err), "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateRow = (clientKey: string, patch: Partial<EditableRow>) => {
@@ -662,6 +689,19 @@ export function AiTaskBreakdownModal({
               </button>
             ) : null}
           </div>
+          {rows && moreTasksLikely ? (
+            <div className={styles.generateMoreBanner}>
+              <span>Project looks bigger — generate more tasks?</span>
+              <button
+                type="button"
+                className="ti-btn ti-btn-outline-primary !mb-0 !py-1 !px-3 !text-[0.8rem]"
+                onClick={() => void handleGenerateMore()}
+                disabled={loading || applying}
+              >
+                Generate more
+              </button>
+            </div>
+          ) : null}
             {rows && rows.length > 0 ? (
             <div className="space-y-2">
               <label className="form-label mb-0" htmlFor="pm-regenerate-feedback">
@@ -726,6 +766,9 @@ export function AiTaskBreakdownModal({
                       <span className={styles.taskIndex} title="Row order in this list">
                         #{rowIndex + 1}
                       </span>
+                      {r.taskCode ? (
+                        <span className={styles.taskCodeBadge}>{r.taskCode}</span>
+                      ) : null}
                     </div>
                     <button
                       type="button"

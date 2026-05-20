@@ -13,6 +13,8 @@ const TrainingPositions = () => {
   const [showModal, setShowModal] = useState(false)
   const [editingPosition, setEditingPosition] = useState<Position | null>(null)
   const [positionName, setPositionName] = useState('')
+  const [positionDepartment, setPositionDepartment] = useState('')
+  const [positionSkills, setPositionSkills] = useState('')
 
   const fetchPositions = useCallback(async () => {
     setLoading(true)
@@ -46,12 +48,16 @@ const TrainingPositions = () => {
   const openCreateModal = () => {
     setEditingPosition(null)
     setPositionName('')
+    setPositionDepartment('')
+    setPositionSkills('')
     setShowModal(true)
   }
 
   const openEditModal = (pos: Position) => {
     setEditingPosition(pos)
     setPositionName(pos.name)
+    setPositionDepartment(pos.department ?? '')
+    setPositionSkills((pos.skillsSuggested ?? []).join(', '))
     setShowModal(true)
   }
 
@@ -72,8 +78,18 @@ const TrainingPositions = () => {
     }
 
     try {
+    const skillsSuggested = positionSkills
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+    const payload = {
+      name,
+      department: positionDepartment.trim() || undefined,
+      skillsSuggested: skillsSuggested.length ? skillsSuggested : undefined,
+    }
+
       if (editingPosition) {
-        await positionsApi.updatePosition(editingPosition.id || (editingPosition as any)._id, { name })
+        await positionsApi.updatePosition(editingPosition.id || (editingPosition as any)._id, payload)
         await Swal.fire({
           icon: 'success',
           title: 'Position updated',
@@ -85,7 +101,7 @@ const TrainingPositions = () => {
           timerProgressBar: true,
         })
       } else {
-        await positionsApi.createPosition({ name })
+        await positionsApi.createPosition(payload)
         await Swal.fire({
           icon: 'success',
           title: 'Position created',
@@ -99,6 +115,8 @@ const TrainingPositions = () => {
       }
       setShowModal(false)
       setPositionName('')
+      setPositionDepartment('')
+      setPositionSkills('')
       setEditingPosition(null)
       await fetchPositions()
     } catch (err) {
@@ -324,7 +342,27 @@ const TrainingPositions = () => {
                   }
                 }}
               />
-              <div className="mt-2 flex items-center justify-between text-[0.72rem] text-defaulttextcolor/60">
+                              <div className="mt-3">
+                  <label className="form-label">Department</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={positionDepartment}
+                    onChange={(e) => setPositionDepartment(e.target.value)}
+                    placeholder="e.g. Engineering"
+                  />
+                </div>
+                <div className="mt-3">
+                  <label className="form-label">Suggested skills</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={positionSkills}
+                    onChange={(e) => setPositionSkills(e.target.value)}
+                    placeholder="Comma-separated, e.g. React, TypeScript"
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[0.72rem] text-defaulttextcolor/60">
                 <span>Use a clear, searchable role title.</span>
                 <span className="tabular-nums">{positionName.trim().length}/60</span>
               </div>
