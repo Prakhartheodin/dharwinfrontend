@@ -3,7 +3,19 @@
 import { apiClient } from "@/shared/lib/api/client";
 
 export type ProjectStatus = "Inprogress" | "On hold" | "completed";
-export type ProjectPriority = "High" | "Medium" | "Low";
+export type ProjectPriority = "low" | "medium" | "high" | "urgent";
+
+/** Normalize legacy Title-Case values that may exist in older data. */
+export function normalizeProjectPriority(raw: string | undefined): ProjectPriority {
+  const map: Record<string, ProjectPriority> = {
+    Low: "low",
+    Medium: "medium",
+    High: "high",
+    Urgent: "urgent",
+  };
+  const lower = (raw ?? "").toLowerCase() as ProjectPriority;
+  return map[raw ?? ""] ?? (["low", "medium", "high", "urgent"].includes(lower) ? lower : "medium");
+}
 
 export interface ProjectUser {
   _id: string;

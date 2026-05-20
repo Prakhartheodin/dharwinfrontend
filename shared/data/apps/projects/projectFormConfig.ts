@@ -44,9 +44,10 @@ export const PROJECT_STATUS_OPTIONS: SelectOption[] = [
 ];
 
 export const PROJECT_PRIORITY_OPTIONS: SelectOption[] = [
-  { value: "High", label: "High" },
-  { value: "Medium", label: "Medium" },
-  { value: "Low", label: "Low" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
 ];
 
 export const PROJECT_FORM_FIELDS: ProjectFormFieldConfig[] = [

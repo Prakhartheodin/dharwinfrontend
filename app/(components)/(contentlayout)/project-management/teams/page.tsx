@@ -14,12 +14,12 @@ import Seo from "@/shared/layout-components/seo/seo";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
 import {
-  TEAM_GROUP_LABELS,
-  type TeamGroup,
   type TeamMember,
   createTeamMember,
+  moveTeamMember,
   deleteTeamMember,
   listTeamMembers,
+  TEAM_MEMBERS_API_MAX_LIMIT,
   updateTeamMember,
 } from "@/shared/lib/api/teams";
 import {
@@ -39,14 +39,13 @@ import {
 import styles from "./teams.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
-import TeamImportButton from "./components/TeamImportButton";
-import TeamExportButton from "./components/TeamExportButton";
+import TeamExcelDropdown from "./components/TeamExcelDropdown";
 import TeamImportHistory from "./components/TeamImportHistory";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
-/** Unscoped roster for sidebar grouping; raise if orgs exceed this (API paginates). */
-const SIDEBAR_ROSTER_LIMIT = 800;
+/** Paginate until the API reports no more pages (see TEAM_MEMBERS_API_MAX_LIMIT per request). */
+const SIDEBAR_ROSTER_MAX_PAGES = 500;
 
 function TeamRosterSkeleton() {
   return (
@@ -81,7 +80,6 @@ interface TeamMemberFormState {
   projectsCount: string;
   position: string;
   avatarImageUrl: string;
-  teamGroup: TeamGroup;
   teamId: string;
   onlineStatus: "online" | "offline";
   lastSeenLabel: string;
@@ -95,7 +93,6 @@ const EMPTY_FORM: TeamMemberFormState = {
   projectsCount: "",
   position: "",
   avatarImageUrl: "",
-  teamGroup: "team_ui",
   teamId: "",
   onlineStatus: "online",
   lastSeenLabel: "",
@@ -143,6 +140,14 @@ function normalizeMemberEmail(email: string | undefined | null): string {
     .toLowerCase();
 }
 
+function memberDisplayName(member: TeamMember): string {
+  return (member.displayName || member.name || "").trim();
+}
+
+function memberDisplayEmail(member: TeamMember): string {
+  return (member.displayEmail || member.email || "").trim();
+}
+
 /**
  * Roster avatarImageUrl override → server candidateProfilePictureUrl (from GET /teams) →
  * candidates list map → signed-in user's profile picture when emails match.
@@ -155,7 +160,7 @@ function getTeamMemberAvatarDisplayState(
 ): { hasPhoto: boolean; imgSrc: string } {
   const override = (member.avatarImageUrl || "").trim();
   const fromApi = (member.candidateProfilePictureUrl || "").trim();
-  const key = normalizeMemberEmail(member.email);
+  const key = normalizeMemberEmail(memberDisplayEmail(member));
   const fromAts = (key ? candidateAvatarByEmail.get(key) : undefined) || "";
   const fromAtsTrim = fromAts.trim();
   const sessionUrl =
@@ -202,13 +207,12 @@ function getMemberId(member: TeamMember): string {
 function mapMemberToForm(member: TeamMember): TeamMemberFormState {
   const teamId = getTeamIdFromRef(member.teamId);
   return {
-    name: member.name ?? "",
-    email: member.email ?? "",
+    name: memberDisplayName(member),
+    email: memberDisplayEmail(member),
     memberSinceLabel: member.memberSinceLabel ?? "",
     projectsCount: String(member.projectsCount ?? 0),
-    position: member.position ?? "",
+    position: member.seniority ?? member.position ?? "",
     avatarImageUrl: member.avatarImageUrl ?? "",
-    teamGroup: member.teamGroup ?? "team_ui",
     teamId,
     onlineStatus: member.onlineStatus ?? "online",
     lastSeenLabel: member.lastSeenLabel ?? "",
@@ -216,18 +220,9 @@ function mapMemberToForm(member: TeamMember): TeamMemberFormState {
   };
 }
 
-function mapFormToPayload(form: TeamMemberFormState) {
+function mapFormToUpdatePayload(form: TeamMemberFormState) {
   return {
-    name: form.name.trim(),
-    email: form.email.trim(),
-    memberSinceLabel: form.memberSinceLabel.trim() || undefined,
-    projectsCount: form.projectsCount ? Number(form.projectsCount) : undefined,
-    position: form.position.trim() || undefined,
-    avatarImageUrl: form.avatarImageUrl.trim() || undefined,
-    teamGroup: form.teamGroup,
-    teamId: form.teamId.trim() || undefined,
-    onlineStatus: form.onlineStatus,
-    lastSeenLabel: form.lastSeenLabel.trim() || undefined,
+    seniority: form.position.trim() || undefined,
     isStarred: form.isStarred,
   };
 }
@@ -269,7 +264,7 @@ function TeamMemberCard({
     setAvatarBroken(false);
   }, [
     memberKey,
-    member.email,
+    memberDisplayEmail(member),
     member.avatarImageUrl,
     member.candidateProfilePictureUrl,
     hasAvatarPhoto,
@@ -389,11 +384,11 @@ function TeamMemberCard({
           )}
           <span
             className="avatar avatar-xl avatar-rounded overflow-hidden !bg-defaultbackground ring-2 ring-white dark:ring-white/10"
-            aria-label={member.name}
+            aria-label={memberDisplayName(member)}
           >
             {!hasAvatarPhoto || avatarBroken ? (
               <span className="flex h-full w-full items-center justify-center bg-primary/15 text-[0.95rem] font-semibold text-primary">
-                {initialsFromName(member.name)}
+                {initialsFromName(memberDisplayName(member))}
               </span>
             ) : (
               <img
@@ -417,11 +412,19 @@ function TeamMemberCard({
           <div className="flex flex-wrap align-item-center sm:mt-0 mt-[3rem] justify-between border-b border-dashed dark:border-defaultborder/10 p-4">
             <div className="team-member-details flex-grow">
               <p className="mb-0 font-semibold text-[1rem] text-truncate">
-                <span>{member.name}</span>
+                <span>{memberDisplayName(member)}</span>
               </p>
               <p className="mb-0 text-[0.75rem] text-[#8c9097] dark:text-white/50 text-truncate">
-                {member.email}
+                {memberDisplayEmail(member)}
               </p>
+              {member.isOrphan && (
+                <span
+                  className="badge bg-warning/10 text-warning mt-1 inline-block text-[0.65rem]"
+                  title="Not linked to an Employee record"
+                >
+                  Unlinked
+                </span>
+              )}
             </div>
             <div className="hs-dropdown ti-dropdown" ref={dropdownRef}>
               <button
@@ -555,7 +558,7 @@ function RosterSidebarAvatar({
     <span className={`avatar avatar-sm avatar-rounded ${statusClass}`}>
       {!hasPhoto || imgFailed ? (
         <span className="flex h-full w-full min-h-8 min-w-8 items-center justify-center rounded-full bg-primary/15 text-[0.6rem] font-semibold text-primary">
-          {initialsFromName(member.name)}
+          {initialsFromName(memberDisplayName(member))}
         </span>
       ) : (
         <img src={imgSrc} alt="" className="object-cover" onError={() => setImgFailed(true)} />
@@ -1113,6 +1116,8 @@ const TeamsPage = () => {
   const [teamGroups, setTeamGroups] = useState<ApiTeamGroup[]>([]);
   /** Which team’s roster is shown in the main column (WhatsApp-style group switcher). */
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  /** Teams whose member sub-list is expanded in the teams-nav. Default: all collapsed. */
+  const [expandedTeamIds, setExpandedTeamIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<boolean>(true);
   const [searchInput, setSearchInput] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -1160,12 +1165,21 @@ const TeamsPage = () => {
   const fetchSidebarRoster = useCallback(async () => {
     const seq = ++sidebarFetchSeq.current;
     try {
-      const res = await listTeamMembers({
-        limit: SIDEBAR_ROSTER_LIMIT,
-        page: 1,
-      });
+      const acc: TeamMember[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const res = await listTeamMembers({
+          limit: TEAM_MEMBERS_API_MAX_LIMIT,
+          page,
+        });
+        if (seq !== sidebarFetchSeq.current) return;
+        acc.push(...(res.results ?? []));
+        totalPages = Math.max(1, res.totalPages ?? 1);
+        page += 1;
+      } while (page <= totalPages && page <= SIDEBAR_ROSTER_MAX_PAGES);
       if (seq !== sidebarFetchSeq.current) return;
-      setSidebarMembers(res.results ?? []);
+      setSidebarMembers(acc);
     } catch {
       if (seq !== sidebarFetchSeq.current) return;
       setSidebarMembers([]);
@@ -1278,6 +1292,15 @@ const TeamsPage = () => {
     setSelectedTeamId(tid);
   };
 
+  const toggleTeamCollapse = (tid: string) => {
+    setExpandedTeamIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tid)) next.delete(tid);
+      else next.add(tid);
+      return next;
+    });
+  };
+
   const openEditForm = (member: TeamMember) => {
     setFormIsEdit(true);
     setEditingMemberId(getMemberId(member));
@@ -1290,18 +1313,28 @@ const TeamsPage = () => {
   };
 
   const handleFormSubmit = async () => {
-    if (!formState.name.trim() || !formState.email.trim()) {
-      Swal.fire("Validation", "Name and email are required.", "warning");
-      return;
+    if (!formIsEdit) {
+      if (!formState.teamId.trim()) {
+        Swal.fire("Validation", "Select a team first.", "warning");
+        return;
+      }
+      if (!formState.name.trim() || !formState.email.trim()) {
+        Swal.fire("Validation", "Name and email are required.", "warning");
+        return;
+      }
     }
     setSubmitting(true);
     try {
-      const payload = mapFormToPayload(formState);
       if (formIsEdit && editingMemberId) {
-        await updateTeamMember(editingMemberId, payload);
+        await updateTeamMember(editingMemberId, mapFormToUpdatePayload(formState));
         await Swal.fire("Updated", "Team member updated successfully.", "success");
       } else {
-        await createTeamMember(payload);
+        await createTeamMember({
+          teamId: formState.teamId.trim(),
+          legacyName: formState.name.trim(),
+          legacyEmail: formState.email.trim(),
+          seniority: formState.position.trim() || undefined,
+        });
         await Swal.fire("Created", "Team member created successfully.", "success");
       }
       setFormOpen(false);
@@ -1319,7 +1352,7 @@ const TeamsPage = () => {
   const handleDeleteMember = async (member: TeamMember) => {
     const result = await Swal.fire({
       title: "Remove member?",
-      text: `"${member.name}" will be removed from teams.`,
+      text: `"${memberDisplayName(member)}" will be removed from teams.`,
       icon: "warning",
       showCancelButton: true,
       confirmButtonColor: "#d33",
@@ -1353,7 +1386,7 @@ const TeamsPage = () => {
     });
     if (selectedId == null || selectedId === "") return;
     try {
-      await updateTeamMember(getMemberId(member), { teamId: selectedId });
+      await moveTeamMember(getMemberId(member), selectedId);
       await Swal.fire("Updated", "Member moved to new team.", "success");
       fetchMembers({ page, search: searchQuery || undefined });
       void fetchSidebarRoster();
@@ -1395,8 +1428,9 @@ const TeamsPage = () => {
   const getMemberTeamId = (m: TeamMember): string => getTeamIdFromRef(m.teamId);
   const getMemberTeamName = (m: TeamMember): string => {
     if (typeof m.teamId === "object" && m.teamId?.name) return m.teamId.name;
-    const g = m.teamGroup;
-    return TEAM_GROUP_LABELS[g] ?? g ?? "—";
+    const tid = getMemberTeamId(m);
+    const teamName = teamGroups.find((t) => getTeamGroupId(t) === tid)?.name;
+    return teamName ? displayTeamLabel(teamName, tid) : "—";
   };
   const groupedMembersByTeamId = useMemo(() => {
     const map: Record<string, TeamMember[]> = {};
@@ -1552,17 +1586,19 @@ const TeamsPage = () => {
               </span>
             ) : null}
           </div>
-          <button
-            type="button"
-            onClick={() => openCreateForm()}
-            className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-          >
-            <i className="ri-add-line" /> New member
-          </button>
-          <TeamImportButton onImportSuccess={handleImportSuccess} />
-          <TeamExportButton
-            filter={selectedTeamId ? { teamId: selectedTeamId } : {}}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openCreateForm()}
+              className="inline-flex items-center gap-1 rounded-full bg-slate-900 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+            >
+              <i className="ri-add-line" /> New member
+            </button>
+            <TeamExcelDropdown
+              onImportSuccess={handleImportSuccess}
+              filter={selectedTeamId ? { teamId: selectedTeamId } : undefined}
+            />
+          </div>
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-2" role="search">
@@ -1729,12 +1765,16 @@ const TeamsPage = () => {
               </div>
             </div>
             <div className="box-body min-h-0 flex-1 !p-0">
-              <PerfectScrollbar className="h-full max-h-[min(64vh,calc(100dvh-14rem))]">
+              <PerfectScrollbar
+                options={{ suppressScrollX: true }}
+                className="h-full max-h-[min(64vh,calc(100dvh-14rem))]"
+              >
                 <div className="teams-nav px-2 pb-3" id="teams-nav">
                   <ul className="mb-0 mt-2 list-none">
                       {teamGroups.map((team) => {
                         const tid = getTeamGroupId(team);
                         const isActive = selectedTeamId === tid;
+                        const isCollapsed = !expandedTeamIds.has(tid);
                         return (
                         <Fragment key={tid}>
                           <li
@@ -1745,6 +1785,20 @@ const TeamsPage = () => {
                             }`}
                           >
                             <div className="flex justify-between items-center gap-1">
+                              <button
+                                type="button"
+                                aria-label={isCollapsed ? "Expand team members" : "Collapse team members"}
+                                aria-expanded={!isCollapsed}
+                                title={isCollapsed ? "Expand team members" : "Collapse team members"}
+                                className="ti-btn ti-btn-sm ti-btn-light !px-1 !py-0 mb-2 shrink-0"
+                                onClick={() => toggleTeamCollapse(tid)}
+                              >
+                                <i
+                                  className={`${
+                                    isCollapsed ? "ri-arrow-right-s-line" : "ri-arrow-down-s-line"
+                                  } text-[0.95rem]`}
+                                />
+                              </button>
                               <button
                                 type="button"
                                 className={`${styles.teamNameBtn} mb-2 flex-grow min-w-0 ${isActive ? "!text-primary" : ""}`}
@@ -1782,7 +1836,8 @@ const TeamsPage = () => {
                               </div>
                             </div>
                           </li>
-                          {(groupedMembersByTeamId[tid] ?? []).map((member) => (
+                          {!isCollapsed &&
+                            (groupedMembersByTeamId[tid] ?? []).map((member) => (
                             <li key={getMemberId(member)}>
                               <button
                                 type="button"
@@ -1806,7 +1861,7 @@ const TeamsPage = () => {
                                     />
                                   </div>
                                   <div className="flex-grow">
-                                    <span>{member.name}</span>
+                                    <span>{memberDisplayName(member)}</span>
                                   </div>
                                   <div>
                                     <span className="text-[.625rem] font-semibold text-[#8c9097] dark:text-white/50">

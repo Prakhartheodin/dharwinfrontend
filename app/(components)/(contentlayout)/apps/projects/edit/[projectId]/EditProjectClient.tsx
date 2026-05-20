@@ -9,6 +9,7 @@ import DynamicProjectForm, {
 import {
   getProjectById,
   updateProject,
+  normalizeProjectPriority,
   type Project,
   type UpdateProjectPayload,
   type ProjectStatus,
@@ -40,8 +41,9 @@ function projectToFormValues(project: Project): ProjectFormValues {
   const statusOption =
     PROJECT_STATUS_OPTIONS.find((o) => o.value === project.status) ??
     PROJECT_STATUS_OPTIONS[0];
+  const normalizedPriority = normalizeProjectPriority(project.priority);
   const priorityOption =
-    PROJECT_PRIORITY_OPTIONS.find((o) => o.value === project.priority) ??
+    PROJECT_PRIORITY_OPTIONS.find((o) => o.value === normalizedPriority) ??
     PROJECT_PRIORITY_OPTIONS[0];
   const assignedTeams: SelectOption[] = (project.assignedTeams ?? []).map((t) => {
     const teamId = (t as { _id?: string; id?: string })._id ?? (t as { id?: string }).id ?? t._id;

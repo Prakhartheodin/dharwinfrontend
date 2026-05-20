@@ -22,6 +22,8 @@ export interface BreakdownContext {
   keyDeliverables?: string[];
   constraints?: BreakdownConstraint[];
   extraNotes?: string;
+  /** Soft target: tasks each group member should receive (1-10). */
+  tasksPerEmployee?: number;
 }
 
 export type FeedbackOutcome = "approved" | "rejected" | "replaced";

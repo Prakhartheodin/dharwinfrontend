@@ -294,7 +294,7 @@ const Createproject = () => {
             ? new Date(values.endDate as string).toISOString()
             : undefined,
       status: (statusVal as ProjectStatus) ?? "Inprogress",
-      priority: (priorityVal as ProjectPriority) ?? "Medium",
+      priority: (priorityVal as ProjectPriority) ?? "medium",
       assignedTeams: assignedTeamIds,
       assignedTo: assignedUserIds,
       tags,

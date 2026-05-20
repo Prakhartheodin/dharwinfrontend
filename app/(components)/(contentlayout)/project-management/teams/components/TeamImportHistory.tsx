@@ -11,7 +11,14 @@ export default function TeamImportHistory() {
   useEffect(() => {
     setLoading(true);
     listTeamImportLogs({ page, limit: 10 })
-      .then((r) => { setLogs(r.results); setPages(r.totalPages); })
+      .then((r) => {
+        setLogs(Array.isArray(r.results) ? r.results : []);
+        setPages(Number.isFinite(r.totalPages) && r.totalPages > 0 ? r.totalPages : 1);
+      })
+      .catch(() => {
+        setLogs([]);
+        setPages(1);
+      })
       .finally(() => setLoading(false));
   }, [page]);
 
@@ -34,7 +41,7 @@ export default function TeamImportHistory() {
             </tr>
           </thead>
           <tbody>
-            {logs.map((l) => (
+            {(logs ?? []).map((l) => (
               <tr key={l.id} className="border-t">
                 <td className="p-2">{new Date(l.createdAt).toLocaleString()}</td>
                 <td className="p-2">{l.uploadedBy?.name || l.uploadedBy?.email}</td>

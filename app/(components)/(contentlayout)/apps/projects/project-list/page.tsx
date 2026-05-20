@@ -16,6 +16,7 @@ import {
   getProjectById,
   getProjectProgress,
   updateProject,
+  normalizeProjectPriority,
   type Project,
   type ProjectStatus,
   type ProjectPriority,
@@ -46,15 +47,17 @@ const STATUS_TEXT: Record<ProjectStatus, string> = {
 };
 
 const PRIORITY_DOT: Record<ProjectPriority, string> = {
-  High: "bg-danger",
-  Medium: "bg-info",
-  Low: "bg-success",
+  urgent: "bg-danger",
+  high: "bg-orange-500",
+  medium: "bg-info",
+  low: "bg-success",
 };
 
 const PRIORITY_RING: Record<ProjectPriority, string> = {
-  High: "ring-danger/30",
-  Medium: "ring-info/30",
-  Low: "ring-success/30",
+  urgent: "ring-danger/30",
+  high: "ring-orange-500/30",
+  medium: "ring-info/30",
+  low: "ring-success/30",
 };
 
 const STATUS_FILTERS: Array<{ value: "" | ProjectStatus; label: string }> = [
@@ -76,12 +79,15 @@ function getProjectId(project: Project): string {
 }
 
 function priorityBadgeClass(priority: string): string {
-  switch (priority) {
-    case "High":
+  const p = normalizeProjectPriority(priority);
+  switch (p) {
+    case "urgent":
       return "bg-danger/10 text-danger";
-    case "Medium":
+    case "high":
+      return "bg-orange-500/10 text-orange-600";
+    case "medium":
       return "bg-info/10 text-info";
-    case "Low":
+    case "low":
       return "bg-success/10 text-success";
     default:
       return "bg-secondary/10 text-secondary";
@@ -160,7 +166,7 @@ function ProjectDetailModal({
                 <div className="flex items-start justify-between gap-3">
                   <h6 className="text-base font-semibold">{projectData.name}</h6>
                   <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.7rem] font-semibold ${priorityBadgeClass(projectData.priority)}`}>
-                    {projectData.priority}
+                    {normalizeProjectPriority(projectData.priority)}
                   </span>
                 </div>
                 <div className="mt-3 grid grid-cols-1 gap-3 text-[0.8125rem] sm:grid-cols-2">
@@ -690,14 +696,21 @@ const Projectlist = (): JSX.Element => {
                   <div className="flex items-start justify-between gap-3 px-5 pl-6 pt-5">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span
-                          className={`inline-block h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[p.priority] ?? "bg-slate-400"} ring-4 ${PRIORITY_RING[p.priority] ?? "ring-slate-200"}`}
-                          title={`${p.priority} priority`}
-                          aria-label={`${p.priority} priority`}
-                        />
-                        <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                          {p.priority} priority
-                        </p>
+                        {(() => {
+                          const pri = normalizeProjectPriority(p.priority);
+                          return (
+                            <>
+                              <span
+                                className={`inline-block h-2 w-2 shrink-0 rounded-full ${PRIORITY_DOT[pri] ?? "bg-slate-400"} ring-4 ${PRIORITY_RING[pri] ?? "ring-slate-200"}`}
+                                title={`${pri} priority`}
+                                aria-label={`${pri} priority`}
+                              />
+                              <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                                {pri} priority
+                              </p>
+                            </>
+                          );
+                        })()}
                       </div>
                       <Link
                         href={id ? `/apps/projects/edit/${encodeURIComponent(id)}` : "#"}

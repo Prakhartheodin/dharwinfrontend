@@ -6,6 +6,8 @@ export interface Position {
   id: string;
   _id?: string;
   name: string;
+  department?: string;
+  skillsSuggested?: string[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -42,12 +44,12 @@ export async function getPosition(positionId: string): Promise<Position> {
   return data;
 }
 
-export async function createPosition(payload: { name: string }): Promise<Position> {
+export async function createPosition(payload: { name: string; department?: string; skillsSuggested?: string[] }): Promise<Position> {
   const { data } = await apiClient.post<Position>("/positions", payload);
   return data;
 }
 
-export async function updatePosition(positionId: string, payload: { name: string }): Promise<Position> {
+export async function updatePosition(positionId: string, payload: { name: string; department?: string; skillsSuggested?: string[] }): Promise<Position> {
   const { data } = await apiClient.patch<Position>(`/positions/${positionId}`, payload);
   return data;
 }
