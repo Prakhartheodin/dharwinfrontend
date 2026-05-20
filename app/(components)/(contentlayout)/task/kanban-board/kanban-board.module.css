@@ -732,8 +732,7 @@
 }
 
 /* Compact react-select overrides scoped via classNamePrefix kb-drawer-select. */
-.kbRoot :global(.kb-drawer-select__control),
-:global(.kb-drawer-select__control) {
+.kbRoot :global(.kb-drawer-select__control) {
   min-height: 32px !important;
   border-color: rgba(148, 163, 184, 0.22) !important;
   background: transparent !important;
@@ -741,42 +740,42 @@
   font-size: 12px !important;
 }
 
-:global(.kb-drawer-select__control--is-focused) {
+.kbRoot :global(.kb-drawer-select__control--is-focused) {
   border-color: #0f172a !important;
 }
 
-:global(.kb-drawer-select__value-container) {
+.kbRoot :global(.kb-drawer-select__value-container) {
   padding: 0 0.5rem !important;
 }
 
-:global(.kb-drawer-select__indicators) {
+.kbRoot :global(.kb-drawer-select__indicators) {
   height: 30px !important;
 }
 
-:global(.kb-drawer-select__indicator) {
+.kbRoot :global(.kb-drawer-select__indicator) {
   padding: 4px !important;
 }
 
-:global(.kb-drawer-select__multi-value) {
+.kbRoot :global(.kb-drawer-select__multi-value) {
   background: rgba(15, 23, 42, 0.06) !important;
   border: 1px solid rgba(148, 163, 184, 0.25) !important;
   font-size: 11px !important;
   margin: 2px !important;
 }
 
-:global(.kb-drawer-select__multi-value__label) {
+.kbRoot :global(.kb-drawer-select__multi-value__label) {
   font-size: 11px !important;
   font-weight: 500 !important;
   padding: 1px 4px !important;
   color: #334155 !important;
 }
 
-:global(.dark) :global(.kb-drawer-select__multi-value) {
+:global(.dark) .kbRoot :global(.kb-drawer-select__multi-value) {
   background: rgba(248, 250, 252, 0.08) !important;
   border-color: rgba(148, 163, 184, 0.2) !important;
 }
 
-:global(.dark) :global(.kb-drawer-select__multi-value__label) {
+:global(.dark) .kbRoot :global(.kb-drawer-select__multi-value__label) {
   color: #e2e8f0 !important;
 }
 
