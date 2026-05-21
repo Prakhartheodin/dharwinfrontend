@@ -11,6 +11,9 @@ import styles from "../../../kanban-board.module.css";
 const actionBtn =
   "rounded-full border border-indigo-300 bg-white px-3 py-1 text-xs font-semibold text-indigo-900 transition hover:border-indigo-500 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-400/40 dark:bg-transparent dark:text-indigo-100 dark:hover:bg-indigo-950/40";
 
+/** Sentinel select value for the "Clear / Unassigned" assign option. */
+const UNASSIGN_VALUE = "__unassign__";
+
 export function BulkActionBar(): React.JSX.Element | null {
   const { selectedIds, clearSelection } = useTaskSelection();
   const { users } = useTaskData();
@@ -71,14 +74,15 @@ export function BulkActionBar(): React.JSX.Element | null {
               disabled={busy}
               defaultValue=""
               onChange={(e) => {
-                const userId = e.target.value;
-                if (!userId) return;
-                void bulkAssign(userId);
+                const value = e.target.value;
+                if (!value) return;
+                void bulkAssign(value === UNASSIGN_VALUE ? null : value);
                 e.target.value = "";
                 closePanel();
               }}
             >
               <option value="">Choose user…</option>
+              <option value={UNASSIGN_VALUE}>Clear / Unassigned</option>
               {users.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.name || u.email}

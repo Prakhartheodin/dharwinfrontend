@@ -227,7 +227,7 @@ function TaskCard({
             disabled={updating}
             onChange={(e) => void handleStatusChange(e.target.value as TaskStatus)}
             aria-label="Change task status"
-            className="h-8 flex-1 min-w-0 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
+            className="h-8 flex-1 min-w-[7.5rem] rounded-full border border-slate-200 bg-white pl-3 pr-7 text-xs font-semibold text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>

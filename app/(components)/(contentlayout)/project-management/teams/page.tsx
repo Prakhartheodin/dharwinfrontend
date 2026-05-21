@@ -488,45 +488,6 @@ function TeamMemberCard({
             </div>
           </div>
         </div>
-        <div className="box-footer border-block-start-dashed dark:border-defaultborder/10 text-center">
-          <div className="btn-list">
-            <button
-              type="button"
-              aria-label="button"
-              className="ti-btn ti-btn-sm ti-btn-light !me-[0.375rem]"
-            >
-              <i className="ri-facebook-line font-bold" />
-            </button>
-            <button
-              type="button"
-              aria-label="button"
-              className="ti-btn ti-btn-sm ti-btn-secondary !me-[0.375rem]"
-            >
-              <i className="ri-twitter-x-line font-bold" />
-            </button>
-            <button
-              type="button"
-              aria-label="button"
-              className="ti-btn ti-btn-sm ti-btn-warning me-[0.375rem]"
-            >
-              <i className="ri-instagram-line font-bold" />
-            </button>
-            <button
-              type="button"
-              aria-label="button"
-              className="ti-btn ti-btn-sm ti-btn-success me-[0.375rem]"
-            >
-              <i className="ri-github-line font-bold" />
-            </button>
-            <button
-              type="button"
-              aria-label="button"
-              className="ti-btn ti-btn-sm ti-btn-danger"
-            >
-              <i className="ri-youtube-line font-bold" />
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

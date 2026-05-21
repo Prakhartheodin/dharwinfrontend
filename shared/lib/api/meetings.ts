@@ -21,6 +21,12 @@ export interface MeetingRecruiterRef {
   email?: string;
 }
 
+export interface MeetingAgentRef {
+  id?: string;
+  name?: string;
+  email?: string;
+}
+
 export interface CreateMeetingPayload {
   title: string;
   description?: string;
@@ -36,6 +42,7 @@ export interface CreateMeetingPayload {
   interviewType?: "Video" | "In-Person" | "Phone";
   candidate?: MeetingCandidateRef | null;
   recruiter?: MeetingRecruiterRef | null;
+  agents?: MeetingAgentRef[];
   notes?: string;
 }
 
@@ -56,6 +63,7 @@ export interface Meeting {
   interviewType: string;
   candidate?: MeetingCandidateRef;
   recruiter?: MeetingRecruiterRef;
+  agents?: MeetingAgentRef[];
   notes?: string;
   status: string;
   /** Interview result: pending, selected, rejected */

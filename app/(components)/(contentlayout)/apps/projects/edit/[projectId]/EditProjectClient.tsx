@@ -178,29 +178,27 @@ export function EditProjectClient({ projectId }: EditProjectClientProps) {
       intakeMilestones: String(values.intakeMilestones ?? ""),
     });
 
+    // Send "" / null for emptied fields, never undefined: axios drops undefined
+    // keys from the JSON body, which leaves the old server value untouched and
+    // makes cleared fields impossible to clear. Backend Joi allows ''/null here.
+    const toIso = (d: unknown): string | null => {
+      if (!d) return null;
+      const date = d instanceof Date ? d : new Date(d as string);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    };
     const payload: UpdateProjectPayload = {
       name: String(values.name ?? "").trim(),
-      projectManager: String(values.projectManager ?? "").trim() || undefined,
-      clientStakeholder: String(values.clientStakeholder ?? "").trim() || undefined,
+      projectManager: String(values.projectManager ?? "").trim(),
+      clientStakeholder: String(values.clientStakeholder ?? "").trim(),
       description: descriptionPlain,
       status: (statusVal as ProjectStatus) ?? undefined,
       priority: (priorityVal as ProjectPriority) ?? undefined,
       assignedTeams: assignedTeamIds,
       assignedTo: assignedUserIds,
       tags,
+      startDate: toIso(values.startDate),
+      endDate: toIso(values.endDate),
     };
-    if (values.startDate) {
-      payload.startDate =
-        values.startDate instanceof Date
-          ? values.startDate.toISOString()
-          : new Date(values.startDate as string).toISOString();
-    }
-    if (values.endDate) {
-      payload.endDate =
-        values.endDate instanceof Date
-          ? values.endDate.toISOString()
-          : new Date(values.endDate as string).toISOString();
-    }
     return payload;
   };
 

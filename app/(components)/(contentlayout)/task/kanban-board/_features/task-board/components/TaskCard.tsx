@@ -5,8 +5,10 @@ import type { DraggableAttributes } from "@dnd-kit/core";
 import type { Task } from "@/shared/lib/api/tasks";
 import { formatDueDate } from "@/shared/lib/api/tasks";
 import { sanitizeText } from "../lib/sanitize";
+import { resolveAssigneeInitials } from "../lib/initials";
 import { useTaskKeyboard } from "../hooks/useTaskKeyboard";
 import { useTaskUI } from "../hooks/useTaskUI";
+import { useTaskData } from "../providers/TaskDataProvider";
 import { TaskBadge } from "./TaskBadge";
 import { TaskMeta } from "./TaskMeta";
 import styles from "../../../kanban-board.module.css";
@@ -48,6 +50,10 @@ export const TaskCard = memo(function TaskCard({
   const { density } = useTaskUI();
   const isCompact = density === "compact";
 
+  // Board users (from TaskDataProvider) let us resolve bare assignee ID
+  // strings — unpopulated refs — into real names/initials.
+  const { users } = useTaskData();
+
   const onActivate = useCallback(() => {
     const id = task._id ?? task.id ?? "";
     if (id) onOpen?.(id);
@@ -58,21 +64,7 @@ export const TaskCard = memo(function TaskCard({
   const dueLabel = formatDueDate(task.dueDate, task.status);
 
   const initials =
-    assigneeInitials ??
-    (task.assignedTo ?? [])
-      .map((u) => {
-        if (!u) return "";
-        if (typeof u === "string") return "?";
-        const name = (u as { name?: string }).name ?? "";
-        const email = (u as { email?: string }).email ?? "";
-        const base = name || email || "?";
-        const parts = base.split(/\s+/).filter(Boolean);
-        if (parts.length >= 2) {
-          return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`;
-        }
-        return base.slice(0, 2);
-      })
-      .filter(Boolean);
+    assigneeInitials ?? resolveAssigneeInitials(task.assignedTo, users);
 
   const taskId = task._id ?? task.id ?? "";
   const tagsToShow = isCompact ? [] : (task.tags ?? []).slice(0, 2);

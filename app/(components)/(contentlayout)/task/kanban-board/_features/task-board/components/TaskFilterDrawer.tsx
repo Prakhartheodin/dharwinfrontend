@@ -27,6 +27,8 @@ export function TaskFilterDrawer({
     setProjectId,
     assignedToMe,
     setAssignedToMe,
+    unassigned,
+    setUnassigned,
     priorities,
     togglePriority,
     clearFilters,
@@ -108,6 +110,14 @@ export function TaskFilterDrawer({
                   onChange={(e) => setAssignedToMe(e.target.checked)}
                 />
                 Assigned to me
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={unassigned}
+                  onChange={(e) => setUnassigned(e.target.checked)}
+                />
+                Unassigned
               </label>
               <div>
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
