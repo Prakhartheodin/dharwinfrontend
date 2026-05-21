@@ -746,10 +746,18 @@
 
 .kbRoot :global(.kb-drawer-select__value-container) {
   padding: 0 0.5rem !important;
+  /* Multi-value chips wrap onto new rows; cap the height so a task with many
+     assignees scrolls internally instead of blowing out the drawer. */
+  flex-wrap: wrap !important;
+  max-height: 96px !important;
+  overflow-y: auto !important;
 }
 
 .kbRoot :global(.kb-drawer-select__indicators) {
-  height: 30px !important;
+  /* No fixed height — the control grows as multi-value chips wrap, so pin the
+     indicators to the top and let them size to content. A fixed height here
+     detached the dropdown/clear arrows from a taller control. */
+  align-self: flex-start !important;
 }
 
 .kbRoot :global(.kb-drawer-select__indicator) {

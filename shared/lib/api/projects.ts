@@ -19,6 +19,8 @@ export function normalizeProjectPriority(raw: string | undefined): ProjectPriori
 
 export interface ProjectUser {
   _id: string;
+  /** Backend toJSON may return id instead of _id */
+  id?: string;
   name?: string;
   email?: string;
 }
@@ -43,6 +45,8 @@ export interface Project {
   assignedTo?: ProjectUser[];
   assignedTeams?: ProjectTeam[];
   tags?: string[];
+  /** Human-readable key prefix for task codes, e.g. "DHRW". Set by the backend on create. */
+  projectKey?: string;
   attachments?: string[];
   completedTasks: number;
   totalTasks: number;
@@ -107,8 +111,10 @@ export interface UpdateProjectPayload {
   projectManager?: string;
   clientStakeholder?: string;
   description?: string;
-  startDate?: string;
-  endDate?: string;
+  /** ISO date string, or null to clear (omitting the key leaves it unchanged). */
+  startDate?: string | null;
+  /** ISO date string, or null to clear (omitting the key leaves it unchanged). */
+  endDate?: string | null;
   status?: ProjectStatus;
   priority?: ProjectPriority;
   assignedTo?: string[];

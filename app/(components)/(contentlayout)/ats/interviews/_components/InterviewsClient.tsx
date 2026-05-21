@@ -10,12 +10,15 @@ import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
 import { listRecruiters } from '@/shared/lib/api/users'
+import { getCandidateFilterAgents, type AgentOption } from '@/shared/lib/api/employees'
 import { getJobApplicationById, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
 import { isPublicEmail, pickPublicEmail } from '@/shared/lib/ats/applicant-email'
+import { wallClockToUtc, formatDualZone, getViewerTimezone, utcInstantToWallClock, listTimezones, normalizeTimezone } from '@/shared/lib/timezone'
 import CreateInterviewModal, { type SchedulePrefill } from './CreateInterviewModal'
 import RecordingsModal from './RecordingsModal'
 import InterviewsFilterPanel from './InterviewsFilterPanel'
+import { detectOverlap } from './interviewOverlap'
 
 /** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
 function isMongoObjectIdString(value: string | undefined): boolean {
@@ -50,14 +53,6 @@ interface InterviewTableRow {
   meetingId: string
 }
 
-function formatMeetingTime(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
-  } catch {
-    return '—'
-  }
-}
 
 function formatMeetingDate(iso: string): string {
   try {
@@ -92,23 +87,17 @@ async function fetchReferralLeadsForSchedule(): Promise<CandidateListItem[]> {
   return mapReferralLeadsToScheduleCandidates(aggregated)
 }
 
-/** Build ISO string for API from date + time inputs (handles HH:mm and HH:mm:ss). */
-function buildScheduledAtFromForm(dateStr: string, timeStr: string): string {
-  const [year, month, day] = dateStr.split('-').map((v) => parseInt(v, 10))
-  const t = timeStr.trim()
-  const parts = t.split(':').filter((p) => p !== '')
-  const h = parseInt(String(parts[0] ?? '0').replace(/\D/g, ''), 10) || 0
-  const m = parseInt(String(parts[1] ?? '00').replace(/\D/g, ''), 10) || 0
-  const secRaw = String(parts[2] ?? '00').replace(/\D/g, '')
-  const s = parseInt(secRaw, 10) || 0
-  // Convert local date/time input into UTC ISO so backend schedule checks align with user-selected local time.
-  const localDate = new Date(year, (month || 1) - 1, day || 1, h, m, s, 0)
-  return localDate.toISOString()
+/** Wall-clock defaults for the edit modal, derived from the meeting's stored timezone. */
+function editScheduleDefaults(meeting: Meeting | null): { date: string; time: string; timezone: string } {
+  if (!meeting?.scheduledAt) return { date: '', time: '', timezone: 'UTC' }
+  const timezone = normalizeTimezone(meeting.timezone || 'UTC')
+  const { date, time } = utcInstantToWallClock(meeting.scheduledAt, timezone)
+  return { date, time, timezone }
 }
 
-function meetingToTableRow(m: Meeting): InterviewTableRow {
+function meetingToTableRow(m: Meeting, viewerTz?: string): InterviewTableRow {
   const date = formatMeetingDate(m.scheduledAt)
-  const time = formatMeetingTime(m.scheduledAt)
+  const time = formatDualZone(m.scheduledAt, m.timezone || 'UTC', viewerTz)
   const position = m.title || m.jobPosition || 'Interview'
   return {
     id: (m._id != null ? String(m._id) : m.meetingId) || '',
@@ -162,7 +151,11 @@ export default function InterviewsClient() {
   }, [authUser?.email, authUser?.name])
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
-  const [selectedSort, setSelectedSort] = useState<string>('')
+  const [selectedSort, setSelectedSort] = useState<string>('date-asc')
+  /** Recruiter derived from the selected candidate's assigned agent (create form). */
+  const [assignedAgentRecruiter, setAssignedAgentRecruiter] = useState<{ id: string; name: string; email: string } | null>(null)
+  /** Pending overlap warning — holds the proceed callback so the user can override. */
+  const [overlapWarning, setOverlapWarning] = useState<{ message: string; proceed: () => void } | null>(null)
   const [isExcelMenuOpen, setIsExcelMenuOpen] = useState(false)
   const excelDropdownRef = useRef<HTMLDivElement | null>(null)
   
@@ -172,6 +165,8 @@ export default function InterviewsClient() {
     status: [],
     type: []
   })
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   // Search states for filter dropdowns
   const [searchCandidate, setSearchCandidate] = useState('')
@@ -204,6 +199,9 @@ export default function InterviewsClient() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [candidates, setCandidates] = useState<CandidateListItem[]>([])
   const [recruiters, setRecruiters] = useState<User[]>([])
+  const [agents, setAgents] = useState<AgentOption[]>([])
+  const [agentsError, setAgentsError] = useState<string | null>(null)
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([])
   const [dropdownsLoading, setDropdownsLoading] = useState(true)
 
   // Real interviews/meetings from API
@@ -236,6 +234,8 @@ export default function InterviewsClient() {
   const [editJobsLoading, setEditJobsLoading] = useState(false)
   // Controlled selected job id in edit modal
   const [editSelectedJobId, setEditSelectedJobId] = useState<string>('')
+  const editScheduleWall = useMemo(() => editScheduleDefaults(editMeeting), [editMeeting])
+  const editTimezoneOptions = useMemo(() => listTimezones(), [])
 
   // View mode: table or week calendar
   const [viewMode, setViewMode] = useState<'table' | 'week'>('table')
@@ -344,17 +344,21 @@ export default function InterviewsClient() {
       listJobs({ limit: 100, status: 'Active' }).then((r) => r.results),
       fetchReferralLeadsForSchedule(),
       listRecruiters({ limit: 100 }).then((r) => r.results),
+      getCandidateFilterAgents().then((r) => r.agents),
     ])
       .then((results) => {
         if (scheduleDropdownsLoadId.current !== id) return
         const jobList = results[0].status === 'fulfilled' ? results[0].value || [] : []
         const candidateList = results[1].status === 'fulfilled' ? results[1].value || [] : []
         const recruiterList = results[2].status === 'fulfilled' ? results[2].value || [] : []
+        const agentList = results[3].status === 'fulfilled' ? results[3].value || [] : []
         setJobs(jobList)
         setCandidates(candidateList)
         setRecruiters(recruiterList)
+        setAgents(agentList)
+        setAgentsError(results[3].status === 'rejected' ? 'Failed to load agents' : null)
         const failed = results
-          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Agents'][i] : null))
+          .map((r, i) => (r.status === 'rejected' ? ['Jobs', 'Referral leads', 'Recruiters', 'Agents'][i] : null))
           .filter(Boolean) as string[]
         if (failed.length > 0) {
           console.warn('[Interviews] Schedule form dropdowns failed to load:', failed, results)
@@ -366,6 +370,17 @@ export default function InterviewsClient() {
       })
     scheduleDropdownsInflightRef.current = p
     return p
+  }, [])
+
+  /** Retry loading just the agent list (used by the modal's agent-field error state). */
+  const reloadAgents = useCallback(async () => {
+    setAgentsError(null)
+    try {
+      const { agents: list } = await getCandidateFilterAgents()
+      setAgents(list)
+    } catch {
+      setAgentsError('Failed to load agents')
+    }
   }, [])
 
   const openScheduleInterviewModal = useCallback(() => {
@@ -480,48 +495,70 @@ export default function InterviewsClient() {
     const description = getVal('edit-description')
     const date = getVal('edit-date')
     const time = getVal('edit-time')
+    const timezone = getVal('edit-timezone') || editMeeting.timezone || 'UTC'
     const durationMinutes = parseInt(getVal('edit-duration') || '60', 10) || 60
     const jobId = getVal('edit-job')
-    // Look up in candidate-specific list first (has ObjectId ids), then fall back to all-jobs
     const selectedJob =
       editJobsForCandidate.find((j) => (j.id ?? j._id) === jobId) ||
       jobs.find((j) => (j.id ?? j._id) === jobId)
     const jobPosition = jobId
       ? isMongoObjectIdString(jobId)
-        ? jobId.trim()                        // store ObjectId — backend resolves to job
+        ? jobId.trim()
         : selectedJob?.title || jobId
-      : editMeeting.jobPosition              // unchanged if recruiter didn't touch the field
+      : editMeeting.jobPosition
     const interviewType = (form.querySelector('input[name="edit-type"]:checked') as HTMLInputElement)?.value || editMeeting.interviewType || 'Video'
     const notes = getVal('edit-notes')
     const status = getVal('edit-status') as 'scheduled' | 'ended' | 'cancelled' || editMeeting.status
     const candidateId = (form.querySelector('#edit-candidate') as HTMLSelectElement)?.value
-    const recruiterId = (form.querySelector('#edit-recruiter') as HTMLSelectElement)?.value
     const candidate = candidateId ? candidates.find((c) => (c.id ?? c._id) === candidateId) : null
-    const recruiter = recruiterId ? recruiters.find((r) => r.id === recruiterId) : null
-    const scheduledAt = date && time ? buildScheduledAtFromForm(date, time) : editMeeting.scheduledAt
+    const scheduledAt = date && time ? wallClockToUtc(date, time, timezone).toISOString() : editMeeting.scheduledAt
     const payload: UpdateMeetingPayload = {
       title: title || editMeeting.title,
       description: description || undefined,
       scheduledAt,
+      timezone,
       durationMinutes,
       jobPosition: jobPosition || undefined,
       interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
       candidate: candidate ? { id: candidate.id ?? candidate._id, name: candidate.fullName ?? '', email: pickPublicEmail([candidate.email]) ?? '' } : editMeeting.candidate,
-      recruiter: recruiter ? { id: recruiter.id, name: recruiter.name ?? '', email: recruiter.email ?? '' } : editMeeting.recruiter,
+      recruiter: editMeeting.recruiter,
       notes: notes || undefined,
       status,
     }
-    setEditSaving(true)
-    try {
-      await updateMeeting(editMeetingId, payload)
-      await fetchMeetings()
-      closeEditModal()
-    } catch (err: any) {
-      setEditError(err?.response?.data?.message || err?.message || 'Failed to update meeting')
-    } finally {
-      setEditSaving(false)
+
+    const runUpdate = async () => {
+      setEditSaving(true)
+      try {
+        await updateMeeting(editMeetingId, payload)
+        await fetchMeetings()
+        closeEditModal()
+      } catch (err: any) {
+        setEditError(err?.response?.data?.message || err?.message || 'Failed to update meeting')
+      } finally {
+        setEditSaving(false)
+      }
     }
-  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, recruiters, fetchMeetings, closeEditModal])
+
+    const overlapMessage = buildOverlapMessage({
+      scheduledAtIso: scheduledAt,
+      durationMinutes,
+      candidateId: payload.candidate?.id,
+      agentIds: [payload.recruiter?.id || ''].filter(Boolean),
+      excludeMeetingId: editMeetingId,
+    })
+    if (overlapMessage) {
+      setOverlapWarning({
+        message: overlapMessage,
+        proceed: () => {
+          setOverlapWarning(null)
+          void runUpdate()
+        },
+      })
+      return
+    }
+
+    await runUpdate()
+  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, fetchMeetings, closeEditModal, buildOverlapMessage])
 
   const openResultModal = useCallback((row: InterviewTableRow) => {
     setResultModalInterview(row)
@@ -808,6 +845,9 @@ export default function InterviewsClient() {
     setEmailInvites([''])
     setSchedulePrefill(null)
     setExtraScheduleCandidates([])
+    setSelectedAgentIds([])
+    setAssignedAgentRecruiter(null)
+    setOverlapWarning(null)
     setInterviewFormResetKey((k) => k + 1)
   }, [defaultScheduleHosts])
 
@@ -834,6 +874,39 @@ export default function InterviewsClient() {
   }, [extraScheduleCandidates, candidates])
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
+
+  /**
+   * Build a human overlap-warning message, or null when there is no conflict.
+   * Best-effort within the loaded `meetings` list.
+   */
+  function buildOverlapMessage(args: {
+    scheduledAtIso: string
+    durationMinutes: number
+    candidateId?: string
+    agentIds: string[]
+    excludeMeetingId?: string
+  }): string | null {
+    const { candidateConflict, agentConflicts } = detectOverlap({
+      startUtc: args.scheduledAtIso,
+      durationMinutes: args.durationMinutes,
+      candidateId: args.candidateId,
+      agentIds: args.agentIds,
+      existingMeetings: meetings,
+      excludeMeetingId: args.excludeMeetingId,
+    })
+    const parts: string[] = []
+    if (candidateConflict) {
+      parts.push(
+        `${candidateConflict.candidate?.name || 'This candidate'} has interview "${candidateConflict.title}" that appears to overlap this slot.`
+      )
+    }
+    if (agentConflicts.length > 0) {
+      parts.push(
+        `An assigned agent already has ${agentConflicts.length} overlapping interview${agentConflicts.length > 1 ? 's' : ''}.`
+      )
+    }
+    return parts.length ? `${parts.join(' ')} Schedule anyway?` : null
+  }
 
   const handleScheduleInterviewSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
@@ -882,16 +955,17 @@ export default function InterviewsClient() {
     const candidateOption = candidateSelect?.selectedOptions?.[0]
     const candidateText = candidateOption?.text?.trim() ?? ''
     const candidateMatch = candidateText.match(/^(.+?)\s*-\s*(.+)$/)
-    const recruiterSelect = form.querySelector('#schedule-recruiter') as HTMLSelectElement
-    const recruiterOption = recruiterSelect?.selectedOptions?.[0]
-    const recruiterText = recruiterOption?.text?.trim() ?? ''
-    const recruiterMatch = recruiterText.match(/^(.+?)\s*-\s*(.+)$/)
-    const scheduledAt = buildScheduledAtFromForm(date, time)
+    const agentRefs = selectedAgentIds
+      .map((id) => agents.find((a) => a.id === id))
+      .filter((a): a is AgentOption => Boolean(a))
+      .map((a) => ({ id: a.id, name: a.name, email: a.email }))
+    const scheduledAt = wallClockToUtc(date, time, (form.querySelector('#schedule-timezone') as HTMLInputElement)?.value || 'UTC').toISOString()
+    const timezone = (form.querySelector('#schedule-timezone') as HTMLInputElement)?.value || 'UTC'
     const payload: CreateMeetingPayload = {
       title,
       description: description || undefined,
       scheduledAt,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Calcutta',
+      timezone,
       durationMinutes,
       maxParticipants,
       allowGuestJoin,
@@ -901,20 +975,46 @@ export default function InterviewsClient() {
       jobPosition: jobPosition || undefined,
       interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
       candidate: candidateOption?.value ? { id: candidateOption.value, name: (candidateMatch?.[1] ?? candidateText).trim(), email: (candidateMatch?.[2] ?? '').trim() } : undefined,
-      recruiter: recruiterOption?.value ? { id: recruiterOption.value, name: (recruiterMatch?.[1] ?? recruiterText).trim(), email: (recruiterMatch?.[2] ?? '').trim() } : undefined,
+      agents: agentRefs.length > 0 ? agentRefs : undefined,
+      recruiter: assignedAgentRecruiter
+        ? assignedAgentRecruiter
+        : authUser?.id
+          ? { id: authUser.id, name: authUser.name ?? '', email: authUser.email ?? '' }
+          : undefined,
       notes: notes || undefined,
     }
-    setFormLoading(true)
-    try {
-      const meeting = await createMeeting(payload)
-      setCreatedMeeting(meeting)
-      fetchMeetings()
-    } catch (err: any) {
-      setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
-    } finally {
-      setFormLoading(false)
+    const runCreate = async () => {
+      setFormLoading(true)
+      try {
+        const meeting = await createMeeting(payload)
+        setCreatedMeeting(meeting)
+        fetchMeetings()
+      } catch (err: any) {
+        setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
+      } finally {
+        setFormLoading(false)
+      }
     }
-  }, [hosts, emailInvites, jobs, fetchMeetings])
+
+    const overlapMessage = buildOverlapMessage({
+      scheduledAtIso: scheduledAt,
+      durationMinutes,
+      candidateId: candidateOption?.value || undefined,
+      agentIds: [...agentRefs.map((a) => a.id), ...(payload.recruiter?.id ? [payload.recruiter.id] : [])],
+    })
+    if (overlapMessage) {
+      setOverlapWarning({
+        message: overlapMessage,
+        proceed: () => {
+          setOverlapWarning(null)
+          void runCreate()
+        },
+      })
+      return
+    }
+
+    await runCreate()
+  }, [hosts, emailInvites, jobs, fetchMeetings, selectedAgentIds, agents, authUser, assignedAgentRecruiter, buildOverlapMessage])
 
   // Define columns
   const columns = useMemo(
@@ -1198,8 +1298,9 @@ export default function InterviewsClient() {
 
   // Map API meetings to table rows
   const tableData = useMemo<InterviewTableRow[]>(() => {
-    return meetings.map(meetingToTableRow)
-  }, [meetings])
+    const viewerTz = mounted ? getViewerTimezone() : undefined
+    return meetings.map((m) => meetingToTableRow(m, viewerTz))
+  }, [meetings, mounted])
 
   // Filter data based on filter state
   const filteredData = useMemo(() => {
@@ -1335,7 +1436,7 @@ export default function InterviewsClient() {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      initialState: { pageIndex: 0, pageSize: 50, sortBy: [{ id: 'interviewInfo', desc: false }] },
     },
     useSortBy,
     usePagination
@@ -1371,41 +1472,10 @@ export default function InterviewsClient() {
   }, [filteredData.length, pageIndex, pageSize, gotoPage])
 
   // Handle sort selection
+  // Sort is date-only: soonest-first (asc) or latest-first (desc).
   const handleSortChange = (sortOption: string) => {
     setSelectedSort(sortOption)
-    
-    switch(sortOption) {
-      case 'date-asc':
-        setSortBy([{ id: 'interviewInfo', desc: false }])
-        break
-      case 'date-desc':
-        setSortBy([{ id: 'interviewInfo', desc: true }])
-        break
-      case 'candidate-asc':
-        setSortBy([{ id: 'candidate', desc: false }])
-        break
-      case 'candidate-desc':
-        setSortBy([{ id: 'candidate', desc: true }])
-        break
-      case 'recruiter-asc':
-        setSortBy([{ id: 'recruiter', desc: false }])
-        break
-      case 'recruiter-desc':
-        setSortBy([{ id: 'recruiter', desc: true }])
-        break
-      case 'status-asc':
-        setSortBy([{ id: 'status', desc: false }])
-        break
-      case 'status-desc':
-        setSortBy([{ id: 'status', desc: true }])
-        break
-      case 'clear-sort':
-        setSortBy([])
-        setSelectedSort('')
-        break
-      default:
-        setSortBy([])
-    }
+    setSortBy([{ id: 'interviewInfo', desc: sortOption === 'date-desc' }])
   }
 
   // Handle select all checkbox - select ALL rows in filtered dataset
@@ -1448,101 +1518,16 @@ export default function InterviewsClient() {
                     </option>
                   ))}
                 </select>
-                <div className="hs-dropdown ti-dropdown">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem] ti-dropdown-toggle"
-                    id="sort-dropdown-button"
-                    aria-expanded="false"
-                  >
-                    <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                  </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-asc')}
-                      >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Date (Oldest First)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'date-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('date-desc')}
-                      >
-                        <i className="ri-calendar-line me-2 align-middle inline-block"></i>Date (Newest First)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'candidate-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('candidate-asc')}
-                      >
-                        <i className="ri-user-line me-2 align-middle inline-block"></i>Candidate (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'candidate-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('candidate-desc')}
-                      >
-                        <i className="ri-user-line me-2 align-middle inline-block"></i>Candidate (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('recruiter-asc')}
-                      >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Agent (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'recruiter-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('recruiter-desc')}
-                      >
-                        <i className="ri-team-line me-2 align-middle inline-block"></i>Agent (Z-A)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'status-asc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('status-asc')}
-                      >
-                        <i className="ri-checkbox-circle-line me-2 align-middle inline-block"></i>Status (A-Z)
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${selectedSort === 'status-desc' ? 'active' : ''}`}
-                        onClick={() => handleSortChange('status-desc')}
-                      >
-                        <i className="ri-checkbox-circle-line me-2 align-middle inline-block"></i>Status (Z-A)
-                      </button>
-                    </li>
-                    <li className="ti-dropdown-divider"></li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left text-gray-500 dark:text-gray-400"
-                        onClick={() => handleSortChange('clear-sort')}
-                      >
-                        <i className="ri-close-line me-2 align-middle inline-block"></i>Clear Sort
-                      </button>
-                    </li>
-                  </ul>
-                </div>
+                <button
+                  type="button"
+                  id="sort-toggle-button"
+                  onClick={() => handleSortChange(selectedSort === 'date-asc' ? 'date-desc' : 'date-asc')}
+                  className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem] inline-flex items-center"
+                  aria-label={selectedSort === 'date-desc' ? 'Sorted latest first — click to sort soonest first' : 'Sorted soonest first — click to sort latest first'}
+                >
+                  <i className={`${selectedSort === 'date-desc' ? 'ri-sort-desc' : 'ri-sort-asc'} font-semibold align-middle me-1`}></i>
+                  {selectedSort === 'date-desc' ? 'Latest first' : 'Soonest first'}
+                </button>
                 <div className="flex items-center rounded-lg border border-defaultborder dark:border-defaultborder/20 p-0.5 bg-white dark:bg-black/10">
                   <button
                     type="button"
@@ -1754,7 +1739,7 @@ export default function InterviewsClient() {
               </div>
               ) : filteredData.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-6">
-                <div className="w-full max-w-xl rounded-2xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 p-8 text-center shadow-sm">
+                <div className="w-full max-w-xl rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 p-8 text-center shadow-sm">
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
                     <i className="ri-calendar-event-line text-2xl" />
                   </div>
@@ -1788,10 +1773,10 @@ export default function InterviewsClient() {
                     {headerGroups.map((headerGroup: any, i: number) => (
                       <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
                         {headerGroup.headers.map((column: any, i: number) => (
-                          <th
+                            <th
                             {...column.getHeaderProps(column.getSortByToggleProps())}
                             scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20"
+                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 align-top"
                             key={column.id || `col-${i}`}
                             style={{ 
                               position: 'sticky', 
@@ -1838,7 +1823,11 @@ export default function InterviewsClient() {
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
                             return (
-                              <td {...cell.getCellProps()} key={cell.column.id || `cell-${i}`}>
+                              <td
+                                {...cell.getCellProps()}
+                                className="align-top py-3"
+                                key={cell.column.id || `cell-${i}`}
+                              >
                                 {cell.render('Cell')}
                               </td>
                             )
@@ -1979,7 +1968,12 @@ export default function InterviewsClient() {
         dropdownsLoading={dropdownsLoading}
         formResetKey={interviewFormResetKey}
         candidates={scheduleCandidatesMerged}
-        recruiters={recruiters}
+        agents={agents}
+        agentsLoading={dropdownsLoading}
+        agentsError={agentsError}
+        onReloadAgents={reloadAgents}
+        selectedAgentIds={selectedAgentIds}
+        setSelectedAgentIds={setSelectedAgentIds}
         hosts={hosts}
         setHosts={setHosts}
         emailInvites={emailInvites}
@@ -1988,6 +1982,7 @@ export default function InterviewsClient() {
         onScheduledInterviewAtChange={setScheduledInterviewAt}
         prefill={schedulePrefill}
         onPrefillConsumed={handlePrefillConsumed}
+        onAssignedAgentResolved={setAssignedAgentRecruiter}
       />
 
       {/* View recordings modal */}
@@ -2168,14 +2163,31 @@ export default function InterviewsClient() {
                       ))}
                     </select>
                   </div>
+                  <div>
+                    <label htmlFor="edit-timezone" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">
+                      Time zone <span className="text-danger">*</span>
+                    </label>
+                    <select
+                      id="edit-timezone"
+                      name="edit-timezone"
+                      defaultValue={editScheduleWall.timezone}
+                      className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    >
+                      {editTimezoneOptions.map((tz) => (
+                        <option key={tz} value={tz}>
+                          {tz}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="edit-date" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Date <span className="text-danger">*</span></label>
-                      <input type="date" id="edit-date" defaultValue={editMeeting.scheduledAt?.slice(0, 10) ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                      <input type="date" id="edit-date" key={`edit-date-${editMeetingId}-${editScheduleWall.date}`} defaultValue={editScheduleWall.date} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                     </div>
                     <div>
                       <label htmlFor="edit-time" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Time <span className="text-danger">*</span></label>
-                      <input type="time" id="edit-time" defaultValue={editMeeting.scheduledAt?.slice(11, 16) ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                      <input type="time" id="edit-time" key={`edit-time-${editMeetingId}-${editScheduleWall.time}`} defaultValue={editScheduleWall.time} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
                     </div>
                   </div>
                   <div>
@@ -2203,13 +2215,13 @@ export default function InterviewsClient() {
                     </select>
                   </div>
                   <div>
-                    <label htmlFor="edit-recruiter" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Agent</label>
-                    <select id="edit-recruiter" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.recruiter?.id ?? ''}>
-                      <option value="">{dropdownsLoading ? 'Loading...' : 'Select agent'}</option>
-                      {recruiters.map((r) => (
-                        <option key={r.id} value={r.id}>{r.name ?? r.email} - {r.email}</option>
-                      ))}
-                    </select>
+                    <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Agent</span>
+                    <p className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg bg-gray-50 text-textmuted dark:bg-black/20 dark:text-white/70">
+                      {editMeeting.recruiter?.name || editMeeting.recruiter?.email || '—'}
+                    </p>
+                    <p className="mt-1 text-xs text-textmuted dark:text-white/50">
+                      Derived from the candidate when the interview was created.
+                    </p>
                   </div>
                   <div>
                     <label htmlFor="edit-notes" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Notes</label>
@@ -2237,6 +2249,41 @@ export default function InterviewsClient() {
       </div>
 
       {/* Filter Panel Offcanvas */}
+      {overlapWarning && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label="Scheduling conflict"
+        >
+          <div className="w-full max-w-md rounded-xl border border-defaultborder bg-white p-5 shadow-xl dark:border-defaultborder/10 dark:bg-bodybg">
+            <div className="flex items-start gap-3">
+              <i className="ri-error-warning-line mt-0.5 text-xl text-warning" aria-hidden />
+              <div className="flex-1">
+                <h4 className="text-sm font-semibold text-defaulttextcolor dark:text-white">Scheduling conflict</h4>
+                <p className="mt-1 text-sm text-textmuted dark:text-white/70">{overlapWarning.message}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="ti-btn ti-btn-light !py-2 !px-4 !text-sm"
+                onClick={() => setOverlapWarning(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
+                onClick={overlapWarning.proceed}
+              >
+                Schedule anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <InterviewsFilterPanel
         filters={filters}
         searchCandidate={searchCandidate}

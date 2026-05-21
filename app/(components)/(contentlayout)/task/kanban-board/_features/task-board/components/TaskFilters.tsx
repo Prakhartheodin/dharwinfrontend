@@ -20,6 +20,8 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
     setProjectId,
     assignedToMe,
     setAssignedToMe,
+    unassigned,
+    setUnassigned,
     priorities,
     togglePriority,
     clearFilters,
@@ -86,6 +88,21 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
       >
         <i className={`ri-user-${assignedToMe ? "fill" : "line"}`} aria-hidden />
         Assigned to me
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setUnassigned(!unassigned)}
+        aria-pressed={unassigned}
+        className={
+          "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition " +
+          (unassigned
+            ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+        }
+      >
+        <i className={`ri-user-unfollow-${unassigned ? "fill" : "line"}`} aria-hidden />
+        Unassigned
       </button>
 
       <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[22rem]">

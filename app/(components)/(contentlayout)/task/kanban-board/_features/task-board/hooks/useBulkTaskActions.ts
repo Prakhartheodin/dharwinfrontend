@@ -72,9 +72,13 @@ export function useBulkTaskActions() {
   );
 
   const bulkAssign = useCallback(
-    async (userId: string) => {
+    async (userId: string | null) => {
       const ids = [...selectedIds];
-      if (!ids.length || !userId) return;
+      if (!ids.length) return;
+
+      // `null` clears assignees (sets assignedTo to an empty array).
+      const assignedTo: string[] = userId ? [userId] : [];
+      const isClear = assignedTo.length === 0;
 
       setBusy(true);
       let ok = 0;
@@ -87,10 +91,10 @@ export function useBulkTaskActions() {
           ts: Date.now(),
           kind: "update",
           taskId,
-          patch: { assignedTo: [userId] },
+          patch: { assignedTo },
         });
         try {
-          await updateTask(taskId, { assignedTo: [userId] });
+          await updateTask(taskId, { assignedTo });
           ok += 1;
         } catch {
           mutate.revert(patchId);
@@ -104,10 +108,11 @@ export function useBulkTaskActions() {
       clearSelection();
       trackTaskBoard("taskboard.bulk_assign", { count: ok });
 
+      const verb = isClear ? "Unassigned" : "Assigned";
       if (fail > 0) {
-        toast.warning(`Assigned ${ok} task(s). ${fail} failed.`);
+        toast.warning(`${verb} ${ok} task(s). ${fail} failed.`);
       } else {
-        toast.success(`Assigned ${ok} task(s).`);
+        toast.success(`${verb} ${ok} task(s).`);
       }
     },
     [clearSelection, mutate, refetch, selectedIds]

@@ -806,16 +806,13 @@ const Projectlist = (): JSX.Element => {
                               <p className="px-3 py-2 font-mono text-[10px] uppercase tracking-wider text-slate-400">
                                 Manage
                               </p>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setOpenMenuId(null);
-                                  void handleView(id);
-                                }}
+                              <Link
+                                href={`/apps/projects/project-overview?id=${encodeURIComponent(id)}`}
+                                onClick={() => setOpenMenuId(null)}
                                 className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-white/5"
                               >
                                 <i className="ri-eye-line text-base" /> View
-                              </button>
+                              </Link>
                               {canEditProject && (
                                 <Link
                                   href={`/apps/projects/edit/${encodeURIComponent(id)}`}
@@ -905,14 +902,13 @@ const Projectlist = (): JSX.Element => {
 
                   {id && (
                     <div className="flex items-center justify-between border-t border-slate-100 px-5 pl-6 py-3 dark:border-white/10">
-                      <button
-                        type="button"
-                        onClick={() => void handleView(id)}
+                      <Link
+                        href={`/apps/projects/project-overview?id=${encodeURIComponent(id)}`}
                         className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 transition hover:text-primary dark:text-slate-200"
                       >
                         View details
                         <i className="ri-arrow-right-line transition-transform group-hover:translate-x-0.5" />
-                      </button>
+                      </Link>
                       <span className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
                         #{(id || "—").slice(-6)}
                       </span>

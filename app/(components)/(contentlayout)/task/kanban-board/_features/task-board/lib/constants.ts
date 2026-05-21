@@ -47,6 +47,7 @@ export const QUERY_ASSIGNEE = "assignee";
 export const QUERY_CREATED_BY = "createdBy";
 export const QUERY_DUE = "due";
 export const QUERY_ASSIGNED_TO_ME = "assignedToMe";
+export const QUERY_UNASSIGNED = "unassigned";
 export const QUERY_TASK_EDIT = "editTaskId";
 /** Pagination URL param (P1.5 §5.6). */
 export const QUERY_PAGE = "page";

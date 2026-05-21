@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       "**/_features/task-board/**/__tests__/**/*.{test,spec}.{ts,tsx}",
       "shared/hooks/__tests__/**/*.{test,spec}.{ts,tsx}",
+      "shared/lib/__tests__/**/*.{test,spec}.{ts,tsx}",
       "shared/components/pm/**/__tests__/**/*.{test,spec}.{ts,tsx}",
       "app/**/*.{test,spec}.{ts,tsx}",
     ],

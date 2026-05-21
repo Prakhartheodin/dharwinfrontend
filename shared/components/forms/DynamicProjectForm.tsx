@@ -508,7 +508,7 @@ export function DynamicProjectForm({
 
     if (field.type === "text") {
       return (
-        <div key={field.name} className={colClass}>
+        <div key={field.name} className={`${colClass} flex flex-col`}>
           <label htmlFor={field.name} className="form-label">
             {field.label}
             {field.required && " *"}
@@ -519,7 +519,7 @@ export function DynamicProjectForm({
           <input
             type="text"
             id={field.name}
-            className={`form-control ${error ? "is-invalid" : ""}`}
+            className={`form-control mt-auto ${error ? "is-invalid" : ""}`}
             placeholder={field.placeholder}
             value={(value as string) ?? ""}
             onChange={(e) => handleChange(field.name)(e.target.value)}

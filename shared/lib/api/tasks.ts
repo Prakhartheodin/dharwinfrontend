@@ -150,7 +150,8 @@ export interface UpdateTaskPayload {
   status?: TaskStatus;
   priority?: TaskPriority;
   sprintId?: string | null;
-  dueDate?: string;
+  /** ISO date string, or null to clear the due date (omitting the key leaves it unchanged). */
+  dueDate?: string | null;
   tags?: string[];
   assignedTo?: string[];
   projectId?: string;

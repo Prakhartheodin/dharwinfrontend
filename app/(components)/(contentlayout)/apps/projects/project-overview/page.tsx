@@ -1,497 +1,948 @@
-"use client"
-import Pageheader from '@/shared/layout-components/page-header/pageheader'
-import Seo from '@/shared/layout-components/seo/seo'
-import Link from 'next/link'
-import React, { Fragment } from 'react'
+"use client";
 
-const Projectoverview = () => {
-    return (
-        <Fragment>
-            <Seo title={"Project Overview"} />
-            <Pageheader currentpage="Project Overview" activepage="Projects" mainpage="Project Overview" />
-            <div className="grid grid-cols-12 gap-6">
-                <div className="xl:col-span-9 col-span-12">
-                    <div className="box custom-box">
-                        <div className="box-header justify-between flex">
-                            <div className="box-title">
-                                Project Details
-                            </div>
-                            <div>
-                                <Link href="/apps/projects/create-project/" className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-secondary-full btn-wave"><i className="ri-add-line align-middle me-1 font-semibold"></i>Create Project</Link>
-                            </div>
-                        </div>
-                        <div className="box-body">
-                            <h5 className="font-semibold mb-4 task-title">
-                                Dharwin Business Solutions new angular project.
-                            </h5>
-                            <div className="text-[.9375rem] font-semibold mb-2">Project Description :</div>
-                            <p className="text-[#8c9097] dark:text-white/50 task-description">The current website design needs a refresh to improve user experience and enhance visual appeal. The goal is to create a modern and responsive design that aligns with the latest web design trends. The updated design should ensure seamless navigation, easy readability, and a cohesive visual identity.</p>
-                            <div className="text-[.9375rem] font-semibold mb-2">Key tasks :</div>
-                            <div className="mb-3">
-                                <ul className="task-details-key-tasks ps-[2rem] mb-0">
-                                    <li>Conducting a comprehensive analysis of the existing website design.</li>
-                                    <li>Collaborating with the UI/UX team to develop wireframes and mockups.</li>
-                                    <li>Iteratively refining the design based on feedback.</li>
-                                    <li>Implementing the finalized design changes using HTML, CSS, and JavaScript.</li>
-                                    <li>Testing the website across different devices and browsers.</li>
-                                    <li>Conducting a final review to ensure all design elements are consistent and visually appealing.</li>
-                                </ul>
-                            </div>
-                            <div className="text-[.9375rem] font-semibold mb-2">Skills :</div>
-                            <div>
-                                <span className="badge me-2 bg-light text-default">UI/Ux</span>
-                                <span className="badge me-2 bg-light text-default">JavaScript</span>
-                                <span className="badge me-2 bg-light text-default">Responsive Design</span>
-                                <span className="badge me-2 bg-light text-default">Web Accessibility</span>
-                                <span className="badge me-2 bg-light text-default">Front-End Build Tools</span>
-                                <span className="badge me-2 bg-light text-default">RESTful APIs</span>
-                                <span className="badge me-2 bg-light text-default">Performance Testing</span>
-                                <span className="badge me-2 bg-light text-default">Angular</span>
-                                <span className="badge bg-light text-default">Vue.js</span>
-                            </div>
-                        </div>
-                        <div className="box-footer">
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Project Manager</span>
-                                    <div className="flex items-center">
-                                        <div className="me-2 leading-none">
-                                            <span className="avatar avatar-xs !rounded-full">
-                                                <img src="../../../assets/images/faces/13.jpg" alt="" />
-                                            </span>
-                                        </div>
-                                        <span className="block text-[.875rem] font-semibold">S.K.Jacob</span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Start Date</span>
-                                    <span className="block text-[.875rem] font-semibold">22,June 2023</span>
-                                </div>
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">End Date</span>
-                                    <span className="block text-[.875rem] font-semibold">10,July 2023</span>
-                                </div>
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Assigned To</span>
-                                    <div className="avatar-list-stacked">
-                                        <span className="avatar avatar-sm !rounded-full">
-                                            <img src="../../../assets/images/faces/2.jpg" alt="img" />
-                                        </span>
-                                        <span className="avatar avatar-sm !rounded-full">
-                                            <img src="../../../assets/images/faces/8.jpg" alt="img" />
-                                        </span>
-                                        <span className="avatar avatar-sm !rounded-full">
-                                            <img src="../../../assets/images/faces/5.jpg" alt="img" />
-                                        </span>
-                                        <span className="avatar avatar-sm !rounded-full">
-                                            <img src="../../../assets/images/faces/10.jpg" alt="img" />
-                                        </span>
-                                    </div>
-                                </div>
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Status</span>
-                                    <span className="block"><span className="badge bg-primary/10 text-primary">In Progress</span></span>
-                                </div>
-                                <div>
-                                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Priority</span>
-                                    <span className="block text-[.875rem] font-semibold"><span className="badge bg-success/10 text-success">Low</span></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="box custom-box">
-                        <div className="box-header">
-                            <div className="box-title">Project Discussions</div>
-                        </div>
-                        <div className="box-body">
-                            <ul className="list-unstyled profile-timeline">
-                                <li>
-                                    <div>
-                                        <span className="avatar avatar-sm bg-primary/10 !text-primary !rounded-full profile-timeline-avatar">
-                                            E
-                                        </span>
-                                        <p className="mb-2">
-                                            <b>You</b> Commented on <b>Work Process</b> in this project <Link className="text-secondary" href="#!" scroll={false}><u>#New Project</u></Link>.<span className="float-end text-[0.6875rem] text-[#8c9097] dark:text-white/50">24,Dec 2023 - 14:34</span>
-                                        </p>
-                                        <p className="text-[#8c9097] dark:text-white/50 mb-0">
-                                            Project is important and need to be completed on time to meet company work flow.
-                                        </p>
-                                    </div>
-                                </li>
-                                <li>
-                                    <div>
-                                        <span className="avatar avatar-sm  profile-timeline-avatar">
-                                            <img src="../../../assets/images/faces/11.jpg" alt="" className="!rounded-full" />
-                                        </span>
-                                        <p className="text-[#8c9097] dark:text-white/50 mb-2">
-                                            <span className="text-default"><b>Json Smith</b> reacted to the project 👍</span>.<span className="float-end text-[0.6875rem] text-[#8c9097] dark:text-white/50">18,Dec 2023 - 12:16</span>
-                                        </p>
-                                        <p className="text-[#8c9097] dark:text-white/50 mb-0">
-                                            Lorem ipsum dolor sit amet consectetur adipisicing elit. Repudiandae, repellendus rem rerum excepturi aperiam ipsam temporibus inventore ullam tempora eligendi libero sequi dignissimos cumque, et a sint tenetur consequatur omnis!
-                                        </p>
-                                    </div>
-                                </li>
-                                <li>
-                                    <div>
-                                        <span className="avatar avatar-sm  profile-timeline-avatar">
-                                            <img src="../../../assets/images/faces/4.jpg" alt="" className="!rounded-full" />
-                                        </span>
-                                        <p className="text-[#8c9097] dark:text-white/50 mb-2">
-                                            <span className="text-default"><b>Alicia Keys</b> shared a document with <b>you</b></span>.<span className="float-end text-[0.6875rem] text-[#8c9097] dark:text-white/50">21,Dec 2023 - 15:32</span>
-                                        </p>
-                                        <p className="profile-activity-media flex items-center mb-0">
-                                            <Link aria-label="anchor" href="#!" scroll={false}>
-                                                <img src="../../../assets/images/media/file-manager/3.png" alt="" />
-                                            </Link>
-                                            <span className="text-[.6875rem] text-[#8c9097] dark:text-white/50">432.87KB</span>
-                                        </p>
-                                    </div>
-                                </li>
-                                <li>
-                                    <div>
-                                        <span className="avatar avatar-sm bg-success/10 !text-success !rounded-full profile-timeline-avatar">
-                                            P
-                                        </span>
-                                        <p className="text-[#8c9097] dark:text-white/50 mb-2 text-truncate">
-                                            <span className="text-default"><b>You</b> shared a post with 4 people <b>Simon,Sasha,Anagha,Hishen</b></span>.<span className="float-end text-[0.6875rem] text-[#8c9097] dark:text-white/50">28,Dec 2023 - 18:46</span>
-                                        </p>
-                                        <p className="profile-activity-media mb-2">
-                                            <Link aria-label="anchor" href="#!" scroll={false}>
-                                                <img src="../../../assets/images/media/media-18.jpg" alt="" />
-                                            </Link>
-                                        </p>
-                                        <div>
-                                            <div className="avatar-list-stacked">
-                                                <span className="avatar avatar-sm !rounded-full">
-                                                    <img src="../../../assets/images/faces/2.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm !rounded-full">
-                                                    <img src="../../../assets/images/faces/8.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm !rounded-full">
-                                                    <img src="../../../assets/images/faces/5.jpg" alt="img" />
-                                                </span>
-                                                <span className="avatar avatar-sm !rounded-full">
-                                                    <img src="../../../assets/images/faces/10.jpg" alt="img" />
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li>
-                                    <div>
-                                        <span className="avatar avatar-sm profile-timeline-avatar">
-                                            <img src="../../../assets/images/media/media-39.jpg" alt="" className="!rounded-full" />
-                                        </span>
-                                        <p className="mb-1">
-                                            <b>Json</b> Commented on Project <Link className="text-secondary" href="#!" scroll={false}><u>#UI Technologies</u></Link>.<span className="float-end text-[0.6875rem] text-[#8c9097] dark:text-white/50">24,Dec 2023 - 14:34</span>
-                                        </p>
-                                        <p className="text-[#8c9097] dark:text-white/50">Technology id developing rapidly keep up your work 👌</p>
-                                        <p className="profile-activity-media flex items-center mb-0">
-                                            <Link aria-label="anchor" href="#!" scroll={false}>
-                                                <img src="../../../assets/images/media/media-26.jpg" alt="" />
-                                            </Link>
-                                            <Link aria-label="anchor" href="#!" scroll={false}>
-                                                <img src="../../../assets/images/media/media-29.jpg" alt="" />
-                                            </Link>
-                                        </p>
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                        <div className="box-footer">
-                            <div className="list-group-item">
-                                <div className="sm:flex items-center leading-none">
-                                    <div className="me-4">
-                                        <span className="avatar avatar-md ">
-                                            <img src="../../../assets/images/faces/9.jpg" alt="" className="!rounded-full" />
-                                        </span>
-                                    </div>
-                                    <div className="flex-grow">
-                                        <div className="inline-flex !w-full">
-                                            <input type="text" className="form-control !w-full !rounded-e-none" placeholder="Post Anything" aria-label="Recipient's username with two button addons" />
-                                            <button aria-label="button" type="button" className="!hidden sm:!flex ti-btn ti-btn-light !rounded-none !mb-0"><i className="bi bi-emoji-smile"></i></button>
-                                            <button aria-label="button" type="button" className="!hidden sm:!flex ti-btn ti-btn-light !rounded-none !mb-0"><i className="bi bi-paperclip"></i></button>
-                                            <button aria-label="button" type="button" className="!hidden sm:!flex ti-btn ti-btn-light !rounded-none !mb-0"><i className="bi bi-camera"></i></button>
-                                            <button className="ti-btn bg-primary text-white !mb-0 !rounded-s-none" type="button">Post</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="xl:col-span-3 col-span-12">
-                    <div className="box custom-box">
-                        <div className="box-header justify-between">
-                            <div className="box-title">
-                                Project Team
-                            </div>
-                            <div>
-                                <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]"><i className="ri-add-line align-middle me-1 font-semibold"></i>Add Member</button>
-                            </div>
-                        </div>
-                        <div className="box-body !p-0">
-                            <div className="table-responsive">
-                                <table className="table whitespace-nowrap min-w-full">
-                                    <thead>
-                                        <tr>
-                                            <th scope="row" className="text-start">Name</th>
-                                            <th scope="row" className="text-start">Designation</th>
-                                            <th scope="row" className="text-start">Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr className="border border-defaultborder">
-                                            <td>
-                                                <div className="flex items-center">
-                                                    <div className="me-2 leading-none">
-                                                        <span className="avatar avatar-sm ">
-                                                            <img src="../../../assets/images/faces/2.jpg" alt="" className="!rounded-full" />
-                                                        </span>
-                                                    </div>
-                                                    <div className="font-semibold">Simon Conway</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className="badge bg-primary/10 text-primary">UI Developer</span>
-                                            </td>
-                                            <td>
-                                                <div className="inline-flex">
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr className="border border-defaultborder">
-                                            <td>
-                                                <div className="flex items-center">
-                                                    <div className="me-2 leading-none">
-                                                        <span className="avatar avatar-sm !rounded-full">
-                                                            <img src="../../../assets/images/faces/8.jpg" alt="" />
-                                                        </span>
-                                                    </div>
-                                                    <div className="font-semibold">Sasha Banks</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className="badge bg-pinkmain/10 text-pink">Ui Designer</span>
-                                            </td>
-                                            <td>
-                                                <div className="inline-flex">
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr className="border border-defaultborder">
-                                            <td>
-                                                <div className="flex items-center">
-                                                    <div className="me-2 leading-none">
-                                                        <span className="avatar avatar-sm !rounded-full">
-                                                            <img src="../../../assets/images/faces/5.jpg" alt="" />
-                                                        </span>
-                                                    </div>
-                                                    <div className="font-semibold">Anagha May</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className="badge bg-warning/10 text-warning">UI Tester</span>
-                                            </td>
-                                            <td>
-                                                <div className="inline-flex">
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <tr className="border border-defaultborder">
-                                            <td>
-                                                <div className="flex items-center">
-                                                    <div className="me-2 leading-none">
-                                                        <span className="avatar avatar-sm !rounded-full">
-                                                            <img src="../../../assets/images/faces/10.jpg" alt="" />
-                                                        </span>
-                                                    </div>
-                                                    <div className="font-semibold">Hishen Stuart</div>
-                                                </div>
-                                            </td>
-                                            <td>
-                                                <span className="badge bg-success/10 text-success">Angular Developer</span>
-                                            </td>
-                                            <td>
-                                                <div className="inline-flex">
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                                    <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="box custom-box">
-                        <div className="box-header justify-between">
-                            <div className="box-title">Project Goals</div>
-                            <div className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-light btn-wave"><i className="ri-add-line align-middle me-1 font-semibold"></i>Add Goal</div>
-                        </div>
-                        <div className="box-body">
-                            <ul className="list-group ">
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked1" defaultChecked /></div>
-                                        <div className="font-semibold">Increase Efficiency</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked2" /></div>
-                                        <div className="font-semibold">Enhance Customer Satisfaction</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked3" /></div>
-                                        <div className="font-semibold">Expand Market Reach</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked4" /></div>
-                                        <div className="font-semibold">Improve Profitability</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked5" defaultChecked /></div>
-                                        <div className="font-semibold">Enhance Product/Service Quality</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked6" defaultChecked /></div>
-                                        <div className="font-semibold">Develop Innovative Solutions</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked7" defaultChecked /></div>
-                                        <div className="font-semibold">Increase Employee Engagement</div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2"><input className="form-check-input form-checked-success" type="checkbox" defaultValue="" id="successChecked8" /></div>
-                                        <div className="font-semibold">Enhance Brand Reputation</div>
-                                    </div>
-                                </li>
-                            </ul>
-                            <div className="mt-4 text-center">
-                                <button type="button" className="ti-btn ti-btn-success-full btn-wave">View All</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="box custom-box overflow-hidden">
-                        <div className="box-header">
-                            <div className="box-title">
-                                Project Documents
-                            </div>
-                        </div>
-                        <div className="box-body !p-0">
-                            <ul className="list-group list-group-flush">
-                                <li className="list-group-item !border-t-0">
-                                    <div className="flex items-center">
-                                        <div className="me-2">
-                                            <span className="avatar !rounded-full p-2 bg-light">
-                                                <img src="../../../assets/images/media/file-manager/1.png" alt="" />
-                                            </span>
-                                        </div>
-                                        <div className="flex-grow">
-                                            <Link href="#!" scroll={false}><span className="block font-semibold">Full Project</span></Link>
-                                            <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] font-normal">0.45MB</span>
-                                        </div>
-                                        <div className="inline-flex">
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2 leading-none">
-                                            <span className="avatar !rounded-full bg-light">
-                                                <img src="../../../assets/images/media/file-manager/3.png" alt="" />
-                                            </span>
-                                        </div>
-                                        <div className="flex-grow">
-                                            <Link href="#!" scroll={false}><span className="block font-semibold">assets.zip</span></Link>
-                                            <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] font-normal">0.99MB</span>
-                                        </div>
-                                        <div className="inline-flex">
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2 leading-none">
-                                            <span className="avatar !rounded-full p-2 bg-light">
-                                                <img src="../../../assets/images/media/file-manager/1.png" alt="" />
-                                            </span>
-                                        </div>
-                                        <div className="flex-grow">
-                                            <Link href="#!" scroll={false}><span className="block font-semibold">image-1.png</span></Link>
-                                            <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] font-normal">245KB</span>
-                                        </div>
-                                        <div className="inline-flex">
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2 leading-none">
-                                            <span className="avatar !rounded-full bg-light">
-                                                <img src="../../../assets/images/media/file-manager/3.png" alt="" />
-                                            </span>
-                                        </div>
-                                        <div className="flex-grow">
-                                            <Link href="#!" scroll={false}><span className="block font-semibold">doc.zip</span></Link>
-                                            <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] font-normal">2MB</span>
-                                        </div>
-                                        <div className="inline-flex">
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                        </div>
-                                    </div>
-                                </li>
-                                <li className="list-group-item">
-                                    <div className="flex items-center">
-                                        <div className="me-2 leading-none">
-                                            <span className="avatar !rounded-full bg-light">
-                                                <img src="../../../assets/images/media/file-manager/3.png" alt="" />
-                                            </span>
-                                        </div>
-                                        <div className="flex-grow">
-                                            <Link href="#!" scroll={false}><span className="block font-semibold">landing.zip</span></Link>
-                                            <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] font-normal">3.46MB</span>
-                                        </div>
-                                        <div className="inline-flex">
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-info me-[0.375rem]"><i className="ri-edit-line"></i></button>
-                                            <button aria-label="button" type="button" className="ti-btn ti-btn-sm ti-btn-danger"><i className="ri-delete-bin-line"></i></button>
-                                        </div>
-                                    </div>
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </Fragment>
-    )
+import React, { Fragment, useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import Swal from "sweetalert2";
+import Seo from "@/shared/layout-components/seo/seo";
+import { emitPmDataMutated } from "@/shared/hooks/usePmRefetchOnFocus";
+import {
+  getProjectById,
+  getProjectProgress,
+  normalizeProjectPriority,
+  updateProject,
+  type Project,
+  type ProjectStatus,
+  type ProjectPriority,
+  type UpdateProjectPayload,
+} from "@/shared/lib/api/projects";
+import {
+  listTasks,
+  updateTask,
+  TASK_STATUS_LABELS,
+  getTaskId,
+  type Task,
+  type TaskStatus,
+} from "@/shared/lib/api/tasks";
+
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  Inprogress: "In Progress",
+  "On hold": "On Hold",
+  completed: "Completed",
+};
+
+const STATUS_BADGE: Record<ProjectStatus, string> = {
+  Inprogress: "bg-primary/10 text-primary",
+  "On hold": "bg-warning/10 text-warning",
+  completed: "bg-success/10 text-success",
+};
+
+const PRIORITY_BADGE: Record<ProjectPriority, string> = {
+  urgent: "bg-danger/10 text-danger",
+  high: "bg-orange-500/10 text-orange-500",
+  medium: "bg-info/10 text-info",
+  low: "bg-success/10 text-success",
+};
+
+const TASK_STATUS_BADGE: Record<TaskStatus, string> = {
+  new: "bg-light text-default",
+  todo: "bg-info/10 text-info",
+  on_going: "bg-primary/10 text-primary",
+  in_review: "bg-warning/10 text-warning",
+  completed: "bg-success/10 text-success",
+};
+
+/** Format an ISO date to "22 Jun 2023"; "—" when missing/invalid. */
+function fmtDate(iso: string | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default Projectoverview
+/** Strip any stray HTML tags from stored text (descriptions are plain text but be defensive). */
+function plainText(raw: string | undefined): string {
+  return (raw ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Initials for an avatar fallback (no demo photos for real users). */
+function initials(name: string | undefined): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Best-effort file name from an attachment URL/path. */
+function attachmentLabel(url: string, index: number): string {
+  try {
+    const clean = url.split("?")[0].split("#")[0];
+    const last = clean.split("/").pop();
+    if (last) return decodeURIComponent(last);
+  } catch {
+    /* fall through */
+  }
+  return `Attachment ${index + 1}`;
+}
+
+const DatePicker = dynamic(() => import("react-datepicker"), { ssr: false });
+
+/** Trigger button for an inline date picker — react-datepicker injects onClick. */
+const DateTrigger = React.forwardRef<
+  HTMLButtonElement,
+  {
+    onClick?: () => void;
+    display: string;
+    empty: boolean;
+    overdue: boolean;
+    saving: boolean;
+    variant: "muted" | "value";
+  }
+>(({ onClick, display, empty, overdue, saving, variant }, ref) => {
+  const size = variant === "value" ? "text-[.875rem]" : "text-[0.8125rem]";
+  const tone = empty
+    ? "text-[#8c9097] dark:text-white/50"
+    : overdue
+      ? "text-danger font-semibold"
+      : variant === "value"
+        ? "font-semibold"
+        : "text-[#8c9097] dark:text-white/50";
+  return (
+    <button
+      type="button"
+      ref={ref}
+      onClick={onClick}
+      disabled={saving}
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-light dark:hover:bg-white/5 disabled:opacity-60 ${size} ${tone}`}
+    >
+      <i
+        className={`ri-calendar-line text-[0.875rem] text-[#8c9097] dark:text-white/50 ${
+          saving ? "animate-pulse" : ""
+        }`}
+      />
+      {display}
+    </button>
+  );
+});
+DateTrigger.displayName = "DateTrigger";
+
+/** Read-only locked display for a footer field that is set-once from this page. */
+function LockedValue({ display }: { display: string }): JSX.Element {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[.875rem] font-semibold"
+      title="Set — change it from the Edit Project page"
+    >
+      {display}
+      <i className="ri-lock-2-line text-[0.6875rem] text-[#8c9097] dark:text-white/50" />
+    </span>
+  );
+}
+
+/** Generic inline date editor — opens a calendar, calls onSave with an ISO string or null to clear. */
+function InlineDate({
+  value,
+  onSave,
+  placeholder = "Set date",
+  variant = "muted",
+  overdue = false,
+  locked = false,
+  minDate,
+  maxDate,
+}: {
+  value: string | null | undefined;
+  onSave: (iso: string | null) => Promise<void>;
+  placeholder?: string;
+  variant?: "muted" | "value";
+  overdue?: boolean;
+  locked?: boolean;
+  minDate?: Date;
+  maxDate?: Date;
+}): JSX.Element {
+  const [saving, setSaving] = useState(false);
+  const parsed = value ? new Date(value) : null;
+  const valid = parsed != null && !isNaN(parsed.getTime());
+
+  if (locked) return <LockedValue display={valid ? fmtDate(value ?? undefined) : "—"} />;
+
+  const handle = async (next: Date | null): Promise<void> => {
+    const iso = next ? next.toISOString() : null;
+    if ((iso ?? "") === (value ?? "")) return;
+    setSaving(true);
+    try {
+      await onSave(iso);
+    } catch {
+      /* onSave surfaces its own error toast; the value prop drives the revert */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="inline-flex items-center gap-0.5">
+      <DatePicker
+        selected={valid ? parsed : null}
+        onChange={(d: Date | null) => void handle(d)}
+        dateFormat="dd MMM yyyy"
+        placeholderText={placeholder}
+        disabled={saving}
+        minDate={minDate}
+        maxDate={maxDate}
+        portalId="overview-inline-date-portal"
+        popperPlacement="bottom-end"
+        customInput={
+          <DateTrigger
+            display={valid ? fmtDate(value ?? undefined) : placeholder}
+            empty={!valid}
+            overdue={overdue}
+            saving={saving}
+            variant={variant}
+          />
+        }
+      />
+      {valid && !saving && (
+        <button
+          type="button"
+          aria-label="Clear date"
+          title="Clear date"
+          onClick={() => void handle(null)}
+          className="leading-none p-0.5 text-[#8c9097] dark:text-white/50 hover:text-danger"
+        >
+          <i className="ri-close-line text-[0.875rem]" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Generic inline single-line text editor — commits on Enter or blur, cancels on Escape. */
+function InlineText({
+  value,
+  placeholder,
+  onSave,
+  locked = false,
+}: {
+  value: string | undefined;
+  placeholder: string;
+  onSave: (next: string) => Promise<void>;
+  locked?: boolean;
+}): JSX.Element {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const cancelRef = React.useRef(false);
+
+  if (locked) return <LockedValue display={value?.trim() || "—"} />;
+
+  const begin = (): void => {
+    setDraft(value ?? "");
+    cancelRef.current = false;
+    setEditing(true);
+  };
+
+  const commit = async (): Promise<void> => {
+    const next = draft.trim();
+    if (next === (value ?? "").trim()) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(next);
+      setEditing(false);
+    } catch {
+      /* keep the field open so the user can retry; onSave surfaces the error toast */
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <input
+        type="text"
+        autoFocus
+        value={draft}
+        disabled={saving}
+        placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          if (cancelRef.current) {
+            cancelRef.current = false;
+            setEditing(false);
+            return;
+          }
+          void commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          } else if (e.key === "Escape") {
+            cancelRef.current = true;
+            e.currentTarget.blur();
+          }
+        }}
+        className="block w-44 rounded border border-defaultborder bg-transparent px-1.5 py-0.5 text-[.875rem] font-semibold focus:border-primary focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={begin}
+      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-light dark:hover:bg-white/5"
+    >
+      {value?.trim() ? (
+        <span className="text-[.875rem] font-semibold">{value.trim()}</span>
+      ) : (
+        <span className="text-[0.8125rem] text-[#8c9097] dark:text-white/50">{placeholder}</span>
+      )}
+      <i className="ri-pencil-line text-[0.75rem] text-[#8c9097] dark:text-white/50" />
+    </button>
+  );
+}
+
+/** Inline editable due-date cell — patches the task and lifts the new value to the parent. */
+function DueDateCell({
+  task,
+  onSaved,
+}: {
+  task: Task;
+  onSaved: (taskId: string, dueDate: string | null) => void;
+}): JSX.Element {
+  const parsed = task.dueDate ? new Date(task.dueDate) : null;
+  const valid = parsed != null && !isNaN(parsed.getTime());
+  const overdue =
+    valid &&
+    task.status !== "completed" &&
+    (parsed as Date).getTime() < new Date().setHours(0, 0, 0, 0);
+
+  const save = async (iso: string | null): Promise<void> => {
+    const taskId = getTaskId(task);
+    try {
+      await updateTask(taskId, { dueDate: iso });
+      onSaved(taskId, iso);
+      emitPmDataMutated();
+    } catch (e) {
+      void Swal.fire({
+        icon: "error",
+        title: "Couldn't update due date",
+        timer: 2500,
+        showConfirmButton: false,
+      });
+      throw e;
+    }
+  };
+
+  return <InlineDate value={task.dueDate} onSave={save} placeholder="Set due date" overdue={overdue} />;
+}
+
+const Projectoverview = (): JSX.Element => {
+  const searchParams = useSearchParams();
+  const id = searchParams.get("id") ?? "";
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [tasksError, setTasksError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setNotFound(false);
+    try {
+      const data = await getProjectById(id);
+      setProject(data);
+    } catch (e: unknown) {
+      const status =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { status?: number } }).response?.status
+          : undefined;
+      if (status === 404) {
+        setNotFound(true);
+        setProject(null);
+      } else {
+        const msg =
+          e && typeof e === "object" && "message" in e
+            ? String((e as { message: string }).message)
+            : "Failed to load this project";
+        setError(msg);
+        setProject(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Tasks load independently of the project — a tasks failure must not block the overview.
+  useEffect(() => {
+    if (!id) return;
+    let cancelled = false;
+    setTasksLoading(true);
+    setTasksError(null);
+    listTasks({ projectId: id, limit: 100, sortBy: "createdAt:desc" })
+      .then((res) => {
+        if (!cancelled) setTasks(res.results);
+      })
+      .catch(() => {
+        if (!cancelled) setTasksError("Failed to load tasks.");
+      })
+      .finally(() => {
+        if (!cancelled) setTasksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
+
+  // Lift a saved due date back into local task state so the row re-renders without a refetch.
+  const handleDueDateSaved = useCallback((taskId: string, dueDate: string | null) => {
+    setTasks((prev) =>
+      prev.map((t) => (getTaskId(t) === taskId ? { ...t, dueDate: dueDate ?? undefined } : t)),
+    );
+  }, []);
+
+  // Patch a project field inline; throws on failure so the inline editor can revert.
+  const handleProjectPatch = useCallback(
+    async (patch: UpdateProjectPayload): Promise<void> => {
+      if (!id) throw new Error("Missing project id");
+      try {
+        const updated = await updateProject(id, patch);
+        setProject(updated);
+        emitPmDataMutated();
+      } catch (e) {
+        void Swal.fire({
+          icon: "error",
+          title: "Couldn't save change",
+          timer: 2500,
+          showConfirmButton: false,
+        });
+        throw e;
+      }
+    },
+    [id],
+  );
+
+  const pct = project ? getProjectProgress(project) : 0;
+  const priority = project ? normalizeProjectPriority(project.priority) : "medium";
+  const assignees = project?.assignedTo ?? [];
+  const teams = project?.assignedTeams ?? [];
+  const tags = project?.tags ?? [];
+  const attachments = project?.attachments ?? [];
+
+  return (
+    <Fragment>
+      <Seo title={"Project Overview"} />
+
+      {/* NO ID — user landed here without selecting a project */}
+      {!id && (
+        <div className="box custom-box">
+          <div className="box-body text-center py-10">
+            <span className="avatar avatar-lg !rounded-full bg-light text-default mb-3 inline-flex items-center justify-center">
+              <i className="ri-folder-3-line text-[1.5rem]"></i>
+            </span>
+            <h6 className="font-semibold mb-1">No project selected</h6>
+            <p className="text-[#8c9097] dark:text-white/50 mb-4">
+              Open a project from the projects list to view its overview.
+            </p>
+            <Link href="/apps/projects/my-projects/" className="ti-btn ti-btn-primary-full btn-wave">
+              Go to My Projects
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* LOADING */}
+      {id && loading && (
+        <div className="box custom-box">
+          <div className="box-body">
+            <div className="animate-pulse space-y-4">
+              <div className="h-5 w-1/2 rounded bg-gray-200 dark:bg-white/10"></div>
+              <div className="h-3 w-full rounded bg-gray-100 dark:bg-white/5"></div>
+              <div className="h-3 w-5/6 rounded bg-gray-100 dark:bg-white/5"></div>
+              <div className="h-3 w-2/3 rounded bg-gray-100 dark:bg-white/5"></div>
+              <div className="flex gap-3 pt-2">
+                <div className="h-8 w-24 rounded bg-gray-200 dark:bg-white/10"></div>
+                <div className="h-8 w-24 rounded bg-gray-200 dark:bg-white/10"></div>
+                <div className="h-8 w-24 rounded bg-gray-200 dark:bg-white/10"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ERROR */}
+      {id && !loading && error && (
+        <div className="box custom-box">
+          <div className="box-body text-center py-10">
+            <span className="avatar avatar-lg !rounded-full bg-danger/10 text-danger mb-3 inline-flex items-center justify-center">
+              <i className="ri-error-warning-line text-[1.5rem]"></i>
+            </span>
+            <h6 className="font-semibold mb-1">Couldn&apos;t load this project</h6>
+            <p className="text-[#8c9097] dark:text-white/50 mb-4">{error}</p>
+            <button type="button" onClick={() => void refresh()} className="ti-btn ti-btn-primary-full btn-wave">
+              Try again
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* NOT FOUND */}
+      {id && !loading && !error && notFound && (
+        <div className="box custom-box">
+          <div className="box-body text-center py-10">
+            <span className="avatar avatar-lg !rounded-full bg-light text-default mb-3 inline-flex items-center justify-center">
+              <i className="ri-search-eye-line text-[1.5rem]"></i>
+            </span>
+            <h6 className="font-semibold mb-1">Project not found</h6>
+            <p className="text-[#8c9097] dark:text-white/50 mb-4">
+              This project may have been deleted, or you don&apos;t have access to it.
+            </p>
+            <Link href="/apps/projects/my-projects/" className="ti-btn ti-btn-primary-full btn-wave">
+              Back to My Projects
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* LOADED */}
+      {id && !loading && !error && !notFound && project && (
+        <div className="grid grid-cols-12 gap-6">
+          <div className="xl:col-span-9 col-span-12">
+            {/* PROJECT DETAILS */}
+            <div className="box custom-box">
+              <div className="box-header justify-between flex">
+                <div className="box-title">Project Details</div>
+                <div>
+                  <Link
+                    href={`/apps/projects/edit/${encodeURIComponent(id)}`}
+                    className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-secondary-full btn-wave"
+                  >
+                    <i className="ri-edit-line align-middle me-1 font-semibold"></i>Edit Project
+                  </Link>
+                </div>
+              </div>
+              <div className="box-body">
+                <h5 className="font-semibold mb-4 task-title">{project.name}</h5>
+
+                {project.projectKey && (
+                  <div className="mb-4">
+                    <span className="badge bg-light text-default">{project.projectKey}</span>
+                  </div>
+                )}
+
+                <div className="text-[.9375rem] font-semibold mb-2">Project Description :</div>
+                {plainText(project.description) ? (
+                  <p className="text-[#8c9097] dark:text-white/50 task-description">
+                    {plainText(project.description)}
+                  </p>
+                ) : (
+                  <p className="text-[#8c9097] dark:text-white/50 italic">No description provided.</p>
+                )}
+
+                {/* Progress — derived from completedTasks / totalTasks */}
+                <div className="text-[.9375rem] font-semibold mb-2 mt-4">Progress :</div>
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                      {project.completedTasks ?? 0} of {project.totalTasks ?? 0} tasks completed
+                    </span>
+                    <span className="text-[0.75rem] font-semibold">{pct}%</span>
+                  </div>
+                  <div className="progress progress-sm">
+                    <div
+                      className="progress-bar bg-primary"
+                      role="progressbar"
+                      style={{ width: `${pct}%` }}
+                      aria-valuenow={pct}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    ></div>
+                  </div>
+                </div>
+
+                <div className="text-[.9375rem] font-semibold mb-2 mt-4">Tags :</div>
+                <div>
+                  {tags.length > 0 ? (
+                    tags.map((tag, i) => (
+                      <span key={`${tag}-${i}`} className="badge me-2 mb-1 bg-light text-default">
+                        {tag}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[#8c9097] dark:text-white/50 italic text-[0.875rem]">
+                      No tags added.
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="box-footer">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] mb-0.5">
+                      Project Manager
+                    </span>
+                    <InlineText
+                      value={project.projectManager}
+                      placeholder="Set project manager"
+                      locked={!!project.projectManager?.trim()}
+                      onSave={(next) => handleProjectPatch({ projectManager: next })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] mb-0.5">
+                      Client / Stakeholder
+                    </span>
+                    <InlineText
+                      value={project.clientStakeholder}
+                      placeholder="Set client / stakeholder"
+                      locked={!!project.clientStakeholder?.trim()}
+                      onSave={(next) => handleProjectPatch({ clientStakeholder: next })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] mb-0.5">
+                      Start Date
+                    </span>
+                    <InlineDate
+                      value={project.startDate}
+                      variant="value"
+                      placeholder="Set start date"
+                      locked={!!project.startDate}
+                      maxDate={project.endDate ? new Date(project.endDate) : undefined}
+                      onSave={(iso) => handleProjectPatch({ startDate: iso })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem] mb-0.5">
+                      End Date
+                    </span>
+                    <InlineDate
+                      value={project.endDate}
+                      variant="value"
+                      placeholder="Set end date"
+                      locked={!!project.endDate}
+                      minDate={project.startDate ? new Date(project.startDate) : undefined}
+                      onSave={(iso) => handleProjectPatch({ endDate: iso })}
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Assigned To</span>
+                    {assignees.length > 0 ? (
+                      <div className="avatar-list-stacked">
+                        {assignees.map((u, i) => (
+                          <span
+                            key={u._id || u.id || u.email || `assignee-${i}`}
+                            className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold"
+                            title={u.name || u.email || "User"}
+                          >
+                            {initials(u.name || u.email)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="block text-[.875rem] font-semibold">—</span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Status</span>
+                    <span className="block">
+                      <span className={`badge ${STATUS_BADGE[project.status] ?? "bg-light text-default"}`}>
+                        {STATUS_LABEL[project.status] ?? project.status}
+                      </span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="block text-[#8c9097] dark:text-white/50 text-[0.75rem]">Priority</span>
+                    <span className="block text-[.875rem] font-semibold">
+                      <span className={`badge ${PRIORITY_BADGE[priority] ?? "bg-light text-default"}`}>
+                        {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PROJECT TASKS */}
+            <div className="box custom-box overflow-hidden">
+              <div className="box-header justify-between flex">
+                <div className="box-title">Project Tasks</div>
+                {!tasksLoading && !tasksError && (
+                  <span className="badge bg-light text-default">{tasks.length}</span>
+                )}
+              </div>
+              <div className="box-body !p-0">
+                {tasksLoading ? (
+                  <div className="text-center py-8 text-[#8c9097] dark:text-white/50 text-[0.875rem]">
+                    Loading tasks…
+                  </div>
+                ) : tasksError ? (
+                  <div className="text-center py-8 text-danger text-[0.875rem]">{tasksError}</div>
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <i className="ri-list-check-2 text-[1.5rem] text-[#8c9097] dark:text-white/50"></i>
+                    <p className="text-[#8c9097] dark:text-white/50 mt-2 mb-0 text-[0.875rem]">
+                      No tasks in this project.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="table whitespace-nowrap min-w-full">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="text-start">
+                            Task
+                          </th>
+                          <th scope="col" className="text-start">
+                            Status
+                          </th>
+                          <th scope="col" className="text-start">
+                            Priority
+                          </th>
+                          <th scope="col" className="text-start">
+                            Assignees
+                          </th>
+                          <th scope="col" className="text-start">
+                            Due
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tasks.map((t) => (
+                          <tr key={getTaskId(t)} className="border border-defaultborder">
+                            <td>
+                              <div className="font-semibold">{t.title}</div>
+                              {t.taskCode && (
+                                <span className="text-[#8c9097] dark:text-white/50 text-[0.75rem] font-mono">
+                                  {t.taskCode}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <span className={`badge ${TASK_STATUS_BADGE[t.status] ?? "bg-light text-default"}`}>
+                                {TASK_STATUS_LABELS[t.status] ?? t.status}
+                              </span>
+                            </td>
+                            <td>
+                              {t.priority ? (
+                                <span className={`badge ${PRIORITY_BADGE[t.priority] ?? "bg-light text-default"}`}>
+                                  {t.priority.charAt(0).toUpperCase() + t.priority.slice(1)}
+                                </span>
+                              ) : (
+                                <span className="text-[#8c9097] dark:text-white/50">—</span>
+                              )}
+                            </td>
+                            <td>
+                              {(t.assignedTo ?? []).length > 0 ? (
+                                <div className="avatar-list-stacked">
+                                  {(t.assignedTo ?? []).map((u, i) => (
+                                    <span
+                                      key={u._id || u.id || u.email || `t-assignee-${i}`}
+                                      className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold"
+                                      title={u.name || u.email || "User"}
+                                    >
+                                      {initials(u.name || u.email)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[#8c9097] dark:text-white/50">—</span>
+                              )}
+                            </td>
+                            <td>
+                              <DueDateCell task={t} onSaved={handleDueDateSaved} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* PROJECT ATTACHMENTS */}
+            <div className="box custom-box overflow-hidden">
+              <div className="box-header">
+                <div className="box-title">Project Documents</div>
+              </div>
+              <div className="box-body !p-0">
+                {attachments.length > 0 ? (
+                  <ul className="list-group list-group-flush">
+                    {attachments.map((url, i) => (
+                      <li key={`${url}-${i}`} className={`list-group-item ${i === 0 ? "!border-t-0" : ""}`}>
+                        <div className="flex items-center">
+                          <div className="me-2">
+                            <span className="avatar !rounded-full p-2 bg-light text-default">
+                              <i className="ri-file-3-line text-[1.125rem]"></i>
+                            </span>
+                          </div>
+                          <div className="flex-grow min-w-0">
+                            <Link
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block font-semibold truncate"
+                            >
+                              {attachmentLabel(url, i)}
+                            </Link>
+                          </div>
+                          <div className="inline-flex">
+                            <Link
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label="Open attachment"
+                              className="ti-btn ti-btn-sm ti-btn-info"
+                            >
+                              <i className="ri-external-link-line"></i>
+                            </Link>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-center py-8">
+                    <i className="ri-file-list-3-line text-[1.5rem] text-[#8c9097] dark:text-white/50"></i>
+                    <p className="text-[#8c9097] dark:text-white/50 mt-2 mb-0 text-[0.875rem]">
+                      No documents attached to this project.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="xl:col-span-3 col-span-12">
+            {/* PROJECT TEAM — assigned users */}
+            <div className="box custom-box">
+              <div className="box-header">
+                <div className="box-title">Project Team</div>
+              </div>
+              <div className="box-body !p-0">
+                {assignees.length > 0 ? (
+                  <div className="table-responsive">
+                    <table className="table whitespace-nowrap min-w-full">
+                      <thead>
+                        <tr>
+                          <th scope="col" className="text-start">
+                            Name
+                          </th>
+                          <th scope="col" className="text-start">
+                            Email
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {assignees.map((u, i) => (
+                          <tr key={u._id || u.id || u.email || `team-${i}`} className="border border-defaultborder">
+                            <td>
+                              <div className="flex items-center">
+                                <div className="me-2 leading-none">
+                                  <span className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold">
+                                    {initials(u.name || u.email)}
+                                  </span>
+                                </div>
+                                <div className="font-semibold">{u.name?.trim() || "—"}</div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
+                                {u.email?.trim() || "—"}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <i className="ri-team-line text-[1.5rem] text-[#8c9097] dark:text-white/50"></i>
+                    <p className="text-[#8c9097] dark:text-white/50 mt-2 mb-0 text-[0.875rem]">
+                      No team members assigned.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ASSIGNED TEAMS */}
+            <div className="box custom-box">
+              <div className="box-header">
+                <div className="box-title">Assigned Teams</div>
+              </div>
+              <div className="box-body">
+                {teams.length > 0 ? (
+                  <ul className="list-group">
+                    {teams.map((t) => (
+                      <li key={t._id || t.id || t.name} className="list-group-item">
+                        <div className="flex items-center">
+                          <span className="avatar avatar-sm !rounded-full bg-secondary/10 text-secondary inline-flex items-center justify-center me-2">
+                            <i className="ri-group-line"></i>
+                          </span>
+                          <div className="font-semibold">{t.name?.trim() || "Unnamed team"}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-center py-6">
+                    <i className="ri-group-line text-[1.5rem] text-[#8c9097] dark:text-white/50"></i>
+                    <p className="text-[#8c9097] dark:text-white/50 mt-2 mb-0 text-[0.875rem]">
+                      No teams assigned.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* META */}
+            <div className="box custom-box">
+              <div className="box-header">
+                <div className="box-title">Project Info</div>
+              </div>
+              <div className="box-body">
+                <ul className="list-group">
+                  <li className="list-group-item flex items-center justify-between">
+                    <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">Created By</span>
+                    <span className="font-semibold text-[0.8125rem]">
+                      {project.createdBy?.name?.trim() || project.createdBy?.email?.trim() || "—"}
+                    </span>
+                  </li>
+                  <li className="list-group-item flex items-center justify-between">
+                    <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">Created On</span>
+                    <span className="font-semibold text-[0.8125rem]">{fmtDate(project.createdAt)}</span>
+                  </li>
+                  <li className="list-group-item flex items-center justify-between">
+                    <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">Last Updated</span>
+                    <span className="font-semibold text-[0.8125rem]">{fmtDate(project.updatedAt)}</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Fragment>
+  );
+};
+
+export default Projectoverview;

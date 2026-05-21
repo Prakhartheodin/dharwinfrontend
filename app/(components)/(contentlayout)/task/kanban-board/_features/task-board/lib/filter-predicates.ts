@@ -111,6 +111,7 @@ export function compilePredicate(filters: TaskFilters): (task: Task) => boolean 
       const sid = sprintIdOf(task);
       if (!sid || !sprintSet.has(sid)) return false;
     }
+    if (filters.unassigned && assigneeIds(task).length > 0) return false;
     if (assigneeSet) {
       const ids = assigneeIds(task);
       if (!ids.some((id) => assigneeSet.has(id))) return false;

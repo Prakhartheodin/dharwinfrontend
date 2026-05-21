@@ -16,6 +16,7 @@ import {
   QUERY_Q,
   QUERY_SPRINT,
   QUERY_STATUS,
+  QUERY_UNASSIGNED,
   STATUS_SET,
 } from "./constants";
 
@@ -55,6 +56,7 @@ export function deserializeFilters(sp: ReadonlyURLSearchParams): TaskFilters {
     createdByIds: splitCsv(sp.get(QUERY_CREATED_BY)),
     due: parseDue(sp.get(QUERY_DUE)),
     assignedToMe: sp.get(QUERY_ASSIGNED_TO_ME) === "1",
+    unassigned: sp.get(QUERY_UNASSIGNED) === "1",
   };
 }
 
@@ -91,6 +93,7 @@ export function normalize(raw: Partial<TaskFilters> | TaskFilters): TaskFilters 
     createdByIds: sortedCopy(raw.createdByIds ?? []),
     due: raw.due == null ? null : { ...raw.due },
     assignedToMe: raw.assignedToMe === true,
+    unassigned: raw.unassigned === true,
   };
 }
 
@@ -98,6 +101,7 @@ export function isEqual(a: TaskFilters, b: TaskFilters): boolean {
   return (
     a.q === b.q &&
     a.assignedToMe === b.assignedToMe &&
+    a.unassigned === b.unassigned &&
     dueEqual(a.due, b.due) &&
     sortedCopy(a.projectIds).join("\0") === sortedCopy(b.projectIds).join("\0") &&
     sortedCopy(a.assigneeIds).join("\0") === sortedCopy(b.assigneeIds).join("\0") &&
@@ -130,6 +134,7 @@ export function serializeFilters(
     out[QUERY_DUE] = `${filters.due.from}..${filters.due.to}`;
   }
   if (filters.assignedToMe) out[QUERY_ASSIGNED_TO_ME] = "1";
+  if (filters.unassigned) out[QUERY_UNASSIGNED] = "1";
   return out;
 }
 
