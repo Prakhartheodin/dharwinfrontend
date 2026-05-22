@@ -9,11 +9,12 @@ import { ROUTES } from "@/shared/lib/constants";
 
 const WITHDRAWABLE_STATUSES: JobApplicationStatus[] = ["Applied", "Screening"];
 
-const STATUS_STYLE: Record<JobApplicationStatus, { bg: string; text: string; border: string }> = {
+const STATUS_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   Applied: { bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-500/20" },
   Screening: { bg: "bg-sky-500/10", text: "text-sky-700 dark:text-sky-400", border: "border-sky-500/20" },
   Interview: { bg: "bg-violet-500/10", text: "text-violet-700 dark:text-violet-400", border: "border-violet-500/20" },
   Offered: { bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
+  Offer: { bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
   Hired: { bg: "bg-emerald-600/15", text: "text-emerald-800 dark:text-emerald-300 font-semibold", border: "border-emerald-500/30" },
   Rejected: { bg: "bg-rose-500/10", text: "text-rose-700 dark:text-rose-400", border: "border-rose-500/20" },
 };
@@ -164,7 +165,15 @@ export default function MyApplicationsPage() {
                 const company = job?.organisation?.name ?? "—";
                 const canWithdraw = WITHDRAWABLE_STATUSES.includes(app.status);
                 const isWithdrawing = withdrawingId === id;
-                const statusStyle = STATUS_STYLE[app.status] ?? { bg: "bg-defaultborder/20", text: "text-defaulttextcolor dark:text-white/70", border: "border-defaultborder/30" };
+                const visibleStatus =
+                  (app as JobApplication & { candidateVisibleStatus?: string }).candidateVisibleStatus ?? app.status;
+                const statusStyle =
+                  STATUS_STYLE[visibleStatus] ??
+                  STATUS_STYLE[app.status] ?? {
+                    bg: "bg-defaultborder/20",
+                    text: "text-defaulttextcolor dark:text-white/70",
+                    border: "border-defaultborder/30",
+                  };
 
                 return (
                   <article
@@ -187,7 +196,7 @@ export default function MyApplicationsPage() {
                             )}
                           </h2>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                            {app.status}
+                            {visibleStatus}
                           </span>
                         </div>
                         <p className="text-sm text-defaulttextcolor/70 dark:text-white/60">{company}</p>
