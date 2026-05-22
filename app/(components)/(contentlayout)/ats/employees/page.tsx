@@ -1656,6 +1656,25 @@ const Candidates = () => {
         },
       },
       {
+        Header: 'Compensation',
+        accessor: (row: CandidateDisplay) => (row as CandidateDisplay & { _raw?: { compensationType?: string } })._raw?.compensationType,
+        id: 'compensationType',
+        minWidth: 140,
+        Cell: ({ row }: { row: { original: CandidateDisplay } }) => {
+          const value = (row.original as CandidateDisplay & { _raw?: { compensationType?: string } })._raw?.compensationType
+          const unpaid = value === 'unpaid'
+          return (
+            <span
+              className={`badge border rounded px-2 py-1 ${
+                unpaid ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+              }`}
+            >
+              {unpaid ? 'Unpaid Internship' : 'Paid'}
+            </span>
+          )
+        },
+      },
+      {
         Header: 'Joining Date',
         accessor: 'joiningDate',
         minWidth: 120,
