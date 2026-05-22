@@ -206,7 +206,6 @@ const OffersPlacement = () => {
 
   const [editOfferModal, setEditOfferModal] = useState<Offer | null>(null)
   const [editStatus, setEditStatus] = useState<Offer['status']>('Draft')
-  const [viewOfferModal, setViewOfferModal] = useState<Offer | null>(null)
   const [viewHistoryModal, setViewHistoryModal] = useState<Offer | null>(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
 
@@ -580,6 +579,26 @@ const OffersPlacement = () => {
           const ttWrap = 'hs-tooltip ti-main-tooltip shrink-0 [--placement:bottom] [--scope:window]'
           return (
           <div className="flex min-w-0 max-w-[200px] flex-wrap items-center gap-1 sm:max-w-none">
+            {canEdit && (
+              <div className={ttWrap}>
+                <button
+                  type="button"
+                  className={rowAct}
+                  aria-label="Open offer letter generator"
+                  onClick={() => {
+                    const raw = (row.original as any)._raw as Offer | undefined
+                    if (raw) void openOfferLetterModal(raw)
+                  }}
+                >
+                  <i className="ri-article-line" aria-hidden />
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Offer letter
+                  </span>
+                </button>
+              </div>
+            )}
             {inPreBoarding && (
               <Link
                 href={
@@ -608,24 +627,6 @@ const OffersPlacement = () => {
               <button
                 type="button"
                 className={rowAct}
-                aria-label="View offer"
-                onClick={() => {
-                  const raw = (row.original as any)._raw
-                  if (raw) setViewOfferModal(raw)
-                }}
-              >
-                <i className="ri-file-text-line" aria-hidden />
-                <span
-                  className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                  role="tooltip">
-                  View Offer
-                </span>
-              </button>
-            </div>
-            <div className={ttWrap}>
-              <button
-                type="button"
-                className={rowAct}
                 aria-label="View history"
                 onClick={() => {
                   const raw = (row.original as any)._raw
@@ -640,11 +641,12 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
+            {Boolean((row.original as any)._raw?.offerLetterGeneratedAt) && (
             <div className={ttWrap}>
               <button
                 type="button"
                 className={rowAct}
-                aria-label="Edit offer"
+                aria-label="Update status"
                 onClick={() => {
                   const raw = (row.original as any)._raw
                   if (raw) {
@@ -657,35 +659,13 @@ const OffersPlacement = () => {
                 <span
                   className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
                   role="tooltip">
-                  Edit Offer
+                  Update status
                 </span>
               </button>
             </div>
-            {canEdit && (
-              <div className={ttWrap}>
-                <button
-                  type="button"
-                  className={rowAct}
-                  aria-label="Open offer letter generator"
-                  onClick={() => {
-                    const raw = (row.original as any)._raw as Offer | undefined
-                    if (raw) void openOfferLetterModal(raw)
-                  }}
-                >
-                  <i className="ri-article-line" aria-hidden />
-                  <span
-                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
-                    role="tooltip">
-                    Offer letter
-                  </span>
-                </button>
-              </div>
             )}
           </div>
         )
-        },
-      },
-    ],
     [selectedRows, canEdit, openOfferLetterModal]
   )
 
@@ -1808,173 +1788,6 @@ const OffersPlacement = () => {
       )}
 
       {/* View Offer Modal */}
-      {viewOfferModal && (
-        <div
-          className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
-          tabIndex={-1}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="view-offer-modal-title"
-          style={{ zIndex: 80 }}
-        >
-          <div className="hs-overlay-backdrop ti-modal-backdrop backdrop-blur-[1px]" onClick={() => setViewOfferModal(null)} />
-          <div className="hs-overlay-open:mt-7 ti-modal-box !max-w-lg">
-            <div className="ti-modal-content overflow-hidden !rounded-lg shadow-lg ring-1 ring-slate-900/[0.06] dark:ring-white/[0.06]">
-              <div className="ti-modal-header !items-start gap-3 border-slate-200/90 !pb-4 dark:border-white/10">
-                <div className="min-w-0 flex-1">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">
-                    Offer preview
-                  </p>
-                  <h4 id="view-offer-modal-title" className="ti-modal-title !mb-1 break-all text-xl font-semibold tracking-tight">
-                    {viewOfferModal.offerCode}
-                  </h4>
-                  <p className="mb-0 text-sm text-slate-600 dark:text-slate-400">
-                    {viewOfferModal.job?.title || '—'}
-                    <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
-                    {viewOfferModal.candidate?.fullName || '—'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="ti-modal-close-btn !mt-0.5 shrink-0"
-                  aria-label="Close"
-                  onClick={() => setViewOfferModal(null)}
-                >
-                  <i className="ri-close-line text-lg" aria-hidden />
-                </button>
-              </div>
-              <div className="ti-modal-body space-y-4 !pt-2">
-                <div className={`${offersStyles.offerModalSection} !py-4`}>
-                  <div className={offersStyles.offerModalSectionTitle}>
-                    <i className="ri-briefcase-4-line shrink-0 text-primary" aria-hidden />
-                    Offer &amp; Job
-                  </div>
-                  <div className={offersStyles.offerMetaGrid}>
-                    <span className={offersStyles.offerMetaLabel}>Position</span>
-                    <span className={offersStyles.offerMetaValue}>{viewOfferModal.job?.title || '—'}</span>
-                    <span className={offersStyles.offerMetaLabel}>Candidate</span>
-                    <span className={offersStyles.offerMetaValue}>{viewOfferModal.candidate?.fullName || '—'}</span>
-                    <span className={offersStyles.offerMetaLabel}>Status</span>
-                    <span className={offersStyles.offerMetaValue}>
-                      <span className={offerStatusPillClass(viewOfferModal.status)}>{viewOfferModal.status || '—'}</span>
-                    </span>
-                    <span className={offersStyles.offerMetaLabel}>CTC</span>
-                    <span className={offersStyles.offerMetaValue}>
-                      {viewOfferModal.ctcBreakdown?.gross != null
-                        ? `₹${Number(viewOfferModal.ctcBreakdown.gross).toLocaleString()}`
-                        : '—'}
-                    </span>
-                    <span className={offersStyles.offerMetaLabel}>Joining</span>
-                    <span className={offersStyles.offerMetaValue}>
-                      {joiningDatePresent(viewOfferModal.joiningDate) ? (
-                        <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-700 dark:text-slate-200">
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" title="Date set" />
-                          {formatJoiningDateDisplay(viewOfferModal.joiningDate as string | Date)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-[13px] text-slate-400 dark:text-slate-500">
-                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300 dark:bg-slate-600" />
-                          Not set
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                </div>
-                {viewOfferModal.status === 'Accepted' && (
-                  <>
-                    <div className={`${offersStyles.offerModalSection}`}>
-                      <div className={offersStyles.offerModalSectionTitle}>
-                        <i className="ri-user-settings-line shrink-0 text-primary" aria-hidden />
-                        HRMS (Onboarding)
-                      </div>
-                      <div className={offersStyles.offerMetaGrid}>
-                        <span className={offersStyles.offerMetaLabel}>Reporting</span>
-                        <span className={offersStyles.offerMetaValue}>
-                          {typeof (viewOfferModal.candidate as any)?.reportingManager === 'object'
-                            ? (viewOfferModal.candidate as any)?.reportingManager?.name
-                            : (viewOfferModal.candidate as any)?.reportingManager || '—'}
-                        </span>
-                      </div>
-                    </div>
-                    {(viewOfferModal as any).placement && (
-                      <div className={`${offersStyles.offerModalSection}`}>
-                        <div className={offersStyles.offerModalSectionTitle}>
-                          <i className="ri-suitcase-line shrink-0 text-primary" aria-hidden />
-                          Pre-boarding &amp; Placement
-                        </div>
-                        <div className={offersStyles.offerMetaGrid}>
-                          <span className={offersStyles.offerMetaLabel}>Placement</span>
-                          <span className={offersStyles.offerMetaValue}>
-                            {(viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status || '—'}
-                          </span>
-                          <span className={offersStyles.offerMetaLabel}>Pre-boarding</span>
-                          <span className={offersStyles.offerMetaValue}>
-                            {(viewOfferModal as any).placement?.preBoardingStatus || '—'}
-                          </span>
-                          {(() => {
-                            const { primary, secondary } = getPlacementStatusActorSummary({
-                              status: (viewOfferModal as any).placementStatus || (viewOfferModal as any).placement?.status,
-                              ...(viewOfferModal as any).placement,
-                            })
-                            return (
-                              <>
-                                {primary ? (
-                                  <>
-                                    <span className={offersStyles.offerMetaLabel}>Record</span>
-                                    <span className={`${offersStyles.offerMetaValue} text-slate-600 dark:text-slate-300`}>
-                                      {primary}
-                                    </span>
-                                  </>
-                                ) : null}
-                                {secondary ? (
-                                  <span
-                                    className="text-xs leading-snug text-slate-500 dark:text-slate-400"
-                                    style={{ gridColumn: '1 / -1' }}
-                                  >
-                                    {secondary}
-                                  </span>
-                                ) : null}
-                              </>
-                            )
-                          })()}
-                          {(viewOfferModal as any).placement?.backgroundVerification ? (
-                            <>
-                              <span className={offersStyles.offerMetaLabel}>BGV</span>
-                              <span className={offersStyles.offerMetaValue}>
-                                {(viewOfferModal as any).placement.backgroundVerification?.status || '—'}
-                              </span>
-                            </>
-                          ) : null}
-                          {Array.isArray((viewOfferModal as any).placement?.assetAllocation) &&
-                          (viewOfferModal as any).placement.assetAllocation.length > 0 ? (
-                            <>
-                              <span className={offersStyles.offerMetaLabel}>Assets</span>
-                              <span className={offersStyles.offerMetaValue}>
-                                {(viewOfferModal as any).placement.assetAllocation.map((a: any) => a.name || a.type).join(', ') ||
-                                  '—'}
-                              </span>
-                            </>
-                          ) : null}
-                          {Array.isArray((viewOfferModal as any).placement?.itAccess) &&
-                          (viewOfferModal as any).placement.itAccess.length > 0 ? (
-                            <>
-                              <span className={offersStyles.offerMetaLabel}>IT access</span>
-                              <span className={offersStyles.offerMetaValue}>
-                                {(viewOfferModal as any).placement.itAccess.map((i: any) => i.system).join(', ') || '—'}
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* View History Modal */}
       {viewHistoryModal && (
         <div
