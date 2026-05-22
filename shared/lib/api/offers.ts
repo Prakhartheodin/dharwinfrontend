@@ -203,9 +203,14 @@ export interface OfferLetterDefaultsResponse {
   trainingOutcomes: string[];
 }
 
-export async function getOfferLetterDefaults(positionTitle: string): Promise<OfferLetterDefaultsResponse> {
+export async function getOfferLetterDefaults(
+  positionTitle: string,
+  jobId?: string
+): Promise<OfferLetterDefaultsResponse> {
+  const params: Record<string, string> = { positionTitle: positionTitle || "" };
+  if (jobId) params.jobId = jobId;
   const { data } = await apiClient.get<OfferLetterDefaultsResponse>("/offers/letter-defaults", {
-    params: { positionTitle: positionTitle || "" },
+    params,
   });
   return data;
 }
