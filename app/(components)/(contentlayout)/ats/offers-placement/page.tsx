@@ -713,7 +713,10 @@ const OffersPlacement = () => {
             )}
           </div>
         )
-    [selectedRows, canEdit, openOfferLetterModal]
+      },
+    },
+  ],
+  [selectedRows, canEdit, openOfferLetterModal]
   )
 
   // Filter data based on filter state

@@ -11,6 +11,9 @@ import {
 import { useRouter } from "next/navigation";
 import TranscriptModal from "./_components/TranscriptModal";
 
+type SourceFilter = "" | "interview" | "meeting";
+type SearchField = "title" | "attendeeName" | "attendeeEmail";
+
 const PAGE_SIZES = [10, 25, 50, 100];
 
 type ViewMode = "table" | "grid";
@@ -122,6 +125,58 @@ function getFilename(rec: RecordingWithMeeting): string {
   return parts.endsWith(".mp4") ? parts : `${parts}.mp4`;
 }
 
+/**
+ * Converts raw LiveKit / backend error strings into concise, user-friendly messages.
+ * The raw strings look like:
+ *   "EGRESS_ABORTED :: Start signal not received | code=412 | End reason: Source closed"
+ *   "EGRESS_FAILED :: EGRESS_LIMIT_REACHED"
+ *   "EGRESS_COMPLETE but zero bytes in S3"
+ */
+function humanizeRecordingError(raw?: string | null): string {
+  if (!raw) return "Recording encountered an issue.";
+  const s = raw.toLowerCase();
+
+  // Source / room closed before recording could start
+  if (s.includes("source closed") || s.includes("start signal not received") || s.includes("code=412")) {
+    return "The session ended before the recording could start.";
+  }
+  // Egress limit
+  if (s.includes("limit_reached") || s.includes("egress_limit")) {
+    return "Recording limit reached on the server. Contact your admin.";
+  }
+  // Aborted (generic)
+  if (s.includes("egress_aborted") || s.includes("aborted")) {
+    return "Recording was stopped unexpectedly.";
+  }
+  // Failed
+  if (s.includes("egress_failed") || s.includes("failed")) {
+    return "Recording failed. The file may not have been saved.";
+  }
+  // S3 / storage issues
+  if (s.includes("zero bytes") || s.includes("s3") || s.includes("storage")) {
+    return "Recording completed but the file could not be found in storage.";
+  }
+  // Missing file path
+  if (s.includes("without filepath") || s.includes("no filePath") || s.includes("no predicted key")) {
+    return "Recording finished but no file was produced.";
+  }
+  // Backfill notices
+  if (s.includes("backfill") || s.includes("backfilled")) {
+    return "Recording status was recovered automatically. File may be incomplete.";
+  }
+  // S3 unreachable
+  if (s.includes("s3 unreachable") || s.includes("s3 head failed")) {
+    return "Could not verify the recording file. Try again later.";
+  }
+  // Fallback — strip internal prefixes and show a cleaner version
+  const clean = raw
+    .replace(/^EGRESS_[A-Z_]+\s*::\s*/i, "")
+    .replace(/\s*\|\s*code=\d+/gi, "")
+    .replace(/\s*\|\s*end reason:/gi, " —")
+    .trim();
+  return clean.length > 0 && clean.length < 120 ? clean : "Recording encountered an issue.";
+}
+
 export default function RecordingsPage() {
   const router = useRouter();
   const [recordings, setRecordings] = useState<RecordingWithMeeting[]>([]);
@@ -136,6 +191,8 @@ export default function RecordingsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [statusFilter, setStatusFilter] = useState<StatusKey>("all");
   const [search, setSearch] = useState("");
+  const [searchField, setSearchField] = useState<SearchField>("title");
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [transcriptTarget, setTranscriptTarget] = useState<{ id: string; title: string } | null>(null);
 
@@ -143,7 +200,17 @@ export default function RecordingsPage() {
     setLoading(true);
     setError(null);
     try {
-      const data: RecordingsListResponse = await listAllRecordings({ page, limit: pageSize });
+      const serverStatus = statusFilter === "all" ? undefined : statusFilter === "live" ? "recording,stopping,finalizing" : statusFilter;
+      // For title search, pass q to the server for server-side filtering.
+      // For attendee name/email, the backend also supports q across those fields,
+      // so we always pass q to leverage server-side filtering.
+      const data: RecordingsListResponse = await listAllRecordings({
+        page,
+        limit: pageSize,
+        status: serverStatus,
+        q: search.trim() || undefined,
+        source: sourceFilter || undefined,
+      });
       const visible = (data.results || []).filter((r) => r.status !== "missing");
       const hiddenOnPage = (data.results?.length ?? 0) - visible.length;
       setRecordings(visible);
@@ -159,7 +226,7 @@ export default function RecordingsPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize]);
+  }, [page, pageSize, statusFilter, search, sourceFilter]);
 
   useEffect(() => {
     fetchRecordings();
@@ -202,9 +269,9 @@ export default function RecordingsPage() {
   }, []);
 
   /**
-   * Client-side filter for status + free-text search. Server pagination still
-   * controls the result window — these filters narrow within the visible page,
-   * which mirrors how the meetings page treats sort/filters as in-page operations.
+   * Client-side filter for status + search field narrowing.
+   * Server-side already applied q + source; this narrows the visible page by
+   * the selected search field for instant feedback without a round-trip.
    */
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -212,13 +279,29 @@ export default function RecordingsPage() {
       if (statusFilter === "live" && !LIVE_STATUSES.has(rec.status)) return false;
       if (statusFilter !== "all" && statusFilter !== "live" && rec.status !== statusFilter) return false;
       if (!q) return true;
-      const hay = [rec.meetingTitle, rec.meetingId, rec.egressId, rec.filePath]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+
+      // Narrow by the selected search field
+      if (searchField === "title") {
+        const hay = [rec.meetingTitle, rec.meetingId].filter(Boolean).join(" ").toLowerCase();
+        return hay.includes(q);
+      }
+      if (searchField === "attendeeName") {
+        const names = (rec.attendees || []).map((a) => a.name || "").join(" ").toLowerCase();
+        return names.includes(q);
+      }
+      if (searchField === "attendeeEmail") {
+        const emails = (rec.attendees || []).map((a) => a.email || "").join(" ").toLowerCase();
+        return emails.includes(q);
+      }
+      // Fallback: search all fields
+      const hay = [
+        rec.meetingTitle,
+        rec.meetingId,
+        ...(rec.attendees || []).map((a) => `${a.name || ""} ${a.email || ""}`),
+      ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
     });
-  }, [recordings, statusFilter, search]);
+  }, [recordings, statusFilter, search, searchField]);
 
   const counts = useMemo(() => {
     const c = { all: recordings.length, live: 0, completed: 0, aborted: 0, failed: 0, missing: 0, expired: 0 };
@@ -265,7 +348,7 @@ export default function RecordingsPage() {
     return (
       <span
         className={`inline-flex items-center gap-1 border px-2 py-1 rounded-md text-xs font-medium ${cls}`}
-        title={rec.lastError || undefined}
+        title={rec.lastError ? humanizeRecordingError(rec.lastError) : undefined}
       >
         {isLive && <span className="relative flex h-1.5 w-1.5">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-60" />
@@ -333,7 +416,7 @@ export default function RecordingsPage() {
           <button
             type="button"
             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
-            title={rec.playbackError}
+            title={humanizeRecordingError(rec.playbackError)}
           >
             <i className="ri-error-warning-line" />
           </button>
@@ -376,15 +459,64 @@ export default function RecordingsPage() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {/* Source type dropdown */}
                 <div className="relative">
-                  <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Search title, room, egress…"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="form-control !py-1 !pl-8 !pr-3 !text-[0.75rem] !w-[14rem]"
-                  />
+                  <i className="ri-video-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
+                  <select
+                    aria-label="Filter by recording type"
+                    style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none", backgroundImage: "none" }}
+                    className="rounded-md border border-defaultborder bg-white dark:bg-black/20 dark:border-white/10 !py-1 !pl-7 !pr-7 !text-[0.75rem] font-medium text-defaulttextcolor focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40 hover:border-primary/40 transition-colors cursor-pointer"
+                    value={sourceFilter}
+                    onChange={(e) => {
+                      setPage(1);
+                      setSourceFilter(e.target.value as SourceFilter);
+                    }}
+                  >
+                    <option value="">All Types</option>
+                    <option value="interview">Interview</option>
+                    <option value="meeting">Meeting</option>
+                  </select>
+                  <i className="ri-arrow-down-s-line absolute right-1.5 top-1/2 -translate-y-1/2 text-[0.9rem] text-defaulttextcolor/60 pointer-events-none" />
+                </div>
+                {/* Search field selector + search input */}
+                <div className="flex items-center rounded-md border border-defaultborder dark:border-white/10 overflow-hidden bg-white dark:bg-black/20">
+                  <select
+                    aria-label="Search by field"
+                    style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none", backgroundImage: "none" }}
+                    className="!py-1 !pl-2.5 !pr-5 !text-[0.72rem] font-medium text-defaulttextcolor/70 bg-gray-50 dark:bg-white/5 border-r border-defaultborder dark:border-white/10 focus:outline-none cursor-pointer"
+                    value={searchField}
+                    onChange={(e) => setSearchField(e.target.value as SearchField)}
+                  >
+                    <option value="title">Title</option>
+                    <option value="attendeeName">Attendee Name</option>
+                    <option value="attendeeEmail">Email</option>
+                  </select>
+                  <div className="relative flex items-center">
+                    <i className="ri-search-line absolute left-2 text-[0.85rem] text-defaulttextcolor/40 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder={
+                        searchField === "title"
+                          ? "Search by title…"
+                          : searchField === "attendeeName"
+                          ? "Search by attendee name…"
+                          : "Search by email…"
+                      }
+                      value={search}
+                      onChange={(e) => { setPage(1); setSearch(e.target.value); }}
+                      className="!py-1 !pl-7 !pr-3 !text-[0.75rem] bg-transparent border-none focus:outline-none focus:ring-0 !w-[13rem]"
+                    />
+                    {search && (
+                      <button
+                        type="button"
+                        onClick={() => setSearch("")}
+                        className="absolute right-1.5 text-defaulttextcolor/40 hover:text-defaulttextcolor/70"
+                        aria-label="Clear search"
+                      >
+                        <i className="ri-close-line text-[0.8rem]" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="relative">
                   <i className="ri-list-check-2 absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
@@ -545,7 +677,7 @@ export default function RecordingsPage() {
                       <button
                         type="button"
                         className="ti-btn ti-btn-light !py-2 !px-4 !text-sm"
-                        onClick={() => { setStatusFilter("all"); setSearch(""); }}
+                        onClick={() => { setStatusFilter("all"); setSearch(""); setSourceFilter(""); setSearchField("title"); }}
                       >
                         Clear filters
                       </button>
@@ -571,9 +703,34 @@ export default function RecordingsPage() {
                             <tr key={rec.id} className={LIVE_STATUSES.has(rec.status) ? "bg-amber-500/[0.025]" : ""}>
                               <td className="!text-[0.8125rem] align-middle">
                                 <div className="flex flex-col gap-1">
-                                  <div className="font-semibold text-gray-800 dark:text-white truncate max-w-[20rem]" title={rec.meetingTitle || rec.meetingId}>
-                                    {rec.meetingTitle || rec.meetingId || "—"}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-semibold text-gray-800 dark:text-white truncate max-w-[18rem]" title={rec.meetingTitle || rec.meetingId}>
+                                      {rec.meetingTitle || rec.meetingId || "—"}
+                                    </span>
+                                    {rec.source && (
+                                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.65rem] font-medium border ${
+                                        rec.source === "interview"
+                                          ? "bg-violet-500/10 text-violet-600 border-violet-400/30 dark:text-violet-400"
+                                          : "bg-sky-500/10 text-sky-600 border-sky-400/30 dark:text-sky-400"
+                                      }`}>
+                                        <i className={rec.source === "interview" ? "ri-user-voice-line" : "ri-video-chat-line"} />
+                                        {rec.source === "interview" ? "Interview" : "Meeting"}
+                                      </span>
+                                    )}
                                   </div>
+                                  {rec.attendees && rec.attendees.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-0.5">
+                                      {rec.attendees.slice(0, 3).map((a, i) => (
+                                        <span key={i} className="inline-flex items-center gap-1 text-[0.68rem] text-defaulttextcolor/60 bg-gray-100 dark:bg-white/5 rounded px-1.5 py-0.5" title={a.email || undefined}>
+                                          <i className="ri-user-line text-[0.65rem]" />
+                                          {a.name || a.email || "—"}
+                                        </span>
+                                      ))}
+                                      {rec.attendees.length > 3 && (
+                                        <span className="text-[0.68rem] text-defaulttextcolor/50 px-1">+{rec.attendees.length - 3} more</span>
+                                      )}
+                                    </div>
+                                  )}
                                   {rec.egressId && (
                                     <div className="text-[0.7rem] text-defaulttextcolor/60 font-mono flex items-center gap-1">
                                       <i className="ri-fingerprint-line text-info" />
@@ -669,9 +826,34 @@ export default function RecordingsPage() {
                             </div>
                             {/* Body */}
                             <div className="p-3 flex flex-col gap-2 flex-1">
-                              <div className="font-semibold text-sm text-gray-800 dark:text-white line-clamp-2 leading-snug" title={rec.meetingTitle || rec.meetingId}>
-                                {rec.meetingTitle || rec.meetingId || "—"}
+                              <div className="flex items-start gap-2 flex-wrap">
+                                <span className="font-semibold text-sm text-gray-800 dark:text-white line-clamp-2 leading-snug flex-1" title={rec.meetingTitle || rec.meetingId}>
+                                  {rec.meetingTitle || rec.meetingId || "—"}
+                                </span>
+                                {rec.source && (
+                                  <span className={`shrink-0 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[0.65rem] font-medium border ${
+                                    rec.source === "interview"
+                                      ? "bg-violet-500/10 text-violet-600 border-violet-400/30 dark:text-violet-400"
+                                      : "bg-sky-500/10 text-sky-600 border-sky-400/30 dark:text-sky-400"
+                                  }`}>
+                                    <i className={rec.source === "interview" ? "ri-user-voice-line" : "ri-video-chat-line"} />
+                                    {rec.source === "interview" ? "Interview" : "Meeting"}
+                                  </span>
+                                )}
                               </div>
+                              {rec.attendees && rec.attendees.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {rec.attendees.slice(0, 2).map((a, i) => (
+                                    <span key={i} className="inline-flex items-center gap-1 text-[0.67rem] text-defaulttextcolor/60 bg-gray-100 dark:bg-white/5 rounded px-1.5 py-0.5" title={a.email || undefined}>
+                                      <i className="ri-user-line text-[0.63rem]" />
+                                      {a.name || a.email || "—"}
+                                    </span>
+                                  ))}
+                                  {rec.attendees.length > 2 && (
+                                    <span className="text-[0.67rem] text-defaulttextcolor/50 px-1">+{rec.attendees.length - 2}</span>
+                                  )}
+                                </div>
+                              )}
                               <div className="flex items-center gap-3 text-[0.7rem] text-defaulttextcolor/60">
                                 <span className="flex items-center gap-1">
                                   <i className="ri-calendar-line text-primary" />
@@ -701,7 +883,7 @@ export default function RecordingsPage() {
                               {rec.lastError && (
                                 <div className="text-[0.7rem] text-rose-600 dark:text-rose-400 line-clamp-2" title={rec.lastError}>
                                   <i className="ri-error-warning-line me-1" />
-                                  {rec.lastError}
+                                  {humanizeRecordingError(rec.lastError)}
                                 </div>
                               )}
                               <div className="mt-auto pt-2 border-t border-defaultborder/50 dark:border-white/5 flex items-center justify-end gap-1.5">

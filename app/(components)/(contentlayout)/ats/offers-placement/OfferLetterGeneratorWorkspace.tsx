@@ -575,17 +575,6 @@ export function OfferLetterGeneratorWorkspace({
           >
             {letterBusy ? '…' : 'Save letter'}
           </button>
-          {showShareCta && onShareWithCandidate ? (
-            <button
-              type="button"
-              className={`${styles.btn} ${styles.btnPrimary}`}
-              onClick={onShareWithCandidate}
-              disabled={letterBusy}
-              title="Email the saved offer letter to the candidate."
-            >
-              Share with Candidate
-            </button>
-          ) : null}
           <button
             type="button"
             className={`${styles.btn} ${styles.btnGhost}`}

@@ -56,6 +56,22 @@ export async function getMyPermissions(): Promise<MyPermissionsResponse | null> 
   }
 }
 
+export interface PageCapabilitiesResponse {
+  dashboardType: "admin" | "recruiter" | "salesAgent" | "candidate" | "default";
+  widgets: string[];
+  allowedEndpoints: string[];
+  permissionsVersion: string;
+}
+
+export async function getPageCapabilities(): Promise<PageCapabilitiesResponse | null> {
+  try {
+    const { data } = await apiClient.get<PageCapabilitiesResponse>(AUTH_ENDPOINTS.pageCapabilities);
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 /** Payload for PATCH /auth/me – update own profile. Email cannot be changed. */
 export interface UpdateMyProfilePayload {
   name?: string;

@@ -1668,25 +1668,6 @@ const Candidates = () => {
         },
       },
       {
-        Header: 'Compensation',
-        accessor: (row: CandidateDisplay) => (row as CandidateDisplay & { _raw?: { compensationType?: string } })._raw?.compensationType,
-        id: 'compensationType',
-        minWidth: 140,
-        Cell: ({ row }: { row: { original: CandidateDisplay } }) => {
-          const value = (row.original as CandidateDisplay & { _raw?: { compensationType?: string } })._raw?.compensationType
-          const unpaid = value === 'unpaid'
-          return (
-            <span
-              className={`badge border rounded px-2 py-1 ${
-                unpaid ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-emerald-100 text-emerald-700 border-emerald-200'
-              }`}
-            >
-              {unpaid ? 'Unpaid Internship' : 'Paid'}
-            </span>
-          )
-        },
-      },
-      {
         Header: 'Joining Date',
         accessor: 'joiningDate',
         minWidth: 120,
@@ -2919,6 +2900,26 @@ const Candidates = () => {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Position</label>
                           <p className="mt-1 text-sm text-gray-900 dark:text-white">{positionLabelFromRaw(previewCandidate._raw)}</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Compensation</label>
+                          <p className="mt-1">
+                            {(() => {
+                              const comp = previewCandidate._raw?.compensationType as string | undefined
+                              const unpaid = comp === 'unpaid'
+                              return (
+                                <span
+                                  className={`inline-flex items-center rounded border px-2 py-0.5 text-xs font-medium ${
+                                    unpaid
+                                      ? 'bg-amber-100 text-amber-700 border-amber-200'
+                                      : 'bg-emerald-100 text-emerald-700 border-emerald-200'
+                                  }`}
+                                >
+                                  {unpaid ? 'Unpaid Internship' : 'Paid'}
+                                </span>
+                              )
+                            })()}
+                          </p>
                         </div>
                         <div className="sm:col-span-2">
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Training programs</label>

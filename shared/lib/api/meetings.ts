@@ -157,8 +157,19 @@ export async function endMeetingPublic(roomName: string, hostEmail: string): Pro
   return data;
 }
 
+export interface RecordingAttendee {
+  name: string | null;
+  email: string | null;
+  /** candidate | recruiter | host | agent | invite */
+  role: string;
+}
+
 export interface RecordingWithMeeting extends MeetingRecording {
   meetingTitle?: string;
+  /** 'interview' when the meeting has a candidate/jobPosition; 'meeting' otherwise. */
+  source?: "interview" | "meeting";
+  /** Denormalised attendee list from the joined Meeting document. */
+  attendees?: RecordingAttendee[];
   /** Backend exposes for aborted/failed/missing rows so UI can surface the failure reason. */
   lastError?: string;
   /** LiveKit egress identifier (sparse). Surfaced for ops/debug copy actions. */
@@ -177,6 +188,13 @@ export interface RecordingsListResponse {
 export async function listAllRecordings(params?: {
   page?: number;
   limit?: number;
+  status?: string;
+  /** Free-text search across title, attendee name, attendee/host email. */
+  q?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  /** Filter by recording origin: 'interview' | 'meeting' */
+  source?: "interview" | "meeting" | "";
 }): Promise<RecordingsListResponse> {
   const { data } = await apiClient.get<RecordingsListResponse>("/recordings", { params });
   return data;

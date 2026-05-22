@@ -53,6 +53,8 @@ import {
 } from "@/shared/lib/route-permissions";
 import { hasSalesAgentRole } from "@/shared/lib/roles";
 import SalesAgentDashboard from "./_components/SalesAgentDashboard";
+import CandidateDashboard from "./_components/CandidateDashboard";
+import { usePageCapabilities } from "@/shared/hooks/use-page-capabilities";
 import type { ApexOptions } from "apexcharts";
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
 
@@ -394,6 +396,8 @@ export default function DashboardPage() {
     !isAdministrator &&
     !isPlatformSuperUser &&
     hasSalesAgentRole(roleNames);
+
+  const { dashboardType, isLoading: capabilitiesLoading } = usePageCapabilities();
 
   /* ---- State ---- */
   const [atsData, setAtsData] = useState<AtsAnalyticsResponse | null>(null);
@@ -747,8 +751,12 @@ export default function DashboardPage() {
   /*  RENDER                                                           */
   /* ================================================================ */
 
-  if (isSalesAgentOnly) {
+  if (isSalesAgentOnly || dashboardType === "salesAgent") {
     return <SalesAgentDashboard />;
+  }
+
+  if (dashboardType === "candidate") {
+    return <CandidateDashboard />;
   }
 
   return (
