@@ -22,6 +22,8 @@ import {
   type OfferLetterFormFields,
 } from './OfferLetterGeneratorWorkspace'
 import ShareOfferModal from './ShareOfferModal'
+import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
+import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
@@ -215,6 +217,7 @@ const OffersPlacement = () => {
   const [letterShareMessage, setLetterShareMessage] = useState<string | null>(null)
   const [letterForm, setLetterForm] = useState<OfferLetterFormFields>(() => createEmptyOfferLetterForm())
   const [letterBusy, setLetterBusy] = useState(false)
+  const letterFormSnapshotRef = useRef('')
 
   const letterJobPostingDoc = useMemo(
     () => combinedJobPostingDocText(letterModalOffer?.job) ?? null,
@@ -326,6 +329,7 @@ const OffersPlacement = () => {
       supEmail: o.supervisor?.email || 'jason@dharwinbusinesssolutions.com',
     }
     setLetterForm(base)
+    letterFormSnapshotRef.current = JSON.stringify(base)
     const needRoleDefaults = !base.rolesText.trim()
     const needTrainingDefaults = isIntern && !base.trainingText.trim()
     if (needRoleDefaults || needTrainingDefaults) {
@@ -377,6 +381,45 @@ const OffersPlacement = () => {
     }, 1200)
     return () => window.clearTimeout(t)
   }, [letterModalOffer])
+
+  const editModalDirty =
+    !!editOfferModal &&
+    !!editStatus &&
+    editStatus !== offerStatusForEditModal(editOfferModal);
+  const {
+    containerRef: editModalContainerRef,
+    backdropProps: editModalBackdropProps,
+    requestClose: requestCloseEditModal,
+    confirmDiscardOpen: editConfirmDiscardOpen,
+    confirmDiscard: confirmEditDiscard,
+    cancelDiscard: cancelEditDiscard,
+  } = useModalBehavior({
+    isOpen: !!editOfferModal,
+    onClose: () => setEditOfferModal(null),
+    isDirty: editModalDirty,
+  });
+
+  const letterModalDirty =
+    !!letterModalOffer &&
+    letterFormSnapshotRef.current !== '' &&
+    JSON.stringify(letterForm) !== letterFormSnapshotRef.current;
+  const {
+    containerRef: letterModalContainerRef,
+    backdropProps: letterModalBackdropProps,
+    requestClose: requestCloseLetterModal,
+    confirmDiscardOpen: letterConfirmDiscardOpen,
+    confirmDiscard: confirmLetterDiscard,
+    cancelDiscard: cancelLetterDiscard,
+  } = useModalBehavior({
+    isOpen: !!letterModalOffer,
+    onClose: () => {
+      setLetterModalOffer(null);
+      setShareOpen(false);
+      setLetterShareMessage(null);
+      letterFormSnapshotRef.current = '';
+    },
+    isDirty: letterModalDirty,
+  });
 
   const handleUpdateStatus = async () => {
     if (!editOfferModal || !editStatus) return
@@ -1687,9 +1730,9 @@ const OffersPlacement = () => {
           aria-modal="true"
           aria-labelledby="edit-offer-modal-title"
           style={{ zIndex: 80 }}
+          {...editModalBackdropProps}
         >
-          <div className="hs-overlay-backdrop ti-modal-backdrop backdrop-blur-[1px]" onClick={() => setEditOfferModal(null)} />
-          <div className="hs-overlay-open:mt-7 ti-modal-box !max-w-[26rem]">
+          <div ref={editModalContainerRef} className="hs-overlay-open:mt-7 ti-modal-box !max-w-[26rem]">
             <div className="ti-modal-content overflow-hidden !rounded-lg shadow-lg ring-1 ring-slate-900/[0.06] dark:ring-white/[0.06]">
               <div className="ti-modal-header !items-start gap-3 border-slate-200/90 !pb-3 !pt-4 dark:border-white/10">
                 <div className="min-w-0 flex-1">
@@ -1704,7 +1747,7 @@ const OffersPlacement = () => {
                   type="button"
                   className="ti-modal-close-btn !mt-0.5 shrink-0"
                   aria-label="Close"
-                  onClick={() => setEditOfferModal(null)}
+                  onClick={requestCloseEditModal}
                 >
                   <i className="ri-close-line text-lg" aria-hidden />
                 </button>
@@ -1749,7 +1792,7 @@ const OffersPlacement = () => {
                 </div>
               </div>
               <div className="ti-modal-footer !gap-3 !border-slate-200/90 !py-3.5 dark:!border-white/10">
-                <button type="button" className="ti-btn ti-btn-light min-w-[5.5rem] font-medium" onClick={() => setEditOfferModal(null)}>
+                <button type="button" className="ti-btn ti-btn-light min-w-[5.5rem] font-medium" onClick={requestCloseEditModal}>
                   Cancel
                 </button>
                 <button
@@ -1766,6 +1809,8 @@ const OffersPlacement = () => {
         </div>
       )}
 
+      <ConfirmDiscardDialog open={editConfirmDiscardOpen} onConfirm={confirmEditDiscard} onCancel={cancelEditDiscard} />
+
       {/* Offer letter generator (embedded UI — same layout as standalone tool; saves to this offer) */}
       {letterModalOffer && (
         <div
@@ -1773,7 +1818,9 @@ const OffersPlacement = () => {
           role="dialog"
           aria-modal="true"
           aria-label="Offer letter generator"
+          {...letterModalBackdropProps}
         >
+          <div ref={letterModalContainerRef} className="flex min-h-0 flex-1 flex-col">
           <OfferLetterGeneratorWorkspace
             offerCode={letterModalOffer.offerCode || '—'}
             jobTitle={letterModalOffer.job?.title || ''}
@@ -1785,11 +1832,7 @@ const OffersPlacement = () => {
             lastSavedLabel={
               letterModalOffer.updatedAt ? new Date(letterModalOffer.updatedAt).toLocaleString() : null
             }
-            onClose={() => {
-              setLetterModalOffer(null)
-              setShareOpen(false)
-              setLetterShareMessage(null)
-            }}
+            onClose={requestCloseLetterModal}
             onSaveLetter={() => void handleSaveOfferLetter()}
             showShareCta={Boolean(letterModalOffer?.offerLetterGeneratedAt)}
             onShareWithCandidate={() => setShareOpen(true)}
@@ -1809,8 +1852,11 @@ const OffersPlacement = () => {
               }}
             />
           ) : null}
+          </div>
         </div>
       )}
+
+      <ConfirmDiscardDialog open={letterConfirmDiscardOpen} onConfirm={confirmLetterDiscard} onCancel={cancelLetterDiscard} />
 
       {/* View Offer Modal */}
       {/* View History Modal */}
