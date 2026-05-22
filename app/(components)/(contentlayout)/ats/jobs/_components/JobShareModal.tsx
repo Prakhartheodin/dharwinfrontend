@@ -12,8 +12,9 @@ interface JobShareModalProps {
   getJobPublicUrl: (jobId: string) => string
   handleCopyUrl: (url: string) => void
   handleShareWhatsApp: (job: any) => void
-  handleSendEmail: () => void
+  handleSendEmail: () => void | Promise<void>
   shareEmailSending: boolean
+  shareEmailError?: string | null
   /** True while HMAC `?ref=` is being fetched (URL unique to you + this job) */
   personalLinkLoading?: boolean
   /** False until `ref` token is loaded — WhatsApp needs this so the shared text matches Copy */
@@ -34,6 +35,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
   handleShareWhatsApp,
   handleSendEmail,
   shareEmailSending,
+  shareEmailError = null,
   personalLinkLoading = false,
   shareReferralReady = false,
   onCloseShareModal,
@@ -141,15 +143,21 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                         </button>
                       ) : (
                         <div className="space-y-2">
+                          {shareEmailError ? (
+                            <div className="rounded bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                              {shareEmailError}
+                            </div>
+                          ) : null}
                           <input
                             type="email"
                             className="form-control"
                             placeholder="Enter email address"
                             value={shareEmail}
                             onChange={(e) => setShareEmail(e.target.value)}
-                            onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSendEmail()
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !shareEmailSending) {
+                                e.preventDefault()
+                                void handleSendEmail()
                               }
                             }}
                           />
@@ -157,7 +165,7 @@ const JobShareModal: React.FC<JobShareModalProps> = ({
                             <button
                               type="button"
                               className="ti-btn ti-btn-primary flex-1"
-                              onClick={handleSendEmail}
+                              onClick={() => void handleSendEmail()}
                               disabled={!shareEmail.trim() || shareEmailSending}
                             >
                               <i className="ri-send-plane-line me-1"></i>

@@ -45,11 +45,29 @@ export function resolveDownloadUrlForBrowser(url: string): string {
   return url;
 }
 
+/** Default for share/email and other user-triggered mutations that must not hang the UI. */
+export const API_MUTATION_TIMEOUT_MS = 30000;
+
 export const apiClient = axios.create({
   baseURL: normalizeApiBase(),
   withCredentials: true,
   headers: { "Content-Type": "application/json" },
+  timeout: 0,
 });
+
+/** Human-readable message from axios or generic errors (for toasts/modals). */
+export function getApiErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    if (err.code === "ECONNABORTED") {
+      return "Request timed out. The server or email service may be slow — try again.";
+    }
+    const data = err.response?.data as { message?: string } | undefined;
+    if (data?.message && String(data.message).trim()) return String(data.message).trim();
+    if (err.message) return err.message;
+  }
+  if (err instanceof Error && err.message) return err.message;
+  return fallback;
+}
 
 apiClient.interceptors.request.use((cfg: InternalAxiosRequestConfig) => {
   const geo = getActivityLogClientGeoHeaderValue();

@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { shareOfferWithCandidate } from '@/shared/lib/api/offers';
+import { getApiErrorMessage } from '@/shared/lib/api/client';
 import type { Offer } from '@/shared/lib/api/offers';
 import { useModalBehavior } from '@/shared/hooks/useModalBehavior';
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog';
@@ -45,8 +46,16 @@ export default function ShareOfferModal({ offer, onClose, onSent }: ShareOfferMo
       return;
     }
     setSubmitting(true);
+    const offerId = String((offer as { _id?: string; id?: string })._id ?? offer.id ?? '').trim();
+    if (!offerId) {
+      setError('Offer id is missing. Close and reopen this dialog.');
+      setSubmitting(false);
+      return;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[share-offer] request start', { offerId, to: to.trim() });
+    }
     try {
-      const offerId = (offer as { _id?: string; id?: string })._id ?? offer.id ?? '';
       const res = await shareOfferWithCandidate(offerId, {
         to: to.trim(),
         cc: parseEmails(ccText),
@@ -54,10 +63,20 @@ export default function ShareOfferModal({ offer, onClose, onSent }: ShareOfferMo
         subject,
         body,
       });
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[share-offer] response', res);
+      }
       onSent(res.sharedTo);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to send offer.');
+      const msg = getApiErrorMessage(e, 'Failed to send offer.');
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[share-offer] request failed', e);
+      }
+      setError(msg);
     } finally {
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[share-offer] finally — reset sending state');
+      }
       setSubmitting(false);
     }
   };

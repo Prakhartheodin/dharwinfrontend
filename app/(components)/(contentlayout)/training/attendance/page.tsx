@@ -12,6 +12,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { downloadCsv } from "@/shared/lib/csv-export";
 import AdminTrackView from "./_components/AdminTrackView";
 import AttendanceDashboard from "./_components/AttendanceDashboard";
+import HolidayPunchBlockNotice from "./_components/HolidayPunchBlockNotice";
 import { capDayTotalMs, countsTowardWorkedMs, sessionDurationMsForDisplay } from "@/shared/lib/attendance-display";
 import Swal from "sweetalert2";
 
@@ -178,6 +179,8 @@ export default function AttendanceTracking() {
     notes: "",
   });
   const [submittingLeaveRequest, setSubmittingLeaveRequest] = useState(false);
+  const [todayIsHoliday, setTodayIsHoliday] = useState(false);
+  const [todayHolidayTitle, setTodayHolidayTitle] = useState<string | null>(null);
 
   /* ─── data fetching ─── */
   const fetchStatus = useCallback(async (id: string) => {
@@ -263,6 +266,34 @@ export default function AttendanceTracking() {
   }, [myStudentId, myAttendanceViewMode, myCalendarYear, myCalendarMonth, fetchStatus, refetchMyMonth]);
 
   useEffect(() => {
+    if (!myStudentId) {
+      setTodayIsHoliday(false);
+      setTodayHolidayTitle(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const holidayData = await attendanceApi.getMyUpcomingHolidays({
+          limit: 5,
+          timezone: getDetectedTimezone(),
+        });
+        if (cancelled) return;
+        setTodayIsHoliday(Boolean(holidayData.todayIsHoliday));
+        setTodayHolidayTitle(holidayData.todayHolidayTitle ?? null);
+      } catch {
+        if (!cancelled) {
+          setTodayIsHoliday(false);
+          setTodayHolidayTitle(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [myStudentId]);
+
+  useEffect(() => {
     if (!status?.isPunchedIn || !status?.record?.punchIn) { setElapsedDisplay(""); return; }
     const update = () => {
       const start = new Date(status!.record!.punchIn).getTime();
@@ -309,6 +340,14 @@ export default function AttendanceTracking() {
 
   const handlePunchIn = async () => {
     if (!myStudentId) return;
+    if (todayIsHoliday) {
+      setError(
+        todayHolidayTitle
+          ? `Punch in/out is not allowed on ${todayHolidayTitle}.`
+          : "Punch in/out is not allowed on assigned holidays."
+      );
+      return;
+    }
     setPunchLoading(true);
     setError(null);
     try {
@@ -328,6 +367,14 @@ export default function AttendanceTracking() {
 
   const handlePunchOut = async () => {
     if (!myStudentId) return;
+    if (todayIsHoliday) {
+      setError(
+        todayHolidayTitle
+          ? `Punch in/out is not allowed on ${todayHolidayTitle}.`
+          : "Punch in/out is not allowed on assigned holidays."
+      );
+      return;
+    }
     setPunchLoading(true);
     setError(null);
     try {
@@ -628,6 +675,7 @@ export default function AttendanceTracking() {
   }, [filteredHistoryList]);
 
   const canPunch = !!myStudentId;
+  const punchBlockedByHoliday = canPunch && todayIsHoliday;
   const isCandidateOnly = canPunch && !canTrackAll;
 
   /* Calendar */
@@ -805,7 +853,11 @@ export default function AttendanceTracking() {
                       ) : null}
                     </div>
                   </div>
-                  <div className="box-body">
+                  <div className="box-body space-y-4">
+                    <HolidayPunchBlockNotice
+                      todayIsHoliday={todayIsHoliday}
+                      todayHolidayTitle={todayHolidayTitle}
+                    />
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                       {/* Status indicator */}
                       <div className={"flex-shrink-0 flex items-center justify-center h-20 w-20 rounded-full border-[3px] " + (status?.isPunchedIn ? "border-success bg-success/5" : "border-defaultborder bg-gray-50 dark:bg-black/10")}>
@@ -840,12 +892,29 @@ export default function AttendanceTracking() {
                           <button
                             type="button"
                             onClick={status?.isPunchedIn ? handlePunchOut : handlePunchIn}
-                            disabled={punchLoading}
-                            className={(status?.isPunchedIn ? "ti-btn-danger" : "ti-btn-success") + " ti-btn ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"}
-                            title={status?.isPunchedIn ? "Punch Out" : "Punch In"}
+                            disabled={punchLoading || punchBlockedByHoliday}
+                            className={
+                              (punchBlockedByHoliday
+                                ? "ti-btn-light opacity-60 cursor-not-allowed"
+                                : status?.isPunchedIn
+                                  ? "ti-btn-danger"
+                                  : "ti-btn-success") +
+                              " ti-btn ti-btn-wave inline-flex items-center gap-1.5 !py-2 !px-5 !text-[0.8125rem] whitespace-nowrap"
+                            }
+                            title={
+                              punchBlockedByHoliday
+                                ? todayHolidayTitle
+                                  ? `${todayHolidayTitle} — punch disabled`
+                                  : "Holiday — punch disabled"
+                                : status?.isPunchedIn
+                                  ? "Punch Out"
+                                  : "Punch In"
+                            }
                           >
                             {punchLoading ? (
                               <span className="inline-flex items-center gap-2"><span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" /> {status?.isPunchedIn ? "Punching Out..." : "Punching In..."}</span>
+                            ) : punchBlockedByHoliday ? (
+                              <span className="inline-flex items-center gap-1.5"><i className="ri-calendar-close-line" /> Holiday</span>
                             ) : status?.isPunchedIn ? (
                               <span className="inline-flex items-center gap-1.5"><i className="ri-logout-box-r-line" /> Punch Out</span>
                             ) : (
