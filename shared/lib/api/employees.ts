@@ -47,6 +47,7 @@ export interface CandidateListItem {
   companyEmailProvider?: "gmail" | "outlook" | "unknown" | "" | string;
   /** Denormalized title from job-application / referral flow; used when aligning HRMS position to applied role. */
   referralJobTitle?: string | null;
+  compensationType?: 'paid' | 'unpaid';
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
