@@ -24,6 +24,7 @@ import {
   countsTowardWorkedMs,
   sessionDurationMsForDisplay,
 } from "@/shared/lib/attendance-display";
+import HolidayPunchBlockNotice from "../../_components/HolidayPunchBlockNotice";
 
 const POLL_INTERVAL_MS = 30000;
 const POLL_INTERVAL_PUNCHED_IN_MS = 15000;
@@ -167,6 +168,8 @@ export default function StudentAttendancePage() {
     notes: "",
   });
   const [addingLeave, setAddingLeave] = useState(false);
+  const [todayIsHoliday, setTodayIsHoliday] = useState(false);
+  const [todayHolidayTitle, setTodayHolidayTitle] = useState<string | null>(null);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
   const { user, isPlatformSuperUser, isAdministrator: authIsAdministrator } = useAuth();
@@ -279,6 +282,37 @@ export default function StudentAttendancePage() {
     return () => { cancelled = true; };
   }, [user?.roleIds, isPlatformSuperUser, authIsAdministrator]);
 
+  const isOwnAttendance = myStudentId != null && myStudentId === studentId;
+  const punchBlockedByHoliday = isOwnAttendance && todayIsHoliday;
+
+  useEffect(() => {
+    if (!isOwnAttendance) {
+      setTodayIsHoliday(false);
+      setTodayHolidayTitle(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const holidayData = await attendanceApi.getMyUpcomingHolidays({
+          limit: 5,
+          timezone: getDetectedTimezone(),
+        });
+        if (cancelled) return;
+        setTodayIsHoliday(Boolean(holidayData.todayIsHoliday));
+        setTodayHolidayTitle(holidayData.todayHolidayTitle ?? null);
+      } catch {
+        if (!cancelled) {
+          setTodayIsHoliday(false);
+          setTodayHolidayTitle(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwnAttendance]);
+
   useEffect(() => {
     if (!studentId) return;
     fetchStatus();
@@ -321,6 +355,14 @@ export default function StudentAttendancePage() {
 
   const handlePunchIn = async () => {
     if (!studentId) return;
+    if (punchBlockedByHoliday) {
+      setError(
+        todayHolidayTitle
+          ? `Punch in/out is not allowed on ${todayHolidayTitle}.`
+          : "Punch in/out is not allowed on assigned holidays."
+      );
+      return;
+    }
     setPunchLoading(true);
     setError(null);
     try {
@@ -361,6 +403,14 @@ export default function StudentAttendancePage() {
 
   const handlePunchOut = async () => {
     if (!studentId) return;
+    if (punchBlockedByHoliday) {
+      setError(
+        todayHolidayTitle
+          ? `Punch in/out is not allowed on ${todayHolidayTitle}.`
+          : "Punch in/out is not allowed on assigned holidays."
+      );
+      return;
+    }
     setPunchLoading(true);
     setError(null);
     try {
@@ -1147,6 +1197,10 @@ export default function StudentAttendancePage() {
                   </div>
                 </div>
                 <div className="box-body space-y-4">
+                  <HolidayPunchBlockNotice
+                    todayIsHoliday={todayIsHoliday}
+                    todayHolidayTitle={todayHolidayTitle}
+                  />
                   <div className="flex flex-wrap items-center gap-3">
                     <span
                       className={`badge ${status?.isPunchedIn ? "bg-success/10 text-success" : "bg-defaultborder text-defaulttextcolor"}`}
@@ -1211,22 +1265,61 @@ export default function StudentAttendancePage() {
                         )}
                     </div>
                   ) : null}
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      className="ti-btn ti-btn-primary"
+                      className={`ti-btn ti-btn-sm min-w-[6.5rem] ${
+                        punchBlockedByHoliday
+                          ? "ti-btn-light opacity-60 cursor-not-allowed"
+                          : "ti-btn-primary"
+                      }`}
                       onClick={handlePunchIn}
-                      disabled={punchLoading || status?.isPunchedIn}
+                      disabled={punchLoading || status?.isPunchedIn || punchBlockedByHoliday}
+                      title={
+                        punchBlockedByHoliday
+                          ? todayHolidayTitle
+                            ? `${todayHolidayTitle} — punch disabled`
+                            : "Holiday — punch disabled"
+                          : "Punch in"
+                      }
                     >
-                      {punchLoading ? "…" : "Punch In"}
+                      {punchLoading && !status?.isPunchedIn ? (
+                        <i className="ti ti-loader-alt animate-spin text-[1rem]" />
+                      ) : (
+                        <>
+                          <i
+                            className={`ti ${punchBlockedByHoliday ? "ti-calendar-off" : "ti-login"} text-[1rem] me-1`}
+                            aria-hidden
+                          />
+                          Punch In
+                        </>
+                      )}
                     </button>
                     <button
                       type="button"
-                      className="ti-btn ti-btn-outline-danger"
+                      className={`ti-btn ti-btn-sm min-w-[6.5rem] ${
+                        punchBlockedByHoliday
+                          ? "ti-btn-light opacity-60 cursor-not-allowed"
+                          : "ti-btn-outline-danger"
+                      }`}
                       onClick={handlePunchOut}
-                      disabled={punchLoading || !status?.isPunchedIn}
+                      disabled={punchLoading || !status?.isPunchedIn || punchBlockedByHoliday}
+                      title={
+                        punchBlockedByHoliday
+                          ? todayHolidayTitle
+                            ? `${todayHolidayTitle} — punch disabled`
+                            : "Holiday — punch disabled"
+                          : "Punch out"
+                      }
                     >
-                      {punchLoading ? "…" : "Punch Out"}
+                      {punchLoading && status?.isPunchedIn ? (
+                        <i className="ti ti-loader-alt animate-spin text-[1rem]" />
+                      ) : (
+                        <>
+                          <i className="ti ti-logout text-[1rem] me-1" aria-hidden />
+                          Punch Out
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>

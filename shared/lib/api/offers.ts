@@ -1,7 +1,7 @@
 "use client";
 
 import { isAxiosError } from "axios";
-import { apiClient } from "@/shared/lib/api/client";
+import { apiClient, API_MUTATION_TIMEOUT_MS } from "@/shared/lib/api/client";
 
 /** Save/validate letter fields on the server; allow extra time on slow networks. */
 const OFFER_LETTER_SAVE_API_TIMEOUT_MS = 120_000;
@@ -270,6 +270,14 @@ export async function shareOfferWithCandidate(
   offerId: string,
   payload: ShareOfferPayload
 ): Promise<{ sharedTo: string }> {
-  const { data } = await apiClient.post<{ sharedTo: string }>(`/offers/${offerId}/share`, payload);
+  const id = String(offerId || "").trim();
+  if (!id) {
+    throw new Error("Offer id is missing — close the dialog and try again.");
+  }
+  const { data } = await apiClient.post<{ sharedTo: string }>(
+    `/offers/${id}/share`,
+    payload,
+    { timeout: API_MUTATION_TIMEOUT_MS }
+  );
   return data;
 }

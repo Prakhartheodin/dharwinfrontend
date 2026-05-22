@@ -29,6 +29,7 @@ import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
 import { createJobShareReferralLink } from '@/shared/lib/api/referralLeads'
+import { getApiErrorMessage } from '@/shared/lib/api/client'
 import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
 import {
   formatJobDescriptionForDisplay,
@@ -142,6 +143,7 @@ const Jobs = () => {
   const [jobShareRefLoading, setJobShareRefLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
+  const [shareEmailError, setShareEmailError] = useState<string | null>(null)
   const [showEmailInput, setShowEmailInput] = useState(false)
   /** Default: newest jobs first (matches postingDate / createdAt). */
   const [selectedSort, setSelectedSort] = useState<string>('newest-first')
@@ -453,16 +455,36 @@ const Jobs = () => {
   // Handle send email
   const [shareEmailSending, setShareEmailSending] = useState(false)
   const handleSendEmail = async () => {
-    if (!shareEmail.trim() || !shareJob?.id) return
+    const jobId = String(shareJob?.id ?? shareJob?._id ?? '').trim()
+    const to = shareEmail.trim()
+    if (!to || !jobId) {
+      setShareEmailError(!jobId ? 'Job id is missing. Close and reopen Share.' : 'Enter an email address.')
+      return
+    }
+    setShareEmailError(null)
     setShareEmailSending(true)
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('[share-email] request start', { jobId, to })
+    }
     try {
-      await shareJobByEmail(shareJob.id, shareEmail.trim())
-      alert('Job shared successfully')
+      const res = await shareJobByEmail(jobId, to)
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[share-email] response', res)
+      }
       setShareEmail('')
       setShowEmailInput(false)
-    } catch (err: any) {
-      alert(err?.response?.data?.message || 'Failed to share job')
+      setShareEmailError(null)
+      alert(res?.message || 'Job shared successfully')
+    } catch (err: unknown) {
+      const msg = getApiErrorMessage(err, 'Failed to share job')
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('[share-email] request failed', err)
+      }
+      setShareEmailError(msg)
     } finally {
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('[share-email] finally — reset sending state')
+      }
       setShareEmailSending(false)
     }
   }
@@ -487,6 +509,7 @@ const Jobs = () => {
     setShareJob(job)
     setShowEmailInput(false)
     setShareEmail('')
+    setShareEmailError(null)
     setJobShareRefToken(null)
     setJobShareRefLoading(true)
     void createJobShareReferralLink(String(job.id))
@@ -2078,6 +2101,7 @@ const Jobs = () => {
         handleShareWhatsApp={handleShareWhatsApp}
         handleSendEmail={handleSendEmail}
         shareEmailSending={shareEmailSending}
+        shareEmailError={shareEmailError}
         personalLinkLoading={jobShareRefLoading}
         shareReferralReady={Boolean(jobShareRefToken)}
         onCloseShareModal={() => {

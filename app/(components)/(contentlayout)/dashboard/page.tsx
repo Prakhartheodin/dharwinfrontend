@@ -32,7 +32,9 @@ import {
   punchOutAttendance,
   punchInAttendanceMe,
   punchOutAttendanceMe,
+  getMyUpcomingHolidays,
   type PunchStatusResponse,
+  type AssignedHolidayItem,
 } from "@/shared/lib/api/attendance";
 import {
   listMeetings,
@@ -54,6 +56,7 @@ import {
 import { hasSalesAgentRole } from "@/shared/lib/roles";
 import SalesAgentDashboard from "./_components/SalesAgentDashboard";
 import CandidateDashboard from "./_components/CandidateDashboard";
+import UpcomingHolidaysCard from "./_components/UpcomingHolidaysCard";
 import { usePageCapabilities } from "@/shared/hooks/use-page-capabilities";
 import type { ApexOptions } from "apexcharts";
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
@@ -439,6 +442,11 @@ export default function DashboardPage() {
     null
   );
   const [punchLoading, setPunchLoading] = useState(false);
+  const [punchError, setPunchError] = useState<string | null>(null);
+  const [upcomingHolidays, setUpcomingHolidays] = useState<AssignedHolidayItem[]>([]);
+  const [todayIsHoliday, setTodayIsHoliday] = useState(false);
+  const [todayHolidayTitle, setTodayHolidayTitle] = useState<string | null>(null);
+  const [holidaysLoading, setHolidaysLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -449,6 +457,14 @@ export default function DashboardPage() {
     permissionsLoaded &&
     hasPermissionForPath(permissions ?? [], ATTENDANCE_PERMISSION_PREFIX) &&
     attendanceStudent != null;
+
+  const showUpcomingHolidays =
+    !isAdministrator &&
+    permissionsLoaded &&
+    hasPermissionForPath(permissions ?? [], ATTENDANCE_PERMISSION_PREFIX) &&
+    attendanceStudent != null;
+
+  const punchBlockedByHoliday = todayIsHoliday;
 
   /* Only fetch ATS data (jobs, applications, analytics, candidates) when user has permission to avoid 403 for non-ATS roles */
   const hasAtsJobsAccess =
@@ -578,6 +594,28 @@ export default function DashboardPage() {
       } catch {
         /* silent */
       }
+      if (
+        !isAdministrator &&
+        hasPermissionForPath(permissions ?? [], ATTENDANCE_PERMISSION_PREFIX)
+      ) {
+        setHolidaysLoading(true);
+        try {
+          const tz =
+            typeof Intl !== "undefined" && Intl.DateTimeFormat?.().resolvedOptions?.().timeZone
+              ? Intl.DateTimeFormat().resolvedOptions().timeZone
+              : "UTC";
+          const holidayData = await getMyUpcomingHolidays({ limit: 5, timezone: tz });
+          setUpcomingHolidays(holidayData.upcoming ?? []);
+          setTodayIsHoliday(Boolean(holidayData.todayIsHoliday));
+          setTodayHolidayTitle(holidayData.todayHolidayTitle ?? null);
+        } catch {
+          setUpcomingHolidays([]);
+          setTodayIsHoliday(false);
+          setTodayHolidayTitle(null);
+        } finally {
+          setHolidaysLoading(false);
+        }
+      }
     }
 
     setLoading(false);
@@ -588,6 +626,8 @@ export default function DashboardPage() {
     hasTrainingAnalyticsAccess,
     isSalesAgentOnly,
     permissionsLoaded,
+    isAdministrator,
+    permissions,
   ]);
 
   useEffect(() => {
@@ -691,12 +731,21 @@ export default function DashboardPage() {
   /* ---- Punch in/out handler ---- */
   const handlePunch = async () => {
     if (!attendanceStudent) return;
+    if (punchBlockedByHoliday) {
+      setPunchError(
+        todayHolidayTitle
+          ? `Punch in/out is not allowed on ${todayHolidayTitle}.`
+          : "Punch in/out is not allowed on assigned holidays."
+      );
+      return;
+    }
     setPunchLoading(true);
+    setPunchError(null);
     try {
       const tz = typeof Intl !== "undefined" && Intl.DateTimeFormat?.().resolvedOptions?.().timeZone ? Intl.DateTimeFormat().resolvedOptions().timeZone : "UTC";
       if (attendanceStudent.type === "user") {
         if (punchStatus?.isPunchedIn) {
-          await punchOutAttendanceMe({ punchOutTime: new Date().toISOString() });
+          await punchOutAttendanceMe({ punchOutTime: new Date().toISOString(), timezone: tz });
         } else {
           await punchInAttendanceMe({ timezone: tz });
         }
@@ -704,15 +753,18 @@ export default function DashboardPage() {
         setPunchStatus(status);
       } else {
         if (punchStatus?.isPunchedIn) {
-          await punchOutAttendance(attendanceStudent.id, { punchOutTime: new Date().toISOString() });
+          await punchOutAttendance(attendanceStudent.id, { punchOutTime: new Date().toISOString(), timezone: tz });
         } else {
           await punchInAttendance(attendanceStudent.id, { timezone: tz });
         }
         const status = await getPunchInOutStatus(attendanceStudent.id);
         setPunchStatus(status);
       }
-    } catch {
-      /* silent */
+    } catch (e: unknown) {
+      setPunchError(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+          "Could not update punch status."
+      );
     } finally {
       setPunchLoading(false);
     }
@@ -751,14 +803,29 @@ export default function DashboardPage() {
   /*  RENDER                                                           */
   /* ================================================================ */
 
+  if (capabilitiesLoading) {
+    return (
+      <Fragment>
+        <Seo title="Dashboard" />
+        <div className="p-6 space-y-4">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </Fragment>
+    );
+  }
+
   if (isSalesAgentOnly || dashboardType === "salesAgent") {
     return <SalesAgentDashboard />;
   }
 
+  /** ATS applicants (Candidate role) — job applications, browse jobs. Not HRMS Employee staff. */
   if (dashboardType === "candidate") {
     return <CandidateDashboard />;
   }
 
+  /** Employee role and other internal users use the HRMS dashboard (tasks, attendance, ATS panels by permission). */
   return (
     <Fragment>
       <Seo title="Dashboard" />
@@ -793,12 +860,31 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={handlePunch}
-                disabled={punchLoading}
-                className={`ti-btn ti-btn-sm shrink-0 whitespace-nowrap min-w-[7rem] px-3 ${punchStatus?.isPunchedIn ? "ti-btn-danger" : "ti-btn-success"}`}
-                title={punchStatus?.isPunchedIn ? "Punch out" : "Punch in"}
+                disabled={punchLoading || punchBlockedByHoliday}
+                className={`ti-btn ti-btn-sm shrink-0 whitespace-nowrap min-w-[7rem] px-3 ${
+                  punchBlockedByHoliday
+                    ? "ti-btn-light opacity-60 cursor-not-allowed"
+                    : punchStatus?.isPunchedIn
+                      ? "ti-btn-danger"
+                      : "ti-btn-success"
+                }`}
+                title={
+                  punchBlockedByHoliday
+                    ? todayHolidayTitle
+                      ? `${todayHolidayTitle} — punch disabled`
+                      : "Holiday — punch disabled"
+                    : punchStatus?.isPunchedIn
+                      ? "Punch out"
+                      : "Punch in"
+                }
               >
                 {punchLoading ? (
                   <i className="ti ti-loader-alt animate-spin text-[1rem]" />
+                ) : punchBlockedByHoliday ? (
+                  <>
+                    <i className="ti ti-calendar-off text-[1rem] me-1.5" />
+                    Holiday
+                  </>
                 ) : punchStatus?.isPunchedIn ? (
                   <>
                     <i className="ti ti-logout text-[1rem] me-1.5" />
@@ -827,6 +913,12 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {punchError && (
+        <div className="mb-4 p-3 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
+          {punchError}
+        </div>
+      )}
 
       {/* Layout from dharwinone_frontend reference: xxl:9 | xxl:3, then full-width Projects Summary */}
       <div className="grid grid-cols-12 gap-6">
@@ -1191,6 +1283,16 @@ export default function DashboardPage() {
         {/* RIGHT COLUMN: Track CTA + Recent Jobs */}
         <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
           <div className="flex flex-col gap-6 flex-1 min-h-0">
+            {showUpcomingHolidays && (
+              <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
+                <UpcomingHolidaysCard
+                  loading={holidaysLoading}
+                  todayIsHoliday={todayIsHoliday}
+                  todayHolidayTitle={todayHolidayTitle}
+                  holidays={upcomingHolidays}
+                />
+              </div>
+            )}
             <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
               <div className="box shadow-none projects-tracking-card overflow-hidden text-center">
                 <div className="box-body">

@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { apiClient, normalizeApiBase } from "@/shared/lib/api/client";
+import { apiClient, API_MUTATION_TIMEOUT_MS, normalizeApiBase } from "@/shared/lib/api/client";
 
 export type CompanySizeBucket =
   | '1-10'
@@ -204,7 +204,15 @@ export async function applyToJob(jobId: string, candidateId: string): Promise<un
 }
 
 export async function shareJobByEmail(jobId: string, to: string, message?: string): Promise<{ message: string }> {
-  const { data } = await apiClient.post(`/jobs/${jobId}/share-email`, { to, message });
+  const id = String(jobId || "").trim();
+  if (!id) {
+    throw new Error("Job id is missing — close the share dialog and try again.");
+  }
+  const { data } = await apiClient.post<{ message: string }>(
+    `/jobs/${id}/share-email`,
+    { to, message },
+    { timeout: API_MUTATION_TIMEOUT_MS }
+  );
   return data;
 }
 

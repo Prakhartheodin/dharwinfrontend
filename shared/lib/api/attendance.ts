@@ -90,6 +90,7 @@ export interface PunchInBody {
 
 export interface PunchOutBody {
   punchOutTime?: string;
+  timezone?: string;
   notes?: string;
 }
 
@@ -184,6 +185,37 @@ export async function getAttendanceStatisticsMe(
     params,
   });
   return data;
+}
+
+export interface AssignedHolidayItem {
+  id: string;
+  title: string;
+  date: string;
+  endDate?: string | null;
+}
+
+export interface UpcomingHolidaysResponse {
+  success?: boolean;
+  data: {
+    timezone: string;
+    todayIsHoliday: boolean;
+    todayHolidayTitle?: string | null;
+    upcoming: AssignedHolidayItem[];
+  };
+}
+
+/** Assigned upcoming holidays for the signed-in employee/student. */
+export async function getMyUpcomingHolidays(params?: {
+  limit?: number;
+  timezone?: string;
+}): Promise<UpcomingHolidaysResponse["data"]> {
+  const search = new URLSearchParams();
+  if (params?.limit != null) search.set("limit", String(params.limit));
+  if (params?.timezone) search.set("timezone", params.timezone);
+  const qs = search.toString();
+  const url = qs ? `/training/attendance/me/upcoming-holidays?${qs}` : "/training/attendance/me/upcoming-holidays";
+  const { data } = await apiClient.get<UpcomingHolidaysResponse>(url);
+  return data.data;
 }
 
 export async function listAttendance(

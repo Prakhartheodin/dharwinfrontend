@@ -57,7 +57,7 @@ export async function getMyPermissions(): Promise<MyPermissionsResponse | null> 
 }
 
 export interface PageCapabilitiesResponse {
-  dashboardType: "admin" | "recruiter" | "salesAgent" | "candidate" | "default";
+  dashboardType: "admin" | "recruiter" | "salesAgent" | "employee" | "candidate" | "default";
   widgets: string[];
   allowedEndpoints: string[];
   permissionsVersion: string;
