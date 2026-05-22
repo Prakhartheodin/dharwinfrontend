@@ -14,15 +14,32 @@ type RouteFn = (n: Notification) => string;
 const meta = (n: Notification, key: string): unknown =>
   (n.metadata && typeof n.metadata === "object" ? (n.metadata as Record<string, unknown>)[key] : undefined);
 
+/** Absolute URLs (legacy) → pathname+search for client-side router.push. */
+export function normalizeNotificationLink(link: unknown): string | null {
+  if (!link || typeof link !== "string") return null;
+  const trimmed = link.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("/")) return trimmed;
+  try {
+    const u = new URL(trimmed);
+    const path = u.pathname || "/";
+    return `${path}${u.search || ""}`;
+  } catch {
+    return null;
+  }
+}
+
+const meetingRoute: RouteFn = (n) => {
+  if (meta(n, "navTarget") === "interviews_list") return "/ats/interviews";
+  if (meta(n, "navTarget") === "meetings_list") return "/communication/meetings";
+  const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "meetingId"));
+  if (id) return `/join/room?room=${encodeURIComponent(id)}`;
+  return meta(n, "meetingKind") === "internal" ? "/communication/meetings" : "/ats/interviews";
+};
+
 const ROUTE_MAP: Record<string, RouteFn> = {
-  meeting: (n) => {
-    const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "meetingId"));
-    return id ? `/meeting/${id}` : "/meeting";
-  },
-  meeting_reminder: (n) => {
-    const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "meetingId"));
-    return id ? `/meeting/${id}` : "/meeting";
-  },
+  meeting: meetingRoute,
+  meeting_reminder: meetingRoute,
   chat_message: (n) => {
     const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "conversationId"));
     return id ? `/communication/chats?conv=${id}` : "/communication/chats";
@@ -75,7 +92,8 @@ const FALLBACK = "/notifications";
 /** Pick the best navigable route for a notification. Always returns a usable path. */
 export function resolveNotificationRoute(n: Notification | null | undefined): string {
   if (!n) return FALLBACK;
-  if (typeof n.link === "string" && n.link.startsWith("/")) return n.link;
+  const normalized = normalizeNotificationLink(n.link);
+  if (normalized) return normalized;
   const fn = ROUTE_MAP[n.type as string];
   if (fn) {
     try {
