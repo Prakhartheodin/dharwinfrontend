@@ -357,6 +357,7 @@ interface FilterState {
   agentIds: string[]
   /** 'current' | 'resigned' | 'all' - default current */
   employmentStatus: 'current' | 'resigned' | 'all'
+  compensationType: '' | 'paid' | 'unpaid'
 }
 
 // Note type for candidate notes
@@ -422,6 +423,7 @@ const Candidates = () => {
     employeeId: '',
     agentIds: [],
     employmentStatus: 'current',
+    compensationType: '',
   })
   /** React-controlled filters panel — Preline HSOverlay often misses registration after SPA navigation */
   const [employeesFilterPanelOpen, setEmployeesFilterPanelOpen] = useState(false)
@@ -507,6 +509,7 @@ const Candidates = () => {
     if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
     params.employmentStatus = filters.employmentStatus
+    if (filters.compensationType) params.compensationType = filters.compensationType
     return params
   }, [filters, pageSize, debouncedSearchName, selectedSort])
 
@@ -1938,6 +1941,7 @@ const Candidates = () => {
     (filters.employeeId !== '' ? 1 : 0) +
     filters.agentIds.length +
     (filters.employmentStatus !== 'current' ? 1 : 0) +
+    (filters.compensationType ? 1 : 0) +
     (debouncedSearchName.trim() ? 1 : 0)
 
   const employmentScopeLabel = useMemo(() => {

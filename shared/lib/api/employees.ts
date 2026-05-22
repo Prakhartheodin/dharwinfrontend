@@ -81,6 +81,7 @@ export interface ListCandidatesParams {
   /** Comma-separated Agent user ids (from agent checklist); OR match on assignedAgent */
   agentIds?: string;
   employmentStatus?: "current" | "resigned" | "all" | "";
+  compensationType?: "paid" | "unpaid";
   page?: number;
   limit?: number;
   sortBy?: string;
