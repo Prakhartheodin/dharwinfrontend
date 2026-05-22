@@ -11,6 +11,15 @@ export type OfferStatus = "Draft" | "Active" | "Sent" | "Under Negotiation" | "A
 /** Must match backend offer letter job types */
 export type OfferLetterJobType = "FT_40" | "PT_25" | "INTERN_UNPAID";
 
+export const JOB_TYPES: { value: OfferLetterJobType; label: string; compensationType: "paid" | "unpaid" }[] = [
+  { value: "FT_40", label: "Full time – 40 hours/week", compensationType: "paid" },
+  { value: "PT_25", label: "Part time – 25 hours/week", compensationType: "paid" },
+  { value: "INTERN_UNPAID", label: "Training / Unpaid Internship (Full Time)", compensationType: "unpaid" },
+];
+
+export const compensationTypeForJobType = (jobType?: OfferLetterJobType): "paid" | "unpaid" =>
+  JOB_TYPES.find((t) => t.value === jobType)?.compensationType ?? "paid";
+
 export interface CtcBreakdown {
   base?: number;
   hra?: number;
@@ -83,6 +92,7 @@ export interface Offer {
   };
   letterDate?: string | null;
   offerLetterGeneratedAt?: string | null;
+  compensationType?: 'paid' | 'unpaid';
   createdBy?: { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;
