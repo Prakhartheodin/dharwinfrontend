@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { createOffer, getOfferLetterDefaults, type Offer, type OfferLetterJobType } from "@/shared/lib/api/offers";
+import { createOffer, getOfferLetterDefaults, JOB_TYPES, compensationTypeForJobType, type Offer, type OfferLetterJobType } from "@/shared/lib/api/offers";
 import { listJobApplications, type JobApplication } from "@/shared/lib/api/jobApplications";
 
 function formatCandidateAddress(c: JobApplication["candidate"] | undefined) {
@@ -126,8 +126,8 @@ export function CreateOfferForm({
       setError("Invalid job application selected");
       return;
     }
-    const isIntern = form.jobType === "INTERN_UNPAID";
-    if (!isIntern && !Number(form.gross)) {
+    const isUnpaid = form.jobType === "INTERN_UNPAID";
+    if (!isUnpaid && !Number(form.gross)) {
       setError("Enter gross CTC, or set job type to Training / Unpaid internship if there is no salary.");
       return;
     }
@@ -165,7 +165,7 @@ export function CreateOfferForm({
         weeklyHours,
         workLocation: form.workLocation.trim() || undefined,
         roleResponsibilities: roleResponsibilities.length ? roleResponsibilities : undefined,
-        trainingOutcomes: isIntern && trainingOutcomes.length > 0 ? trainingOutcomes : undefined,
+        trainingOutcomes: isUnpaidSubmit && trainingOutcomes.length > 0 ? trainingOutcomes : undefined,
         compensationNarrative: form.compensationNarrative.trim() || undefined,
         academicAlignmentNote: form.academicNote.trim() || undefined,
         employmentEligibilityLines: employmentEligibilityLines.length ? employmentEligibilityLines : undefined,
@@ -188,7 +188,7 @@ export function CreateOfferForm({
     }
   };
 
-  const isIntern = form.jobType === "INTERN_UNPAID";
+  const isUnpaid = form.jobType === "INTERN_UNPAID";
   const isModal = variant === "modal";
 
   return (
@@ -287,7 +287,7 @@ export function CreateOfferForm({
         <div>
           <label className="form-label">
             Gross CTC{" "}
-            {isIntern ? <span className="text-gray-500">(0 for unpaid)</span> : <span className="text-danger">*</span>}
+            {isUnpaid ? <span className="text-gray-500">(0 for unpaid)</span> : <span className="text-danger">*</span>}
           </label>
           <div className="flex gap-2">
             <input
@@ -309,6 +309,8 @@ export function CreateOfferForm({
           </div>
         </div>
       </div>
+
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
@@ -358,17 +360,26 @@ export function CreateOfferForm({
                 }));
               }}
             >
-              <option value="FT_40">Full time — 40 hr/week</option>
-              <option value="PT_25">Part time — 25 hr/week</option>
-              <option value="INTERN_UNPAID">Training / Unpaid internship</option>
+              {JOB_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
             </select>
+          </div>
+          <div>
+            <label className="form-label">Compensation</label>
+            <div className={`form-control flex items-center ${isUnpaid ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+              {isUnpaid ? "Unpaid" : "Paid"}{" "}
+              <span className="ms-1 text-xs text-gray-500">(derived from job type)</span>
+            </div>
           </div>
           <div>
             <label className="form-label">Weekly hours (intern)</label>
             <select
               className="form-control"
               value={form.weeklyHours}
-              disabled={!isIntern}
+              disabled={!isUnpaid}
               onChange={(e) =>
                 setForm((f) => ({
                   ...f,
@@ -448,9 +459,11 @@ export function CreateOfferForm({
                 }));
               }}
             >
-              <option value="FT_40">Full time — 40 hr/week</option>
-              <option value="PT_25">Part time — 25 hr/week</option>
-              <option value="INTERN_UNPAID">Training / Unpaid internship</option>
+              {JOB_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
             </select>
           </div>
           <div>
@@ -458,7 +471,7 @@ export function CreateOfferForm({
             <select
               className="form-control"
               value={form.weeklyHours}
-              disabled={!isIntern}
+              disabled={!isUnpaid}
               onChange={(e) =>
                 setForm((f) => ({
                   ...f,
@@ -469,6 +482,13 @@ export function CreateOfferForm({
               <option value={40}>40</option>
               <option value={25}>25</option>
             </select>
+          </div>
+          <div>
+            <label className="form-label">Compensation</label>
+            <div className={`form-control flex items-center ${isUnpaid ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+              {isUnpaid ? "Unpaid" : "Paid"}{" "}
+              <span className="ms-1 text-xs text-gray-500">(derived from job type)</span>
+            </div>
           </div>
           <div>
             <label className="form-label">Location</label>
@@ -488,7 +508,7 @@ export function CreateOfferForm({
             placeholder="Suggested from job title; edit as needed"
           />
         </div>
-        {isIntern && (
+        {isUnpaid && (
           <div>
             <label className="form-label">Training &amp; learning outcomes (one per line)</label>
             <textarea
@@ -498,7 +518,7 @@ export function CreateOfferForm({
             />
           </div>
         )}
-        {!isIntern && (
+        {!isUnpaid && (
           <>
             <div>
               <label className="form-label">Compensation paragraph (optional; USD/INR uses gross above)</label>
