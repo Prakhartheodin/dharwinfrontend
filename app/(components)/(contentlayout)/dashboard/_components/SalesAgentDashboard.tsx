@@ -342,7 +342,7 @@ export default function SalesAgentDashboard(): JSX.Element {
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
                     aria-hidden
                   >
-                    <i className="ri-funnel-line text-lg" />
+                    <i className="ri-filter-3-line text-lg" />
                   </span>
                   <div className="min-w-0">
                     <h2 className="text-base font-semibold text-defaulttextcolor dark:text-white tracking-tight">
@@ -366,7 +366,7 @@ export default function SalesAgentDashboard(): JSX.Element {
                 ) : leads.length === 0 ? (
                   <div className="py-8 text-center">
                     <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary mb-3 ring-1 ring-primary/10">
-                      <i className="ri-funnel-line text-3xl" />
+                      <i className="ri-filter-3-line text-3xl" />
                     </div>
                     <p className="text-sm text-defaulttextcolor/70">
                       No referrals yet. Use{" "}

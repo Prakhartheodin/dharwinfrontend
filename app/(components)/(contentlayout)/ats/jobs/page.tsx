@@ -8,6 +8,8 @@ import JobsFilterPanel from './_components/JobsFilterPanel'
 import JobPreviewPanel from './_components/JobPreviewPanel'
 import JobShareModal from './_components/JobShareModal'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
+import { useAuth } from '@/shared/contexts/auth-context'
+import { hasSalesAgentRole } from '@/shared/lib/roles'
 import {
   listJobs,
   deleteJob,
@@ -83,6 +85,8 @@ function nextExperienceSortToggle(current: string): 'experience-asc' | 'experien
 
 const Jobs = () => {
   const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
+  const { roleNames } = useAuth()
+  const isSalesAgent = hasSalesAgentRole(roleNames)
   const [jobsData, setJobsData] = useState<DisplayJob[]>([])
   /** In-flight GET /jobs (listing type, etc.). */
   const [jobsListFetching, setJobsListFetching] = useState(true)
@@ -751,7 +755,7 @@ const Jobs = () => {
         disableSortBy: true,
         Cell: ({ row }: any) => (
           <div className="flex items-center justify-center gap-2">
-            {canEdit && row.original.jobOrigin !== 'external' && (
+            {canEdit && !isSalesAgent && row.original.jobOrigin !== 'external' && (
               <div className="hs-tooltip ti-main-tooltip">
                 <Link
                   href={`/ats/jobs/edit/${row.original.id}`}
@@ -820,9 +824,9 @@ const Jobs = () => {
         ),
       },
     ]
-      return canDelete ? [checkboxColumn, ...restColumns] : restColumns
+      return canDelete && !isSalesAgent ? [checkboxColumn, ...restColumns] : restColumns
     },
-    [selectedRows, bookmarkedJobs, canDelete, canEdit, callingJobId]
+    [selectedRows, bookmarkedJobs, canDelete, canEdit, callingJobId, isSalesAgent]
   )
 
   // Filter data based on filter state
@@ -1264,7 +1268,7 @@ const Jobs = () => {
                     </li>
                   </ul>
                 </div>
-                {canCreate && (
+                {canCreate && !isSalesAgent && (
                   <Link
                     href="/ats/jobs/create"
                     className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
@@ -1272,48 +1276,50 @@ const Jobs = () => {
                     <i className="ri-add-line font-semibold align-middle"></i>Create Job
                   </Link>
                 )}
-                <div className="hs-dropdown ti-dropdown me-2">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
-                    id="excel-dropdown-button"
-                    aria-expanded="false"
-                  >
-                    <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                  </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={handleImportExcel}
-                        disabled={excelImporting}
-                      >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>{excelImporting ? 'Importing...' : 'Import'}
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={handleExportExcel}
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={handleDownloadTemplate}
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                  </ul>
-                </div>
-                {canDelete && (
+                {!isSalesAgent && (
+                  <div className="hs-dropdown ti-dropdown me-2">
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                      id="excel-dropdown-button"
+                      aria-expanded="false"
+                    >
+                      <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
+                      <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
+                    </button>
+                    <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
+                      <li>
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          onClick={handleImportExcel}
+                          disabled={excelImporting}
+                        >
+                          <i className="ri-upload-2-line me-2 align-middle inline-block"></i>{excelImporting ? 'Importing...' : 'Import'}
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          onClick={handleExportExcel}
+                        >
+                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
+                        </button>
+                      </li>
+                      <li>
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          onClick={handleDownloadTemplate}
+                        >
+                          <i className="ri-download-line me-2 align-middle inline-block"></i>Template
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+                )}
+                {canDelete && !isSalesAgent && (
                   <button
                     type="button"
                     className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] disabled:opacity-50 disabled:cursor-not-allowed"

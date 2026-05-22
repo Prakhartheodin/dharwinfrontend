@@ -83,25 +83,7 @@ function PortalDropdown({ open, inputRef, children }: PortalDropdownProps) {
       className={DROPDOWN_MENU}
     >
       {children}
-    </div>
-
-          <div>
-            <label className="form-label">Compensation</label>
-            <select
-              className="form-control"
-              value={filters.compensationType ?? ''}
-              onChange={(e) =>
-                setFilters((f: typeof filters) => ({
-                  ...f,
-                  compensationType: e.target.value as '' | 'paid' | 'unpaid',
-                }))
-              }
-            >
-              <option value="">All</option>
-              <option value="paid">Paid</option>
-              <option value="unpaid">Unpaid</option>
-            </select>
-          </div>,
+    </div>,
     document.body
   )
 }
@@ -194,6 +176,22 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
               <option value="current">Current</option>
               <option value="resigned">Resigned</option>
               <option value="all">All</option>
+            </select>
+          </div>
+
+          {/* Compensation */}
+          <div>
+            <label className={SECTION_LABEL}>
+              <i className="ri-money-dollar-circle-line text-primary me-1" aria-hidden />Compensation
+            </label>
+            <select
+              className={COMPACT_SELECT}
+              value={filters.compensationType ?? ''}
+              onChange={(e) => setFilters((prev: any) => ({ ...prev, compensationType: e.target.value as '' | 'paid' | 'unpaid' }))}
+            >
+              <option value="">All</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
             </select>
           </div>
 

@@ -589,7 +589,7 @@ const PreBoarding = () => {
           style={{ zIndex: 80 }}
           {...preBoardingBackdropProps}
         >
-          <div ref={preBoardingContainerRef} className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg !max-w-3xl">
+          <div ref={preBoardingModalRef} className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg !max-w-3xl">
             <div className="ti-modal-content overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-lg dark:border-white/10 dark:bg-slate-950">
               <div className="ti-modal-header flex items-start gap-3 border-b border-slate-200/80 !py-4 dark:border-white/10 sm:!px-5">
                 <span className="mt-0.5 inline-block h-9 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />

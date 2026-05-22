@@ -27,6 +27,7 @@ export const AUTH_ENDPOINTS = {
   sendMyVerificationEmail: "auth/me/send-verification-email",
   /** Current user's resolved permissions (auth only, no permission required). */
   myPermissions: "auth/my-permissions",
+  pageCapabilities: "auth/page-capabilities",
   refreshTokens: "auth/refresh-tokens",
   logout: "auth/logout",
   impersonate: "auth/impersonate",

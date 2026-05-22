@@ -441,7 +441,7 @@ export const Basicwizard = ({
   }, [initialData, router]);
 
   const [formData, setFormData] = useState({ 
-    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
+    fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", compensationType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
     companyAssignedEmail: "",
     companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
   });
@@ -1608,6 +1608,7 @@ export const Basicwizard = ({
         ead: initialData.ead || "",
         degree: initialData.degree || "",
         designation: initialData.designation || "",
+        compensationType: initialData.compensationType || "",
         supervisorName: initialData.supervisorName || "",
         supervisorContact: parsedSupervisor.digits,
         supervisorCountryCode: parsedSupervisor.countryCode || "IN",
@@ -1911,6 +1912,9 @@ export const Basicwizard = ({
         ead: formData.ead,
         degree: formData.degree,
         designation: formData.designation?.trim() || undefined,
+        ...(!(isEdit && initialData?.compensationLocked) && formData.compensationType
+          ? { compensationType: formData.compensationType }
+          : {}),
         supervisorName: formData.supervisorName,
         supervisorContact: (formData.supervisorContact || "").replace(/\D/g, ""),
         supervisorCountryCode: formData.supervisorCountryCode,
@@ -2381,6 +2385,30 @@ export const Basicwizard = ({
                     Catalog position: <span className="font-medium">{(initialData.position as { name: string }).name}</span>
                   </small>
                 ) : null}
+            </div>
+            <div className="xl:col-span-6 col-span-12">
+                <label htmlFor="compensationType" className="form-label">Compensation</label>
+                <select
+                  name="compensationType"
+                  id="compensationType"
+                  value={formData.compensationType}
+                  onChange={handleFormChange}
+                  disabled={Boolean(initialData?.compensationLocked)}
+                  className="form-control w-full !rounded-md disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select…</option>
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid Internship / Trainee</option>
+                </select>
+                {initialData?.compensationLocked ? (
+                  <small className="text-gray-500 text-xs mt-1 block">
+                    Locked — set from the employee&apos;s accepted offer.
+                  </small>
+                ) : (
+                  <small className="text-gray-500 text-xs mt-1 block">
+                    Paid role, or unpaid internship / trainee.
+                  </small>
+                )}
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="supervisorName" className="form-label">Supervisor Name</label>
