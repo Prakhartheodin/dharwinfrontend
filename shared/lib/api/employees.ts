@@ -69,6 +69,12 @@ export interface CandidatesListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+  compensationCounts?: {
+    paid: number;
+    unpaid: number;
+    paidPercentage: number;
+    unpaidPercentage: number;
+  };
 }
 
 export interface ListCandidatesParams {
