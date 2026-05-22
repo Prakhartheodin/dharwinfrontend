@@ -5,14 +5,13 @@ import React, { Fragment, useState, useEffect, useRef, useCallback, useMemo } fr
 import pipelineStyles from '../ats-pipeline-list.module.css'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { listPlacements, updatePlacement, getPlacementById } from '@/shared/lib/api/placements'
-import type { Placement, PreBoardingStatus, BGVStatus } from '@/shared/lib/api/placements'
+import type { Placement, BGVStatus } from '@/shared/lib/api/placements'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Link from 'next/link'
 import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 
-const PRE_BOARDING_OPTIONS: PreBoardingStatus[] = ['Pending', 'In Progress', 'Completed']
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
 /** Not yet Onboarding: placement statuses shown in this queue (API comma-list). */
 const PRE_BOARDING_QUEUE_STATUSES = 'Pending,Deferred,Cancelled' as const
@@ -46,7 +45,6 @@ const PreBoarding = () => {
   const [editModal, setEditModal] = useState<Placement | null>(null)
   const [editForm, setEditForm] = useState<{
     placementStatus: 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled'
-    preBoardingStatus: PreBoardingStatus
     bgvStatus: BGVStatus
     bgvNotes: string
     assets: { name: string; type: string; serialNumber: string; notes: string }[]
@@ -92,7 +90,22 @@ const PreBoarding = () => {
       : 'Pending'
     setEditForm({
       placementStatus: initialStatus as 'Pending' | 'Onboarding' | 'Deferred' | 'Cancelled',
-      preBoardingStatus: (p.preBoardingStatus as PreBoardingStatus) || 'Pending',
+        bgvStatus: (bv?.status as BGVStatus) || 'Pending',
+      bgvNotes: bv?.notes || '',
+      assets: (p.assetAllocation || []).map((a) => ({
+        name: a.name,
+        type: a.type || '',
+        serialNumber: a.serialNumber || '',
+        notes: a.notes || '',
+      })),
+      itAccess: (p.itAccess || []).map((i) => ({
+        system: i.system,
+        accessLevel: i.accessLevel || '',
+        notes: i.notes || '',
+      })),
+    })
+    editFormSnapshotRef.current = JSON.stringify({
+      placementStatus: initialStatus,
       bgvStatus: (bv?.status as BGVStatus) || 'Pending',
       bgvNotes: bv?.notes || '',
       assets: (p.assetAllocation || []).map((a) => ({
@@ -153,12 +166,11 @@ const PreBoarding = () => {
     editFormSnapshotRef.current = ''
   }, [])
 
-  const editModalDirty =
-    !!editForm && editFormSnapshotRef.current !== '' && JSON.stringify(editForm) !== editFormSnapshotRef.current
+  const editModalDirty = !!editForm && editFormSnapshotRef.current !== '' && JSON.stringify(editForm) !== editFormSnapshotRef.current
   const {
-    containerRef: preBoardingContainerRef,
+    containerRef: preBoardingModalRef,
     backdropProps: preBoardingBackdropProps,
-    requestClose: requestClosePreBoarding,
+    requestClose: requestClosePreBoardingEdit,
     confirmDiscardOpen: preBoardingConfirmDiscardOpen,
     confirmDiscard: confirmPreBoardingDiscard,
     cancelDiscard: cancelPreBoardingDiscard,
@@ -186,7 +198,6 @@ const PreBoarding = () => {
     try {
       await updatePlacement(placementId, {
         status: editForm.placementStatus,
-        preBoardingStatus: editForm.preBoardingStatus,
         backgroundVerification: {
           status: editForm.bgvStatus,
           notes: editForm.bgvNotes || undefined,
@@ -576,8 +587,9 @@ const PreBoarding = () => {
           className="hs-overlay ti-modal active overflow-y-auto !opacity-100 !pointer-events-auto [--auto-close:false]"
           tabIndex={-1}
           style={{ zIndex: 80 }}
+          {...preBoardingBackdropProps}
         >
-          <div className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg !max-w-3xl">
+          <div ref={preBoardingContainerRef} className="hs-overlay-open:mt-7 ti-modal-box ti-modal-lg !max-w-3xl">
             <div className="ti-modal-content overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-lg dark:border-white/10 dark:bg-slate-950">
               <div className="ti-modal-header flex items-start gap-3 border-b border-slate-200/80 !py-4 dark:border-white/10 sm:!px-5">
                 <span className="mt-0.5 inline-block h-9 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />
@@ -634,23 +646,6 @@ const PreBoarding = () => {
                             <option value="Onboarding">Move to Onboarding</option>
                             <option value="Deferred">Deferred</option>
                             <option value="Cancelled">Cancelled</option>
-                          </select>
-                        </div>
-                        <div className="min-w-0">
-                          <label className="form-label" htmlFor="preb-pb-status">
-                            Pre-boarding status
-                          </label>
-                          <select
-                            id="preb-pb-status"
-                            className="form-control"
-                            value={editForm.preBoardingStatus}
-                            onChange={(e) => setEditForm({ ...editForm, preBoardingStatus: e.target.value as PreBoardingStatus })}
-                          >
-                            {PRE_BOARDING_OPTIONS.map((s) => (
-                              <option key={s} value={s}>
-                                {s}
-                              </option>
-                            ))}
                           </select>
                         </div>
                       </div>
