@@ -21,6 +21,7 @@ import {
   createEmptyOfferLetterForm,
   type OfferLetterFormFields,
 } from './OfferLetterGeneratorWorkspace'
+import ShareOfferModal from './ShareOfferModal'
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
@@ -210,6 +211,8 @@ const OffersPlacement = () => {
   const [editSubmitting, setEditSubmitting] = useState(false)
 
   const [letterModalOffer, setLetterModalOffer] = useState<Offer | null>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [letterShareMessage, setLetterShareMessage] = useState<string | null>(null)
   const [letterForm, setLetterForm] = useState<OfferLetterFormFields>(() => createEmptyOfferLetterForm())
   const [letterBusy, setLetterBusy] = useState(false)
 
@@ -353,6 +356,7 @@ const OffersPlacement = () => {
         buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as UpdateOfferPayload
       )
       setLetterModalOffer(updated)
+      setLetterShareMessage('Offer letter saved. You can share it with the candidate.')
       refreshOffers()
     } catch (e: unknown) {
       alert(formatOfferLetterSaveError(e, 'Could not save letter'))
@@ -1781,9 +1785,30 @@ const OffersPlacement = () => {
             lastSavedLabel={
               letterModalOffer.updatedAt ? new Date(letterModalOffer.updatedAt).toLocaleString() : null
             }
-            onClose={() => setLetterModalOffer(null)}
+            onClose={() => {
+              setLetterModalOffer(null)
+              setShareOpen(false)
+              setLetterShareMessage(null)
+            }}
             onSaveLetter={() => void handleSaveOfferLetter()}
+            showShareCta={Boolean(letterModalOffer?.offerLetterGeneratedAt)}
+            onShareWithCandidate={() => setShareOpen(true)}
           />
+          {letterShareMessage ? (
+            <p className="absolute bottom-4 left-1/2 z-[1070] -translate-x-1/2 rounded-md bg-emerald-600 px-4 py-2 text-sm text-white shadow-lg">
+              {letterShareMessage}
+            </p>
+          ) : null}
+          {shareOpen && letterModalOffer ? (
+            <ShareOfferModal
+              offer={letterModalOffer}
+              onClose={() => setShareOpen(false)}
+              onSent={(to) => {
+                setShareOpen(false)
+                setLetterShareMessage(`Offer sent to ${to}`)
+              }}
+            />
+          ) : null}
         </div>
       )}
 
