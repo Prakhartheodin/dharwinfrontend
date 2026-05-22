@@ -78,6 +78,19 @@ export function CreateOfferForm({
       .finally(() => setLoading(false));
   }, []);
 
+  const applyJobDefaults = async (positionTitle: string, jobId?: string) => {
+    try {
+      const defaults = await getOfferLetterDefaults(positionTitle, jobId);
+      setForm((prev) =>
+        prev.rolesText.trim()
+          ? prev
+          : { ...prev, rolesText: (defaults.roleResponsibilities ?? []).join("\n") }
+      );
+    } catch {
+      // leave empty; user can type
+    }
+  };
+
   const handleApplicationChange = async (applicationId: string) => {
     if (!applicationId) {
       setForm((f) => ({ ...f, jobApplicationId: "" }));
@@ -93,26 +106,27 @@ export function CreateOfferForm({
       return;
     }
     const positionTitle = ja.job?.title || "";
+    const jobId =
+      (ja.job as { _id?: string; id?: string } | undefined)?._id ??
+      (ja.job as { id?: string } | undefined)?.id;
     const letterAddress = formatCandidateAddress(ja.candidate);
     const letterFullName = ja.candidate?.fullName || "";
-    let rolesText = "";
     let trainingText = "";
     try {
-      const d = await getOfferLetterDefaults(positionTitle);
-      rolesText = d.roleResponsibilities.join("\n");
+      const d = await getOfferLetterDefaults(positionTitle, jobId);
       trainingText = d.trainingOutcomes.join("\n");
     } catch {
       // leave empty; user can type
     }
-    setForm((f) => ({
-      ...f,
+    setForm((prev) => ({
+      ...prev,
       jobApplicationId: applicationId,
-      positionTitle: positionTitle || f.positionTitle,
-      letterFullName: letterFullName || f.letterFullName,
-      letterAddress: letterAddress || f.letterAddress,
-      rolesText,
+      positionTitle: positionTitle || prev.positionTitle,
+      letterFullName: letterFullName || prev.letterFullName,
+      letterAddress: letterAddress || prev.letterAddress,
       trainingText,
     }));
+    await applyJobDefaults(positionTitle, jobId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
