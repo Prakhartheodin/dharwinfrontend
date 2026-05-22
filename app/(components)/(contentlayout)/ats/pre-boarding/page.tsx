@@ -9,6 +9,8 @@ import type { Placement, PreBoardingStatus, BGVStatus } from '@/shared/lib/api/p
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Link from 'next/link'
+import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
+import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 
 const PRE_BOARDING_OPTIONS: PreBoardingStatus[] = ['Pending', 'In Progress', 'Completed']
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
@@ -52,6 +54,7 @@ const PreBoarding = () => {
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [feedbackDialog, setFeedbackDialog] = useState<PreBoardingFeedbackDialog | null>(null)
+  const editFormSnapshotRef = useRef<string>('')
 
   useEffect(() => {
     if (!feedbackDialog) return
@@ -144,6 +147,30 @@ const PreBoarding = () => {
       })
   }, [canView, searchParams, router, openEdit])
 
+  const closeEdit = useCallback(() => {
+    setEditModal(null)
+    setEditForm(null)
+    editFormSnapshotRef.current = ''
+  }, [])
+
+  const editModalDirty =
+    !!editForm && editFormSnapshotRef.current !== '' && JSON.stringify(editForm) !== editFormSnapshotRef.current
+  const {
+    containerRef: preBoardingContainerRef,
+    backdropProps: preBoardingBackdropProps,
+    requestClose: requestClosePreBoarding,
+    confirmDiscardOpen: preBoardingConfirmDiscardOpen,
+    confirmDiscard: confirmPreBoardingDiscard,
+    cancelDiscard: cancelPreBoardingDiscard,
+  } = useModalBehavior({ isOpen: !!editModal, onClose: closeEdit, isDirty: editModalDirty })
+
+  useEffect(() => {
+    if (!editModal || !editForm) return
+    if (!editFormSnapshotRef.current) {
+      editFormSnapshotRef.current = JSON.stringify(editForm)
+    }
+  }, [editModal, editForm])
+
   const handleSavePreBoarding = async () => {
     if (!editModal || !editForm) return
     const placementId = (editModal as { _id?: string; id?: string })._id ?? editModal.id ?? ''
@@ -176,8 +203,7 @@ const PreBoarding = () => {
           notes: i.notes || undefined,
         })),
       })
-      setEditModal(null)
-      setEditForm(null)
+      closeEdit()
       fetchPlacements()
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { message?: string; errorCode?: string } }; message?: string }
