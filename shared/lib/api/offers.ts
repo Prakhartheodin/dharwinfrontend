@@ -257,3 +257,19 @@ export async function enhanceOfferLetterRoles(body: {
   const { data } = await apiClient.post<EnhanceOfferLetterRolesResponse>("/offers/enhance-roles", body);
   return data;
 }
+
+export interface ShareOfferPayload {
+  to?: string;
+  cc?: string[];
+  bcc?: string[];
+  subject?: string;
+  body?: string;
+}
+
+export async function shareOfferWithCandidate(
+  offerId: string,
+  payload: ShareOfferPayload
+): Promise<{ sharedTo: string }> {
+  const { data } = await apiClient.post<{ sharedTo: string }>(`/offers/${offerId}/share`, payload);
+  return data;
+}
