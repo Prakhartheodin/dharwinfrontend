@@ -12,6 +12,7 @@ interface CandidatesFilterPanelProps {
     employeeId: string
     agentIds: string[]
     employmentStatus: 'current' | 'resigned' | 'all'
+    compensationType: '' | 'paid' | 'unpaid'
   }
   setFilters: React.Dispatch<React.SetStateAction<any>>
   allNames: string[]
@@ -82,7 +83,25 @@ function PortalDropdown({ open, inputRef, children }: PortalDropdownProps) {
       className={DROPDOWN_MENU}
     >
       {children}
-    </div>,
+    </div>
+
+          <div>
+            <label className="form-label">Compensation</label>
+            <select
+              className="form-control"
+              value={filters.compensationType ?? ''}
+              onChange={(e) =>
+                setFilters((f: typeof filters) => ({
+                  ...f,
+                  compensationType: e.target.value as '' | 'paid' | 'unpaid',
+                }))
+              }
+            >
+              <option value="">All</option>
+              <option value="paid">Paid</option>
+              <option value="unpaid">Unpaid</option>
+            </select>
+          </div>,
     document.body
   )
 }
