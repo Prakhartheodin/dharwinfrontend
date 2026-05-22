@@ -119,6 +119,9 @@ type Props = {
   onClose: () => void
   /** Persist letter fields + validation (POST generate-letter). */
   onSaveLetter: () => void
+  /** Shown after letter is saved to the server. */
+  showShareCta?: boolean
+  onShareWithCandidate?: () => void
   /** Insert above Candidate Details (e.g. load error from ?offerId= on new-offer). */
   formPanelTop?: React.ReactNode
   /** Insert after the last form section, still inside the left column (e.g. Create offer actions). */
@@ -176,6 +179,8 @@ export function OfferLetterGeneratorWorkspace({
   lastSavedLabel,
   onClose,
   onSaveLetter,
+  showShareCta = false,
+  onShareWithCandidate,
   formPanelTop,
   formPanelFooter,
   jobPostingDoc = null,
@@ -570,6 +575,17 @@ export function OfferLetterGeneratorWorkspace({
           >
             {letterBusy ? '…' : 'Save letter'}
           </button>
+          {showShareCta && onShareWithCandidate ? (
+            <button
+              type="button"
+              className={`${styles.btn} ${styles.btnPrimary}`}
+              onClick={onShareWithCandidate}
+              disabled={letterBusy}
+              title="Email the saved offer letter to the candidate."
+            >
+              Share with Candidate
+            </button>
+          ) : null}
           <button
             type="button"
             className={`${styles.btn} ${styles.btnGhost}`}
