@@ -132,7 +132,11 @@ const EditEmployee = () => {
                   </div>
                 ) : initialData ? (
                   <>
-                    <Basicwizard initialData={initialData} />
+                    <Basicwizard
+                      initialData={initialData}
+                      relaxPersonalInfoValidation={!isEmployee}
+                      selfServiceEdit={isEmployee}
+                    />
                   </>
                 ) : (
                   <div className="p-6 text-center text-gray-500">

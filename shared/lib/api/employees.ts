@@ -105,6 +105,8 @@ export interface ListCandidatesParams {
   visaType?: string;
   /** When "true" or "1", each row may include openSopCount (extra server work). */
   includeOpenSopCount?: "true" | "false" | "1" | "0" | boolean;
+  /** When true, only employees with no referrer (referral backfill picker). */
+  withoutReferrer?: boolean;
 }
 
 export async function listCandidates(params?: ListCandidatesParams): Promise<CandidatesListResponse> {

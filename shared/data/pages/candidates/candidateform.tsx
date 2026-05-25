@@ -4,6 +4,7 @@ import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
 import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
+import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
 import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import Swal from "sweetalert2";
@@ -140,7 +141,15 @@ function mergeSupplementalPersonalExcelSheets(
 }
 
 // Wizard Component
-const Wizard = ({ step: currentIndex, onChange, onSubmit, children }: any) => {
+const Wizard = ({
+  step: currentIndex,
+  onChange,
+  onSubmit,
+  children,
+  showSaveOnEveryStep = false,
+  submitLabel = "Submit",
+  submitting = false,
+}: any) => {
   const steps = React.Children.toArray(children) as React.ReactElement[];
   const prevStep = currentIndex !== 0 && (steps[currentIndex - 1] as any).props;
   const nextStep = currentIndex !== steps.length - 1 && (steps[currentIndex + 1] as any).props;
@@ -177,20 +186,35 @@ const Wizard = ({ step: currentIndex, onChange, onSubmit, children }: any) => {
           ) : null}
         </div>
 
-        <div className="flex ml-auto">
-          {currentIndex === steps.length - 1 ? (
+        <div className="flex ml-auto gap-2">
+          {showSaveOnEveryStep ? (
             <button
               type="button"
               onClick={onSubmit}
-              className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md"
+              disabled={submitting}
+              className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md disabled:opacity-50"
             >
-              Submit
+              {submitting ? "Saving..." : submitLabel}
             </button>
-          ) : (
+          ) : null}
+          {!showSaveOnEveryStep && currentIndex === steps.length - 1 ? (
+            <button
+              type="button"
+              onClick={onSubmit}
+              disabled={submitting}
+              className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md disabled:opacity-50"
+            >
+              {submitting ? "Saving..." : submitLabel}
+            </button>
+          ) : !showSaveOnEveryStep ? (
             <Button onClick={handleNext}>
               Next
             </Button>
-          )}
+          ) : currentIndex !== steps.length - 1 ? (
+            <Button onClick={handleNext}>
+              Next
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -402,10 +426,16 @@ export const Basicwizard = ({
   initialData,
   initialExcelMode,
   returnToCandidatesOnBack,
+  relaxPersonalInfoValidation = false,
+  selfServiceEdit = false,
 }: {
   initialData?: any;
   initialExcelMode?: boolean;
   returnToCandidatesOnBack?: boolean;
+  /** When true (admin/manager employee edit), personal-info fields are optional. */
+  relaxPersonalInfoValidation?: boolean;
+  /** When true, PATCH /employees/me (strict personal-info validation on backend). */
+  selfServiceEdit?: boolean;
 }) => {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -762,60 +792,61 @@ export const Basicwizard = ({
           errors.push(msg);
           newFieldErrors['phoneNumber'] = msg;
         }
-        if (!validateRequired(formData.visaType)) {
-          errors.push('Visa Type is required');
-          newFieldErrors['visaType'] = 'Visa Type is required';
+        if (!relaxPersonalInfoValidation) {
+          if (!validateRequired(formData.visaType)) {
+            errors.push('Visa Type is required');
+            newFieldErrors['visaType'] = 'Visa Type is required';
+          }
+          if (formData.visaType === "Other" && !validateRequired(formData.customVisaType)) {
+            errors.push('Custom visa type is required when "Other" is selected');
+            newFieldErrors['customVisaType'] = 'Custom visa type is required when "Other" is selected';
+          }
+          if (!validateRequired(formData.streetAddress)) {
+            errors.push('Street Address is required');
+            newFieldErrors['streetAddress'] = 'Street Address is required';
+          }
+          if (!validateRequired(formData.city)) {
+            errors.push('City is required');
+            newFieldErrors['city'] = 'City is required';
+          }
+          if (!validateRequired(formData.state)) {
+            errors.push('State is required');
+            newFieldErrors['state'] = 'State is required';
+          }
+          if (!validateRequired(formData.zipCode)) {
+            errors.push('ZIP Code is required');
+            newFieldErrors['zipCode'] = 'ZIP Code is required';
+          }
+          if (!validateRequired(formData.country)) {
+            errors.push('Country is required');
+            newFieldErrors['country'] = 'Country is required';
+          }
+          if (!validateRequired(formData.salaryRange)) {
+            errors.push('Salary Range is required');
+            newFieldErrors['salaryRange'] = 'Salary Range is required';
+          }
+          const validSocialLinks = socialLinks.filter(link =>
+            validateRequired(link.platform) && validateRequired(link.url) && validateURL(link.url)
+          );
+          if (validSocialLinks.length === 0) {
+            errors.push('At least one social link is required');
+            newFieldErrors['socialLinks'] = 'At least one social link is required';
+          }
         }
         if (formData.supervisorContact && !validatePhone(formData.supervisorContact, formData.supervisorCountryCode || formData.countryCode)) {
           const msg = getPhoneValidationError(formData.supervisorContact, formData.supervisorCountryCode || formData.countryCode) || "Please enter a valid supervisor phone number";
           errors.push(msg);
           newFieldErrors['supervisorContact'] = msg;
         }
-        if (formData.visaType === "Other" && !validateRequired(formData.customVisaType)) {
-          errors.push('Custom visa type is required when "Other" is selected');
-          newFieldErrors['customVisaType'] = 'Custom visa type is required when "Other" is selected';
-        }
         if (!initialData && !validateRequired(formData.password)) {
           errors.push('Password is required');
           newFieldErrors['password'] = 'Password is required';
         }
-        // Validate address fields
-        if (!validateRequired(formData.streetAddress)) {
-          errors.push('Street Address is required');
-          newFieldErrors['streetAddress'] = 'Street Address is required';
-        }
-        if (!validateRequired(formData.city)) {
-          errors.push('City is required');
-          newFieldErrors['city'] = 'City is required';
-        }
-        if (!validateRequired(formData.state)) {
-          errors.push('State is required');
-          newFieldErrors['state'] = 'State is required';
-        }
-        if (!validateRequired(formData.zipCode)) {
-          errors.push('ZIP Code is required');
-          newFieldErrors['zipCode'] = 'ZIP Code is required';
-        }
-        if (!validateRequired(formData.country)) {
-          errors.push('Country is required');
-          newFieldErrors['country'] = 'Country is required';
-        }
-        if (!validateRequired(formData.salaryRange)) {
-          errors.push('Salary Range is required');
-          newFieldErrors['salaryRange'] = 'Salary Range is required';
-        }
-        // Validate social links - at least one entry is required
-        const validSocialLinks = socialLinks.filter(link => 
-          validateRequired(link.platform) && validateRequired(link.url) && validateURL(link.url)
-        );
-        if (validSocialLinks.length === 0) {
-          errors.push('At least one social link is required');
-          newFieldErrors['socialLinks'] = 'At least one social link is required';
-        }
         break;
         
       case 1: // Qualification
-        const validEducations = educations.filter(edu => 
+        if (relaxPersonalInfoValidation) break;
+        const validEducations = educations.filter(edu =>
           validateRequired(edu.degree) && validateRequired(edu.institute) && validateRequired(edu.location) && validateRequired(edu.startYear) && validateRequired(edu.endYear)
         );
         if (validEducations.length === 0) {
@@ -838,7 +869,8 @@ export const Basicwizard = ({
         break;
         
       case 2: // Work Experience
-        const validExperiences = experiences.filter(exp => 
+        if (relaxPersonalInfoValidation) break;
+        const validExperiences = experiences.filter(exp =>
           validateRequired(exp.company) && validateRequired(exp.role) && validateRequired(exp.startDate) && 
           (exp.currentlyWorking || validateRequired(exp.endDate))
         );
@@ -1607,7 +1639,7 @@ export const Basicwizard = ({
         sevisId: initialData.sevisId || "",
         ead: initialData.ead || "",
         degree: initialData.degree || "",
-        designation: initialData.designation || "",
+        designation: resolveEmployeeJobTitle(initialData) || initialData.designation || "",
         compensationType: initialData.compensationType || "",
         supervisorName: initialData.supervisorName || "",
         supervisorContact: parsedSupervisor.digits,
@@ -1718,15 +1750,26 @@ export const Basicwizard = ({
     
     // Validate all steps before submission
     let allStepsValid = true;
-    for (let i = 0; i < 5; i++) {
+    let firstInvalidStep: number | null = null;
+    const lastStep = relaxPersonalInfoValidation ? 0 : 4;
+    for (let i = 0; i <= lastStep; i++) {
       if (!validateStep(i)) {
         allStepsValid = false;
+        if (firstInvalidStep === null) firstInvalidStep = i;
       }
     }
-    
+
     if (!allStepsValid) {
-      setError("Please fix all validation errors before submitting");
+      if (firstInvalidStep !== null) setStep(firstInvalidStep);
+      const message = "Please fix the highlighted errors before saving.";
+      setError(message);
       setLoading(false);
+      await Swal.fire({
+        icon: "error",
+        title: "Could not save",
+        text: message,
+        confirmButtonText: "OK",
+      });
       return;
     }
     
@@ -1900,6 +1943,12 @@ export const Basicwizard = ({
       }
       
       const adminIdStr = getAdminIdString();
+      const trimOrUndefined = (value: string | undefined | null) => {
+        const trimmed = String(value ?? "").trim();
+        return trimmed || undefined;
+      };
+      const optionalText = (value: string | undefined | null) =>
+        relaxPersonalInfoValidation ? trimOrUndefined(value) : (value ?? "");
       const payload = {
         ...(isEdit ? {} : adminIdStr ? { role: "user" as const, adminId: adminIdStr } : {}), // Only include role/adminId for new candidates when we have a valid string
         fullName: formData.fullName,
@@ -1918,19 +1967,24 @@ export const Basicwizard = ({
         supervisorName: formData.supervisorName,
         supervisorContact: (formData.supervisorContact || "").replace(/\D/g, ""),
         supervisorCountryCode: formData.supervisorCountryCode,
-        visaType: formData.visaType,
-        ...(formData.visaType === "Other" ? { customVisaType: formData.customVisaType } : {}),
-        salaryRange: formData.salaryRange,
+        visaType: optionalText(formData.visaType),
+        ...(formData.visaType === "Other"
+          ? { customVisaType: optionalText(formData.customVisaType) }
+          : {}),
+        salaryRange: optionalText(formData.salaryRange),
         address: {
-          streetAddress: formData.streetAddress,
-          streetAddress2: formData.streetAddress2,
-          city: formData.city,
-          state: formData.state,
-          zipCode: formData.zipCode,
-          country: formData.country,
+          streetAddress: optionalText(formData.streetAddress),
+          streetAddress2: optionalText(formData.streetAddress2),
+          city: optionalText(formData.city),
+          state: optionalText(formData.state),
+          zipCode: optionalText(formData.zipCode),
+          country: optionalText(formData.country),
         },
         ...(initialData ? {} : { password: formData.password }),
-        qualifications: educations.map((edu) => ({
+        qualifications: (relaxPersonalInfoValidation
+          ? educations.filter((edu) => edu.degree?.trim() || edu.institute?.trim())
+          : educations
+        ).map((edu) => ({
           degree: edu.degree,
           institute: edu.institute,
           location: edu.location,
@@ -1938,7 +1992,10 @@ export const Basicwizard = ({
           endYear: edu.endYear ? Number(edu.endYear) : undefined,
           description: edu.description,
         })),
-        experiences: experiences.map((exp) => {
+        experiences: (relaxPersonalInfoValidation
+          ? experiences.filter((exp) => exp.company?.trim() || exp.role?.trim())
+          : experiences
+        ).map((exp) => {
           console.log('Backend Submission - Sending dates to backend:', {
             company: exp.company,
             startDate: (exp as any).startDate,
@@ -1985,7 +2042,7 @@ export const Basicwizard = ({
       if (isEdit) {
         const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
         const user = userData ? JSON.parse(userData) : null;
-        if (user?.role === 'user') {
+        if (user?.role === 'user' || selfServiceEdit) {
           res = await updateMyCandidate(payload as any);
         } else {
           res = await updateCandidate(String(initialData.id || initialData._id), payload as any);
@@ -2019,11 +2076,11 @@ export const Basicwizard = ({
       const user = userData ? JSON.parse(userData) : null;
       router.push(user?.role === 'user' ? ROUTES.candidateProfile : "/ats/employees");
     } catch (err: any) {
-      setError("Failed to add candidate");
+      setError(isEdit ? "Failed to update candidate" : "Failed to add candidate");
       await Swal.fire({
         icon: 'error',
-        title: 'Creation Failed',
-        text: err?.response?.data?.message || err?.message || 'An error occurred while adding candidate.',
+        title: isEdit ? 'Update Failed' : 'Creation Failed',
+        text: err?.response?.data?.message || err?.message || (isEdit ? 'An error occurred while updating the profile.' : 'An error occurred while adding candidate.'),
         confirmButtonText: 'OK'
       });
     } finally {
@@ -2191,6 +2248,9 @@ export const Basicwizard = ({
         step={step}
         onChange={setStep}
         onSubmit={handleSubmit}
+        showSaveOnEveryStep={relaxPersonalInfoValidation && Boolean(initialData)}
+        submitLabel="Save changes"
+        submitting={loading}
       >
       <Step title={<><i className="ri-user-3-line basicstep-icon"></i> Personal Info</>}>
         <div className="p-6 w-full">
@@ -2202,9 +2262,9 @@ export const Basicwizard = ({
               <div className="flex items-center gap-4">
                 <div className="relative">
                   {profilePicturePreview ? (
-                    <img 
-                      src={profilePicturePreview} 
-                      alt="Profile Preview" 
+                    <img
+                      src={profilePicturePreview}
+                      alt="Profile Preview"
                       className="w-20 h-20 rounded-full object-cover border-2 border-gray-300"
                     />
                   ) : (
@@ -2240,16 +2300,16 @@ export const Basicwizard = ({
                 )}
               </div>
             </div>
-            
+
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="fullName" className="form-label">Full Name <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
-                  name="fullName" 
-                  value={formData.fullName} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['fullName'] ? 'border-red-500' : ''}`} 
-                  placeholder="Full Name" 
+                <input
+                  type="text"
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['fullName'] ? 'border-red-500' : ''}`}
+                  placeholder="Full Name"
                   // required
                 />
                 {fieldErrors['fullName'] && (
@@ -2258,13 +2318,13 @@ export const Basicwizard = ({
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="email" className="form-label">Email <span className="text-red-500">*</span></label>
-                <input 
-                  type="email" 
-                  name="email" 
-                  value={formData.email} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['email'] ? 'border-red-500' : ''}`} 
-                  placeholder="xyz@example.com" 
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['email'] ? 'border-red-500' : ''}`}
+                  placeholder="xyz@example.com"
                   // required
                 />
                 {fieldErrors['email'] && (
@@ -2380,11 +2440,6 @@ export const Basicwizard = ({
                   id="designation"
                   placeholder="e.g. Software Engineer"
                 />
-                {initialData?.position && typeof initialData.position === 'object' && (initialData.position as { name?: string }).name ? (
-                  <small className="text-gray-500 text-xs mt-1 block">
-                    Catalog position: <span className="font-medium">{(initialData.position as { name: string }).name}</span>
-                  </small>
-                ) : null}
             </div>
             <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="compensationType" className="form-label">Compensation</label>
@@ -2439,14 +2494,16 @@ export const Basicwizard = ({
                 )}
             </div>
             <div className="xl:col-span-6 col-span-12">
-                <label htmlFor="visaType" className="form-label">Visa Type <span className="text-red-500">*</span></label>
-                <select 
-                  name="visaType" 
-                  value={formData.visaType} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['visaType'] ? 'border-red-500' : ''}`} 
+                <label htmlFor="visaType" className="form-label">
+                  Visa Type {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                </label>
+                <select
+                  name="visaType"
+                  value={formData.visaType}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['visaType'] ? 'border-red-500' : ''}`}
                   id="visaType"
-                  required
+                  required={!relaxPersonalInfoValidation}
                 >
                   <option value="">Select Visa Type</option>
                   <option value="F-1">F-1 (Student Visa)</option>
@@ -2471,30 +2528,34 @@ export const Basicwizard = ({
             </div>
             {formData.visaType === "Other" && (
               <div className="xl:col-span-6 col-span-12">
-                <label htmlFor="customVisaType" className="form-label">Custom Visa Type <span className="text-red-500">*</span></label>
-                <input 
-                  type="text" 
-                  name="customVisaType" 
-                  value={formData.customVisaType} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['customVisaType'] ? 'border-red-500' : ''}`} 
-                  id="customVisaType" 
-                  placeholder="Enter visa type" 
-                  required
+                <label htmlFor="customVisaType" className="form-label">
+                  Custom Visa Type {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                </label>
+                <input
+                  type="text"
+                  name="customVisaType"
+                  value={formData.customVisaType}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['customVisaType'] ? 'border-red-500' : ''}`}
+                  id="customVisaType"
+                  placeholder="Enter visa type"
+                  required={!relaxPersonalInfoValidation}
                 />
                 {fieldErrors['customVisaType'] && (
                   <div className="text-red-500 text-sm mt-1">{fieldErrors['customVisaType']}</div>
                 )}
               </div>
             )}
-            
+
             <div className="xl:col-span-6 col-span-12">
-                <label htmlFor="salaryRange" className="form-label">Salary Range <span className="text-red-500">*</span></label>
-                <select 
-                  name="salaryRange" 
-                  value={formData.salaryRange} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['salaryRange'] ? 'border-red-500' : ''}`} 
+                <label htmlFor="salaryRange" className="form-label">
+                  Salary Range {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                </label>
+                <select
+                  name="salaryRange"
+                  value={formData.salaryRange}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['salaryRange'] ? 'border-red-500' : ''}`}
                   id="salaryRange"
                 >
                   <option value="">Select Salary Range</option>
@@ -2520,98 +2581,108 @@ export const Basicwizard = ({
                   <div className="text-red-500 text-sm mt-1">{fieldErrors['salaryRange']}</div>
                 )}
             </div>
-            
+
             {/* Address Section */}
-            
+
             <div className="xl:col-span-12 col-span-12">
               <div className="grid grid-cols-12 gap-4 border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50 dark:bg-gray-800/50">
                 <div className="xl:col-span-12 col-span-12">
                   <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Address Information</h4>
                 </div>
                 <div className="xl:col-span-12 col-span-12">
-                    <label htmlFor="streetAddress" className="form-label">Street Address <span className="text-red-500">*</span></label>
-                    <input 
-                      type="text" 
-                      name="streetAddress" 
-                      value={formData.streetAddress} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['streetAddress'] ? 'border-red-500' : ''}`} 
-                      id="streetAddress" 
-                      placeholder="Enter street address" 
+                    <label htmlFor="streetAddress" className="form-label">
+                      Street Address {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <input
+                      type="text"
+                      name="streetAddress"
+                      value={formData.streetAddress}
+                      onChange={handleFormChange}
+                      className={`form-control w-full !rounded-md ${fieldErrors['streetAddress'] ? 'border-red-500' : ''}`}
+                      id="streetAddress"
+                      placeholder="Enter street address"
                     />
                     {fieldErrors['streetAddress'] && (
                       <div className="text-red-500 text-sm mt-1">{fieldErrors['streetAddress']}</div>
                     )}
                 </div>
-                
+
                 <div className="xl:col-span-12 col-span-12">
                     <label htmlFor="streetAddress2" className="form-label">Street Address Line 2</label>
-                    <input 
-                      type="text" 
-                      name="streetAddress2" 
-                      value={formData.streetAddress2} 
-                      onChange={handleFormChange} 
-                      className="form-control w-full !rounded-md" 
-                      id="streetAddress2" 
-                      placeholder="Apartment, suite, unit, building, floor, etc." 
+                    <input
+                      type="text"
+                      name="streetAddress2"
+                      value={formData.streetAddress2}
+                      onChange={handleFormChange}
+                      className="form-control w-full !rounded-md"
+                      id="streetAddress2"
+                      placeholder="Apartment, suite, unit, building, floor, etc."
                     />
                 </div>
-                
+
                 <div className="xl:col-span-6 col-span-12">
-                    <label htmlFor="city" className="form-label">City <span className="text-red-500">*</span></label>
-                    <input 
-                      type="text" 
-                      name="city" 
-                      value={formData.city} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['city'] ? 'border-red-500' : ''}`} 
-                      id="city" 
-                      placeholder="Enter city" 
+                    <label htmlFor="city" className="form-label">
+                      City {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <input
+                      type="text"
+                      name="city"
+                      value={formData.city}
+                      onChange={handleFormChange}
+                      className={`form-control w-full !rounded-md ${fieldErrors['city'] ? 'border-red-500' : ''}`}
+                      id="city"
+                      placeholder="Enter city"
                     />
                     {fieldErrors['city'] && (
                       <div className="text-red-500 text-sm mt-1">{fieldErrors['city']}</div>
                     )}
                 </div>
-                
+
                 <div className="xl:col-span-6 col-span-12">
-                    <label htmlFor="state" className="form-label">State (Territory or Military Post) <span className="text-red-500">*</span></label>
-                    <input 
-                      type="text" 
-                      name="state" 
-                      value={formData.state} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['state'] ? 'border-red-500' : ''}`} 
-                      id="state" 
-                      placeholder="Enter state, territory, or military post" 
+                    <label htmlFor="state" className="form-label">
+                      State (Territory or Military Post) {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <input
+                      type="text"
+                      name="state"
+                      value={formData.state}
+                      onChange={handleFormChange}
+                      className={`form-control w-full !rounded-md ${fieldErrors['state'] ? 'border-red-500' : ''}`}
+                      id="state"
+                      placeholder="Enter state, territory, or military post"
                     />
                     {fieldErrors['state'] && (
                       <div className="text-red-500 text-sm mt-1">{fieldErrors['state']}</div>
                     )}
                 </div>
-                
+
                 <div className="xl:col-span-6 col-span-12">
-                    <label htmlFor="zipCode" className="form-label">ZIP Code <span className="text-red-500">*</span></label>
-                    <input 
-                      type="text" 
-                      name="zipCode" 
-                      value={formData.zipCode} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['zipCode'] ? 'border-red-500' : ''}`} 
-                      id="zipCode" 
-                      placeholder="Enter ZIP code" 
+                    <label htmlFor="zipCode" className="form-label">
+                      ZIP Code {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <input
+                      type="text"
+                      name="zipCode"
+                      value={formData.zipCode}
+                      onChange={handleFormChange}
+                      className={`form-control w-full !rounded-md ${fieldErrors['zipCode'] ? 'border-red-500' : ''}`}
+                      id="zipCode"
+                      placeholder="Enter ZIP code"
                     />
                     {fieldErrors['zipCode'] && (
                       <div className="text-red-500 text-sm mt-1">{fieldErrors['zipCode']}</div>
                     )}
                 </div>
-                
+
                 <div className="xl:col-span-6 col-span-12">
-                    <label htmlFor="country" className="form-label">Country <span className="text-red-500">*</span></label>
-                    <select 
-                      name="country" 
-                      value={formData.country} 
-                      onChange={handleFormChange} 
-                      className={`form-control w-full !rounded-md ${fieldErrors['country'] ? 'border-red-500' : ''}`} 
+                    <label htmlFor="country" className="form-label">
+                      Country {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
+                    <select
+                      name="country"
+                      value={formData.country}
+                      onChange={handleFormChange}
+                      className={`form-control w-full !rounded-md ${fieldErrors['country'] ? 'border-red-500' : ''}`}
                       id="country"
                     >
                       <option value="">Select Country</option>
@@ -2634,7 +2705,7 @@ export const Basicwizard = ({
                 </div>
               </div>
             </div>
-                            
+
             <div className="xl:col-span-12 col-span-12">
                 <label htmlFor="bio" className="form-label">Short Bio </label>
                 <textarea name="shortBio" value={formData.shortBio} onChange={handleFormChange} className="form-control w-full !rounded-md" rows={3}></textarea>
@@ -2643,7 +2714,9 @@ export const Basicwizard = ({
             {/* Social Links Section */}
             <div className="xl:col-span-12 col-span-12">
               <div className="text-[0.9375rem] font-semibold sm:flex block items-center justify-between mb-4">
-                <div>Social Links <span className="text-red-500">*</span> :</div>
+                <div>
+                  Social Links {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null} :
+                </div>
                 <button
                   type="button"
                   onClick={handleAddSocialLink}
@@ -2669,12 +2742,14 @@ export const Basicwizard = ({
                   </button>
 
                   <div className="xl:col-span-6 col-span-12">
-                    <label className="form-label">Platform <span className="text-red-500">*</span></label>
+                    <label className="form-label">
+                      Platform {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
                     <select
                       className="form-control w-full !rounded-md"
                       value={link.platform}
                       onChange={(e) => handleSocialLinkChange(index, "platform", e.target.value)}
-                      required
+                      required={!relaxPersonalInfoValidation}
                     >
                       <option value="">Select Platform</option>
                       <option value="LinkedIn">LinkedIn</option>
@@ -2689,14 +2764,16 @@ export const Basicwizard = ({
                   </div>
 
                   <div className="xl:col-span-6 col-span-12">
-                    <label className="form-label">URL <span className="text-red-500">*</span></label>
+                    <label className="form-label">
+                      URL {!relaxPersonalInfoValidation ? <span className="text-red-500">*</span> : null}
+                    </label>
                     <input
                       type="url"
                       className="form-control w-full !rounded-md"
                       placeholder="https://example.com"
                       value={link.url}
                       onChange={(e) => handleSocialLinkChange(index, "url", e.target.value)}
-                      required
+                      required={!relaxPersonalInfoValidation}
                     />
                     {link.url && !validateURL(link.url) && (
                       <div className="text-red-500 text-sm mt-1">Please enter a valid URL</div>
@@ -2709,13 +2786,13 @@ export const Basicwizard = ({
             {!initialData && (
               <div className="xl:col-span-6 col-span-12">
                 <label htmlFor="password" className="form-label">Password <span className="text-red-500">*</span></label>
-                <input 
-                  type="password" 
-                  name="password" 
-                  value={formData.password} 
-                  onChange={handleFormChange} 
-                  className={`form-control w-full !rounded-md ${fieldErrors['password'] ? 'border-red-500' : ''}`} 
-                  placeholder="Enter password" 
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleFormChange}
+                  className={`form-control w-full !rounded-md ${fieldErrors['password'] ? 'border-red-500' : ''}`}
+                  placeholder="Enter password"
                   required
                 />
                 {fieldErrors['password'] && (

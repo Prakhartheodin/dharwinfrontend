@@ -17,6 +17,7 @@
     "test:taskboard": "vitest run --coverage",
     "test": "vitest run --coverage",
     "e2e:taskboard": "playwright test e2e/taskboard",
+    "e2e:referral-sales-agent": "playwright test tests/e2e/referral-sales-agent.spec.ts",
     "lhci:taskboard": "lhci autorun",
     "check:taskboard-bundle": "node scripts/check-taskboard-bundle.mjs",
     "test:taskboard:unit": "vitest run",
