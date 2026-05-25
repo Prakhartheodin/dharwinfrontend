@@ -28,15 +28,26 @@ interface PickerState<T> {
 
 const emptyPicker = <T,>(): PickerState<T> => ({ query: "", hits: [], loading: false, open: false });
 
+function resolveEmployeeOwnerId(candidate: CandidateListItem): string {
+  if (candidate.ownerId) return String(candidate.ownerId);
+  const owner = candidate.owner;
+  if (typeof owner === "string") return owner;
+  if (owner && typeof owner === "object") return String(owner.id || owner._id || "");
+  return "";
+}
+
 export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillReferralModalProps) {
   const { backfill, isMutating, error } = useSalesAgentAttribution();
 
   const [employeeId, setEmployeeId] = useState("");
   const [employeeLabel, setEmployeeLabel] = useState("");
+  const [employeeOwnerId, setEmployeeOwnerId] = useState("");
+  const [employeeEmail, setEmployeeEmail] = useState("");
   const [employeePicker, setEmployeePicker] = useState(emptyPicker<CandidateListItem>());
 
   const [referrerId, setReferrerId] = useState("");
   const [referrerLabel, setReferrerLabel] = useState("");
+  const [referrerEmail, setReferrerEmail] = useState("");
   const [referrerPicker, setReferrerPicker] = useState(emptyPicker<User>());
 
   const [agentId, setAgentId] = useState("");
@@ -51,8 +62,8 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
   const [notes, setNotes] = useState("");
 
   const reset = useCallback(() => {
-    setEmployeeId(""); setEmployeeLabel(""); setEmployeePicker(emptyPicker());
-    setReferrerId(""); setReferrerLabel(""); setReferrerPicker(emptyPicker());
+    setEmployeeId(""); setEmployeeLabel(""); setEmployeeOwnerId(""); setEmployeeEmail(""); setEmployeePicker(emptyPicker());
+    setReferrerId(""); setReferrerLabel(""); setReferrerEmail(""); setReferrerPicker(emptyPicker());
     setAgentId(""); setAgentLabel(""); setAgentPicker(emptyPicker());
     setJobId(""); setJobLabel(""); setJobPicker(emptyPicker());
     setReferredAt(new Date().toISOString().slice(0, 10));
@@ -142,7 +153,13 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
     return () => window.clearTimeout(t);
   }, [isOpen, jobId, jobPicker.open, jobPicker.query, fetchJobsLocal]);
 
-  const sameAsReferrer = Boolean(employeeId && referrerId && employeeId === referrerId);
+  const sameAsReferrer = Boolean(
+    referrerId &&
+      ((employeeOwnerId && employeeOwnerId === referrerId) ||
+        (employeeEmail &&
+          referrerEmail &&
+          employeeEmail.trim().toLowerCase() === referrerEmail.trim().toLowerCase()))
+  );
   const agentSameAsReferrer = Boolean(agentId && referrerId && agentId === referrerId);
   const canSubmit = Boolean(employeeId && referrerId && agentId && referredAt && !sameAsReferrer && !agentSameAsReferrer);
 
@@ -182,7 +199,12 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
             selectedId={employeeId}
             picker={employeePicker}
             setPicker={setEmployeePicker}
-            onClear={() => { setEmployeeId(""); setEmployeeLabel(""); }}
+            onClear={() => {
+              setEmployeeId("");
+              setEmployeeLabel("");
+              setEmployeeOwnerId("");
+              setEmployeeEmail("");
+            }}
             renderRow={(c) => (
               <div className="flex flex-col">
                 <span>{c.fullName || c.email}</span>
@@ -193,6 +215,8 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
             onPick={(c) => {
               const id = c.id || c._id || "";
               setEmployeeId(String(id));
+              setEmployeeOwnerId(resolveEmployeeOwnerId(c));
+              setEmployeeEmail(c.email || "");
               setEmployeeLabel(c.fullName ? `${c.fullName}${c.email ? ` · ${c.email}` : ""}` : c.email || String(id));
             }}
             placeholder="Search by name…"
@@ -204,11 +228,12 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
             selectedId={referrerId}
             picker={referrerPicker}
             setPicker={setReferrerPicker}
-            onClear={() => { setReferrerId(""); setReferrerLabel(""); }}
+            onClear={() => { setReferrerId(""); setReferrerLabel(""); setReferrerEmail(""); }}
             renderRow={(u) => <span>{u.name || u.email}</span>}
             keyOf={(u) => u.id}
             onPick={(u) => {
               setReferrerId(u.id);
+              setReferrerEmail(u.email || "");
               setReferrerLabel(u.name ? `${u.name}${u.email ? ` · ${u.email}` : ""}` : u.email || u.id);
             }}
             placeholder="Search referrer user…"

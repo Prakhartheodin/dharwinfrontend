@@ -1707,24 +1707,39 @@ export default function InterviewsClient() {
                             }`}>
                               {interview.status || 'Scheduled'}
                             </span>
-                            <div className="flex gap-1 mt-2">
+                            <div className="flex flex-wrap gap-1 mt-2">
                               <button
                                 type="button"
                                 className="ti-btn ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
+                                title="View recordings"
                                 onClick={() => { setRecordingsModalMeetingId(interview.id); (window as any).HSOverlay?.open(document.querySelector('#view-recordings-modal')) }}
                               >
                                 <i className="ri-video-line"></i>
                               </button>
-                              <button
-                                type="button"
-                                className="ti-btn ti-btn-sm ti-btn-light !py-0.5 !px-1.5 !text-[0.65rem]"
-                                onClick={() => copyInterviewLink(interview)}
-                              >
-                                <i className="ri-links-line"></i>
-                              </button>
+                              {interview.status?.toLowerCase() !== 'cancelled' && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-sm ti-btn-light !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  title="Copy interview link"
+                                  onClick={() => copyInterviewLink(interview)}
+                                >
+                                  <i className="ri-links-line"></i>
+                                </button>
+                              )}
+                              {(interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                                  onClick={() => openResultModal(interview)}
+                                >
+                                  <i className="ri-checkbox-circle-line"></i>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 className="ti-btn ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
+                                title="Edit interview"
                                 onClick={() => openEditModal(interview.id)}
                               >
                                 <i className="ri-pencil-line"></i>
