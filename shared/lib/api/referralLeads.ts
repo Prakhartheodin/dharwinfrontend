@@ -23,6 +23,21 @@ export interface ReferralLastOverride {
   newReferredBy?: ReferralLeadReferredBy | null;
 }
 
+export interface ReferralLeadSalesAgent {
+  id: string;
+  name?: string;
+  email?: string;
+}
+
+export type LifecycleStageKey =
+  | "applied"
+  | "interview"
+  | "offered"
+  | "preboarding"
+  | "joined_pending_start"
+  | "employee"
+  | "pending";
+
 export interface ReferralLeadRow {
   /** Candidate document id (`candidates` collection / GET candidate by id), not a Settings org User id. */
   id: string;
@@ -39,6 +54,13 @@ export interface ReferralLeadRow {
   job: ReferralLeadJob | null;
   referralLastOverride?: ReferralLastOverride | null;
   createdAt?: string;
+  salesAgent?: ReferralLeadSalesAgent | null;
+  salesAgentAssignedAt?: string | null;
+  salesAgentJobScope?: "candidate" | "job" | null;
+  salesAgentCurrentAttributionId?: string | null;
+  lifecycleStage?: LifecycleStageKey | null;
+  employeeConverted?: boolean;
+  joiningDate?: string | null;
 }
 
 export interface ReferralLeadsListResponse {
@@ -55,6 +77,14 @@ export interface ReferralLeadsTopReferrer {
   period: "all_time" | "filtered";
 }
 
+export interface ReferralLeadsTopSalesAgent {
+  userId: string;
+  name: string;
+  count: number;
+  rank?: number;
+  leaderboardSize?: number;
+}
+
 export interface ReferralLeadsStatsResponse {
   totalReferrals: number;
   converted: number;
@@ -63,6 +93,10 @@ export interface ReferralLeadsStatsResponse {
   hired: number;
   topReferrer: ReferralLeadsTopReferrer | null;
   leaderboard: { userId: string; name: string; count: number }[];
+  unassignedCount?: number;
+  totalReferredHires?: number;
+  hiresPerSalesAgent?: { userId: string; name: string; count: number; rank?: number }[];
+  topSalesAgent?: ReferralLeadsTopSalesAgent | null;
 }
 
 export interface ReferralLeadsQueryParams {
@@ -74,6 +108,16 @@ export interface ReferralLeadsQueryParams {
   referralPipelineStatus?: string;
   from?: string;
   to?: string;
+  salesAgentUserId?: string;
+  unassigned?: boolean;
+  hiredOnly?: boolean;
+  convertedEmployees?: boolean;
+  pendingReferrals?: boolean;
+}
+
+export function coalesceField<T>(lead: unknown, key: string, fallback: T): T {
+  const v = (lead as Record<string, unknown> | null | undefined)?.[key];
+  return v === undefined || v === null ? fallback : (v as T);
 }
 
 export async function listReferralLeads(

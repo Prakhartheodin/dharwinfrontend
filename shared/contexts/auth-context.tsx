@@ -24,6 +24,8 @@ interface AuthContextValue {
   user: User | null;
   impersonation: ImpersonationInfo | null;
   sessions: Session[];
+  /** Server-derived feature capabilities from GET /auth/me. */
+  capabilities: { referralSalesAgentAttribution?: boolean };
   /** Resolved permissions from user's roleIds (raw domain format, e.g. ats.jobs:view,create). */
   permissions: string[];
   roleNames: string[];
@@ -72,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [impersonation, setImpersonation] = useState<ImpersonationInfo | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [capabilities, setCapabilities] = useState<{ referralSalesAgentAttribution?: boolean }>({});
   const [permissions, setPermissions] = useState<string[]>([]);
   const [roleNames, setRoleNames] = useState<string[]>([]);
   const [isAdministrator, setIsAdministrator] = useState(false);
@@ -177,6 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(me.user ?? null);
         setImpersonation(me.impersonation ?? null);
         setSessions(me.sessions ?? []);
+        setCapabilities(me.capabilities ?? {});
         try {
           setPermissionsLoaded(false);
           await fetchAndSetPermissions();
@@ -187,6 +191,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setImpersonation(null);
         setSessions([]);
+        setCapabilities({});
         setPermissions(EMPTY_PERMISSIONS.permissions);
         setRoleNames(EMPTY_PERMISSIONS.roleNames);
         setIsAdministrator(false);
@@ -198,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setImpersonation(null);
       setSessions([]);
+      setCapabilities({});
       setPermissions(EMPTY_PERMISSIONS.permissions);
       setRoleNames(EMPTY_PERMISSIONS.roleNames);
       setIsAdministrator(false);
@@ -214,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(me.user ?? null);
         setImpersonation(me.impersonation ?? null);
         setSessions(me.sessions ?? []);
+        setCapabilities(me.capabilities ?? {});
       }
     } catch {
       // Do not clear user on getMe failure here; caller may retry or use checkAuth
@@ -229,6 +236,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(me.user ?? null);
           setImpersonation(me.impersonation ?? null);
           setSessions(me.sessions ?? []);
+          setCapabilities(me.capabilities ?? {});
           setPermissionsLoaded(false);
           const perm = await authApi.getMyPermissions();
           if (!cancelled && perm) {
@@ -248,6 +256,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setImpersonation(null);
           setSessions([]);
+          setCapabilities({});
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
@@ -259,6 +268,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           setImpersonation(null);
           setSessions([]);
+          setCapabilities({});
           setPermissions(EMPTY_PERMISSIONS.permissions);
           setRoleNames(EMPTY_PERMISSIONS.roleNames);
           setIsAdministrator(false);
@@ -419,6 +429,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       impersonation,
       sessions,
+      capabilities,
       permissions,
       roleNames,
       isAdministrator,
@@ -439,6 +450,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       impersonation,
       sessions,
+      capabilities,
       permissions,
       roleNames,
       isAdministrator,

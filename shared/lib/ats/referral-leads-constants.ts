@@ -36,3 +36,26 @@ export function getStatusMeta(
   }
   return STATUS_META.pending;
 }
+
+export type LifecycleStageKey =
+  | "applied"
+  | "interview"
+  | "offered"
+  | "preboarding"
+  | "joined_pending_start"
+  | "employee"
+  | "pending";
+
+export const LIFECYCLE_STAGE_META: Record<LifecycleStageKey, { label: string; color: string; bg: string }> = {
+  applied: { label: "Applied", color: "#1d4ed8", bg: "#dbeafe" },
+  interview: { label: "Interview", color: "#b45309", bg: "#fef3c7" },
+  offered: { label: "Offered", color: "#0f766e", bg: "#ccfbf1" },
+  preboarding: { label: "Preboarding", color: "#6d28d9", bg: "#ede9fe" },
+  joined_pending_start: { label: "Joined", color: "#0e7490", bg: "#cffafe" },
+  employee: { label: "Employee", color: "#047857", bg: "#d1fae5" },
+  pending: { label: "Pending", color: "#4b5563", bg: "#f3f4f6" },
+};
+
+export function getLifecycleStageMeta(key: string | undefined | null) {
+  return LIFECYCLE_STAGE_META[(key as LifecycleStageKey) || "pending"] ?? LIFECYCLE_STAGE_META.pending;
+}

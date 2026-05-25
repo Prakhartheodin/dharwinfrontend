@@ -1,3 +1,4 @@
+import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
 import type { CandidateListItem } from "@/shared/lib/api/employees";
 import type { CandidateWithProfile } from "@/shared/lib/api/auth";
 import type {
@@ -108,7 +109,7 @@ export function mapToFormState(source: WorkforceSource): WorkforceFormState {
     countryCode: asString(migrated.countryCode, empty.personalInfo.countryCode),
     shortBio: asString(migrated.shortBio, empty.personalInfo.shortBio),
     degree: asString(migrated.degree, empty.personalInfo.degree),
-    designation: asString(migrated.designation, empty.personalInfo.designation),
+    designation: resolveEmployeeJobTitle(migrated) || asString(migrated.designation, empty.personalInfo.designation),
     visaType: asString(migrated.visaType, empty.personalInfo.visaType),
     customVisaType: asString(migrated.customVisaType, empty.personalInfo.customVisaType),
     sevisId: asString(migrated.sevisId, empty.personalInfo.sevisId),

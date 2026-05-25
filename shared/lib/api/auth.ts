@@ -26,11 +26,14 @@ export async function logout(): Promise<void> {
   await apiClient.post(AUTH_ENDPOINTS.logout, {});
 }
 
-/** Me response: user, optional impersonation, and optional sessions list. */
+/** Me response: user, optional impersonation, sessions, and server-derived capabilities. */
 export interface MeResponse {
   user?: User;
   impersonation?: ImpersonationInfo;
   sessions?: Session[];
+  capabilities?: {
+    referralSalesAgentAttribution?: boolean;
+  };
 }
 
 /** Response from GET /v1/auth/my-permissions. */
@@ -250,10 +253,10 @@ export async function recommendSkillsByRole(
  */
 export async function getMe(): Promise<MeResponse | null> {
   try {
-    const { data } = await apiClient.get<{ user?: User; impersonation?: ImpersonationInfo; sessions?: Session[] } & Partial<User>>(AUTH_ENDPOINTS.me);
+    const { data } = await apiClient.get<{ user?: User; impersonation?: ImpersonationInfo; sessions?: Session[]; capabilities?: MeResponse['capabilities'] } & Partial<User>>(AUTH_ENDPOINTS.me);
     const user = data.user ?? (data.id != null ? (data as User) : null);
     if (!user) return null;
-    return { user, impersonation: data.impersonation, sessions: data.sessions ?? [] };
+    return { user, impersonation: data.impersonation, sessions: data.sessions ?? [], capabilities: data.capabilities };
   } catch {
     return null;
   }

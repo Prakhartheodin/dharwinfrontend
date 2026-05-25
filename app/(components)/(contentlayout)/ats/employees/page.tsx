@@ -7,6 +7,7 @@ const DatePicker = dynamic(() => import('react-datepicker').then((mod) => mod.de
 import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
+import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
   listCandidates,
@@ -296,16 +297,7 @@ function PersonalInfoDateField({
 
 /** Avatar: S3 image if available, else initials. Matches my profile / personal-information behavior. */
 function positionLabelFromRaw(raw: CandidateDisplay['_raw']): string {
-  const pos = raw?.position;
-  if (pos == null) return 'Not assigned';
-  if (typeof pos === 'object' && pos !== null && 'name' in pos && String((pos as { name?: string }).name || '').trim()) {
-    return String((pos as { name: string }).name);
-  }
-  if (typeof pos === 'string' && pos.trim()) {
-    if (/^[a-f0-9]{24}$/i.test(pos.trim())) return 'Not assigned';
-    return pos;
-  }
-  return 'Not assigned';
+  return resolveEmployeeJobTitleLabel(raw);
 }
 
 function trainingProgramsLabel(items: { name?: string }[] | undefined): string {
@@ -389,12 +381,6 @@ const Candidates = () => {
     [permissions, isAdministrator]
   )
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
-  const [compCounts, setCompCounts] = useState<{
-    paid: number;
-    unpaid: number;
-    paidPercentage: number;
-    unpaidPercentage: number;
-  }>({ paid: 0, unpaid: 0, paidPercentage: 0, unpaidPercentage: 0 })
   const [impersonatingOwnerUserId, setImpersonatingOwnerUserId] = useState<string | null>(null)
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
@@ -543,9 +529,6 @@ const Candidates = () => {
         setCandidates(res.results.map(mapCandidateToDisplay))
         setTotalResults(res.totalResults ?? res.results.length)
         setTotalPages(res.totalPages ?? 1)
-        setCompCounts(
-          res.compensationCounts ?? { paid: 0, unpaid: 0, paidPercentage: 0, unpaidPercentage: 0 }
-        )
       })
       .catch((err) => {
         setCandidatesError(err?.message ?? 'Failed to load employees')
@@ -2310,17 +2293,6 @@ const Candidates = () => {
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>{bulkDeleteSubmitting ? 'Deleting...' : 'Delete'}
                 </button>
-              </div>
-            </div>
-
-                        <div className="flex gap-2 mb-2 w-full">
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm">
-                <span className="font-semibold text-emerald-700">{compCounts.paid}</span>{' '}
-                <span className="text-emerald-700">Paid employees ({compCounts.paidPercentage}%)</span>
-              </div>
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm">
-                <span className="font-semibold text-amber-700">{compCounts.unpaid}</span>{' '}
-                <span className="text-amber-700">Unpaid interns / trainees ({compCounts.unpaidPercentage}%)</span>
               </div>
             </div>
 
