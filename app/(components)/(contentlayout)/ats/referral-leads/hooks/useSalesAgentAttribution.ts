@@ -11,8 +11,9 @@ export interface StaleConflict {
 
 function extractErrorCode(e: unknown): string | undefined {
   if (e && typeof e === "object" && "response" in e) {
-    const data = (e as { response?: { data?: { code?: string } } }).response?.data;
-    return data?.code;
+    const data = (e as { response?: { data?: { code?: string | number; errorCode?: string } } }).response?.data;
+    if (typeof data?.errorCode === "string") return data.errorCode;
+    if (typeof data?.code === "string") return data.code;
   }
   return undefined;
 }
@@ -43,6 +44,15 @@ export function useSalesAgentAttribution() {
       let msg = extractErrorMessage(e, "Request failed");
       if (code === "CANDIDATE_LEVEL_FROZEN") {
         msg = "Job-specific attributions exist; revoke them first to assign at candidate level.";
+      }
+      if (code === "REFERRER_SELF_REFERENCE") {
+        msg = "Referrer cannot be the same person as the employee.";
+      }
+      if (code === "SALES_AGENT_CANNOT_ASSIGN") {
+        msg = "Sales agents cannot manage referral attribution. Ask an Administrator or Agent.";
+      }
+      if (code === "ALREADY_REFERRED") {
+        msg = "This employee already has a referrer. Use override instead of backfill.";
       }
       if (code === "STALE_PRECONDITION" || code === "CONCURRENT_ASSIGNMENT_RACE") {
         msg = "Reassigned by another admin. Showing latest assignment.";
