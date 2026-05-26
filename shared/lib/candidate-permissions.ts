@@ -41,6 +41,30 @@ export function canEditCandidateResignDate(
   return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.resignDate"));
 }
 
+/**
+ * POST /v1/auth/impersonate ("Login as" user) is gated by
+ * `requireAdministratorOrPermission('users.impersonate')` on the backend.
+ * Administrator role and platformSuperUser keep default access; all other roles
+ * (including Agent) must be granted `settings.users.impersonate:view` (or any
+ * action) via the role-matrix UI.
+ */
+export function canImpersonateUser(
+  rawPermissions: string[],
+  isAdministrator: boolean,
+  isPlatformSuperUser: boolean
+): boolean {
+  if (isPlatformSuperUser || isAdministrator) return true;
+  return rawPermissions.some((raw) => {
+    if (!raw) return false;
+    const colon = raw.indexOf(":");
+    if (colon < 0) return false;
+    const key = raw.slice(0, colon).trim();
+    if (key !== "settings.users.impersonate") return false;
+    const actions = raw.slice(colon + 1).split(",").map((a) => a.trim().toLowerCase());
+    return actions.some((a) => ["view", "create", "edit", "delete"].includes(a));
+  });
+}
+
 /** POST /candidates/:id/assign-agent requires `candidates.manage` on the backend. */
 export function canAssignCandidateAgent(rawPermissions: string[], isPlatformSuperUser: boolean): boolean {
   if (isPlatformSuperUser) return true;

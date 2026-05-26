@@ -22,6 +22,7 @@ export const PERMISSION_SECTIONS: {
       { id: "job-templates", label: "My jobs template" },
       { id: "email-templates-admin", label: "All agents' email templates (admin)" },
       { id: "bolna-voice-agent", label: "Bolna voice agent" },
+      { id: "users.impersonate", label: "Impersonate users (Login as)" },
     ],
   },
   {

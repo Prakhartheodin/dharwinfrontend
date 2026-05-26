@@ -37,7 +37,7 @@ function groupByDate<T extends { createdAt?: string }>(items: T[]): Record<strin
 }
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
-  const { user, impersonation, logout, stopImpersonation } = useAuth();
+  const { user, impersonation, logout, stopImpersonation, isLoading: authIsLoading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
@@ -506,9 +506,10 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                     <button
                       type="button"
                       onClick={() => stopImpersonation()}
-                      className="ti-btn ti-btn-xs ti-btn-outline-warning !py-0.5 !px-3 !text-[0.7rem] !rounded-full"
+                      disabled={authIsLoading}
+                      className="ti-btn ti-btn-xs ti-btn-outline-warning !py-0.5 !px-3 !text-[0.7rem] !rounded-full disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      Exit
+                      {authIsLoading ? "Exiting…" : "Exit"}
                     </button>
                   </div>
                 </div>

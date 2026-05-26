@@ -479,7 +479,7 @@ export default function EditJobClient() {
     <button
       type="button"
       onClick={() => setActiveTab(key)}
-      className={`-mb-px py-2 px-4 inline-flex items-center gap-2 text-sm font-medium border-b-2 transition-colors ${
+      className={`-mb-px py-2 px-3 sm:px-4 inline-flex items-center gap-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
         activeTab === key
           ? 'bg-primary/10 text-primary border-primary'
           : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border-transparent'
@@ -505,7 +505,7 @@ export default function EditJobClient() {
             </div>
             <div className="box-body">
               <div className="border-b border-gray-200 dark:border-defaultborder/10 mb-6">
-                <nav className="flex space-x-2 rtl:space-x-reverse" role="tablist">
+                <nav className="flex flex-nowrap space-x-2 rtl:space-x-reverse overflow-x-auto -mb-px scrollbar-thin" role="tablist">
                   {tabBtn('general', 'ri-file-text-line', 'General')}
                   {tabBtn('requirements', 'ri-checkbox-line', 'Requirements')}
                 </nav>
@@ -517,7 +517,7 @@ export default function EditJobClient() {
                       <section>
                         <div className={sectionLabel}>Basics</div>
                         <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-6 col-span-12">
+                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
                             <label className="form-label">Job Title <span className="text-danger">*</span></label>
                             <input
                               type="text"
@@ -528,7 +528,7 @@ export default function EditJobClient() {
                               required
                             />
                           </div>
-                          <div className="xl:col-span-6 col-span-12">
+                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
                             <label className="form-label">Organisation Name <span className="text-danger">*</span></label>
                             <input
                               type="text"
@@ -539,7 +539,7 @@ export default function EditJobClient() {
                               required
                             />
                           </div>
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Location <span className="text-danger">*</span></label>
                             <input
                               type="text"
@@ -550,7 +550,7 @@ export default function EditJobClient() {
                               required
                             />
                           </div>
-                          <div className="xl:col-span-3 col-span-12">
+                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
                             <label className="form-label">Job Type <span className="text-danger">*</span></label>
                             <Select
                               options={jobTypeOptions}
@@ -562,7 +562,7 @@ export default function EditJobClient() {
                               menuPlacement="auto"
                             />
                           </div>
-                          <div className="xl:col-span-3 col-span-12">
+                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
                             <label className="form-label">Experience Level</label>
                             <Select
                               options={experienceLevelOptions}
@@ -575,7 +575,7 @@ export default function EditJobClient() {
                               menuPlacement="auto"
                             />
                           </div>
-                          <div className="xl:col-span-2 col-span-12">
+                          <div className="xl:col-span-2 md:col-span-4 col-span-12">
                             <label className="form-label">Status</label>
                             <Select
                               options={statusOptions}
@@ -586,7 +586,7 @@ export default function EditJobClient() {
                               menuPlacement="auto"
                             />
                           </div>
-                          <div className="xl:col-span-3 col-span-12">
+                          <div className="xl:col-span-3 md:col-span-6 col-span-12">
                             <label htmlFor="vacancies" className="form-label">Vacancies / Openings</label>
                             <input
                               type="number"
@@ -610,7 +610,7 @@ export default function EditJobClient() {
                       <section>
                         <div className={sectionLabel}>Organisation</div>
                         <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Website</label>
                             <input
                               type="url"
@@ -620,7 +620,7 @@ export default function EditJobClient() {
                               onChange={(e) => handleInputChange('organisationWebsite', e.target.value)}
                             />
                           </div>
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Email</label>
                             <input
                               type="email"
@@ -630,7 +630,7 @@ export default function EditJobClient() {
                               onChange={(e) => handleInputChange('organisationEmail', e.target.value)}
                             />
                           </div>
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Phone</label>
                             <div className="flex gap-2 w-full">
                               <PhoneCountrySelect
@@ -666,7 +666,7 @@ export default function EditJobClient() {
                             />
                           </div>
                           {/* Company Information — surfaced in job details panel */}
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Industry</label>
                             <input
                               type="text"
@@ -677,7 +677,7 @@ export default function EditJobClient() {
                               maxLength={120}
                             />
                           </div>
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Founded</label>
                             <input
                               type="number"
@@ -696,7 +696,7 @@ export default function EditJobClient() {
                               }
                             />
                           </div>
-                          <div className="xl:col-span-4 col-span-12">
+                          <div className="xl:col-span-4 md:col-span-6 col-span-12">
                             <label className="form-label">Company Size</label>
                             <select
                               className="form-control !rounded-md"
@@ -716,7 +716,7 @@ export default function EditJobClient() {
                       <section>
                         <div className={sectionLabel}>Compensation</div>
                         <div className="grid grid-cols-12 gap-3">
-                          <div className="xl:col-span-6 col-span-12">
+                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
                             <label className="form-label">Min Salary</label>
                             <div className="input-group">
                               <span className="input-group-text">$</span>
@@ -729,7 +729,7 @@ export default function EditJobClient() {
                               />
                             </div>
                           </div>
-                          <div className="xl:col-span-6 col-span-12">
+                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
                             <label className="form-label">Max Salary</label>
                             <div className="input-group">
                               <span className="input-group-text">$</span>
@@ -874,7 +874,7 @@ export default function EditJobClient() {
                               onChange={(e) => handleInputChange('maxExperience', e.target.value)}
                             />
                           </div>
-                          <div className="xl:col-span-6 col-span-12">
+                          <div className="xl:col-span-6 md:col-span-6 col-span-12">
                             <label htmlFor="education" className="form-label">Education</label>
                             <input
                               type="text"

@@ -16,6 +16,7 @@ import {
 
 const SOURCE_LABELS: Record<ExternalJobSource, string> = {
   "active-jobs-db": "Active Jobs DB",
+  "linkedin-job-search-api": "LinkedIn Jobs",
   "linkedin-jobs-api": "LinkedIn Jobs",
 };
 
@@ -151,7 +152,7 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
     },
   ].filter(Boolean) as { icon: string; label: string; value: string; chip: string }[] : [];
 
-  const listingCta = job?.source === "linkedin-jobs-api"
+  const listingCta = job?.source === "linkedin-job-search-api" || job?.source === "linkedin-jobs-api"
     ? { label: "View on LinkedIn", icon: "ri-linkedin-box-fill" }
     : { label: "Open listing", icon: "ri-external-link-line" };
 
@@ -230,7 +231,7 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
                           ? "bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-500/10 dark:text-sky-300 dark:ring-sky-500/25"
                           : "bg-primary/[0.07] text-primary ring-primary/20"
                       }`}>
-                        <i className={`${job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.6rem]`} aria-hidden />
+                        <i className={`${job.source === "linkedin-job-search-api" || job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.6rem]`} aria-hidden />
                         {sourceLabel}
                       </span>
                       {job.jobType && (

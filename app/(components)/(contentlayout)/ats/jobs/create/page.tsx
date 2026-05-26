@@ -356,11 +356,11 @@ const CreateJob = () => {
             <div className="box-body">
               {/* Tabs Navigation */}
               <div className="border-b border-gray-200 dark:border-defaultborder/10 mb-6">
-                <nav className="flex space-x-2 rtl:space-x-reverse" aria-label="Tabs" role="tablist">
+                <nav className="flex flex-nowrap space-x-2 rtl:space-x-reverse overflow-x-auto -mb-px scrollbar-thin" aria-label="Tabs" role="tablist">
                   <button
                     type="button"
                     onClick={() => setActiveTab('general')}
-                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-4 inline-flex items-center gap-2 text-sm font-medium text-center border-b-2 transition-colors ${
+                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-3 sm:px-4 inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                       activeTab === 'general'
                         ? 'bg-primary/10 text-primary border-primary'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border-transparent'
@@ -374,7 +374,7 @@ const CreateJob = () => {
                   <button
                     type="button"
                     onClick={() => setActiveTab('requirements')}
-                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-4 inline-flex items-center gap-2 text-sm font-medium text-center border-b-2 transition-colors ${
+                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-3 sm:px-4 inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                       activeTab === 'requirements'
                         ? 'bg-primary/10 text-primary border-primary'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border-transparent'
@@ -388,7 +388,7 @@ const CreateJob = () => {
                   <button
                     type="button"
                     onClick={() => setActiveTab('settings')}
-                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-4 inline-flex items-center gap-2 text-sm font-medium text-center border-b-2 transition-colors ${
+                    className={`hs-tab-active:bg-primary/10 hs-tab-active:text-primary hs-tab-active:border-primary -mb-px py-2 px-3 sm:px-4 inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-center border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
                       activeTab === 'settings'
                         ? 'bg-primary/10 text-primary border-primary'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 border-transparent'
@@ -409,7 +409,7 @@ const CreateJob = () => {
                   <div id="general-panel" role="tabpanel" aria-labelledby="general-tab">
                     <div className="grid grid-cols-12 gap-4">
                       {/* Job Title */}
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label htmlFor="job-title" className="form-label">
                           Job Title <span className="text-danger">*</span>
                         </label>
@@ -425,7 +425,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Organisation Name */}
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label htmlFor="organisation-name" className="form-label">
                           Organisation / Company Name <span className="text-danger">*</span>
                         </label>
@@ -441,7 +441,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Organisation optional fields */}
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-website" className="form-label">Organisation Website</label>
                         <input
                           type="url"
@@ -452,7 +452,7 @@ const CreateJob = () => {
                           onChange={(e) => handleInputChange('organisationWebsite', e.target.value)}
                         />
                       </div>
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-email" className="form-label">Organisation Email</label>
                         <input
                           type="email"
@@ -463,7 +463,7 @@ const CreateJob = () => {
                           onChange={(e) => handleInputChange('organisationEmail', e.target.value)}
                         />
                       </div>
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-phone" className="form-label">Organisation Phone</label>
                         <div className="flex gap-2 w-full">
                           <PhoneCountrySelect
@@ -502,7 +502,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Company Information — surfaced in job details panel */}
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-industry" className="form-label">Industry</label>
                         <input
                           type="text"
@@ -514,7 +514,7 @@ const CreateJob = () => {
                           maxLength={120}
                         />
                       </div>
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-founded" className="form-label">Founded</label>
                         <input
                           type="number"
@@ -529,7 +529,7 @@ const CreateJob = () => {
                           onChange={(e) => handleInputChange('organisationFounded', e.target.value.replace(/\D/g, '').slice(0, 4))}
                         />
                       </div>
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="org-company-size" className="form-label">Company Size</label>
                         <select
                           id="org-company-size"
@@ -620,7 +620,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Salary Range */}
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label htmlFor="salary-min" className="form-label">
                           Minimum Salary
                         </label>
@@ -636,7 +636,7 @@ const CreateJob = () => {
                           />
                         </div>
                       </div>
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label htmlFor="salary-max" className="form-label">
                           Maximum Salary
                         </label>
@@ -654,7 +654,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Location */}
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label htmlFor="location" className="form-label">
                           Location <span className="text-danger">*</span>
                         </label>
@@ -670,7 +670,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Job Type */}
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label className="form-label">
                           Job Type <span className="text-danger">*</span>
                         </label>
@@ -687,7 +687,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Vacancies / Number of Openings */}
-                      <div className="xl:col-span-4 col-span-12">
+                      <div className="xl:col-span-4 md:col-span-6 col-span-12">
                         <label htmlFor="vacancies" className="form-label">
                           Vacancies / Number of Openings
                         </label>
@@ -746,7 +746,7 @@ const CreateJob = () => {
                   <div id="requirements-panel" role="tabpanel" aria-labelledby="requirements-tab">
                     <div className="grid grid-cols-12 gap-4">
                       {/* Experience Level */}
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label className="form-label">Experience Level</label>
                         <Select
                           options={experienceLevelOptions}
@@ -762,7 +762,7 @@ const CreateJob = () => {
                       </div>
 
                       {/* Years of Experience */}
-                      <div className="xl:col-span-3 col-span-12">
+                      <div className="xl:col-span-3 md:col-span-6 col-span-12">
                         <label htmlFor="min-experience" className="form-label">Min. Years Experience</label>
                         <input
                           type="number"
@@ -775,7 +775,7 @@ const CreateJob = () => {
                           onChange={(e) => handleInputChange('minExperience', e.target.value)}
                         />
                       </div>
-                      <div className="xl:col-span-3 col-span-12">
+                      <div className="xl:col-span-3 md:col-span-6 col-span-12">
                         <label htmlFor="max-experience" className="form-label">Max. Years Experience</label>
                         <input
                           type="number"
@@ -824,7 +824,7 @@ const CreateJob = () => {
                 {activeTab === 'settings' && (
                   <div id="settings-panel" role="tabpanel" aria-labelledby="settings-tab">
                     <div className="grid grid-cols-12 gap-4">
-                      <div className="xl:col-span-6 col-span-12">
+                      <div className="xl:col-span-6 md:col-span-6 col-span-12">
                         <label className="form-label">Job Status</label>
                         <Select
                           options={statusOptions}

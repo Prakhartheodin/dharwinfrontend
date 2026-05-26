@@ -263,7 +263,7 @@ export async function getMe(): Promise<MeResponse | null> {
 }
 
 /**
- * Start impersonation (POST /v1/auth/impersonate). Caller must have Administrator role.
+ * Start impersonation (POST /v1/auth/impersonate). Requires Administrator, platform super user, or settings.users.impersonate permission.
  * Backend sets cookies to impersonated user; replace local user state with returned user.
  */
 export async function impersonate(userId: string): Promise<ImpersonateResponse> {

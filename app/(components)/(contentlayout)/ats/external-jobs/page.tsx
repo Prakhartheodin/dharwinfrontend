@@ -23,7 +23,7 @@ import {
 
 const SOURCE_OPTIONS: { value: ExternalJobSource; label: string }[] = [
   { value: "active-jobs-db", label: "Active Jobs DB" },
-  { value: "linkedin-jobs-api", label: "LinkedIn Jobs API" },
+  { value: "linkedin-job-search-api", label: "LinkedIn Job Search API" },
 ];
 
 const SEARCH_COOLDOWN_SEC = 5;
@@ -237,14 +237,37 @@ export default function ExternalJobsPage() {
         Header: "Location",
         accessor: "location",
         Cell: ({ row }: any) => {
-          const loc = row.original.location;
+          const loc: string | undefined = row.original.location;
           if (!loc) return <span className="text-gray-400">—</span>;
+          const parts = loc
+            .split(/;|•/)
+            .map((p) => p.trim())
+            .filter(Boolean);
+          const MAX_VISIBLE = 2;
+          const visible = parts.slice(0, MAX_VISIBLE);
+          const hidden = parts.slice(MAX_VISIBLE);
           return (
-            <div className="flex items-center gap-1.5">
-              <i className="ri-map-pin-line text-gray-400 text-xs" />
-              <span className="max-w-full truncate" title={loc}>
-                {loc}
-              </span>
+            <div className="flex items-start gap-1.5 max-w-[18rem]">
+              <i className="ri-map-pin-line text-gray-400 text-xs mt-[3px] shrink-0" />
+              <div className="flex flex-wrap gap-1 min-w-0">
+                {visible.map((p, i) => (
+                  <span
+                    key={`${p}-${i}`}
+                    className="inline-flex max-w-full items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[0.7rem] text-gray-700 ring-1 ring-gray-200 dark:bg-white/8 dark:text-white/70 dark:ring-white/10"
+                    title={p}
+                  >
+                    <span className="truncate">{p}</span>
+                  </span>
+                ))}
+                {hidden.length > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary ring-1 ring-primary/20 cursor-help"
+                    title={hidden.join('\n')}
+                  >
+                    +{hidden.length} more
+                  </span>
+                )}
+              </div>
             </div>
           );
         },
@@ -1065,7 +1088,7 @@ export default function ExternalJobsPage() {
                                       : "bg-primary/[0.07] text-primary ring-primary/20"
                                   }`}
                                 >
-                                  <i className={`${job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.55rem]`} aria-hidden />
+                                  <i className={`${job.source === "linkedin-job-search-api" || job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.55rem]`} aria-hidden />
                                   {job.source === "active-jobs-db" ? "Active Jobs" : "LinkedIn"}
                                 </span>
                                 {job.jobType && (

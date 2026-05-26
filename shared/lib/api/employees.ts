@@ -107,6 +107,8 @@ export interface ListCandidatesParams {
   includeOpenSopCount?: "true" | "false" | "1" | "0" | boolean;
   /** When true, only employees with no referrer (referral backfill picker). */
   withoutReferrer?: boolean;
+  /** employee = Employee user role only (default on GET /employees). jobSeeker = Employee or Candidate roles. */
+  ownerUserRole?: "employee" | "jobSeeker";
 }
 
 export async function listCandidates(params?: ListCandidatesParams): Promise<CandidatesListResponse> {

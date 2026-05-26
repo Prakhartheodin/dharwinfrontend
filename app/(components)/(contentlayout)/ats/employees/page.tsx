@@ -55,7 +55,7 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
 import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
-import { canEditCandidateJoiningDate, canEditCandidateResignDate } from '@/shared/lib/candidate-permissions'
+import { canEditCandidateJoiningDate, canEditCandidateResignDate, canImpersonateUser } from '@/shared/lib/candidate-permissions'
 import { ROUTES } from '@/shared/lib/constants'
 import { recommendSkillsByRole } from '@/shared/lib/api/auth'
 
@@ -371,7 +371,7 @@ interface SkillRecommendationItem {
 
 const Candidates = () => {
   const router = useRouter()
-  const { isAdministrator, permissions, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
+  const { isAdministrator, isPlatformSuperUser, permissions, roleNames, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
   const canEditJoiningDate = useMemo(
     () => canEditCandidateJoiningDate(permissions ?? [], isAdministrator),
     [permissions, isAdministrator]
@@ -379,6 +379,10 @@ const Candidates = () => {
   const canEditResignDate = useMemo(
     () => canEditCandidateResignDate(permissions ?? [], isAdministrator),
     [permissions, isAdministrator]
+  )
+  const canImpersonate = useMemo(
+    () => canImpersonateUser(permissions ?? [], isAdministrator, isPlatformSuperUser),
+    [permissions, isAdministrator, isPlatformSuperUser, roleNames]
   )
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
   const [impersonatingOwnerUserId, setImpersonatingOwnerUserId] = useState<string | null>(null)
@@ -1051,7 +1055,14 @@ const Candidates = () => {
       refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
-      setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to send verification email')
+      const message = err?.response?.data?.message ?? err?.message ?? 'Failed to send verification email'
+      if (/already verified/i.test(String(message))) {
+        setActionSuccess('Email already verified')
+        refreshCandidates(true)
+        setTimeout(() => setActionSuccess(null), 3000)
+        return
+      }
+      setActionError(message)
     }
   }
 
@@ -1706,7 +1717,7 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Details</span>
                 </button>
               </div>
-              {isAdministrator && c.ownerUserId && authUser?.id && String(authUser.id) !== String(c.ownerUserId) && (
+              {canImpersonate && c.ownerUserId && authUser?.id && String(authUser.id) !== String(c.ownerUserId) && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button
                     type="button"
@@ -1764,7 +1775,7 @@ const Candidates = () => {
                   </span>
                 </button>
               </div>
-              {c.isEmailVerified === false && (
+              {c.isEmailVerified === false && c.ownerUserId && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button type="button" onClick={() => handleResendVerification(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white" title="Resend Email Verification">
                     <i className="ri-mail-send-line"></i>

@@ -300,7 +300,7 @@ export default function RolesEditPage() {
                             </div>
                           </div>
                           <div
-                            className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[500px]" : "max-h-0"}`}
+                            className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[2000px]" : "max-h-0"}`}
                           >
                             <div className="p-4 border-t border-defaultborder bg-white dark:bg-bodybg">
                               <div className="table-responsive overflow-x-auto">
