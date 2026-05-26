@@ -257,9 +257,9 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
   }
 
   return (
-      <div 
-        id="job-preview-panel" 
-        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !max-w-[50rem] lg:!max-w-[60rem]"
+      <div
+        id="job-preview-panel"
+        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !w-full sm:!w-auto sm:!max-w-[40rem] md:!max-w-[50rem] lg:!max-w-[60rem]"
         tabIndex={-1}
       >
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
@@ -707,7 +707,7 @@ const JobPreviewPanel: React.FC<JobPreviewPanelProps> = ({
 
                   {/* Action Buttons */}
                   {previewJob && (
-                    <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10 flex gap-3">
+                    <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10 flex flex-wrap gap-2 sm:gap-3">
                       <button 
                         type="button" 
                         className="hs-dropdown-toggle ti-btn ti-btn-light flex-1 min-w-0 overflow-hidden whitespace-nowrap px-4"

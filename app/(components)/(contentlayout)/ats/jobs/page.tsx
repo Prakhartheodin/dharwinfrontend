@@ -84,6 +84,21 @@ function nextExperienceSortToggle(current: string): 'experience-asc' | 'experien
   return 'experience-asc'
 }
 
+/** Per-column visibility classes for md→2xl table view (mobile uses card list instead). */
+const COLUMN_VISIBILITY: Record<string, string> = {
+  checkbox: '',
+  jobTitle: '',
+  company: '',
+  location: '',
+  experience: 'hidden lg:table-cell',
+  vacancies: 'hidden xl:table-cell',
+  postingDate: 'hidden md:table-cell',
+  salary: 'hidden md:table-cell',
+  jobOrigin: 'hidden xl:table-cell',
+  postedBy: 'hidden 2xl:table-cell',
+  id: '',
+}
+
 const Jobs = () => {
   const { canView, canCreate, canEdit, canDelete, isLoading: permissionsLoading } = useFeaturePermissions("ats.jobs")
   const { roleNames } = useAuth()
@@ -235,7 +250,7 @@ const Jobs = () => {
   const handleApplyClick = (job: any) => {
     setApplyJob(job)
     setSelectedCandidateId('')
-    listCandidates({ limit: 500 })
+    listCandidates({ limit: 500, ownerUserRole: 'jobSeeker' })
       .then((res) => setCandidatesList((res.results ?? []).map((c: any) => ({ id: c._id ?? c.id, fullName: c.fullName ?? c.name ?? '' }))))
       .catch(() => setCandidatesList([]))
     setApplyModalOpen(true)
@@ -1212,14 +1227,14 @@ const Jobs = () => {
       <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
-            <div className="box-header flex items-center justify-between flex-wrap gap-4">
+            <div className="box-header flex items-center justify-between flex-wrap gap-3 sm:gap-4 !p-3 sm:!p-4">
               <div className="box-title">
                 Jobs
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2 items-center">
+              <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
                 {/* Search — opens right-side filter drawer */}
                 <button
                   type="button"
@@ -1401,7 +1416,149 @@ const Jobs = () => {
                   <div className="animate-spin rounded-full h-9 w-9 border-2 border-primary border-t-transparent" />
                 </div>
               ) : null}
-              <div className="table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              {/* Mobile card list — shown <md; mirrors paginated react-table `page` rows. */}
+              <div className="md:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
+                {page.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-defaultborder/60 dark:border-white/10 py-10 text-center text-sm text-defaulttextcolor/70">
+                    No jobs match your filters.
+                  </div>
+                ) : (
+                  page.map((row: any, i: number) => {
+                    prepareRow(row)
+                    const job = row.original
+                    const urgencyBadge = getUrgencyBadge(job.urgency || 'medium')
+                    const openPreview = () => {
+                      setPreviewJob(job)
+                      setTimeout(() => {
+                        const HSOverlay = (window as any).HSOverlay
+                        const HSStaticMethods = (window as any).HSStaticMethods
+                        if (HSStaticMethods?.autoInit) HSStaticMethods.autoInit()
+                        if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
+                      }, 50)
+                    }
+                    let relative = ''
+                    if (job.postingDate) {
+                      const d = new Date(job.postingDate)
+                      if (!Number.isNaN(d.getTime())) {
+                        const diffDays = Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000))
+                        if (diffDays === 0) relative = 'Today'
+                        else if (diffDays === 1) relative = 'Yesterday'
+                        else if (diffDays < 30) relative = `${diffDays}d ago`
+                        else if (diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
+                        else relative = `${Math.floor(diffDays / 365)}y ago`
+                      }
+                    }
+                    return (
+                      <div
+                        key={row.id || `card-${i}`}
+                        className="rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm hover:shadow transition-shadow p-3.5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <button
+                              type="button"
+                              onClick={openPreview}
+                              className="text-left font-semibold text-gray-900 dark:text-white hover:text-primary leading-snug break-words"
+                            >
+                              {job.jobTitle}
+                            </button>
+                            <div className="mt-0.5 text-xs text-defaulttextcolor/75 truncate" title={job.company}>
+                              {job.company}
+                            </div>
+                          </div>
+                          {canDelete && !isSalesAgent && (
+                            <input
+                              className="form-check-input mt-1 shrink-0"
+                              type="checkbox"
+                              checked={selectedRows.has(job.id)}
+                              onChange={() => handleRowSelect(job.id)}
+                              aria-label={`Select ${job.jobTitle}`}
+                            />
+                          )}
+                        </div>
+                        <div className="mt-2.5 flex flex-wrap gap-1.5 text-[0.7rem]">
+                          {job.location && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
+                              <i className="ri-map-pin-line text-[0.75rem]" />
+                              <span className="truncate max-w-[10rem]">{job.location}</span>
+                            </span>
+                          )}
+                          {job.experience && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
+                              <i className="ri-briefcase-line text-[0.75rem]" />
+                              {job.experience}
+                            </span>
+                          )}
+                          {job.salary && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
+                              <i className="ri-money-dollar-circle-line text-[0.75rem]" />
+                              {job.salary}
+                            </span>
+                          )}
+                          {job.vacancies != null && job.vacancies > 0 && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary px-2 py-0.5">
+                              <i className="ri-team-line text-[0.75rem]" />
+                              {job.vacancies}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 ${
+                            job.jobOrigin === 'external'
+                              ? 'bg-info/15 text-info border border-info/30'
+                              : 'bg-secondary/15 text-secondary border border-secondary/30'
+                          }`}>
+                            {job.jobOrigin === 'external' ? 'External' : 'Internal'}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-2">
+                          <span className="text-[0.7rem] text-defaulttextcolor/60">
+                            {relative || (job.postingDate ?? '—')}
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {canEdit && !isSalesAgent && job.jobOrigin !== 'external' && (
+                              <Link
+                                href={`/ats/jobs/edit/${job.id}`}
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
+                                aria-label="Edit job"
+                              >
+                                <i className="ri-pencil-line" />
+                              </Link>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleBookmark(job.id, job)}
+                              className={`ti-btn ti-btn-icon ti-btn-sm ${bookmarkedJobs.has(job.id) ? 'ti-btn-warning' : 'ti-btn-light'}`}
+                              aria-label={bookmarkedJobs.has(job.id) ? 'View notes' : 'Bookmark job'}
+                            >
+                              <i className={bookmarkedJobs.has(job.id) ? 'ri-bookmark-fill' : 'ri-bookmark-line'} />
+                            </button>
+                            {job.jobOrigin !== 'external' && (
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateCall(job)}
+                                disabled={!getOrganisationPhone(job) || callingJobId === job.id}
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                                aria-label="Call organisation"
+                              >
+                                <i className="ri-phone-line" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleShareClick(job)}
+                              className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                              aria-label="Share job"
+                            >
+                              <i className="ri-share-line" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+
+              <div className="hidden md:block table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table
                   {...getTableProps()}
                   className="table w-full max-w-full whitespace-nowrap table-striped table-hover table-bordered border-gray-300 dark:border-gray-600"
@@ -1476,7 +1633,7 @@ const Jobs = () => {
                                 column.id === 'location' ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]' : ''
                               }${hidePostingCol ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}${
                                 clickableHeader ? ' cursor-pointer select-none' : ''
-                              }`}
+                              } ${COLUMN_VISIBILITY[column.id] ?? ''}`}
                               key={column.id || `col-${i}`}
                               {...(clickableHeader
                                 ? {
@@ -1598,7 +1755,7 @@ const Jobs = () => {
                                   isLocation
                                     ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]'
                                     : ''
-                                }${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}`.trim()}
+                                }${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''} ${COLUMN_VISIBILITY[cell.column.id] ?? ''}`.trim()}
                                 key={cell.column.id || `cell-${i}`}
                               >
                                 {cell.render('Cell')}
@@ -1728,7 +1885,7 @@ const Jobs = () => {
       {/* Company Info Panel (Offcanvas) */}
       <div
         id="company-info-panel"
-        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !max-w-[50rem] lg:!max-w-[60rem]"
+        className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !w-full sm:!w-auto sm:!max-w-[40rem] md:!max-w-[50rem] lg:!max-w-[60rem]"
         tabIndex={-1}
       >
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">

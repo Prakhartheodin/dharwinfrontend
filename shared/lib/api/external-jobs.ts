@@ -2,7 +2,7 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
-export type ExternalJobSource = "active-jobs-db" | "linkedin-jobs-api";
+export type ExternalJobSource = "active-jobs-db" | "linkedin-job-search-api" | "linkedin-jobs-api";
 
 export interface ExternalJob {
   externalId: string;

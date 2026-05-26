@@ -211,10 +211,12 @@ export default function RecordingsPage() {
         q: search.trim() || undefined,
         source: sourceFilter || undefined,
       });
-      const visible = (data.results || []).filter((r) => r.status !== "missing");
-      const hiddenOnPage = (data.results?.length ?? 0) - visible.length;
-      setRecordings(visible);
-      setTotalResults(Math.max(0, (data.totalResults ?? 0) - hiddenOnPage));
+      // Surface every row backend returns — including `missing`. A row marked
+      // `missing` may still have a real S3 file (resweep can recover it) and
+      // hiding it client-side meant users lost visibility into completed
+      // recordings whose S3 verify transiently failed.
+      setRecordings(data.results || []);
+      setTotalResults(data.totalResults ?? 0);
       setTotalPages(data.totalPages ?? 1);
     } catch (e) {
       const msg =
@@ -340,6 +342,8 @@ export default function RecordingsPage() {
     { key: "completed", label: "Completed", count: counts.completed, tone: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
     { key: "aborted", label: "Aborted", count: counts.aborted, tone: "bg-orange-500/10 text-orange-600 border-orange-500/30" },
     { key: "failed", label: "Failed", count: counts.failed, tone: "bg-red-500/10 text-red-600 border-red-500/30" },
+    { key: "missing", label: "Missing", count: counts.missing, tone: "bg-rose-500/10 text-rose-600 border-rose-500/30" },
+    { key: "expired", label: "Expired", count: counts.expired, tone: "bg-gray-500/10 text-gray-600 border-gray-500/30" },
   ];
 
   const renderStatusPill = (rec: RecordingWithMeeting) => {

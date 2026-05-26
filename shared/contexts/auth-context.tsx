@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { setSessionExpiredHandler } from "@/shared/lib/api/client";
 import {
@@ -85,6 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loadingMessage, setLoadingMessage] = useState<string | null>(null);
   const [isChecked, setIsChecked] = useState(false);
   const router = useRouter();
+  // Guards against duplicate stop-impersonation fetches from double-clicks,
+  // React StrictMode double-effects, or concurrent Exit triggers across components.
+  const stopImpersonationInFlight = useRef(false);
 
   const fetchAndSetPermissions = useCallback(async () => {
     try {
@@ -389,6 +392,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const stopImpersonationAction = useCallback(async () => {
+    if (stopImpersonationInFlight.current) return;
+    stopImpersonationInFlight.current = true;
     const name = user?.name ?? user?.email ?? "user";
     setLoadingMessage(`Logging out from ${name}`);
     setIsLoading(true);
@@ -421,6 +426,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setLoadingMessage(null);
       setIsLoading(false);
+      stopImpersonationInFlight.current = false;
     }
   }, [router, user]);
 

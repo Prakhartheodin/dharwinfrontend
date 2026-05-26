@@ -17,6 +17,7 @@ import {
   hasAnySettingsModulePermission,
   hasSettingsFeatureAction,
 } from "@/shared/lib/permissions";
+import { canImpersonateUser } from "@/shared/lib/candidate-permissions";
 
 function formatDate(isoString: string | undefined): string {
   if (!isoString) return "—";
@@ -55,6 +56,7 @@ export default function SettingsUsersPage() {
     isPlatformSuperUser,
     isDesignatedSuperadmin,
     permissions,
+    roleNames,
   } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -67,6 +69,11 @@ export default function SettingsUsersPage() {
 
   /** Platform super or designated superadmin — matches HRM signaling token API. */
   const canHrmWebRtcFeed = Boolean(isPlatformSuperUser || isDesignatedSuperadmin);
+
+  const canImpersonate = useMemo(
+    () => canImpersonateUser(permissions ?? [], authIsAdministrator, isPlatformSuperUser),
+    [permissions, authIsAdministrator, isPlatformSuperUser, roleNames]
+  );
 
   const [feedModalUser, setFeedModalUser] = useState<User | null>(null);
   const [feedDeviceId, setFeedDeviceId] = useState("");
@@ -693,7 +700,7 @@ export default function SettingsUsersPage() {
                           >
                             <i className="ri-eye-line text-[1rem]" />
                           </button>
-                          {isAdministrator &&
+                          {canImpersonate &&
                             currentUser?.id !== user.id &&
                             user.status === "active" && (
                               <button
