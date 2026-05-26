@@ -23,7 +23,6 @@ type StatusKey =
   | "live"
   | "aborted"
   | "failed"
-  | "missing"
   | "expired";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -211,11 +210,8 @@ export default function RecordingsPage() {
         q: search.trim() || undefined,
         source: sourceFilter || undefined,
       });
-      // Surface every row backend returns — including `missing`. A row marked
-      // `missing` may still have a real S3 file (resweep can recover it) and
-      // hiding it client-side meant users lost visibility into completed
-      // recordings whose S3 verify transiently failed.
-      setRecordings(data.results || []);
+      const rows = (data.results || []).filter((rec) => rec.status !== "missing");
+      setRecordings(rows);
       setTotalResults(data.totalResults ?? 0);
       setTotalPages(data.totalPages ?? 1);
     } catch (e) {
@@ -278,6 +274,7 @@ export default function RecordingsPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return recordings.filter((rec) => {
+      if (rec.status === "missing") return false;
       if (statusFilter === "live" && !LIVE_STATUSES.has(rec.status)) return false;
       if (statusFilter !== "all" && statusFilter !== "live" && rec.status !== statusFilter) return false;
       if (!q) return true;
@@ -306,13 +303,12 @@ export default function RecordingsPage() {
   }, [recordings, statusFilter, search, searchField]);
 
   const counts = useMemo(() => {
-    const c = { all: recordings.length, live: 0, completed: 0, aborted: 0, failed: 0, missing: 0, expired: 0 };
+    const c = { all: recordings.length, live: 0, completed: 0, aborted: 0, failed: 0, expired: 0 };
     for (const r of recordings) {
       if (LIVE_STATUSES.has(r.status)) c.live += 1;
       if (r.status === "completed") c.completed += 1;
       else if (r.status === "aborted") c.aborted += 1;
       else if (r.status === "failed") c.failed += 1;
-      else if (r.status === "missing") c.missing += 1;
       else if (r.status === "expired") c.expired += 1;
     }
     return c;
@@ -342,7 +338,6 @@ export default function RecordingsPage() {
     { key: "completed", label: "Completed", count: counts.completed, tone: "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" },
     { key: "aborted", label: "Aborted", count: counts.aborted, tone: "bg-orange-500/10 text-orange-600 border-orange-500/30" },
     { key: "failed", label: "Failed", count: counts.failed, tone: "bg-red-500/10 text-red-600 border-red-500/30" },
-    { key: "missing", label: "Missing", count: counts.missing, tone: "bg-rose-500/10 text-rose-600 border-rose-500/30" },
     { key: "expired", label: "Expired", count: counts.expired, tone: "bg-gray-500/10 text-gray-600 border-gray-500/30" },
   ];
 
