@@ -1496,17 +1496,17 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-<div className="mt-5 grid grid-cols-12 gap-6 min-h-[calc(100vh-8rem)] sm:mt-6">
+<div className="mt-4 grid grid-cols-12 gap-4 min-h-[calc(100vh-8rem)] sm:mt-6 lg:gap-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
-            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-3 border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-4 py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
-              <div className="box-title">
+            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-2 sm:gap-3 border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-2.5 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
+              <div className="box-title text-sm sm:text-base">
                 Interviews
-                <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
+                <span className="badge bg-light text-default rounded-full ms-1 text-[0.7rem] sm:text-[0.75rem] align-middle">
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
                 <select
                   className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem]"
                   value={pageSize}
@@ -1525,23 +1525,25 @@ export default function InterviewsClient() {
                   className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem] inline-flex items-center"
                   aria-label={selectedSort === 'date-desc' ? 'Sorted latest first — click to sort soonest first' : 'Sorted soonest first — click to sort latest first'}
                 >
-                  <i className={`${selectedSort === 'date-desc' ? 'ri-sort-desc' : 'ri-sort-asc'} font-semibold align-middle me-1`}></i>
-                  {selectedSort === 'date-desc' ? 'Latest first' : 'Soonest first'}
+                  <i className={`${selectedSort === 'date-desc' ? 'ri-sort-desc' : 'ri-sort-asc'} font-semibold align-middle sm:me-1`}></i>
+                  <span className="hidden sm:inline">{selectedSort === 'date-desc' ? 'Latest first' : 'Soonest first'}</span>
                 </button>
                 <div className="flex items-center rounded-lg border border-defaultborder dark:border-defaultborder/20 p-0.5 bg-white dark:bg-black/10">
                   <button
                     type="button"
                     onClick={() => setViewMode('table')}
                     className={`ti-btn !py-1.5 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'table' ? 'ti-btn-primary' : 'ti-btn-light'}`}
+                    aria-label="Table view"
                   >
-                    <i className="ri-list-check-2 align-middle me-1"></i>Table
+                    <i className="ri-list-check-2 align-middle sm:me-1"></i><span className="hidden sm:inline">Table</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode('week')}
                     className={`ti-btn !py-1.5 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === 'week' ? 'ti-btn-primary' : 'ti-btn-light'}`}
+                    aria-label="Week view"
                   >
-                    <i className="ri-calendar-schedule-line align-middle me-1"></i>Week
+                    <i className="ri-calendar-schedule-line align-middle sm:me-1"></i><span className="hidden sm:inline">Week</span>
                   </button>
                 </div>
                 <button
@@ -1549,8 +1551,8 @@ export default function InterviewsClient() {
                   className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem]"
                   onClick={() => openScheduleInterviewModal()}
                 >
-                  <i className="ri-add-line font-semibold align-middle"></i>
-                  Schedule Interview
+                  <i className="ri-add-line font-semibold align-middle sm:me-1"></i>
+                  <span className="hidden sm:inline">Schedule Interview</span><span className="sm:hidden">Schedule</span>
                 </button>
                 {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
                 <div ref={excelDropdownRef} className="relative">
@@ -1566,7 +1568,7 @@ export default function InterviewsClient() {
                       setIsExcelMenuOpen((prev) => !prev)
                     }}
                   >
-                    <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
+                    <i className="ri-file-excel-2-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Excel</span>
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
                   {isExcelMenuOpen && (
@@ -1613,7 +1615,7 @@ export default function InterviewsClient() {
                   className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem]"
                   onClick={() => openHsOverlay('#interviews-filter-panel')}
                 >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
+                  <i className="ri-search-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Search</span>
                   {hasActiveFilters && (
                     <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
                       {activeFilterCount}
@@ -1623,8 +1625,9 @@ export default function InterviewsClient() {
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem]"
+                  aria-label="Delete selected"
                 >
-                  <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>Delete
+                  <i className="ri-delete-bin-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Delete</span>
                 </button>
               </div>
             </div>
@@ -1664,27 +1667,29 @@ export default function InterviewsClient() {
                   </button>
                 </div>
               ) : viewMode === 'week' ? (
-              <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
-                <div className="flex items-center justify-between mb-4">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4" style={{ minHeight: 0 }}>
+                <div className="flex items-center justify-between gap-2 mb-3 sm:mb-4 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(n.getDate() - 7); return n })}
-                    className="ti-btn ti-btn-light !py-1.5 !px-3 !text-sm"
+                    className="ti-btn ti-btn-light !py-1.5 !px-2.5 sm:!px-3 !text-xs sm:!text-sm"
+                    aria-label="Previous week"
                   >
-                    <i className="ri-arrow-left-s-line"></i> Previous week
+                    <i className="ri-arrow-left-s-line"></i> <span className="hidden sm:inline">Previous week</span>
                   </button>
-                  <span className="text-sm font-medium text-defaulttextcolor dark:text-white">
+                  <span className="text-xs sm:text-sm font-medium text-defaulttextcolor dark:text-white order-last w-full text-center sm:order-none sm:w-auto">
                     {weekDays[0]?.date.toLocaleDateString('en-US', { month: 'short' })} {weekDays[0]?.date.getDate()} – {weekDays[6]?.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
                   <button
                     type="button"
                     onClick={() => setWeekStart((d) => { const n = new Date(d); n.setDate(n.getDate() + 7); return n })}
-                    className="ti-btn ti-btn-light !py-1.5 !px-3 !text-sm"
+                    className="ti-btn ti-btn-light !py-1.5 !px-2.5 sm:!px-3 !text-xs sm:!text-sm"
+                    aria-label="Next week"
                   >
-                    Next week <i className="ri-arrow-right-s-line"></i>
+                    <span className="hidden sm:inline">Next week</span> <i className="ri-arrow-right-s-line"></i>
                   </button>
                 </div>
-                <div className="grid grid-cols-7 gap-3 min-w-[800px]">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2 sm:gap-3">
                   {weekDays.map((day) => (
                     <div key={day.key} className="flex flex-col rounded-xl border border-defaultborder dark:border-defaultborder/20 bg-gray-50/50 dark:bg-black/20 overflow-hidden">
                       <div className="px-3 py-2 border-b border-defaultborder dark:border-defaultborder/20 bg-primary/5 dark:bg-primary/10">
