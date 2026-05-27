@@ -1,5 +1,4 @@
 "use client";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useState, useEffect } from "react";
 import Link from "next/link";
@@ -7,6 +6,7 @@ import { useRouter, useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Swal from "sweetalert2";
 import { getUser, updateUser } from "@/shared/lib/api/users";
+import { uploadDocument } from "@/shared/lib/api/employees";
 import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 
@@ -34,7 +34,11 @@ export default function EditRecruiterClient() {
   const recruiterId = params?.id as string;
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [profilePictureFile, setProfilePictureFile] = useState<File | null>(null);
+  const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
+  const [profilePictureCleared, setProfilePictureCleared] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -65,6 +69,9 @@ export default function EditRecruiterClient() {
           location: user.location ?? "",
           profileSummary: user.profileSummary ?? "",
         });
+        if (user.profilePicture?.url) {
+          setProfilePicturePreview(user.profilePicture.url);
+        }
       })
       .catch(() => {
         Swal.fire({ icon: "error", title: "Error", text: "Recruiter not found." });
@@ -76,6 +83,31 @@ export default function EditRecruiterClient() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setFormData((p) => ({ ...p, [e.target.name]: e.target.value }));
     setError(null);
+  };
+
+  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const allowed = ["image/jpeg", "image/jpg", "image/png"];
+    if (!allowed.includes(file.type)) {
+      Swal.fire({ icon: "error", title: "Invalid format", text: "Use JPG, JPEG or PNG. Max 5MB." });
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      Swal.fire({ icon: "error", title: "File too large", text: "Max 5MB." });
+      return;
+    }
+    setProfilePictureFile(file);
+    setProfilePictureCleared(false);
+    const reader = new FileReader();
+    reader.onload = () => setProfilePicturePreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleClearProfilePicture = () => {
+    setProfilePictureFile(null);
+    setProfilePicturePreview("");
+    setProfilePictureCleared(true);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -95,7 +127,28 @@ export default function EditRecruiterClient() {
     setSubmitting(true);
     setError(null);
     try {
-      await updateUser(recruiterId, {
+      // Upload the new profile picture first (if any) so we can include the URL
+      // in the user PATCH payload.
+      let uploadedPicture: { url: string; key?: string; originalName?: string; size?: number; mimeType?: string } | null = null;
+      if (profilePictureFile) {
+        setUploadingPicture(true);
+        try {
+          const uploaded = await uploadDocument(profilePictureFile, profilePictureFile.name);
+          uploadedPicture = uploaded;
+        } catch (uploadErr: any) {
+          setUploadingPicture(false);
+          setSubmitting(false);
+          await Swal.fire({
+            icon: "error",
+            title: "Upload failed",
+            text: uploadErr?.response?.data?.message || uploadErr?.message || "Could not upload profile picture.",
+          });
+          return;
+        }
+        setUploadingPicture(false);
+      }
+
+      const payload: any = {
         name: formData.name.trim(),
         email: formData.email.trim(),
         phoneNumber: formData.phoneNumber.trim() || undefined,
@@ -104,7 +157,23 @@ export default function EditRecruiterClient() {
         domain: formData.domain,
         location: formData.location.trim() || undefined,
         profileSummary: formData.profileSummary.trim() || undefined,
-      });
+      };
+      if (uploadedPicture) {
+        payload.profilePicture = {
+          url: uploadedPicture.url,
+          key: uploadedPicture.key,
+          originalName: uploadedPicture.originalName,
+          size: uploadedPicture.size,
+          mimeType: uploadedPicture.mimeType,
+        };
+      } else if (profilePictureCleared) {
+        // User explicitly cleared the existing picture — send null to wipe it.
+        payload.profilePicture = null;
+      }
+
+      await updateUser(recruiterId, payload);
+      setProfilePictureFile(null);
+      setProfilePictureCleared(false);
       await Swal.fire({ icon: "success", title: "Updated", text: "Recruiter profile has been updated." });
       router.push("/ats/recruiters");
     } catch (err: any) {
@@ -118,8 +187,9 @@ export default function EditRecruiterClient() {
     return (
       <Fragment>
         <Seo title="Edit Recruiter" />
-        <Pageheader currentpage="Edit Recruiter" activepage="Recruiters" mainpage="Edit Recruiter" />
-        <div className="container py-8 text-center text-muted">Loading...</div>
+        <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
+          <div className="py-8 text-center text-muted">Loading...</div>
+        </div>
       </Fragment>
     );
   }
@@ -128,8 +198,9 @@ export default function EditRecruiterClient() {
     return (
       <Fragment>
         <Seo title="Edit Recruiter" />
-        <Pageheader currentpage="Edit Recruiter" activepage="Recruiters" mainpage="Edit Recruiter" />
-        <div className="container py-8 text-center text-muted">Loading...</div>
+        <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
+          <div className="py-8 text-center text-muted">Loading...</div>
+        </div>
       </Fragment>
     );
   }
@@ -137,11 +208,10 @@ export default function EditRecruiterClient() {
   return (
     <Fragment>
       <Seo title="Edit Recruiter" />
-      <Pageheader currentpage="Edit Recruiter" activepage="Recruiters" mainpage="Edit Recruiter" />
-      <div className="container">
-        <div className="grid grid-cols-12">
-          <div className="col-span-12">
-            <div className="box">
+      <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
+        <div className="grid grid-cols-12 gap-6">
+          <div className="xl:col-span-12 col-span-12">
+            <div className="box custom-box overflow-hidden">
               <div className="box-header flex justify-between items-center">
                 <div className="box-title">Edit Recruiter</div>
                 <Link href="/ats/recruiters" className="ti-btn ti-btn-secondary !py-1 !px-2 !text-sm">
@@ -154,6 +224,44 @@ export default function EditRecruiterClient() {
                     <div className="mb-4 p-3 rounded-lg bg-danger/10 text-danger text-sm">{error}</div>
                   )}
                   <div className="grid grid-cols-12 gap-4">
+                    {/* Profile picture */}
+                    <div className="xl:col-span-12 col-span-12 mb-2">
+                      <label className="form-label">Profile Picture (Optional)</label>
+                      <div className="flex items-center gap-4">
+                        <div className="relative">
+                          {profilePicturePreview ? (
+                            <img src={profilePicturePreview} alt="Preview" className="w-20 h-20 rounded-full object-cover border-2 border-gray-300" />
+                          ) : (
+                            <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
+                              <i className="ri-user-line text-2xl text-gray-400"></i>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <input
+                            type="file"
+                            accept=".jpg,.jpeg,.png"
+                            onChange={handleProfilePictureChange}
+                            className="form-control w-full !rounded-md"
+                            id="profilePicture"
+                            disabled={submitting || uploadingPicture}
+                          />
+                          <small className="text-gray-500 text-xs mt-1">JPG, JPEG, PNG. Max 5MB.</small>
+                        </div>
+                        {profilePicturePreview && (
+                          <button
+                            type="button"
+                            onClick={handleClearProfilePicture}
+                            disabled={submitting || uploadingPicture}
+                            className="ti-btn ti-btn-danger ti-btn-sm"
+                            title="Remove profile picture"
+                          >
+                            <i className="ri-delete-bin-line"></i>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="xl:col-span-6 col-span-12">
                       <label htmlFor="name" className="form-label">Name <span className="text-red-500">*</span></label>
                       <input
@@ -258,9 +366,9 @@ export default function EditRecruiterClient() {
                     <Link href="/ats/recruiters" className="ti-btn ti-btn-secondary">
                       Cancel
                     </Link>
-                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting}>
+                    <button type="submit" className="ti-btn ti-btn-primary" disabled={submitting || uploadingPicture}>
                       <i className="ri-save-line me-1"></i>
-                      {submitting ? "Saving..." : "Save Changes"}
+                      {uploadingPicture ? "Uploading…" : submitting ? "Saving..." : "Save Changes"}
                     </button>
                   </div>
                 </form>

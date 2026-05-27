@@ -1002,7 +1002,7 @@ export function StudentAttendanceClient() {
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="text-sm text-defaulttextcolor/80">Year:</label>
                     <select
-                      className="form-control !w-auto !min-w-[5rem] !py-1.5 !px-2 !text-[0.8125rem]"
+                      className="form-control select-show-page-size !w-auto !min-w-[5rem] !py-1.5 !px-2 !text-[0.8125rem]"
                       value={calendarYear}
                       onChange={(e) => setCalendarYear(parseInt(e.target.value, 10))}
                     >
@@ -1014,7 +1014,7 @@ export function StudentAttendanceClient() {
                     </select>
                     <label className="text-sm text-defaulttextcolor/80 ml-2">Month:</label>
                     <select
-                      className="form-control !w-auto !min-w-[8rem] !py-1.5 !px-2 !text-[0.8125rem]"
+                      className="form-control select-show-page-size !w-auto !min-w-[8rem] !py-1.5 !px-2 !text-[0.8125rem]"
                       value={calendarMonth}
                       onChange={(e) => setCalendarMonth(parseInt(e.target.value, 10))}
                     >

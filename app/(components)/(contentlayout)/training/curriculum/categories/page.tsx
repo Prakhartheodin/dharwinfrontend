@@ -410,7 +410,7 @@ const TrainingCategories = () => {
                 <form onSubmit={handleSearch} className="flex items-center gap-2 me-2">
                   <input
                     type="text"
-                    className="form-control !w-auto !py-1 !px-4 !text-[0.75rem]"
+                    className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
                     placeholder="Search categories..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
@@ -423,7 +423,7 @@ const TrainingCategories = () => {
                   </button>
                 </form>
                 <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
                   onChange={(e) => handlePageSizeChange(Number(e.target.value))}
                 >

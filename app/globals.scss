@@ -172,13 +172,25 @@ th.text-center{
   background-color: rgb(var(--primary) / 1) !important;
 }
 
-/* "Show 10/100" page-size native selects: reserve space for the dropdown chevron (avoids overlap on Windows/Chrome) */
-select.select-show-page-size {
+/*
+  Native <select> chevron overlap fix.
+  Root cause: table toolbars use `form-control` on <select>, but only `form-select` reserves
+  padding-inline-end for the dropdown arrow. On narrow/mobile widths the glyph overlaps labels
+  like "Show 50". Applies app-wide to every select.form-control and explicit page-size selects.
+*/
+select.form-control,
+select.select-show-page-size,
+select[id*='page-size'] {
+  box-sizing: border-box;
   min-width: 9.5rem !important;
   width: auto !important;
+  max-width: 100%;
   padding-inline-end: 2.5rem !important;
-  padding-inline-start: 0.75rem !important;
+  padding-right: 2.5rem !important;
+  padding-inline-start: 0.75rem;
   text-align: start;
+  align-self: flex-start;
+  flex-shrink: 0;
 }
 
 /* Notification bell ring animation */

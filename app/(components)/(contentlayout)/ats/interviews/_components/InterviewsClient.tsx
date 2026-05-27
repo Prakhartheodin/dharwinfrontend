@@ -54,6 +54,51 @@ interface InterviewTableRow {
 }
 
 
+/** Per-column visibility for lg+ table view (below lg uses card list). table-fixed + max-w-0 truncates cell content. */
+const COLUMN_VISIBILITY: Record<string, string> = {
+  checkbox: '!px-1 overflow-hidden',
+  interviewInfo: 'max-w-0 overflow-hidden',
+  candidate: 'max-w-0 overflow-hidden',
+  recruiter: 'max-w-0 overflow-hidden',
+  status: 'hidden lg:table-cell max-w-0 overflow-hidden text-center',
+  interviewResult: 'hidden lg:table-cell max-w-0 overflow-hidden text-center',
+  id: 'max-w-0 overflow-hidden text-center',
+}
+
+/** Full layout (2xl+): includes Employee + Agent columns */
+const COLUMN_WIDTH_FULL: Record<string, string> = {
+  checkbox: '3%',
+  interviewInfo: '27%',
+  candidate: '18%',
+  recruiter: '16%',
+  status: '10%',
+  interviewResult: '10%',
+  id: '16%',
+}
+
+/** Compact layout (lg–2xl): omit person columns so table-fixed does not reserve empty tracks */
+const COLUMN_WIDTH_COMPACT: Record<string, string> = {
+  checkbox: '3%',
+  interviewInfo: '49%',
+  status: '13%',
+  interviewResult: '13%',
+  id: '22%',
+}
+
+const CENTERED_TABLE_COLUMNS = new Set(['checkbox', 'status', 'interviewResult', 'id'])
+
+function useMinWidth(minWidth: number): boolean {
+  const [matches, setMatches] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${minWidth}px)`)
+    const sync = () => setMatches(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [minWidth])
+  return matches
+}
+
 function formatMeetingDate(iso: string): string {
   try {
     const d = new Date(iso)
@@ -1024,13 +1069,15 @@ export default function InterviewsClient() {
         accessor: 'checkbox',
         disableSortBy: true,
         Cell: ({ row }: any) => (
-          <input
-            className="form-check-input"
-            type="checkbox"
-            checked={selectedRows.has(row.original.id)}
-            onChange={() => handleRowSelect(row.original.id)}
-            aria-label={`Select interview ${row.original.id}`}
-          />
+          <div className="flex justify-center items-center">
+            <input
+              className="form-check-input !m-0 shrink-0"
+              type="checkbox"
+              checked={selectedRows.has(row.original.id)}
+              onChange={() => handleRowSelect(row.original.id)}
+              aria-label={`Select interview ${row.original.id}`}
+            />
+          </div>
         ),
       },
       {
@@ -1039,23 +1086,23 @@ export default function InterviewsClient() {
         Cell: ({ row }: any) => {
           const interview = row.original
           return (
-            <div className="flex flex-col gap-1">
-              <div className="font-semibold text-gray-800 dark:text-white">
+            <div className="flex flex-col gap-0.5 leading-tight min-w-0 max-w-full overflow-hidden">
+              <div className="font-semibold text-gray-800 dark:text-white text-[0.8125rem] truncate" title={interview.position}>
                 {interview.position}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                <span className="flex items-center gap-1">
+              <div className="text-[0.6875rem] text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <i className="ri-calendar-line text-primary"></i>
-                  {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                 </span>
-                <span className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
                   <i className="ri-time-line text-info"></i>
                   {interview.time}
                 </span>
-              </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                <i className="ri-vidicon-line text-success"></i>
-                {interview.type}
+                <span className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <i className="ri-vidicon-line text-success"></i>
+                  {interview.type}
+                </span>
               </div>
             </div>
           )
@@ -1068,8 +1115,8 @@ export default function InterviewsClient() {
           const candidate = row.original.candidate
           const initials = (candidate?.name || '—').trim().split(/\s+/).map((s: string) => s[0]).join('').toUpperCase().slice(0, 2) || '?'
           return (
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 relative w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0 max-w-full overflow-hidden">
+              <div className="flex-shrink-0 relative w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs overflow-hidden">
                 <span className="z-0">{initials}</span>
                 {candidate?.displayPicture && (
                   <img
@@ -1080,21 +1127,15 @@ export default function InterviewsClient() {
                   />
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 dark:text-white truncate">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="font-semibold text-gray-800 dark:text-white text-[0.8125rem] truncate" title={candidate?.name ?? undefined}>
                   {candidate?.name ?? '—'}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <div className="flex items-center gap-1">
-                    <i className="ri-mail-line"></i>
-                    {isPublicEmail(candidate?.email) ? candidate?.email : '—'}
-                  </div>
-                  {candidate?.phone && (
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <i className="ri-phone-line"></i>
-                      {candidate.phone}
-                    </div>
-                  )}
+                <div className="text-[0.6875rem] text-gray-500 dark:text-gray-400 truncate" title={isPublicEmail(candidate?.email) ? candidate?.email : undefined}>
+                  <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
+                    <i className="ri-mail-line shrink-0"></i>
+                    <span className="truncate">{isPublicEmail(candidate?.email) ? candidate?.email : '—'}</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1108,8 +1149,8 @@ export default function InterviewsClient() {
           const recruiter = row.original.recruiter
           const initials = (recruiter?.name || '—').trim().split(/\s+/).map((s: string) => s[0]).join('').toUpperCase().slice(0, 2) || '?'
           return (
-            <div className="flex items-center gap-3">
-              <div className="flex-shrink-0 relative w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-sm overflow-hidden">
+            <div className="flex items-center gap-2 min-w-0 max-w-full overflow-hidden">
+              <div className="flex-shrink-0 relative w-8 h-8 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs overflow-hidden">
                 <span className="z-0">{initials}</span>
                 {recruiter?.displayPicture && (
                   <img
@@ -1120,15 +1161,15 @@ export default function InterviewsClient() {
                   />
                 )}
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-800 dark:text-white truncate">
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <div className="font-semibold text-gray-800 dark:text-white text-[0.8125rem] truncate" title={recruiter?.name ?? undefined}>
                   {recruiter?.name ?? '—'}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  <div className="flex items-center gap-1">
-                    <i className="ri-mail-line"></i>
-                    {recruiter?.email ?? '—'}
-                  </div>
+                <div className="text-[0.6875rem] text-gray-500 dark:text-gray-400 truncate" title={recruiter?.email ?? undefined}>
+                  <span className="inline-flex items-center gap-1 min-w-0 max-w-full">
+                    <i className="ri-mail-line shrink-0"></i>
+                    <span className="truncate">{recruiter?.email ?? '—'}</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -1152,8 +1193,8 @@ export default function InterviewsClient() {
           }
           const config = statusConfig[raw] || { label: interview.status || 'Scheduled', className: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30' }
           return (
-            <div className="text-sm">
-              <span className={`inline-flex items-center border px-2 py-1 rounded-md text-xs font-medium ${config.className}`}>
+            <div className="flex justify-center items-center min-w-0 max-w-full px-0.5">
+              <span className={`inline-flex items-center justify-center border px-2 py-0.5 rounded-md text-xs font-medium max-w-full truncate ${config.className}`}>
                 {config.label}
               </span>
             </div>
@@ -1177,9 +1218,9 @@ export default function InterviewsClient() {
                 ? 'Rejected'
                 : 'Pending'
           return (
-            <div className="text-sm">
+            <div className="flex justify-center items-center min-w-0 max-w-full px-0.5">
               <span
-                className={`badge ${resultColors[interview.interviewResult] || resultColors.pending} border px-2 py-1 rounded-md text-xs font-medium`}
+                className={`badge inline-flex items-center justify-center ${resultColors[interview.interviewResult] || resultColors.pending} border px-2 py-0.5 rounded-md text-xs font-medium max-w-full truncate`}
               >
                 {label}
               </span>
@@ -1192,7 +1233,7 @@ export default function InterviewsClient() {
         accessor: 'id',
         disableSortBy: true,
         Cell: ({ row }: any) => (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-0.5 min-w-0 max-w-full mx-auto px-0.5 [&_.ti-btn]:shrink-0">
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
@@ -1295,6 +1336,12 @@ export default function InterviewsClient() {
       handleCancelMeeting,
     ]
   )
+
+  const showPersonColumns = useMinWidth(1536)
+  const tableColumns = useMemo(() => {
+    if (showPersonColumns) return columns
+    return columns.filter((col: { accessor?: string }) => col.accessor !== 'candidate' && col.accessor !== 'recruiter')
+  }, [columns, showPersonColumns])
 
   // Map API meetings to table rows
   const tableData = useMemo<InterviewTableRow[]>(() => {
@@ -1434,7 +1481,7 @@ export default function InterviewsClient() {
 
   const tableInstance: any = useTable(
     {
-      columns,
+      columns: tableColumns,
       data,
       initialState: { pageIndex: 0, pageSize: 50, sortBy: [{ id: 'interviewInfo', desc: false }] },
     },
@@ -1496,19 +1543,22 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-<div className="mt-4 grid grid-cols-12 gap-4 min-h-[calc(100vh-8rem)] sm:mt-6 lg:gap-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
-            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-2 sm:gap-3 border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-2.5 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
+<div className="mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full min-h-[calc(100vh-6rem)] sm:min-h-[calc(100vh-8rem)] lg:gap-6">
+        <div className="xl:col-span-12 col-span-12 h-full min-w-0 flex flex-col">
+          <div className="box custom-box h-full min-w-0 flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
+            <div className="box-header relative z-20 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-3 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
               <div className="box-title text-sm sm:text-base">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.7rem] sm:text-[0.75rem] align-middle">
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+              <div className="flex flex-col gap-2 w-full min-w-0 xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 xl:w-auto xl:max-w-full [&_.ti-btn]:shrink-0 [&_.form-select]:shrink-0 [&_.form-control]:shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:contents">
                 <select
-                  className="form-control !w-auto !py-1.5 !px-3 !text-[0.75rem]"
+                  id="interviews-page-size"
+                  aria-label="Rows per page"
+                  className="form-select select-show-page-size !w-auto !min-w-[6.5rem] !max-w-[8rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -1548,12 +1598,14 @@ export default function InterviewsClient() {
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem]"
+                  className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem] ms-auto sm:ms-0"
                   onClick={() => openScheduleInterviewModal()}
                 >
                   <i className="ri-add-line font-semibold align-middle sm:me-1"></i>
                   <span className="hidden sm:inline">Schedule Interview</span><span className="sm:hidden">Schedule</span>
                 </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:contents">
                 {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
                 <div ref={excelDropdownRef} className="relative">
                   <button
@@ -1629,9 +1681,10 @@ export default function InterviewsClient() {
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Delete</span>
                 </button>
+                </div>
               </div>
             </div>
-            <div className="box-body relative z-0 !p-0 flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
+            <div className="box-body relative z-0 !p-0 flex-1 min-w-0 flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
               {meetingsLoading ? (
                 <div className="flex-1 px-4 py-4">
                   <div className="rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/90 dark:bg-black/20 p-4 sm:p-5">
@@ -1715,27 +1768,37 @@ export default function InterviewsClient() {
                             <div className="flex flex-wrap gap-1 mt-2">
                               <button
                                 type="button"
-                                className="ti-btn ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success !py-0.5 !px-1.5 !text-[0.65rem]"
                                 title="View recordings"
-                                onClick={() => { setRecordingsModalMeetingId(interview.id); (window as any).HSOverlay?.open(document.querySelector('#view-recordings-modal')) }}
+                                aria-label="View recordings"
+                                onClick={() => {
+                                  setRecordingsModalMeetingId(interview.id)
+                                  ;(window as any).HSOverlay?.open(document.querySelector('#view-recordings-modal'))
+                                }}
                               >
                                 <i className="ri-video-line"></i>
                               </button>
                               {interview.status?.toLowerCase() !== 'cancelled' && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-sm ti-btn-light !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !py-0.5 !px-1.5 !text-[0.65rem]"
                                   title="Copy interview link"
+                                  aria-label="Copy interview link"
                                   onClick={() => copyInterviewLink(interview)}
                                 >
-                                  <i className="ri-links-line"></i>
+                                  {copiedLinkId === interview.id ? (
+                                    <i className="ri-check-line text-success"></i>
+                                  ) : (
+                                    <i className="ri-links-line"></i>
+                                  )}
                                 </button>
                               )}
                               {(interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
                                   title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                                  aria-label="Set interview result"
                                   onClick={() => openResultModal(interview)}
                                 >
                                   <i className="ri-checkbox-circle-line"></i>
@@ -1743,12 +1806,24 @@ export default function InterviewsClient() {
                               )}
                               <button
                                 type="button"
-                                className="ti-btn ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
                                 title="Edit interview"
+                                aria-label="Edit interview"
                                 onClick={() => openEditModal(interview.id)}
                               >
                                 <i className="ri-pencil-line"></i>
                               </button>
+                              {interview.status?.toLowerCase() !== 'cancelled' && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  title="Cancel interview"
+                                  aria-label="Cancel interview"
+                                  onClick={() => handleCancelMeeting(interview)}
+                                >
+                                  <i className="ri-close-circle-line"></i>
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -1786,37 +1861,188 @@ export default function InterviewsClient() {
                 </div>
               </div>
               ) : (
-              <div className="table-responsive flex-1 overflow-y-auto px-4 pb-4" style={{ minHeight: 0 }}>
-                <div className="overflow-hidden rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 shadow-sm">
-                <table {...getTableProps()} className="table whitespace-nowrap min-w-full table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
+              <>
+              {/* Mobile card list — shown below lg; mirrors paginated react-table rows */}
+              <div className="lg:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
+                {page.map((row: any, i: number) => {
+                  prepareRow(row)
+                  const interview = row.original
+                  const statusRaw = (interview.status || '').toLowerCase()
+                  const statusConfig: Record<string, { label: string; className: string }> = {
+                    scheduled: { label: 'Scheduled', className: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30' },
+                    'in progress': { label: 'In Progress', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+                    inprogress: { label: 'In Progress', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+                    ended: { label: 'Completed', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+                    completed: { label: 'Completed', className: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30' },
+                    cancelled: { label: 'Cancelled', className: 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30' },
+                    rescheduled: { label: 'Rescheduled', className: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30' },
+                  }
+                  const status = statusConfig[statusRaw] || { label: interview.status || 'Scheduled', className: 'bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30' }
+                  const resultColors: Record<string, string> = {
+                    pending: 'bg-gray/10 text-gray border-gray/30',
+                    selected: 'bg-success/10 text-success border-success/30',
+                    rejected: 'bg-danger/10 text-danger border-danger/30',
+                  }
+                  const resultLabel =
+                    interview.interviewResult === 'selected'
+                      ? 'Selected'
+                      : interview.interviewResult === 'rejected'
+                        ? 'Rejected'
+                        : 'Pending'
+                  const candidateInitials = (interview.candidate?.name || '?').trim().split(/\s+/).map((x: string) => x[0]).join('').toUpperCase().slice(0, 2) || '?'
+                  return (
+                    <div
+                      key={row.id || `card-${i}`}
+                      className="rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm p-3.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-gray-900 dark:text-white leading-snug break-words">
+                            {interview.position}
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[0.7rem] text-defaulttextcolor/80">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
+                              <i className="ri-calendar-line text-primary text-[0.75rem]" />
+                              {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
+                              <i className="ri-time-line text-info text-[0.75rem]" />
+                              {interview.time}
+                            </span>
+                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
+                              <i className="ri-vidicon-line text-success text-[0.75rem]" />
+                              {interview.type}
+                            </span>
+                          </div>
+                        </div>
+                        <input
+                          className="form-check-input mt-1 shrink-0"
+                          type="checkbox"
+                          checked={selectedRows.has(interview.id)}
+                          onChange={() => handleRowSelect(interview.id)}
+                          aria-label={`Select interview ${interview.position}`}
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center gap-2.5 min-w-0">
+                        <div className="flex-shrink-0 w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-primary font-semibold text-xs">
+                          {candidateInitials}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium text-gray-800 dark:text-white truncate">{interview.candidate?.name ?? '—'}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                            {isPublicEmail(interview.candidate?.email) ? interview.candidate.email : '—'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-defaulttextcolor/70 truncate">
+                        <span className="font-medium">Agent:</span> {interview.recruiter?.name ?? '—'}
+                      </div>
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        <span className={`inline-flex items-center border px-2 py-0.5 rounded-md text-[0.65rem] font-medium ${status.className}`}>
+                          {status.label}
+                        </span>
+                        <span className={`badge ${resultColors[interview.interviewResult] || resultColors.pending} border px-2 py-0.5 rounded-md text-[0.65rem] font-medium`}>
+                          {resultLabel}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
+                          title="View recordings"
+                          aria-label="View recordings"
+                          onClick={() => {
+                            setRecordingsModalMeetingId(interview.id)
+                            ;(window as any).HSOverlay?.open(document.querySelector('#view-recordings-modal'))
+                          }}
+                        >
+                          <i className="ri-video-line" />
+                        </button>
+                        {interview.status?.toLowerCase() !== 'cancelled' && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
+                            title="Copy interview link"
+                            aria-label="Copy interview link"
+                            onClick={() => copyInterviewLink(interview)}
+                          >
+                            {copiedLinkId === interview.id ? (
+                              <i className="ri-check-line text-success" />
+                            ) : (
+                              <i className="ri-links-line" />
+                            )}
+                          </button>
+                        )}
+                        {(interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                            title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
+                            aria-label="Set interview result"
+                            onClick={() => openResultModal(interview)}
+                          >
+                            <i className="ri-checkbox-circle-line" />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
+                          title="Edit interview"
+                          aria-label="Edit interview"
+                          onClick={() => openEditModal(interview.id)}
+                        >
+                          <i className="ri-pencil-line" />
+                        </button>
+                        {interview.status?.toLowerCase() !== 'cancelled' && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                            title="Cancel interview"
+                            aria-label="Cancel interview"
+                            onClick={() => handleCancelMeeting(interview)}
+                          >
+                            <i className="ri-close-circle-line" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="hidden lg:flex flex-1 min-w-0 max-w-full overflow-hidden px-4 pb-4" style={{ minHeight: 0 }}>
+                <div className="table-responsive w-full max-w-full min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 shadow-sm">
+                <table {...getTableProps()} className="table mb-0 w-full max-w-full table-fixed table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
                       <tr {...headerGroup.getHeaderGroupProps()} className="bg-primary/10 dark:bg-primary/20 border-b border-gray-300 dark:border-gray-600" key={`header-group-${i}`}>
                         {headerGroup.headers.map((column: any, i: number) => (
                             <th
-                            {...column.getHeaderProps(column.getSortByToggleProps())}
+                            {...column.getHeaderProps(column.id === 'checkbox' ? undefined : column.getSortByToggleProps())}
                             scope="col"
-                            className="text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 align-top"
+                            className={`${CENTERED_TABLE_COLUMNS.has(column.id) ? 'text-center' : 'text-start'} sticky top-0 z-10 bg-gray-50 dark:bg-black/20 align-middle overflow-hidden ${COLUMN_VISIBILITY[column.id] ?? ''}`.trim()}
                             key={column.id || `col-${i}`}
-                            style={{ 
-                              position: 'sticky', 
-                              top: 0, 
-                              zIndex: 10
+                            style={{
+                              position: 'sticky',
+                              top: 0,
+                              zIndex: 10,
+                              width: (showPersonColumns ? COLUMN_WIDTH_FULL : COLUMN_WIDTH_COMPACT)[column.id],
                             }}
                           >
-                            {column.id === 'select' ? (
-                              <input
-                                className="form-check-input"
-                                type="checkbox"
-                                checked={isAllSelected}
-                                ref={(input) => {
-                                  if (input) input.indeterminate = isIndeterminate
-                                }}
-                                onChange={handleSelectAll}
-                                aria-label="Select all"
-                              />
+                            {column.id === 'checkbox' ? (
+                              <div className="flex justify-center items-center w-full">
+                                <input
+                                  className="form-check-input !m-0 shrink-0"
+                                  type="checkbox"
+                                  checked={isAllSelected}
+                                  ref={(input) => {
+                                    if (input) input.indeterminate = isIndeterminate
+                                  }}
+                                  onChange={handleSelectAll}
+                                  aria-label="Select all"
+                                />
+                              </div>
                             ) : (
-                              <div className="flex items-center gap-2">
+                              <div className={`flex items-center gap-2 ${CENTERED_TABLE_COLUMNS.has(column.id) ? 'justify-center' : ''}`.trim()}>
                                 <span className="tabletitle">{column.render('Header')}</span>
                               <span>
                                 {column.isSorted ? (
@@ -1845,7 +2071,7 @@ export default function InterviewsClient() {
                             return (
                               <td
                                 {...cell.getCellProps()}
-                                className="align-top py-3"
+                                className={`align-middle py-2 overflow-hidden ${COLUMN_VISIBILITY[cell.column.id] ?? ''}`.trim()}
                                 key={cell.column.id || `cell-${i}`}
                               >
                                 {cell.render('Cell')}
@@ -1859,16 +2085,17 @@ export default function InterviewsClient() {
                 </table>
                 </div>
               </div>
+              </>
               )}
             </div>
             {!meetingsLoading && !meetingsError && viewMode === 'table' && (
             <div className="box-footer border-t border-defaultborder/70 dark:border-defaultborder/20 bg-gray-50/90 dark:bg-black/25 px-4 py-3">
-              <div className="flex items-center flex-wrap gap-3">
-                <div className="text-sm text-defaulttextcolor/80 dark:text-white/70">
+              <div className="flex flex-col sm:flex-row items-center flex-wrap gap-3">
+                <div className="text-sm text-center sm:text-left text-defaulttextcolor/80 dark:text-white/70 w-full sm:w-auto">
                   Showing {data.length === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>
                 </div>
-                <div className="ms-auto">
+                <div className="w-full sm:w-auto sm:ms-auto flex justify-center">
                   <nav aria-label="Page navigation" className="w-full">
                     <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
                       <span className={`${!canPreviousPage ? 'opacity-50' : ''}`}>

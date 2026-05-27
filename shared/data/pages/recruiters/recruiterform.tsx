@@ -6,6 +6,7 @@ import { registerRecruiter } from "@/shared/lib/api/auth";
 import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { importRecruitersFromExcel, downloadRecruitersTemplate } from "@/shared/lib/api/users";
+import { uploadDocument } from "@/shared/lib/api/employees";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 
@@ -79,7 +80,7 @@ const Wizard = ({ step: currentIndex, onChange, onSubmit, submitDisabled, childr
             disabled={submitDisabled}
             className="ti-btn bg-green-600 text-white !py-2 !px-4 !rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitDisabled ? "Submitting..." : "Add Recruiter"}
+            {submitDisabled ? (typeof submitDisabled === "string" ? submitDisabled : "Submitting...") : "Add Recruiter"}
           </button>
         ) : (
           <button
@@ -114,6 +115,7 @@ export const RecruiterWizard = () => {
   const [excelImporting, setExcelImporting] = useState(false);
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
+  const [uploadingPicture, setUploadingPicture] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -239,6 +241,27 @@ export const RecruiterWizard = () => {
     }
     setLoading(true);
     try {
+      // If a profile picture file is selected, upload it first via /upload/single
+      // so we can pass the resulting S3 URL through to register-recruiter.
+      let profilePictureUrl: string | undefined;
+      if (profilePicture) {
+        setUploadingPicture(true);
+        try {
+          const uploaded = await uploadDocument(profilePicture, profilePicture.name);
+          profilePictureUrl = uploaded?.url;
+        } catch (uploadErr: any) {
+          setUploadingPicture(false);
+          setLoading(false);
+          await Swal.fire({
+            icon: "error",
+            title: "Upload failed",
+            text: uploadErr?.response?.data?.message || uploadErr?.message || "Could not upload profile picture.",
+          });
+          return;
+        }
+        setUploadingPicture(false);
+      }
+
       await registerRecruiter({
         name: formData.name.trim(),
         email: formData.email.trim(),
@@ -249,6 +272,7 @@ export const RecruiterWizard = () => {
         domain: formData.domain.length > 0 ? formData.domain : undefined,
         location: formData.location.trim() || undefined,
         profileSummary: formData.profileSummary.trim() || undefined,
+        profilePicture: profilePictureUrl,
       });
       localStorage.removeItem(DRAFT_KEY);
       await Swal.fire({ icon: "success", title: "Recruiter Added", text: "The recruiter has been added successfully." });
@@ -367,7 +391,7 @@ export const RecruiterWizard = () => {
           </div>
         </div>
       ) : (
-        <Wizard step={step} onChange={setStep} onSubmit={handleSubmit} submitDisabled={loading}>
+        <Wizard step={step} onChange={setStep} onSubmit={handleSubmit} submitDisabled={uploadingPicture ? "Uploading…" : loading}>
           <Step title={<><i className="ri-user-3-line basicstep-icon"></i> Recruiter Info</>}>
             <div className="p-6">
               <p className="mb-1 font-semibold text-[#8c9097] dark:text-white/50 opacity-50 text-[1.25rem]">01</p>
