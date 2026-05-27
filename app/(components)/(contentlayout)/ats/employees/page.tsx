@@ -369,6 +369,95 @@ interface SkillRecommendationItem {
   selected: boolean
 }
 
+const AI_THINKING_PHASES = [
+  { icon: 'ri-user-search-line', label: 'Analyzing employee skills…' },
+  { icon: 'ri-briefcase-4-line', label: 'Mapping role requirements…' },
+  { icon: 'ri-scales-3-line', label: 'Calibrating experience level…' },
+  { icon: 'ri-search-eye-line', label: 'Identifying skill gaps…' },
+  { icon: 'ri-sparkling-2-line', label: 'Drafting suggestions…' },
+]
+
+const AiThinkingPanel = () => {
+  const [phaseIdx, setPhaseIdx] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    const phaseTimer = setInterval(() => {
+      setPhaseIdx((i) => (i + 1) % AI_THINKING_PHASES.length)
+    }, 2200)
+    const elapsedTimer = setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => {
+      clearInterval(phaseTimer)
+      clearInterval(elapsedTimer)
+    }
+  }, [])
+  const phase = AI_THINKING_PHASES[phaseIdx]
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.06] via-violet-500/[0.05] to-indigo-500/[0.06] p-4 dark:border-primary/30 dark:from-primary/15 dark:via-violet-500/10 dark:to-indigo-500/15">
+      <span
+        className="pointer-events-none absolute inset-x-0 -top-1 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent animate-pulse"
+        aria-hidden
+      />
+      <span
+        className="pointer-events-none absolute -bottom-12 -left-10 h-32 w-32 rounded-full bg-primary/20 blur-3xl animate-pulse dark:bg-primary/30"
+        aria-hidden
+      />
+      <span
+        className="pointer-events-none absolute -top-12 -right-10 h-32 w-32 rounded-full bg-indigo-500/20 blur-3xl animate-pulse dark:bg-indigo-500/30"
+        style={{ animationDelay: '0.6s' }}
+        aria-hidden
+      />
+
+      <div className="relative flex items-center gap-3">
+        <span className="relative flex h-12 w-12 shrink-0 items-center justify-center" aria-hidden>
+          <span className="absolute inset-0 rounded-full bg-primary/30 blur-md animate-pulse" />
+          <span className="absolute inset-0 rounded-full border-2 border-primary/40 animate-ping" style={{ animationDuration: '1.8s' }} />
+          <span className="absolute inset-1.5 rounded-full border border-primary/30 animate-ping" style={{ animationDuration: '2.4s', animationDelay: '0.3s' }} />
+          <span className="relative flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary via-violet-500 to-indigo-500 text-white shadow-lg shadow-primary/40">
+            <i className="ri-sparkling-2-fill text-lg leading-none animate-pulse" />
+          </span>
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">AI is thinking</span>
+            <span className="inline-flex gap-1" aria-hidden>
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
+            <span className="ms-auto text-[11px] font-medium tabular-nums text-gray-500 dark:text-gray-400">
+              {elapsed}s
+            </span>
+          </div>
+          <div key={phaseIdx} className="mt-1 flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 animate-[fadeIn_0.35s_ease-out]">
+            <i className={`${phase.icon} text-primary text-sm leading-none`} aria-hidden />
+            <span className="truncate">{phase.label}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-3 h-1 w-full overflow-hidden rounded-full bg-primary/10 dark:bg-primary/20" aria-hidden>
+        <span className="absolute inset-y-0 left-0 w-1/3 rounded-full bg-gradient-to-r from-transparent via-primary to-transparent animate-[aiShimmer_1.6s_ease-in-out_infinite]" />
+      </div>
+
+      <p className="relative mt-2.5 text-[11px] leading-relaxed text-gray-500 dark:text-gray-400">
+        Generated on server via OpenAI — typically <strong className="font-semibold text-gray-700 dark:text-gray-200">10–45s</strong>. Page is waiting, not frozen.
+      </p>
+
+      <style jsx>{`
+        @keyframes aiShimmer {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(400%); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(2px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
+    </div>
+  )
+}
+
 const Candidates = () => {
   const router = useRouter()
   const { isAdministrator, isPlatformSuperUser, permissions, roleNames, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
@@ -396,6 +485,7 @@ const Candidates = () => {
   const [viewDetailTab, setViewDetailTab] = useState<string>('personal')
   const [skillRecommendModalOpen, setSkillRecommendModalOpen] = useState(false)
   const [skillRecommendRole, setSkillRecommendRole] = useState('')
+  const [skillRecommendSeniority, setSkillRecommendSeniority] = useState('')
   const [skillRecommendLoading, setSkillRecommendLoading] = useState(false)
   const [skillRecommendApplyLoading, setSkillRecommendApplyLoading] = useState(false)
   const [skillRecommendSuggestions, setSkillRecommendSuggestions] = useState<SkillRecommendationItem[]>([])
@@ -691,6 +781,7 @@ const Candidates = () => {
         e.preventDefault()
         setSkillRecommendModalOpen(false)
         setSkillRecommendRole('')
+        setSkillRecommendSeniority('')
         setSkillRecommendSuggestions([])
       }
     }
@@ -1316,7 +1407,7 @@ const Candidates = () => {
         level: s.level,
         category: s.category,
       }))
-      const res = await recommendSkillsByRole({ role, currentSkills })
+      const res = await recommendSkillsByRole({ role, seniority: skillRecommendSeniority.trim() || undefined, currentSkills })
       const options = (res.skills ?? [])
         .filter((s) => String(s?.name ?? '').trim())
         .map((s) => ({
@@ -1377,6 +1468,7 @@ const Candidates = () => {
       setCandidates((prev) => prev.map((row) => (String(row.id) === String(cid) ? mapped : row)))
       setSkillRecommendModalOpen(false)
       setSkillRecommendRole('')
+      setSkillRecommendSeniority('')
       setSkillRecommendSuggestions([])
       await Swal.fire({
         icon: 'success',
@@ -2991,14 +3083,20 @@ const Candidates = () => {
                   {viewDetailTab === 'skills' && (
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-100 pb-3 dark:border-white/10">
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex items-center gap-2">
                           <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-0">Skills</h4>
+                          {!!previewCandidate.skillsStructured?.length && (
+                            <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                              {previewCandidate.skillsStructured.length}
+                            </span>
+                          )}
                         </div>
                         <button
                           type="button"
                           disabled={!previewCandidate?.id || skillRecommendLoading || skillRecommendApplyLoading}
                           onClick={() => {
                             setSkillRecommendRole('')
+                            setSkillRecommendSeniority('')
                             setSkillRecommendSuggestions([])
                             setSkillRecommendModalOpen(true)
                           }}
@@ -3007,70 +3105,105 @@ const Candidates = () => {
                               ? 'Generating skill suggestions'
                               : 'Suggest skills from a job role using AI'
                           }
-                          className="group shrink-0 inline-flex max-w-full items-center gap-2.5 rounded-xl border border-primary/25 bg-gradient-to-br from-primary/[0.09] via-white to-transparent py-2 pl-2 pr-3 text-left shadow-[0_2px_8px_-2px_rgba(15,23,42,0.08)] transition duration-200 hover:border-primary/45 hover:shadow-[0_6px_16px_-4px_rgba(79,70,229,0.18)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-45 dark:border-primary/35 dark:from-primary/[0.14] dark:via-gray-900/90 dark:to-gray-950 dark:shadow-[0_2px_12px_-2px_rgba(0,0,0,0.35)] dark:hover:border-primary/55 dark:focus-visible:ring-offset-gray-950"
+                          title="Suggest skills from a job role using AI"
+                          className="group relative shrink-0 inline-flex items-center gap-2 whitespace-nowrap rounded-full border border-primary/30 bg-gradient-to-r from-primary/10 via-violet-500/10 to-indigo-500/10 py-1.5 pl-2.5 pr-1.5 text-[0.8125rem] font-medium text-primary shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-transparent hover:from-primary hover:via-violet-500 hover:to-indigo-500 hover:text-white hover:shadow-md hover:shadow-primary/25 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white disabled:pointer-events-none disabled:opacity-50 dark:border-primary/35 dark:from-primary/20 dark:via-violet-500/15 dark:to-indigo-500/20 dark:text-white dark:focus-visible:ring-offset-gray-950"
                         >
                           {skillRecommendLoading || skillRecommendApplyLoading ? (
                             <>
-                              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/15 dark:bg-primary/25">
-                                <span
-                                  className="inline-block h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"
-                                  aria-hidden
-                                />
-                              </span>
-                              <span className="flex flex-col gap-0.5 pr-1">
-                                <span className="text-sm font-semibold leading-tight text-gray-900 dark:text-white">
-                                  Working…
-                                </span>
-                                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400">
-                                  Calling AI
-                                </span>
+                              <span
+                                className="inline-block h-3.5 w-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"
+                                aria-hidden
+                              />
+                              <span className="leading-none">Suggesting</span>
+                              <span className="ms-0.5 inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary dark:bg-white/15 dark:text-white">
+                                AI
                               </span>
                             </>
                           ) : (
                             <>
-                              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white shadow-inner shadow-black/10 ring-2 ring-white/25 transition group-hover:scale-[1.03] group-hover:shadow-md dark:ring-gray-950/60">
-                                <i className="ri-lightbulb-flash-line text-lg leading-none" aria-hidden />
+                              <span className="relative flex items-center justify-center">
+                                <i className="ri-sparkling-2-fill text-base leading-none transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" aria-hidden />
+                                <span className="pointer-events-none absolute inset-0 -z-10 rounded-full bg-primary/20 blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300" aria-hidden />
                               </span>
-                              <span className="flex min-w-0 flex-col gap-0.5 pr-0.5">
-                                <span className="text-sm font-semibold leading-tight text-gray-900 dark:text-white">
-                                  Suggest skills
-                                </span>
-                                <span className="text-[11px] font-medium uppercase tracking-wide text-primary/80 dark:text-primary/75">
-                                  By job role · AI
-                                </span>
+                              <span className="leading-none">Suggest Skills</span>
+                              <span className="ms-0.5 inline-flex items-center gap-0.5 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary transition-colors group-hover:bg-white/20 group-hover:text-white dark:bg-white/15 dark:text-white">
+                                AI
                               </span>
                             </>
                           )}
                         </button>
                       </div>
                       {previewCandidate.skillsStructured?.length ? (
-                        <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
-                          <table className="min-w-full text-sm">
-                            <thead className="bg-gray-50 dark:bg-gray-800/80">
-                              <tr>
-                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Skill</th>
-                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Level</th>
-                                <th className="text-left p-3 font-medium text-gray-700 dark:text-gray-300">Category</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {previewCandidate.skillsStructured.map((row: { name: string; level: string; category?: string }, index: number) => (
-                                <tr
-                                  key={`${row.name}-${index}`}
-                                  className="border-t border-gray-200 dark:border-gray-700"
-                                >
-                                  <td className="p-3 text-gray-900 dark:text-white">{row.name}</td>
-                                  <td className="p-3 text-gray-900 dark:text-white">{row.level}</td>
-                                  <td className="p-3 text-gray-900 dark:text-white">{row.category ?? '—'}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                          {previewCandidate.skillsStructured.map((row: { name: string; level: string; category?: string }, index: number) => {
+                            const lvl = String(row.level || 'Intermediate')
+                            const lvlKey = lvl.toLowerCase()
+                            const meta =
+                              lvlKey.includes('expert') ? { pct: 100, dots: 4, barClass: 'bg-gradient-to-r from-fuchsia-500 via-violet-500 to-indigo-500', chipClass: 'bg-fuchsia-500/10 text-fuchsia-600 ring-fuchsia-500/20 dark:bg-fuchsia-500/15 dark:text-fuchsia-300' }
+                              : lvlKey.includes('advanc') ? { pct: 80, dots: 3, barClass: 'bg-gradient-to-r from-primary to-violet-500', chipClass: 'bg-primary/10 text-primary ring-primary/20 dark:bg-primary/20 dark:text-white' }
+                              : lvlKey.includes('intermediate') || lvlKey.includes('mid') ? { pct: 55, dots: 2, barClass: 'bg-gradient-to-r from-sky-500 to-cyan-500', chipClass: 'bg-sky-500/10 text-sky-600 ring-sky-500/20 dark:bg-sky-500/15 dark:text-sky-300' }
+                              : lvlKey.includes('begin') || lvlKey.includes('entry') || lvlKey.includes('junior') ? { pct: 30, dots: 1, barClass: 'bg-gradient-to-r from-amber-500 to-orange-500', chipClass: 'bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:bg-amber-500/15 dark:text-amber-300' }
+                              : { pct: 50, dots: 2, barClass: 'bg-gradient-to-r from-gray-400 to-gray-500', chipClass: 'bg-gray-200 text-gray-700 ring-gray-300 dark:bg-gray-700 dark:text-gray-200' }
+                            return (
+                              <div
+                                key={`${row.name}-${index}`}
+                                className="group relative overflow-hidden rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-primary/40"
+                              >
+                                <span className="pointer-events-none absolute -top-8 -right-8 h-20 w-20 rounded-full bg-primary/5 blur-2xl opacity-0 transition-opacity duration-300 group-hover:opacity-100 dark:bg-primary/15" aria-hidden />
+                                <div className="relative flex items-start justify-between gap-2">
+                                  <span className="text-sm font-semibold leading-snug text-gray-900 dark:text-white line-clamp-2" title={row.name}>
+                                    {row.name}
+                                  </span>
+                                  <span className={`inline-flex shrink-0 items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ring-1 ${meta.chipClass}`}>
+                                    {lvl}
+                                  </span>
+                                </div>
+                                <div className="relative mt-3">
+                                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700/60">
+                                    <div
+                                      className={`h-full rounded-full ${meta.barClass} transition-[width] duration-500 ease-out`}
+                                      style={{ width: `${meta.pct}%` }}
+                                      aria-hidden
+                                    />
+                                  </div>
+                                  <div className="mt-2 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-0.5" aria-hidden>
+                                      {[1, 2, 3, 4].map((d) => (
+                                        <span
+                                          key={d}
+                                          className={`h-1 w-1.5 rounded-sm ${d <= meta.dots ? 'bg-primary dark:bg-primary' : 'bg-gray-200 dark:bg-gray-700'}`}
+                                        />
+                                      ))}
+                                    </div>
+                                    {row.category ? (
+                                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 truncate" title={row.category}>
+                                        <i className="ri-price-tag-3-line text-xs" aria-hidden />
+                                        <span className="truncate">{row.category}</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-gray-400 dark:text-gray-500">Uncategorized</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )
+                          })}
                         </div>
                       ) : (
-                        <div className="text-center py-8">
-                          <i className="ri-tools-line text-4xl text-gray-400 dark:text-gray-500 mb-4"></i>
-                          <p className="text-gray-500 dark:text-gray-400">No skills listed.</p>
+                        <div className="relative overflow-hidden rounded-2xl border border-dashed border-gray-300 bg-gradient-to-br from-gray-50 via-white to-primary/[0.04] py-10 px-6 text-center dark:border-gray-700 dark:from-gray-800/40 dark:via-gray-900 dark:to-primary/10">
+                          <span className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl dark:bg-primary/20" aria-hidden />
+                          <span className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-indigo-500/10 blur-3xl dark:bg-indigo-500/20" aria-hidden />
+                          <div className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/10 via-violet-500/10 to-indigo-500/10 ring-1 ring-primary/15 dark:from-primary/20 dark:via-violet-500/15 dark:to-indigo-500/20 dark:ring-primary/25">
+                            <i className="ri-tools-fill text-2xl text-primary" aria-hidden />
+                          </div>
+                          <h5 className="relative mt-4 text-sm font-semibold text-gray-900 dark:text-white">No skills listed yet</h5>
+                          <p className="relative mx-auto mt-1 max-w-xs text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                            Use <span className="font-semibold text-primary">Suggest Skills</span> above to auto-fill from a target role and experience level.
+                          </p>
+                          <div className="relative mt-3 inline-flex items-center gap-1.5 text-[11px] font-medium text-primary/80 dark:text-primary/75">
+                            <i className="ri-arrow-up-line animate-bounce" aria-hidden />
+                            <span>Tap the sparkle button</span>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3574,30 +3707,61 @@ const Candidates = () => {
               if (e.target === e.currentTarget && !skillRecommendLoading && !skillRecommendApplyLoading) {
                 setSkillRecommendModalOpen(false)
                 setSkillRecommendRole('')
+                setSkillRecommendSeniority('')
                 setSkillRecommendSuggestions([])
               }
             }}
           >
           <div
-            className="relative z-[1] w-full max-w-md rounded-2xl border border-gray-200/90 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900"
+            className="relative z-[1] w-full max-w-md overflow-hidden rounded-2xl border border-gray-200/90 bg-white shadow-[0_24px_60px_-20px_rgba(15,23,42,0.35)] dark:border-gray-700 dark:bg-gray-900 dark:shadow-[0_24px_60px_-20px_rgba(0,0,0,0.7)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex flex-col gap-5 p-6 sm:p-7">
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-primary/60 to-transparent"
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute -top-24 -right-16 h-48 w-48 rounded-full bg-gradient-to-br from-primary/20 via-violet-500/15 to-indigo-500/10 blur-3xl dark:from-primary/25 dark:via-violet-500/20"
+              aria-hidden
+            />
+
+            <button
+              type="button"
+              onClick={() => {
+                if (skillRecommendLoading || skillRecommendApplyLoading) return
+                setSkillRecommendModalOpen(false)
+                setSkillRecommendRole('')
+                setSkillRecommendSeniority('')
+                setSkillRecommendSuggestions([])
+              }}
+              disabled={skillRecommendLoading || skillRecommendApplyLoading}
+              aria-label="Close"
+              className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 disabled:hover:bg-transparent dark:hover:bg-gray-800 dark:hover:text-gray-200"
+            >
+              <i className="ri-close-line text-lg leading-none" aria-hidden />
+            </button>
+
+            <div className="relative flex flex-col gap-5 p-6 sm:p-7">
               <div className="space-y-2">
                 <div className="flex items-start gap-3">
                   <span
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-md ring-4 ring-primary/15 dark:ring-primary/25"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary via-violet-500 to-indigo-500 text-white shadow-lg shadow-primary/30 ring-4 ring-primary/10 dark:ring-primary/20"
                     aria-hidden
                   >
-                    <i className="ri-lightbulb-flash-line text-xl leading-none" />
+                    <i className="ri-sparkling-2-fill text-xl leading-none" />
                   </span>
                   <div className="min-w-0 pt-0.5">
-                    <h3
-                      id="skill-recommend-modal-title"
-                      className="text-lg font-semibold leading-snug text-gray-900 dark:text-white"
-                    >
-                      Suggest skills by role
-                    </h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3
+                        id="skill-recommend-modal-title"
+                        className="text-lg font-semibold leading-snug text-gray-900 dark:text-white"
+                      >
+                        Suggest skills by role
+                      </h3>
+                      <span className="inline-flex items-center rounded-full bg-gradient-to-r from-primary/15 to-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary dark:from-primary/25 dark:to-indigo-500/25 dark:text-white">
+                        AI
+                      </span>
+                    </div>
                     <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-400">
                       We send this employee&apos;s <strong className="font-semibold text-gray-800 dark:text-gray-200">current skills</strong> plus the{" "}
                       <strong className="font-semibold text-gray-800 dark:text-gray-200">target role</strong> below and ask what else they should develop — only
@@ -3614,24 +3778,73 @@ const Candidates = () => {
                 >
                   Job role
                 </label>
-                <input
-                  id="skill-recommend-role-input"
-                  type="text"
-                  autoComplete="off"
-                  className="form-control block w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm shadow-inner transition focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25 dark:border-gray-600 dark:bg-gray-800/80 dark:text-white"
-                  placeholder="e.g. Senior Full Stack Developer"
-                  value={skillRecommendRole}
-                  onChange={(e) => setSkillRecommendRole(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !skillRecommendLoading && !skillRecommendSuggestions.length && skillRecommendRole.trim().length >= 2) {
-                      void submitSkillRecommendationForPreview()
-                    }
-                  }}
-                  disabled={skillRecommendLoading || skillRecommendApplyLoading}
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-500">
-                  Tip: include seniority or stack for tighter suggestions (e.g. “Lead QA Automation Engineer”).
+                <div className="relative">
+                  <i
+                    className="ri-briefcase-4-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base text-gray-400 dark:text-gray-500"
+                    aria-hidden
+                  />
+                  <input
+                    id="skill-recommend-role-input"
+                    type="text"
+                    autoComplete="off"
+                    className="form-control block w-full rounded-xl border border-gray-300 bg-white !pl-10 !pr-3 !py-3 text-sm text-gray-900 transition placeholder:text-gray-400 focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/15 disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800/80 dark:text-white dark:placeholder:text-gray-500"
+                    placeholder="e.g. Senior Full Stack Developer"
+                    value={skillRecommendRole}
+                    onChange={(e) => setSkillRecommendRole(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !skillRecommendLoading && !skillRecommendSuggestions.length && skillRecommendRole.trim().length >= 2) {
+                        void submitSkillRecommendationForPreview()
+                      }
+                    }}
+                    disabled={skillRecommendLoading || skillRecommendApplyLoading}
+                  />
+                </div>
+                <p className="flex items-start gap-1.5 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  <i className="ri-lightbulb-line mt-0.5 shrink-0 text-amber-500" aria-hidden />
+                  <span>
+                    Add the role title (e.g. <span className="font-medium text-gray-700 dark:text-gray-300">&ldquo;QA Automation Engineer&rdquo;</span>) and pick experience level below to calibrate depth.
+                  </span>
                 </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                    Experience level
+                    <span className="ms-1 text-xs font-normal text-gray-400 dark:text-gray-500">(optional)</span>
+                  </label>
+                  {skillRecommendSeniority && (
+                    <button
+                      type="button"
+                      disabled={skillRecommendLoading || skillRecommendApplyLoading}
+                      onClick={() => setSkillRecommendSeniority('')}
+                      className="text-[11px] font-medium text-gray-500 hover:text-primary disabled:opacity-50 dark:text-gray-400"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Entry Level', 'Mid Level', 'Senior Level', 'Lead', 'Principal', 'Manager', 'Director', 'Executive'].map((lvl) => {
+                    const active = skillRecommendSeniority === lvl
+                    return (
+                      <button
+                        key={lvl}
+                        type="button"
+                        disabled={skillRecommendLoading || skillRecommendApplyLoading}
+                        onClick={() => setSkillRecommendSeniority(active ? '' : lvl)}
+                        aria-pressed={active}
+                        className={`inline-flex items-center rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          active
+                            ? 'border-transparent bg-gradient-to-r from-primary via-violet-500 to-indigo-500 text-white shadow-sm shadow-primary/30'
+                            : 'border-gray-300 bg-white text-gray-700 hover:border-primary/40 hover:bg-primary/5 hover:text-primary dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-200 dark:hover:bg-primary/15'
+                        }`}
+                      >
+                        {lvl}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
 
               {skillRecommendSuggestions.length > 0 && (
@@ -3697,16 +3910,11 @@ const Candidates = () => {
               )}
 
               {skillRecommendLoading && (
-                <p className="rounded-lg border border-primary/20 bg-primary/[0.07] px-3 py-2.5 text-xs leading-relaxed text-gray-700 dark:border-primary/30 dark:bg-primary/15 dark:text-gray-200">
-                  <i className="ri-cloud-line me-1.5 align-middle text-primary" aria-hidden />
-                  Skills are generated on the server using OpenAI.{" "}
-                  <strong className="font-semibold text-gray-900 dark:text-white">Often ~10–45s</strong>
-                  {" "}depending on API load and region — the page is waiting on that response, not frozen.
-                </p>
+                <AiThinkingPanel />
               )}
             </div>
 
-            <div className="flex flex-col-reverse gap-3 border-t border-gray-100 px-6 pb-6 pt-4 dark:border-gray-800 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-7 sm:pb-7">
+            <div className="relative flex flex-col-reverse gap-3 border-t border-gray-100 bg-gray-50/60 px-6 pb-6 pt-4 dark:border-gray-800 dark:bg-gray-900/60 sm:flex-row sm:items-center sm:justify-end sm:gap-3 sm:px-7 sm:pb-7">
               <button
                 type="button"
                 disabled={skillRecommendLoading || skillRecommendApplyLoading}
@@ -3717,9 +3925,10 @@ const Candidates = () => {
                   }
                   setSkillRecommendModalOpen(false)
                   setSkillRecommendRole('')
+                  setSkillRecommendSeniority('')
                   setSkillRecommendSuggestions([])
                 }}
-                className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm transition hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 sm:w-auto"
+                className="inline-flex w-full shrink-0 items-center justify-center rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-sm transition hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400/40 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-white sm:w-auto"
               >
                 {skillRecommendSuggestions.length > 0 ? 'Back' : 'Cancel'}
               </button>
@@ -3728,7 +3937,7 @@ const Candidates = () => {
                   type="button"
                   disabled={skillRecommendApplyLoading || !skillRecommendSuggestions.some((item) => item.selected)}
                   onClick={() => void applySelectedSkillRecommendations()}
-                  className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
+                  className="group inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-violet-500 to-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/30 transition-all duration-200 hover:-translate-y-px hover:shadow-lg hover:shadow-primary/40 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
                 >
                   {skillRecommendApplyLoading ? (
                     <>
@@ -3750,7 +3959,7 @@ const Candidates = () => {
                   type="button"
                   disabled={skillRecommendLoading || skillRecommendRole.trim().length < 2}
                   onClick={() => void submitSkillRecommendationForPreview()}
-                  className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-md transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
+                  className="group inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-violet-500 to-indigo-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-primary/30 transition-all duration-200 hover:-translate-y-px hover:shadow-lg hover:shadow-primary/40 active:translate-y-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[11rem]"
                 >
                   {skillRecommendLoading ? (
                     <>
@@ -3762,7 +3971,7 @@ const Candidates = () => {
                     </>
                   ) : (
                     <>
-                      <i className="ri-sparkling-2-line text-base leading-none" aria-hidden />
+                      <i className="ri-sparkling-2-fill text-base leading-none transition-transform group-hover:rotate-12 group-hover:scale-110" aria-hidden />
                       <span>Preview suggestions</span>
                     </>
                   )}

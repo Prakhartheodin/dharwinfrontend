@@ -519,7 +519,7 @@ export default function PlatformAuditLogsPage() {
             Standard activity logs
           </Link>
           <select
-            className="form-control !w-auto !py-1 !px-4 !text-[0.75rem]"
+            className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
             value={limit}
             onChange={(e) => {
               setLimit(Number(e.target.value));

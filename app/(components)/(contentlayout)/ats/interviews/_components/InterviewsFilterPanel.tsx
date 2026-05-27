@@ -52,7 +52,7 @@ export default function InterviewsFilterPanel({
   handleResetFilters,
 }: InterviewsFilterPanelProps) {
   return (
-    <div id="interviews-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
+    <div id="interviews-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !w-full sm:!w-[24rem] sm:!max-w-[90vw]" tabIndex={-1}>
       <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
         <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
           <i className="ri-search-line text-primary text-base"></i>

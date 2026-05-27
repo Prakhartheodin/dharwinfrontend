@@ -283,7 +283,7 @@ const Evaluation = () => {
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -299,7 +299,7 @@ const Evaluation = () => {
             {/* Filters */}
             <div className="px-4 pb-4 flex flex-wrap items-center gap-3">
               <select
-                className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[140px]"
+                className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[140px]"
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 aria-label="Filter by status"
@@ -312,7 +312,7 @@ const Evaluation = () => {
               </select>
               <input
                 type="text"
-                className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[180px]"
+                className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[180px]"
                 placeholder="Search student..."
                 value={filterStudent}
                 onChange={(e) => setFilterStudent(e.target.value)}

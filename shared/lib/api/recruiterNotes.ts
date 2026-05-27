@@ -37,3 +37,15 @@ export async function createRecruiterNote(
 export async function deleteRecruiterNote(noteId: string): Promise<void> {
   await apiClient.delete(`/recruiters/notes/${noteId}`);
 }
+
+/** POST /v1/recruiters/:recruiterId/share-email */
+export async function shareRecruiterByEmail(
+  recruiterId: string,
+  payload: { email: string; message?: string }
+): Promise<{ profileUrl?: string }> {
+  const { data } = await apiClient.post<{ success: boolean; data?: { profileUrl?: string } }>(
+    `/recruiters/${recruiterId}/share-email`,
+    payload
+  );
+  return data?.data ?? {};
+}

@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation'
 import { listRecruiters, deleteUser, exportRecruitersToExcel, downloadRecruitersTemplate, importRecruitersFromExcel } from '@/shared/lib/api/users'
 import { mapRecruiterToDisplay, type DisplayRecruiter } from '@/shared/lib/ats/recruiterMappers'
 import { useAuth } from '@/shared/contexts/auth-context'
-import { listRecruiterNotes, createRecruiterNote, deleteRecruiterNote } from '@/shared/lib/api/recruiterNotes'
+import { listRecruiterNotes, createRecruiterNote, deleteRecruiterNote, shareRecruiterByEmail } from '@/shared/lib/api/recruiterNotes'
+import Swal from 'sweetalert2'
 
 // Recruiters data loaded from API in component – see recruitersData state below
 
@@ -52,6 +53,7 @@ const Recruiters = () => {
   const [copied, setCopied] = useState(false)
   const [shareEmail, setShareEmail] = useState('')
   const [showEmailInput, setShowEmailInput] = useState(false)
+  const [shareSubmitting, setShareSubmitting] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
   
   const [filters, setFilters] = useState<FilterState>({
@@ -294,14 +296,33 @@ const Recruiters = () => {
     setShowEmailInput(true)
   }
 
-  // Handle send email (UI only for now)
-  const handleSendEmail = () => {
-    if (!shareEmail.trim()) return
-    // TODO: Add email sending logic here
-    console.log('Sending email to:', shareEmail, 'for recruiter:', shareRecruiter?.id)
-    // Reset after sending
-    setShareEmail('')
-    setShowEmailInput(false)
+  // Handle send share email – calls backend share endpoint and surfaces SweetAlert toast
+  const handleSendEmail = async () => {
+    const recruiterId = shareRecruiter?.id
+    const email = shareEmail.trim()
+    if (!email || !recruiterId || shareSubmitting) return
+    setShareSubmitting(true)
+    try {
+      await shareRecruiterByEmail(recruiterId, { email })
+      setShareEmail('')
+      setShowEmailInput(false)
+      setShareRecruiter(null)
+      Swal.fire({
+        icon: 'success',
+        title: 'Profile shared',
+        text: `Recruiter profile sent to ${email}.`,
+        timer: 2500,
+        showConfirmButton: false,
+      })
+    } catch (err: any) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Failed to share',
+        text: err?.response?.data?.message || err?.message || 'Failed to send share email.',
+      })
+    } finally {
+      setShareSubmitting(false)
+    }
   }
 
   // Handle share button click
@@ -756,7 +777,7 @@ const Recruiters = () => {
 
   return (
     <Fragment>
-  
+      <Seo title="Recruiters" />
       <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
         <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
           <div className="box custom-box h-full flex flex-col">
@@ -769,7 +790,7 @@ const Recruiters = () => {
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -1778,20 +1799,30 @@ const Recruiters = () => {
                             value={shareEmail}
                             onChange={(e) => setShareEmail(e.target.value)}
                             onKeyPress={(e) => {
-                              if (e.key === 'Enter') {
+                              if (e.key === 'Enter' && !shareSubmitting) {
                                 handleSendEmail()
                               }
                             }}
+                            disabled={shareSubmitting}
                           />
                           <div className="flex gap-2">
                             <button
                               type="button"
                               className="ti-btn ti-btn-primary flex-1"
                               onClick={handleSendEmail}
-                              disabled={!shareEmail.trim()}
+                              disabled={!shareEmail.trim() || shareSubmitting}
                             >
-                              <i className="ri-send-plane-line me-1"></i>
-                              Send
+                              {shareSubmitting ? (
+                                <>
+                                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin me-1.5" />
+                                  Sending...
+                                </>
+                              ) : (
+                                <>
+                                  <i className="ri-send-plane-line me-1"></i>
+                                  Send
+                                </>
+                              )}
                             </button>
                             <button
                               type="button"

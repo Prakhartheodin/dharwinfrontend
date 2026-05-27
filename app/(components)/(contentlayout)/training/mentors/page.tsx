@@ -630,7 +630,7 @@ const Mentors = () => {
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
-                  className="form-control !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value))

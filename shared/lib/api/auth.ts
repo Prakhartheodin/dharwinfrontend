@@ -226,6 +226,8 @@ export async function extractSkillsFromResume(file: File): Promise<ExtractSkills
 /** Payload for POST /auth/me/recommend-skills-by-role — OpenAI gap analysis vs target role. */
 export interface RecommendSkillsByRolePayload {
   role: string;
+  /** Optional seniority level (Junior / Mid-level / Senior / Lead / Principal / Manager / Director). Calibrates skill depth and breadth. */
+  seniority?: string;
   /** Employee's existing skills (names); only these + role are sent to the model. */
   currentSkills?: Array<{ name: string; level?: string; category?: string }>;
 }
@@ -234,10 +236,12 @@ export interface RecommendSkillsByRolePayload {
 export async function recommendSkillsByRole(
   payload: RecommendSkillsByRolePayload
 ): Promise<ExtractSkillsFromResumeResponse> {
+  const seniority = String(payload.seniority || '').trim();
   const { data } = await apiClient.post<ExtractSkillsFromResumeResponse>(
     AUTH_ENDPOINTS.recommendSkillsByRole,
     {
       role: payload.role.trim(),
+      ...(seniority ? { seniority } : {}),
       currentSkills: payload.currentSkills ?? [],
     },
     { timeout: 120000 }
@@ -565,6 +569,8 @@ export interface RegisterRecruiterPayload {
   domain?: string | string[];
   location?: string;
   profileSummary?: string;
+  /** Optional S3 URL returned by /upload/single. Backend wraps it as `{ url }` on the User document. */
+  profilePicture?: string;
 }
 
 /** Recruiter registration response */

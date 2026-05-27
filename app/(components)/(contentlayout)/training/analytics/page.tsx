@@ -180,7 +180,7 @@ const TrainingAnalytics = () => {
           <div className="flex flex-wrap items-center gap-2">
             <label className="text-[0.8125rem] text-defaulttextcolor/70">Period:</label>
             <select
-              className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
+              className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
               value={range}
               onChange={(e) => setRange((e.target.value || '') as AnalyticsRange | '')}
             >
@@ -394,7 +394,7 @@ const TrainingAnalytics = () => {
                 <div className="box-header justify-between flex-wrap gap-2">
                   <div className="box-title">Trends</div>
                   <select
-                    className="form-control !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
+                    className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem]"
                     value={configurableField}
                     onChange={(e) => setConfigurableField(e.target.value as ConfigurableChartField)}
                   >
