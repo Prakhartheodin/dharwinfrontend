@@ -6,6 +6,7 @@ import React, { Fragment, useState, useEffect } from "react";
 import { getMyApplications, withdrawMyApplication, type JobApplication, type JobApplicationStatus } from "@/shared/lib/api/jobApplications";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
+import DocumentsActionCard from "./_components/DocumentsActionCard";
 
 const WITHDRAWABLE_STATUSES: JobApplicationStatus[] = ["Applied", "Screening"];
 
@@ -228,6 +229,8 @@ export default function MyApplicationsPage() {
                         )}
                       </div>
                     </div>
+                    <DocumentsActionCard inline />
+
                   </article>
                 );
               })}

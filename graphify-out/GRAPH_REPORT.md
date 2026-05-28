@@ -1,12 +1,12 @@
-# Graph Report - .  (2026-05-27)
+# Graph Report - C:\Users\INTEL\Desktop\DHARWIN NEW\uat.dharwin.frontend  (2026-05-28)
 
 ## Corpus Check
-- 669 files · ~935,499 words
+- 672 files · ~941,972 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2931 nodes · 3733 edges · 430 communities detected
-- Extraction: 81% EXTRACTED · 19% INFERRED · 0% AMBIGUOUS · INFERRED: 726 edges (avg confidence: 0.8)
+- 2969 nodes · 3791 edges · 431 communities detected
+- Extraction: 80% EXTRACTED · 20% INFERRED · 0% AMBIGUOUS · INFERRED: 745 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
@@ -440,13 +440,14 @@
 - [[_COMMUNITY_Community 427|Community 427]]
 - [[_COMMUNITY_Community 428|Community 428]]
 - [[_COMMUNITY_Community 429|Community 429]]
+- [[_COMMUNITY_Community 430|Community 430]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `push()` - 86 edges
 2. `LocalStorageBackup()` - 51 edges
 3. `handleSubmit()` - 46 edges
 4. `add()` - 29 edges
-5. `load()` - 23 edges
+5. `load()` - 25 edges
 6. `handleDelete()` - 22 edges
 7. `getDate()` - 22 edges
 8. `set()` - 21 edges
@@ -462,98 +463,98 @@
   uat.dharwin.frontend\app\(components)\(contentlayout)\training\students\add\page.tsx → shared\lib\api\auth.ts
 - `handleSubmit()` --calls--> `registerStudent()`  [INFERRED]
   uat.dharwin.frontend\app\(components)\(contentlayout)\training\students\add\page.tsx → shared\lib\api\auth.ts
-- `fetch()` --calls--> `openNotificationStream()`  [INFERRED]
-  app\(components)\(contentlayout)\ats\analytics\page.tsx → shared\lib\api\notifications.ts
+- `handleStartAssignmentRun()` --calls--> `runAssignmentGenerationWithUi()`  [INFERRED]
+  app\(components)\(contentlayout)\apps\projects\edit\[projectId]\EditProjectClient.tsx → uat.dharwin.frontend\shared\lib\pm\runAssignmentGenerationWithUi.ts
 
 ## Communities
 
 ### Community 0 - "Community 0"
 Cohesion: 0.01
-Nodes (121): initiateBolnaCall(), resolveDownloadUrlForBrowser(), applyJobDefaults(), formatCandidateAddress(), handleApplicationChange(), handleSubmit(), handleSaveAsTemplate(), addFeedbackToCandidate() (+113 more)
+Nodes (120): historyErrorMessage(), initiateBolnaCall(), getApiErrorMessage(), normalizeApiBase(), resolveDownloadUrlForBrowser(), handleFulfill(), handleReplace(), handleSaveAsTemplate() (+112 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.02
-Nodes (75): assignLeavesToStudents(), formatElapsedSession(), getMyStudentForAttendance(), getMyUpcomingHolidays(), getPunchInOutStatus(), getPunchInOutStatusMe(), punchInAttendance(), punchInAttendanceMe() (+67 more)
+Nodes (86): assignLeavesToStudents(), formatElapsedSession(), getMyStudentForAttendance(), getMyUpcomingHolidays(), getPunchInOutStatus(), getPunchInOutStatusMe(), punchInAttendance(), punchInAttendanceMe() (+78 more)
 
 ### Community 2 - "Community 2"
 Cohesion: 0.02
-Nodes (68): getActionDisplay(), getActivityActionDisplayForRow(), getCandidateActivityEntitySummary(), getJobActivityEntitySummary(), getRoleActivityEntitySummary(), getUserActivityEntitySummary(), readRecipients(), recipientsLine() (+60 more)
+Nodes (63): getActionDisplay(), getActivityActionDisplayForRow(), getCandidateActivityEntitySummary(), getJobActivityEntitySummary(), getRoleActivityEntitySummary(), getUserActivityEntitySummary(), readRecipients(), recipientsLine() (+55 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.03
-Nodes (62): mergeTokens(), set(), toggleConstraint(), composeProjectDescriptionPlainFromParts(), stripMergedIntakeFromPlainDescription(), jobIdFromAppJob(), jobOptionsFromApplications(), handleSubmit() (+54 more)
+Nodes (61): mergeTokens(), set(), toggleConstraint(), jobIdFromAppJob(), jobOptionsFromApplications(), isPmAssistantUiEnabled(), createHoliday(), deleteHoliday() (+53 more)
 
 ### Community 4 - "Community 4"
 Cohesion: 0.03
-Nodes (45): addParticipants(), createConversation(), deleteConversation(), deleteMessage(), initiateCall(), removeParticipant(), searchUsers(), setParticipantRole() (+37 more)
+Nodes (67): ThemeChanger(), onSubmit(), assign(), resolveStudentIdForCandidate(), studentIdsOnModule(), goToNext(), goToPrevious(), makeCurrent() (+59 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.03
-Nodes (59): ThemeChanger(), canOpenActivityLogEntity(), getActivityLogEntityHref(), goToNext(), goToPrevious(), makeCurrent(), toggleClass(), Loaded (+51 more)
+Nodes (46): addParticipants(), createConversation(), deleteConversation(), deleteMessage(), initiateCall(), removeParticipant(), searchUsers(), setParticipantRole() (+38 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.03
-Nodes (34): pick(), getVirtulData(), Heatmapechart(), firstApplicationJobTitle(), handleSubmit(), isValidMongoId(), load(), placementJobTitle() (+26 more)
+Nodes (60): getMeWithCandidate(), adminCreateAgentEmailTemplate(), adminDeleteAgentEmailTemplate(), adminPatchAgentEmailSignature(), adminUpdateAgentEmailTemplate(), batchModifyMessages(), batchModifyThreads(), createAgentEmailTemplate() (+52 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.04
-Nodes (54): generateBlog(), generateBlogFromTheme(), generateBlogStream(), getBaseUrl(), addQuizOption(), addQuizQuestion(), applyTemplate(), fetchModule() (+46 more)
+Cohesion: 0.03
+Nodes (62): generateBlog(), generateBlogFromTheme(), generateBlogStream(), getBaseUrl(), createCategory(), deleteCategory(), listCategories(), updateCategory() (+54 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.03
-Nodes (56): buildMergedAssignPeopleOptions(), buildOwnerUserIdToEmployeeId(), filterAssignPersonSelectOption(), formatAssigneeDisplaySecondary(), normId(), ownerUserIdFromListCandidate(), partitionAssignPersonRows(), resolveStudentIdsForHolidayAssign() (+48 more)
+Nodes (51): buildMergedAssignPeopleOptions(), buildOwnerUserIdToEmployeeId(), filterAssignPersonSelectOption(), formatAssigneeDisplaySecondary(), normId(), ownerUserIdFromListCandidate(), partitionAssignPersonRows(), resolveStudentIdsForHolidayAssign() (+43 more)
 
 ### Community 9 - "Community 9"
 Cohesion: 0.04
-Nodes (34): changePassword(), extractSkillsFromResume(), login(), recommendSkillsByRole(), registerMentor(), registerStudent(), sendMyVerificationEmail(), updateMeWithCandidate() (+26 more)
+Nodes (33): changePassword(), extractSkillsFromResume(), login(), recommendSkillsByRole(), registerMentor(), registerStudent(), sendMyVerificationEmail(), updateMeWithCandidate() (+25 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.04
-Nodes (53): getMeWithCandidate(), adminCreateAgentEmailTemplate(), adminDeleteAgentEmailTemplate(), adminPatchAgentEmailSignature(), adminUpdateAgentEmailTemplate(), batchModifyMessages(), batchModifyThreads(), createAgentEmailTemplate() (+45 more)
+Cohesion: 0.03
+Nodes (25): pick(), getVirtulData(), Heatmapechart(), firstApplicationJobTitle(), handleSubmit(), isValidMongoId(), load(), placementJobTitle() (+17 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.06
 Nodes (54): backgroundColor1(), backgroundColor2(), backgroundColor3(), backgroundColor4(), backgroundColor5(), bgImage1(), bgImage2(), bgImage3() (+46 more)
 
 ### Community 12 - "Community 12"
-Cohesion: 0.05
-Nodes (29): approveBackdatedAttendanceRequest(), cancelBackdatedAttendanceRequest(), rejectBackdatedAttendanceRequest(), updateBackdatedAttendanceRequest(), listCandidates(), approveLeaveRequest(), cancelLeaveRequest(), rejectLeaveRequest() (+21 more)
+Cohesion: 0.04
+Nodes (26): handleNotificationClose(), deleteNotification(), getNotifications(), markAllAsRead(), markAsRead(), openNotificationStream(), appendDraftToCompose(), bump() (+18 more)
 
 ### Community 13 - "Community 13"
-Cohesion: 0.04
-Nodes (30): exportActivityLogsCsv(), listActivityLogs(), deleteSavedHrContact(), enrichExternalJobContacts(), saveExternalJob(), saveHrContact(), searchExternalJobs(), unsaveExternalJob() (+22 more)
+Cohesion: 0.05
+Nodes (28): exportActivityLogsCsv(), listActivityLogs(), deleteSavedHrContact(), enrichExternalJobContacts(), saveExternalJob(), saveHrContact(), searchExternalJobs(), unsaveExternalJob() (+20 more)
 
 ### Community 14 - "Community 14"
 Cohesion: 0.05
-Nodes (26): onSubmit(), assign(), resolveStudentIdForCandidate(), studentIdsOnModule(), STORAGE_KEY_SAVED_VIEWS(), startSyntheticRing(), stopSyntheticRing(), close() (+18 more)
+Nodes (32): format(), CreateInterviewModal(), formatSidebarJoining(), editScheduleDefaults(), fetchReferralLeadsForSchedule(), formatMeetingDate(), handleRowSelect(), mapReferralLeadsToScheduleCandidates() (+24 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.05
-Nodes (30): admitParticipant(), admitParticipantPublic(), getLiveKitToken(), getPublicLiveKitToken(), getRecordingStatus(), getRecordingStatusPublic(), getWaitingParticipants(), getWaitingParticipantsPublic() (+22 more)
+Nodes (22): STORAGE_KEY_SAVED_VIEWS(), safeGet(), safeGetItem(), safeParseJson(), safeSet(), sanitizeViewName(), LocalStorageAdapter, uuid() (+14 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.05
-Nodes (22): buildPayload(), handleStartAssignmentRun(), handleSubmit(), projectToFormValues(), stripHtmlToText(), fmtDate(), getProjectId(), handleStatusChange() (+14 more)
+Nodes (30): admitParticipant(), admitParticipantPublic(), getLiveKitToken(), getPublicLiveKitToken(), getRecordingStatus(), getRecordingStatusPublic(), getWaitingParticipants(), getWaitingParticipantsPublic() (+22 more)
 
 ### Community 17 - "Community 17"
 Cohesion: 0.05
-Nodes (20): SortableCardRow(), handleSubmit(), dispatchRollback(), revertState(), TaskDataProvider(), taskDataReducer(), useTaskData(), TaskFilterDrawer() (+12 more)
+Nodes (20): composeProjectDescriptionPlainFromParts(), stripMergedIntakeFromPlainDescription(), buildPayload(), handleStartAssignmentRun(), handleSubmit(), projectToFormValues(), stripHtmlToText(), fmtDate() (+12 more)
 
 ### Community 18 - "Community 18"
+Cohesion: 0.07
+Nodes (17): startSyntheticRing(), stopSyntheticRing(), HrmWebRtcClient, fetchHrmWebRtcSignalingToken(), close(), closeHrmFeedModal(), closePreview(), handleHrmConnectFeed() (+9 more)
+
+### Community 19 - "Community 19"
 Cohesion: 0.06
 Nodes (23): deleteCandidateSopTemplate(), updateCandidateSopTemplate(), async(), closeCreateModal(), closeTicketModal(), formatFileSize(), handleAddComment(), handleCommentFileChange() (+15 more)
 
-### Community 19 - "Community 19"
+### Community 20 - "Community 20"
 Cohesion: 0.07
 Nodes (28): clearStoredActivityLogClientGeo(), clearStoredRealIp(), fetchAndStoreRealIp(), fetchIpGeoFromIp(), getActivityLogClientGeoHeaderValue(), getStoredIpGeo(), getStoredRealIp(), jsonStringifyIso8859SafeForHeader() (+20 more)
 
-### Community 20 - "Community 20"
-Cohesion: 0.07
-Nodes (26): format(), CreateInterviewModal(), formatSidebarJoining(), editScheduleDefaults(), fetchReferralLeadsForSchedule(), formatMeetingDate(), handleRowSelect(), mapReferralLeadsToScheduleCandidates() (+18 more)
-
 ### Community 21 - "Community 21"
 Cohesion: 0.07
-Nodes (19): historyErrorMessage(), ChatbotRequestError, clearChatConversation(), emptyMeta(), fetchStream(), normalizeEnvelope(), prepareMessages(), readErrorMessage() (+11 more)
+Nodes (19): draftToJobDescriptionHtml(), escapeHtml(), handlePost(), handleRegenerate(), parseOptionalSalaryRange(), resolvePostedCurrency(), resolvePostedLocation(), createJob() (+11 more)
 
 ### Community 22 - "Community 22"
 Cohesion: 0.07
@@ -561,83 +562,83 @@ Nodes (14): isValidModuleId(), load(), markComplete(), selectItem(), selectLectu
 
 ### Community 23 - "Community 23"
 Cohesion: 0.07
-Nodes (18): createCategory(), deleteCategory(), listCategories(), updateCategory(), getErrorMessage(), handleSubmit(), deleteMentor(), getMentor() (+10 more)
-
-### Community 24 - "Community 24"
-Cohesion: 0.07
 Nodes (16): buildCreateOfferPayloadFromLetterForm(), buildOfferLetterUpdatePayload(), letterDateStampYmd(), effectiveEligibilityLines(), employmentLinesFromPreset(), fmtStartDateOrdinal(), getOrdinal(), uiJobTypeToApi() (+8 more)
 
-### Community 25 - "Community 25"
+### Community 24 - "Community 24"
 Cohesion: 0.08
 Nodes (18): dedupeApplicants(), displayApplicantEmail(), getApplicantIdentityKey(), isInternalRelayEmail(), isPublicEmail(), maskEmail(), pickId(), pickPublicEmail() (+10 more)
 
+### Community 25 - "Community 25"
+Cohesion: 0.09
+Nodes (20): applyJobDefaults(), formatCandidateAddress(), handleApplicationChange(), handleSubmit(), createOffer(), deleteOffer(), formatOfferLetterSaveError(), getOfferLetterDefaults() (+12 more)
+
 ### Community 26 - "Community 26"
-Cohesion: 0.1
-Nodes (9): HrmWebRtcClient, fetchHrmWebRtcSignalingToken(), closeHrmFeedModal(), handleHrmConnectFeed(), handleHrmListDevices(), handleHrmStopStream(), handleSupportCameraInvite(), resolveHrmBackendUrl() (+1 more)
+Cohesion: 0.07
+Nodes (9): getErrorMessage(), handleSubmit(), getErrorMessage(), handleAddSkill(), handleSkillKeyPress(), handleSubmit(), updateMentor(), updateStudent() (+1 more)
 
 ### Community 27 - "Community 27"
 Cohesion: 0.09
 Nodes (13): downloadTemplate(), handleExportSubmit(), downloadTemplate(), notifyImportOutcome(), submit(), asArray(), deleteTeamMember(), downloadImportTemplate() (+5 more)
 
 ### Community 28 - "Community 28"
+Cohesion: 0.1
+Nodes (15): ChatbotRequestError, clearChatConversation(), emptyMeta(), fetchStream(), normalizeEnvelope(), prepareMessages(), readErrorMessage(), sendChatMessage() (+7 more)
+
+### Community 29 - "Community 29"
 Cohesion: 0.12
 Nodes (18): resolveEmployeeJobTitle(), resolveEmployeeJobTitleLabel(), makeFormState(), asNum(), asString(), mapDocument(), mapSalarySlip(), mapToFormState() (+10 more)
 
-### Community 29 - "Community 29"
+### Community 30 - "Community 30"
 Cohesion: 0.09
 Nodes (9): EmployeeProfileWizard(), useDirtyState(), useWizardNavigation(), useWorkforceAnalytics(), useWorkforceAsyncState(), useWorkforceForm(), useWorkforceSubmit(), runRules() (+1 more)
 
-### Community 30 - "Community 30"
+### Community 31 - "Community 31"
 Cohesion: 0.1
 Nodes (5): DensityToggle(), hasPermission(), useTaskUI(), useTaskBoardKeyboard(), ViewToggle()
 
-### Community 31 - "Community 31"
+### Community 32 - "Community 32"
 Cohesion: 0.16
 Nodes (9): applySalaryPreset(), formatNumberWithCommas(), handleSalaryMaxChange(), handleSalaryMinChange(), parseDigits(), selectCompany(), selectJobTitle(), selectLocation() (+1 more)
 
-### Community 32 - "Community 32"
+### Community 33 - "Community 33"
 Cohesion: 0.15
 Nodes (11): onDeleteDoc(), onPasteIngest(), onPdfChange(), patchIngest(), runTestQuery(), toggleKb(), deleteKbDocument(), ingestKbText() (+3 more)
 
-### Community 33 - "Community 33"
+### Community 34 - "Community 34"
 Cohesion: 0.14
 Nodes (7): applyTemplateToForm(), buildTemplateVarContext(), buildValueMap(), findTokensInTemplate(), fmtMoney(), resolveTemplateVars(), normalizeTipTapHtmlFromApi()
 
-### Community 34 - "Community 34"
+### Community 35 - "Community 35"
 Cohesion: 0.18
 Nodes (13): main(), sanitize(), walk(), canPlaceKeywordPhrase(), decodeHtmlEntities(), emphasizeKeywordsInPlainTextSegment(), escapeHtmlText(), formatJobDescriptionForDisplay() (+5 more)
 
-### Community 35 - "Community 35"
-Cohesion: 0.18
-Nodes (9): draftToJobDescriptionHtml(), escapeHtml(), handlePost(), handleRegenerate(), parseOptionalSalaryRange(), resolvePostedCurrency(), resolvePostedLocation(), createJob() (+1 more)
-
 ### Community 36 - "Community 36"
+Cohesion: 0.21
+Nodes (12): decodeSopQueryName(), findStudentOptionSync(), getStudentUserIdFromRow(), getUserEmail(), nameTokensMatch(), normalizeId(), normEmail(), normName() (+4 more)
+
+### Community 37 - "Community 37"
 Cohesion: 0.21
 Nodes (9): Dark(), Light(), LocalStorageBackup1(), primaryColor1(), primaryColor2(), primaryColor3(), primaryColor4(), primaryColor5() (+1 more)
 
-### Community 37 - "Community 37"
-Cohesion: 0.15
-Nodes (5): getErrorMessage(), handleAddSkill(), handleSkillKeyPress(), handleSubmit(), updateStudent()
-
 ### Community 38 - "Community 38"
-Cohesion: 0.22
-Nodes (8): appendDraftToCompose(), bump(), handleOutside(), hasMeaningfulComposeBody(), joinComposeBodyAndSignature(), onVis(), replaceComposeBody(), splitComposeSignature()
-
-### Community 39 - "Community 39"
 Cohesion: 0.26
 Nodes (9): buildSearchParamsFromFilters(), deserializeFilters(), dueEqual(), isEqual(), normalize(), parseDue(), serializeFilters(), sortedCopy() (+1 more)
 
-### Community 40 - "Community 40"
+### Community 39 - "Community 39"
 Cohesion: 0.2
 Nodes (2): addSocialLink(), newSocialId()
+
+### Community 40 - "Community 40"
+Cohesion: 0.22
+Nodes (4): fmtDate(), fmtDate(), fmtTime(), relTime()
 
 ### Community 41 - "Community 41"
 Cohesion: 0.22
 Nodes (5): Page(), ENV_KEY(), persist(), readSeed(), useFeatureFlag()
 
 ### Community 42 - "Community 42"
-Cohesion: 0.22
-Nodes (4): fmtDate(), fmtDate(), fmtTime(), relTime()
+Cohesion: 0.36
+Nodes (7): canOpenActivityLogEntity(), getActivityLogEntityHref(), canAccessPath(), getPathAccessRule(), getRequiredPermissionForPath(), hasPermissionForPath(), isPathAllowed()
 
 ### Community 43 - "Community 43"
 Cohesion: 0.25
@@ -656,56 +657,56 @@ Cohesion: 0.25
 Nodes (2): Datetimexaxis, Githubdata
 
 ### Community 47 - "Community 47"
-Cohesion: 0.33
-Nodes (2): fmtDate(), relTime()
+Cohesion: 0.25
+Nodes (0): 
 
 ### Community 48 - "Community 48"
-Cohesion: 0.38
-Nodes (4): getGridClass(), htmlToPreviewPlain(), renderField(), stripBriefPlain()
-
-### Community 49 - "Community 49"
 Cohesion: 0.29
 Nodes (0): 
 
-### Community 50 - "Community 50"
+### Community 49 - "Community 49"
 Cohesion: 0.33
-Nodes (2): RevokeAttributionModal(), useSalesAgentAttribution()
+Nodes (2): fmtDate(), relTime()
+
+### Community 50 - "Community 50"
+Cohesion: 0.38
+Nodes (4): getGridClass(), htmlToPreviewPlain(), renderField(), stripBriefPlain()
 
 ### Community 51 - "Community 51"
 Cohesion: 0.33
-Nodes (0): 
+Nodes (2): RevokeAttributionModal(), useSalesAgentAttribution()
 
 ### Community 52 - "Community 52"
 Cohesion: 0.33
-Nodes (3): ShareOfferModal(), Harness(), useModalBehavior()
+Nodes (0): 
 
 ### Community 53 - "Community 53"
+Cohesion: 0.33
+Nodes (3): ShareOfferModal(), Harness(), useModalBehavior()
+
+### Community 54 - "Community 54"
 Cohesion: 0.4
 Nodes (2): formatActivityLogClientGeoCoords(), formatActivityLogClientGeoLine()
 
-### Community 54 - "Community 54"
+### Community 55 - "Community 55"
 Cohesion: 0.47
 Nodes (3): digitsOnly(), toFullPhone(), validatePhoneForCountry()
 
-### Community 55 - "Community 55"
+### Community 56 - "Community 56"
 Cohesion: 0.53
 Nodes (5): meetingRoute(), meta(), normalizeNotificationLink(), resolveNotificationRoute(), stripId()
 
-### Community 56 - "Community 56"
+### Community 57 - "Community 57"
 Cohesion: 0.6
 Nodes (5): formatUserAgentSummary(), parseUserAgentDetails(), pickBrowser(), pickDevice(), pickOs()
 
-### Community 57 - "Community 57"
+### Community 58 - "Community 58"
 Cohesion: 0.4
 Nodes (0): 
-
-### Community 58 - "Community 58"
-Cohesion: 0.7
-Nodes (4): clearDraft(), keyFor(), loadDraft(), saveDraft()
 
 ### Community 59 - "Community 59"
-Cohesion: 0.4
-Nodes (0): 
+Cohesion: 0.7
+Nodes (4): clearDraft(), keyFor(), loadDraft(), saveDraft()
 
 ### Community 60 - "Community 60"
 Cohesion: 0.4
@@ -717,91 +718,91 @@ Nodes (0):
 
 ### Community 62 - "Community 62"
 Cohesion: 0.4
-Nodes (1): TaskBoardErrorBoundary
+Nodes (0): 
 
 ### Community 63 - "Community 63"
 Cohesion: 0.4
-Nodes (0): 
+Nodes (1): TaskBoardErrorBoundary
 
 ### Community 64 - "Community 64"
-Cohesion: 0.5
-Nodes (2): main(), walk()
+Cohesion: 0.4
+Nodes (0): 
 
 ### Community 65 - "Community 65"
 Cohesion: 0.5
-Nodes (2): authUserId(), ChatSocketProvider()
+Nodes (2): main(), walk()
 
 ### Community 66 - "Community 66"
+Cohesion: 0.5
+Nodes (2): authUserId(), ChatSocketProvider()
+
+### Community 67 - "Community 67"
 Cohesion: 0.4
 Nodes (1): Updatingdonut
 
-### Community 67 - "Community 67"
+### Community 68 - "Community 68"
 Cohesion: 0.6
 Nodes (1): ProfileService
 
-### Community 68 - "Community 68"
+### Community 69 - "Community 69"
 Cohesion: 0.4
 Nodes (2): useHasCandidateRole(), useHasEmployeeRole()
 
-### Community 69 - "Community 69"
+### Community 70 - "Community 70"
 Cohesion: 0.4
 Nodes (2): useIsCandidateForProfile(), useIsEmployeeForProfile()
 
-### Community 70 - "Community 70"
+### Community 71 - "Community 71"
 Cohesion: 0.5
 Nodes (2): capSessionMs(), sessionDurationMsForDisplay()
 
-### Community 71 - "Community 71"
+### Community 72 - "Community 72"
 Cohesion: 0.6
 Nodes (3): consumeImpersonationReturnPath(), isSafeImpersonationReturnPath(), setImpersonationReturnPathForSession()
 
-### Community 72 - "Community 72"
+### Community 73 - "Community 73"
 Cohesion: 0.6
 Nodes (3): jobReferralRefStorageKey(), readStoredJobReferralRef(), rememberJobReferralRef()
 
-### Community 73 - "Community 73"
+### Community 74 - "Community 74"
 Cohesion: 0.5
 Nodes (3): ProtectedRoute(), isPublicLayoutPath(), normalizePathname()
 
-### Community 74 - "Community 74"
+### Community 75 - "Community 75"
 Cohesion: 0.7
 Nodes (4): formatExperience(), formatSalaryRange(), mapExperienceLevel(), mapJobToDisplay()
 
-### Community 75 - "Community 75"
+### Community 76 - "Community 76"
 Cohesion: 0.4
 Nodes (2): LifecycleStagePill(), getLifecycleStageMeta()
 
-### Community 76 - "Community 76"
+### Community 77 - "Community 77"
 Cohesion: 0.5
 Nodes (2): currentSink(), emitWorkforceEvent()
 
-### Community 77 - "Community 77"
+### Community 78 - "Community 78"
 Cohesion: 0.5
 Nodes (2): todayISO(), validateNotFutureDate()
 
-### Community 78 - "Community 78"
+### Community 79 - "Community 79"
 Cohesion: 0.5
 Nodes (0): 
 
-### Community 79 - "Community 79"
+### Community 80 - "Community 80"
 Cohesion: 0.5
 Nodes (1): Layout()
 
-### Community 80 - "Community 80"
+### Community 81 - "Community 81"
 Cohesion: 0.67
 Nodes (2): selectThemeAttrs(), str()
 
-### Community 81 - "Community 81"
+### Community 82 - "Community 82"
 Cohesion: 0.67
 Nodes (2): bump(), onVis()
 
-### Community 82 - "Community 82"
-Cohesion: 0.5
-Nodes (1): EditOnboardingPage()
-
 ### Community 83 - "Community 83"
 Cohesion: 0.5
-Nodes (0): 
+Nodes (1): EditOnboardingPage()
 
 ### Community 84 - "Community 84"
 Cohesion: 0.5
@@ -2187,6 +2188,10 @@ Nodes (0):
 Cohesion: 1.0
 Nodes (0): 
 
+### Community 430 - "Community 430"
+Cohesion: 1.0
+Nodes (0): 
+
 ## Knowledge Gaps
 - **Thin community `Community 128`** (2 nodes): `layout.tsx`, `RootLayout()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
@@ -2756,57 +2761,59 @@ Nodes (0):
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 - **Thin community `Community 411`** (1 nodes): `querySync.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 412`** (1 nodes): `timezone.test.ts`
+- **Thin community `Community 412`** (1 nodes): `permissions.employees.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 413`** (1 nodes): `store.tsx`
+- **Thin community `Community 413`** (1 nodes): `timezone.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 414`** (1 nodes): `pmAssistant.ts`
+- **Thin community `Community 414`** (1 nodes): `store.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 415`** (1 nodes): `index.ts`
+- **Thin community `Community 415`** (1 nodes): `pmAssistant.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 416`** (1 nodes): `WizardFooter.tsx`
+- **Thin community `Community 416`** (1 nodes): `index.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 417`** (1 nodes): `WizardStepTabs.tsx`
+- **Thin community `Community 417`** (1 nodes): `WizardFooter.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 418`** (1 nodes): `index.ts`
+- **Thin community `Community 418`** (1 nodes): `WizardStepTabs.tsx`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 419`** (1 nodes): `compatibility.test.ts`
+- **Thin community `Community 419`** (1 nodes): `index.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 420`** (1 nodes): `mapper.test.ts`
+- **Thin community `Community 420`** (1 nodes): `compatibility.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 421`** (1 nodes): `normalizer.test.ts`
+- **Thin community `Community 421`** (1 nodes): `mapper.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 422`** (1 nodes): `store.test.ts`
+- **Thin community `Community 422`** (1 nodes): `normalizer.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 423`** (1 nodes): `strategies.test.ts`
+- **Thin community `Community 423`** (1 nodes): `store.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 424`** (1 nodes): `version.test.ts`
+- **Thin community `Community 424`** (1 nodes): `strategies.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 425`** (1 nodes): `resource.types.ts`
+- **Thin community `Community 425`** (1 nodes): `version.test.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 426`** (1 nodes): `validation.types.ts`
+- **Thin community `Community 426`** (1 nodes): `resource.types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 427`** (1 nodes): `wizard.types.ts`
+- **Thin community `Community 427`** (1 nodes): `validation.types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 428`** (1 nodes): `workforce.types.ts`
+- **Thin community `Community 428`** (1 nodes): `wizard.types.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 429`** (1 nodes): `referral-sales-agent.spec.ts`
+- **Thin community `Community 429`** (1 nodes): `workforce.types.ts`
+  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **Thin community `Community 430`** (1 nodes): `referral-sales-agent.spec.ts`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `push()` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 15`, `Community 16`, `Community 18`, `Community 19`, `Community 20`, `Community 23`, `Community 24`, `Community 25`, `Community 27`, `Community 29`, `Community 35`, `Community 37`?**
-  _High betweenness centrality (0.205) - this node is a cross-community bridge._
-- **Why does `set()` connect `Community 3` to `Community 1`, `Community 4`, `Community 39`, `Community 8`, `Community 9`, `Community 41`, `Community 13`, `Community 15`, `Community 19`, `Community 20`, `Community 25`?**
-  _High betweenness centrality (0.064) - this node is a cross-community bridge._
-- **Why does `load()` connect `Community 10` to `Community 0`, `Community 1`, `Community 5`, `Community 38`, `Community 6`, `Community 9`, `Community 12`, `Community 18`, `Community 22`?**
-  _High betweenness centrality (0.060) - this node is a cross-community bridge._
+- **Why does `push()` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`, `Community 5`, `Community 6`, `Community 7`, `Community 8`, `Community 9`, `Community 10`, `Community 12`, `Community 13`, `Community 14`, `Community 16`, `Community 17`, `Community 18`, `Community 19`, `Community 20`, `Community 21`, `Community 23`, `Community 24`, `Community 26`, `Community 27`, `Community 30`?**
+  _High betweenness centrality (0.165) - this node is a cross-community bridge._
+- **Why does `load()` connect `Community 6` to `Community 0`, `Community 1`, `Community 4`, `Community 9`, `Community 12`, `Community 19`, `Community 22`?**
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Why does `add()` connect `Community 4` to `Community 0`, `Community 1`, `Community 2`, `Community 3`, `Community 34`, `Community 5`, `Community 7`, `Community 8`, `Community 12`, `Community 14`, `Community 24`?**
+  _High betweenness centrality (0.048) - this node is a cross-community bridge._
 - **Are the 84 inferred relationships involving `push()` (e.g. with `RouteChange()` and `handleSubmit()`) actually correct?**
   _`push()` has 84 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 24 inferred relationships involving `handleSubmit()` (e.g. with `publicRegisterUser()` and `push()`) actually correct?**
   _`handleSubmit()` has 24 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 27 inferred relationships involving `add()` (e.g. with `mergeRecommendedSkillsIntoExisting()` and `handleRowSelect()`) actually correct?**
   _`add()` has 27 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 17 inferred relationships involving `load()` (e.g. with `handleApprove()` and `getMyCandidate()`) actually correct?**
-  _`load()` has 17 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 19 inferred relationships involving `load()` (e.g. with `handleApprove()` and `getMyCandidate()`) actually correct?**
+  _`load()` has 19 INFERRED edges - model-reasoned connections that need verification._

@@ -13,6 +13,17 @@ import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 const isValidMongoId = (id: unknown): id is string =>
   typeof id === 'string' && /^[0-9a-fA-F]{24}$/.test(id)
 
+// toJSON plugin maps _id → id on populated subdocs, so check both.
+const resolveCandidateId = (c: unknown): string | undefined => {
+  if (typeof c === 'string' && c) return c
+  if (c && typeof c === 'object') {
+    const obj = c as { _id?: unknown; id?: unknown }
+    if (obj._id) return String(obj._id)
+    if (obj.id) return String(obj.id)
+  }
+  return undefined
+}
+
 const Onboarding = () => {
   const { canView, canEdit } = useFeaturePermissions('ats.onboarding')
   const [placements, setPlacements] = useState<Placement[]>([])
@@ -257,12 +268,17 @@ const Onboarding = () => {
                           >
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] text-slate-800 sm:px-3 sm:py-2.5 sm:text-[13px] dark:text-slate-100">
                               <div>
-                                <Link
-                                  href={`/ats/employees?candidateId=${p.candidate?._id}`}
-                                  className="font-medium text-primary hover:underline"
-                                >
-                                  {p.candidate?.fullName || '-'}
-                                </Link>
+                                {(() => {
+                                  const cid = resolveCandidateId(p.candidate)
+                                  return (
+                                    <Link
+                                      href={cid ? `/ats/employees/edit?id=${cid}` : '#'}
+                                      className="font-medium text-primary hover:underline"
+                                    >
+                                      {p.candidate?.fullName || '-'}
+                                    </Link>
+                                  )
+                                })()}
                                 <span className="block text-xs text-slate-500 dark:text-slate-400">
                                   {p.candidate?.email || ''}
                                 </span>
@@ -324,12 +340,17 @@ const Onboarding = () => {
                                     </Link>
                                   ) : null
                                 })()}
-                                <Link
-                                  href={`/ats/employees?candidateId=${(p.candidate as { _id?: string })?._id ?? (typeof p.candidate === 'string' ? p.candidate : '')}`}
-                                  className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
-                                >
-                                  Profile
-                                </Link>
+                                {(() => {
+                                  const cid = resolveCandidateId(p.candidate)
+                                  return (
+                                    <Link
+                                      href={cid ? `/ats/employees/edit?id=${cid}` : '#'}
+                                      className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                                    >
+                                      Profile
+                                    </Link>
+                                  )
+                                })()}
                               </div>
                             </td>
                           </tr>

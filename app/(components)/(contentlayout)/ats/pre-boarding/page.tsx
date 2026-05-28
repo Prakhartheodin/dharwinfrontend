@@ -11,6 +11,7 @@ import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import Link from 'next/link'
 import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
+import PreBoardingDocumentsModal from './modals/PreBoardingDocumentsModal'
 
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
 /** Not yet Onboarding: placement statuses shown in this queue (API comma-list). */
@@ -31,8 +32,21 @@ type PreBoardingFeedbackDialog =
       supportRef?: string
     }
 
+const resolvePlacementCandidateId = (p: Placement): string | undefined => {
+  const c = p.candidate as unknown
+  if (typeof c === 'string' && c) return c
+  // toJSON plugin maps _id → id on populated subdocs, so check both.
+  if (c && typeof c === 'object') {
+    const obj = c as { _id?: unknown; id?: unknown }
+    if (obj._id) return String(obj._id)
+    if (obj.id) return String(obj.id)
+  }
+  const fallback = (p as unknown as { candidateId?: unknown }).candidateId
+  return fallback ? String(fallback) : undefined
+}
+
 const PreBoarding = () => {
-  const { canView, canEdit } = useFeaturePermissions('ats.pre-boarding')
+  const { canView, canEdit, canCreate, canDelete } = useFeaturePermissions('ats.pre-boarding')
   const searchParams = useSearchParams()
   const router = useRouter()
   const deepLinkDone = useRef(false)
@@ -52,6 +66,7 @@ const PreBoarding = () => {
   } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [feedbackDialog, setFeedbackDialog] = useState<PreBoardingFeedbackDialog | null>(null)
+  const [documentsCandidate, setDocumentsCandidate] = useState<{ id: string; name: string } | null>(null)
   const editFormSnapshotRef = useRef<string>('')
 
   useEffect(() => {
@@ -548,12 +563,25 @@ const PreBoarding = () => {
                                     Edit
                                   </button>
                                 )}
-                                <Link
-                                  href={`/ats/employees?candidateId=${p.candidate?._id}`}
+                                <button
+                                  type="button"
                                   className="ti-btn ti-btn-sm ti-btn-light shrink-0 whitespace-nowrap !w-auto !min-w-fit !h-8 !py-1.5 !px-3"
+                                  onClick={() => {
+                                    const cid = resolvePlacementCandidateId(p)
+                                    if (!cid) {
+                                      setError('Candidate record missing on this placement — cannot open documents.')
+                                      return
+                                    }
+                                    const cObj = (typeof p.candidate === 'object' && p.candidate) ? p.candidate : null
+                                    setDocumentsCandidate({
+                                      id: cid,
+                                      name: cObj?.fullName || cObj?.email || 'Candidate',
+                                    })
+                                  }}
+                                  title="Manage candidate documents"
                                 >
                                   Documents
-                                </Link>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -852,6 +880,17 @@ const PreBoarding = () => {
             }}
           />
         </div>
+      )}
+
+      {documentsCandidate && (
+        <PreBoardingDocumentsModal
+          candidateId={documentsCandidate.id}
+          candidateName={documentsCandidate.name}
+          canEdit={canEdit}
+          canCreate={canCreate}
+          canDelete={canDelete}
+          onClose={() => setDocumentsCandidate(null)}
+        />
       )}
 
       {feedbackDialog && (

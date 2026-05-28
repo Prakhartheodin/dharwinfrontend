@@ -47,6 +47,26 @@ export interface CallStartData {
   token: string;
 }
 
+/** Bolna telephony delta emitted on `call:update` (see chatSocket.service.js::emitCallUpdate). */
+export interface CallUpdateData {
+  id?: string | null;
+  executionId?: string;
+  status?: string;
+  statusRank?: number;
+  statusUpdatedAt?: string;
+  completedAt?: string | null;
+  duration?: number;
+  recordingUrl?: string;
+  fromPhoneNumber?: string;
+  toPhoneNumber?: string;
+  recipientPhoneNumber?: string;
+  phone?: string;
+  businessName?: string;
+  purpose?: string | null;
+  agentId?: string;
+  errorMessage?: string | null;
+}
+
 interface ChatSocketContextValue {
   socket: Socket | null;
   connected: boolean;
@@ -88,10 +108,11 @@ interface ChatSocketContextValue {
 
 const ChatSocketContext = createContext<ChatSocketContextValue | null>(null);
 
-function authUserId(user: { id?: string; _id?: string } | null | undefined): string {
+function authUserId(user: { id?: string; _id?: unknown } | null | undefined): string {
   if (!user) return "";
-  const id = user.id ?? (typeof user._id === "string" ? user._id : (user._id as { toString?: () => string })?.toString?.());
-  return id ? String(id).trim() : "";
+  const rawId = user.id ?? user._id;
+  if (rawId == null) return "";
+  return String(rawId).trim();
 }
 
 export function ChatSocketProvider({ children }: { children: React.ReactNode }) {

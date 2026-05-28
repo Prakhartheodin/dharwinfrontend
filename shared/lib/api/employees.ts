@@ -504,6 +504,123 @@ export async function uploadDocuments(
   return { success: true, data };
 }
 
+/** Admin → candidate document requests */
+export interface DocumentRequestPayload {
+  type?: string;
+  label: string;
+  notes?: string;
+}
+
+export interface DocumentRequest {
+  index: number;
+  type?: string;
+  label: string;
+  notes?: string;
+  status: 'pending' | 'fulfilled' | 'cancelled';
+  requestedBy?: string;
+  requestedAt?: string;
+  fulfilledAt?: string;
+  fulfilledDocIndex?: number;
+}
+
+export interface RejectedDocument {
+  index: number;
+  type?: string;
+  label?: string;
+  originalName?: string;
+  adminNotes?: string;
+  url?: string;
+  key?: string;
+}
+
+export interface MyDocRequestsResponse {
+  requests: DocumentRequest[];
+  rejectedDocuments: RejectedDocument[];
+  approvedDocuments?: RejectedDocument[];
+  pendingDocuments?: RejectedDocument[];
+}
+
+export async function requestDocumentFromCandidate(
+  candidateId: string,
+  payload: DocumentRequestPayload
+): Promise<DocumentRequest> {
+  const { data } = await apiClient.post<{ success: boolean; data: DocumentRequest }>(
+    `/employees/documents/request/${candidateId}`,
+    payload
+  );
+  return data.data;
+}
+
+export async function cancelDocumentRequest(candidateId: string, requestIndex: number): Promise<void> {
+  await apiClient.delete(`/employees/documents/request/${candidateId}/${requestIndex}`);
+}
+
+export async function getMyDocumentRequests(): Promise<MyDocRequestsResponse> {
+  const { data } = await apiClient.get<{ success: boolean; data: MyDocRequestsResponse }>(
+    `/employees/me/document-requests`
+  );
+  return data.data ?? { requests: [], rejectedDocuments: [] };
+}
+
+const multipartConfig = {
+  transformRequest: [
+    (body: unknown, headers: Record<string, string>) => {
+      delete headers["Content-Type"];
+      return body;
+    },
+  ],
+} as any;
+
+export async function fulfillDocumentRequest(
+  requestIndex: number,
+  file: File
+): Promise<{ documentIndex: number }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post<{ success: boolean; data: { documentIndex: number } }>(
+    `/employees/me/document-requests/${requestIndex}/fulfill`,
+    formData,
+    multipartConfig
+  );
+  return data.data;
+}
+
+export async function replaceMyRejectedDocument(documentIndex: number, file: File): Promise<void> {
+  const formData = new FormData();
+  formData.append("file", file);
+  await apiClient.post(`/employees/me/documents/${documentIndex}/replace`, formData, multipartConfig);
+}
+
+export async function deleteCandidateDocument(candidateId: string, documentIndex: number): Promise<void> {
+  await apiClient.delete(`/employees/documents/${candidateId}/${documentIndex}`);
+}
+
+export async function adminUploadCandidateDocument(
+  candidateId: string,
+  file: File,
+  payload: { type?: string; label: string }
+): Promise<CandidateDocument> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (payload.type) formData.append("type", payload.type);
+  formData.append("label", payload.label);
+  const { data } = await apiClient.post<{ success: boolean; data: CandidateDocument }>(
+    `/employees/documents/${candidateId}/upload`,
+    formData,
+    multipartConfig
+  );
+  return data.data;
+}
+
+/** Get admin-requested documents for a candidate (for the modal listing). */
+export async function getCandidateDocumentRequests(candidateId: string): Promise<DocumentRequest[]> {
+  // Reuses status endpoint pattern — backend exposes via the candidate doc; for now derived from /candidates/:id document API
+  // We piggyback on getCandidateById to surface documentRequests; modal calls this if needed.
+  const { data } = await apiClient.get<{ documentRequests?: DocumentRequest[] }>(`/employees/${candidateId}`);
+  const list = data?.documentRequests ?? [];
+  return list.map((r, i) => ({ ...r, index: r.index ?? i }));
+}
+
 /**
  * Import candidates from Excel file
  */

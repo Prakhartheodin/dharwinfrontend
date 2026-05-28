@@ -3,6 +3,7 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
+import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
@@ -179,6 +180,7 @@ interface FilterState {
 
 export default function InterviewsClient() {
   const { user: authUser, permissionsLoaded } = useAuth()
+  const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions('ats.interviews')
   const router = useRouter()
   const scheduleDropdownsLoadId = useRef(0)
   /** Tracks the in-flight loadScheduleDropdowns promise so concurrent callers (mount effect + prefill effect,
@@ -1274,7 +1276,7 @@ export default function InterviewsClient() {
               </div>
             )}
             {/* Show "Set result" for ended interviews OR to re-trigger a stuck selected interview */}
-            {(row.original.status?.toLowerCase() === 'ended' || row.original.interviewResult === 'selected') && (
+            {canEdit && (row.original.status?.toLowerCase() === 'ended' || row.original.interviewResult === 'selected') && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
@@ -1291,6 +1293,7 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
+            {canEdit && (
             <div className="hs-tooltip ti-main-tooltip">
               <button
                 type="button"
@@ -1306,7 +1309,8 @@ export default function InterviewsClient() {
                 </span>
               </button>
             </div>
-            {row.original.status?.toLowerCase() !== 'cancelled' && (
+            )}
+            {canEdit && row.original.status?.toLowerCase() !== 'cancelled' && (
               <div className="hs-tooltip ti-main-tooltip">
                 <button
                   type="button"
@@ -1539,6 +1543,19 @@ export default function InterviewsClient() {
   const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
   const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
 
+  if (!canView) {
+    return (
+      <Fragment>
+        <Seo title="Interviews" />
+        <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
+          <div className="col-span-12 p-6 rounded-lg border border-danger/20 bg-danger/5 text-danger">
+            You do not have permission to view Interviews.
+          </div>
+        </div>
+      </Fragment>
+    )
+  }
+
   return (
     <Fragment>
       <Seo title="Interviews" />
@@ -1596,14 +1613,16 @@ export default function InterviewsClient() {
                     <i className="ri-calendar-schedule-line align-middle sm:me-1"></i><span className="hidden sm:inline">Week</span>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem] ms-auto sm:ms-0"
-                  onClick={() => openScheduleInterviewModal()}
-                >
-                  <i className="ri-add-line font-semibold align-middle sm:me-1"></i>
-                  <span className="hidden sm:inline">Schedule Interview</span><span className="sm:hidden">Schedule</span>
-                </button>
+                {canCreate && (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary-full !py-1.5 !px-2.5 !text-[0.75rem] ms-auto sm:ms-0"
+                    onClick={() => openScheduleInterviewModal()}
+                  >
+                    <i className="ri-add-line font-semibold align-middle sm:me-1"></i>
+                    <span className="hidden sm:inline">Schedule Interview</span><span className="sm:hidden">Schedule</span>
+                  </button>
+                )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:contents">
                 {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
@@ -1674,13 +1693,15 @@ export default function InterviewsClient() {
                     </span>
                   )}
                 </button>
-                <button
-                  type="button"
-                  className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem]"
-                  aria-label="Delete selected"
-                >
-                  <i className="ri-delete-bin-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Delete</span>
-                </button>
+                {canDelete && (
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem]"
+                    aria-label="Delete selected"
+                  >
+                    <i className="ri-delete-bin-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Delete</span>
+                  </button>
+                )}
                 </div>
               </div>
             </div>
@@ -1793,7 +1814,7 @@ export default function InterviewsClient() {
                                   )}
                                 </button>
                               )}
-                              {(interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
+                              {canEdit && (interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
@@ -1804,16 +1825,18 @@ export default function InterviewsClient() {
                                   <i className="ri-checkbox-circle-line"></i>
                                 </button>
                               )}
-                              <button
-                                type="button"
-                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
-                                title="Edit interview"
-                                aria-label="Edit interview"
-                                onClick={() => openEditModal(interview.id)}
-                              >
-                                <i className="ri-pencil-line"></i>
-                              </button>
-                              {interview.status?.toLowerCase() !== 'cancelled' && (
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  title="Edit interview"
+                                  aria-label="Edit interview"
+                                  onClick={() => openEditModal(interview.id)}
+                                >
+                                  <i className="ri-pencil-line"></i>
+                                </button>
+                              )}
+                              {canEdit && interview.status?.toLowerCase() !== 'cancelled' && (
                                 <button
                                   type="button"
                                   className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger !py-0.5 !px-1.5 !text-[0.65rem]"
@@ -1850,13 +1873,15 @@ export default function InterviewsClient() {
                     >
                       <i className="ri-refresh-line me-1.5"></i>Reset filters
                     </button>
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
-                      onClick={() => openScheduleInterviewModal()}
-                    >
-                      <i className="ri-add-line me-1.5"></i>Schedule interview
-                    </button>
+                    {canCreate && (
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
+                        onClick={() => openScheduleInterviewModal()}
+                      >
+                        <i className="ri-add-line me-1.5"></i>Schedule interview
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1973,7 +1998,7 @@ export default function InterviewsClient() {
                             )}
                           </button>
                         )}
-                        {(interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
+                        {canEdit && (interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
                           <button
                             type="button"
                             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
@@ -1984,16 +2009,18 @@ export default function InterviewsClient() {
                             <i className="ri-checkbox-circle-line" />
                           </button>
                         )}
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-                          title="Edit interview"
-                          aria-label="Edit interview"
-                          onClick={() => openEditModal(interview.id)}
-                        >
-                          <i className="ri-pencil-line" />
-                        </button>
-                        {interview.status?.toLowerCase() !== 'cancelled' && (
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
+                            title="Edit interview"
+                            aria-label="Edit interview"
+                            onClick={() => openEditModal(interview.id)}
+                          >
+                            <i className="ri-pencil-line" />
+                          </button>
+                        )}
+                        {canEdit && interview.status?.toLowerCase() !== 'cancelled' && (
                           <button
                             type="button"
                             className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
