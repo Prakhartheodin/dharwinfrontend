@@ -313,6 +313,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsDesignatedSuperadmin(false);
         }
         setPermissionsLoaded(true);
+        const me = await authApi.getMe();
+        if (me) {
+          setCapabilities(me.capabilities ?? {});
+          setSessions(me.sessions ?? []);
+        }
         const safeNext = getSafePostLoginPath(options?.redirectTo);
         if (safeNext) {
           router.push(safeNext);
@@ -336,6 +341,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setImpersonation(null);
       setSessions([]);
+      setCapabilities({});
       setPermissions(EMPTY_PERMISSIONS.permissions);
       setRoleNames(EMPTY_PERMISSIONS.roleNames);
       setIsAdministrator(false);
@@ -375,6 +381,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setIsDesignatedSuperadmin(false);
         }
         setPermissionsLoaded(true);
+        const me = await authApi.getMe();
+        if (me) {
+          setCapabilities(me.capabilities ?? {});
+          setSessions(me.sessions ?? []);
+        }
         if (options?.returnPathAfterStop) {
           setImpersonationReturnPathForSession(options.returnPathAfterStop);
         } else {
@@ -417,6 +428,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsDesignatedSuperadmin(false);
       }
       setPermissionsLoaded(true);
+      const meAfterStop = await authApi.getMe();
+      if (meAfterStop) {
+        setCapabilities(meAfterStop.capabilities ?? {});
+        setSessions(meAfterStop.sessions ?? []);
+      }
       const returnPath = consumeImpersonationReturnPath();
       if (returnPath) {
         router.push(returnPath);

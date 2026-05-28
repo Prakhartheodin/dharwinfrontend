@@ -26,7 +26,8 @@ export function useReferralSalesAgentFeatureFlag(): boolean {
     if (!permissionsLoaded) return false;
     return (
       hasPermission(permissions, "candidates.manageSalesAgentAttribution") ||
-      hasPermission(permissions, "candidates.revokeSalesAgentAttribution")
+      hasPermission(permissions, "candidates.revokeSalesAgentAttribution") ||
+      canManageCandidatesFromPermissions(permissions)
     );
   }, [
     isSalesAgent,

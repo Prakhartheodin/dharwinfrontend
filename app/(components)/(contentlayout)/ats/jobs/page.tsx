@@ -84,15 +84,29 @@ function nextExperienceSortToggle(current: string): 'experience-asc' | 'experien
   return 'experience-asc'
 }
 
+function formatPostingDateMeta(raw?: string | null): { formatted: string; relative: string } {
+  if (!raw) return { formatted: '', relative: '' }
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return { formatted: raw, relative: '' }
+  const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+  const dayMs = 24 * 60 * 60 * 1000
+  const diffDays = Math.floor((Date.now() - d.getTime()) / dayMs)
+  let relative = ''
+  if (diffDays === 0) relative = 'Today'
+  else if (diffDays === 1) relative = 'Yesterday'
+  else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`
+  else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
+  else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
+  return { formatted, relative }
+}
+
 /** Per-column visibility classes for md→2xl table view (mobile uses card list instead). */
 const COLUMN_VISIBILITY: Record<string, string> = {
   checkbox: '',
   jobTitle: '',
   company: '',
-  location: '',
-  experience: 'hidden lg:table-cell',
   vacancies: 'hidden xl:table-cell',
-  postingDate: 'hidden md:table-cell',
+  postingDate: 'hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden',
   salary: 'hidden md:table-cell',
   jobOrigin: 'hidden xl:table-cell',
   postedBy: 'hidden 2xl:table-cell',
@@ -187,6 +201,8 @@ const Jobs = () => {
   const [searchJobTitle, setSearchJobTitle] = useState('')
   const [searchCompany, setSearchCompany] = useState('')
   const [searchLocation, setSearchLocation] = useState('')
+  /** Quick search — job name only (toolbar input). */
+  const [jobNameSearch, setJobNameSearch] = useState('')
 
   // Excel import
   const [excelImporting, setExcelImporting] = useState(false)
@@ -610,13 +626,38 @@ const Jobs = () => {
               if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
             }, 50)
           }
+          const { formatted: postedOn, relative } = formatPostingDateMeta(job.postingDate)
+          const locationText = job.location != null ? String(job.location).trim() : ''
+          const dateLine = postedOn
+            ? relative
+              ? `${postedOn} · ${relative}`
+              : postedOn
+            : ''
           return (
-            <span 
-              className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary"
-              onClick={openJobPreview}
-            >
-              {job.jobTitle}
-            </span>
+            <div className="min-w-0 max-w-[18rem] sm:max-w-[22rem]">
+              <span
+                className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary block leading-snug"
+                onClick={openJobPreview}
+              >
+                {job.jobTitle}
+              </span>
+              {(dateLine || locationText) && (
+                <div className="mt-1 space-y-0.5 text-[0.7rem] leading-snug text-defaulttextcolor/70">
+                  {dateLine && (
+                    <div className="flex items-center gap-1 min-w-0">
+                      <i className="ri-calendar-line shrink-0 text-[0.75rem]" aria-hidden />
+                      <span className="truncate">{dateLine}</span>
+                    </div>
+                  )}
+                  {locationText && (
+                    <div className="flex items-start gap-1 min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">
+                      <i className="ri-map-pin-line shrink-0 mt-0.5 text-[0.75rem]" aria-hidden />
+                      <span>{locationText}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           )
         },
       },
@@ -645,35 +686,10 @@ const Jobs = () => {
         },
       },
       {
-        Header: 'Location',
-        accessor: 'location',
-        Cell: ({ value }: { value?: string | null }) => {
-          if (value == null || String(value).trim() === '') {
-            return <span className="text-gray-400 dark:text-gray-500">—</span>
-          }
-          const text = String(value).trim()
-          const segments = text.split(/\s*;\s*/).filter(Boolean)
-          const showTitle = text.length > 64
-          return (
-            <span
-              className="inline-block min-w-0 max-w-[13rem] whitespace-normal break-words text-start text-gray-800 [overflow-wrap:anywhere] dark:text-white sm:max-w-[16rem] leading-snug"
-              title={showTitle ? text : undefined}
-            >
-              {segments.length > 1
-                ? segments.map((seg, idx) => (
-                    <Fragment key={idx}>
-                      {idx > 0 ? <br /> : null}
-                      {seg.trim()}
-                    </Fragment>
-                  ))
-                : text}
-            </span>
-          )
-        },
-      },
-      {
-        Header: 'Experience',
-        accessor: 'experience',
+        Header: 'Posted Date',
+        accessor: 'postingDate',
+        id: 'postingDate',
+        Cell: () => null,
       },
       {
         Header: 'Vacancies',
@@ -687,36 +703,6 @@ const Jobs = () => {
               <i className="ri-team-line text-primary"></i>
               <span className="font-medium">{value}</span>
             </span>
-          )
-        },
-      },
-      {
-        Header: 'Posted Date',
-        accessor: 'postingDate',
-        id: 'postingDate',
-        Cell: ({ row }: any) => {
-          const raw: string | undefined = row.original.postingDate
-          if (!raw) return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
-          const d = new Date(raw)
-          if (Number.isNaN(d.getTime())) {
-            return <span className="text-sm text-defaulttextcolor">{raw}</span>
-          }
-          const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
-          const dayMs = 24 * 60 * 60 * 1000
-          const diffDays = Math.floor((Date.now() - d.getTime()) / dayMs)
-          let relative = ''
-          if (diffDays === 0) relative = 'Today'
-          else if (diffDays === 1) relative = 'Yesterday'
-          else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`
-          else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
-          else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
-          return (
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-medium text-defaulttextcolor whitespace-nowrap">{formatted}</span>
-              {relative && (
-                <span className="text-[11px] text-defaulttextcolor/60">{relative}</span>
-              )}
-            </div>
           )
         },
       },
@@ -870,7 +856,12 @@ const Jobs = () => {
   // Filter data based on filter state
   const filteredData = useMemo(() => {
     return jobsData.filter((job) => {
-      // Job Title filter (array)
+      const nameQuery = jobNameSearch.trim().toLowerCase()
+      if (nameQuery && !job.jobTitle.toLowerCase().includes(nameQuery)) {
+        return false
+      }
+
+      // Job Title filter (array) — advanced panel only
       if (filters.jobTitle.length > 0 && !filters.jobTitle.some(title =>
         job.jobTitle.toLowerCase().includes(title.toLowerCase())
       )) {
@@ -962,7 +953,7 @@ const Jobs = () => {
       
       return true
     })
-  }, [jobsData, filters])
+  }, [jobsData, filters, jobNameSearch])
 
   const data = useMemo(() => filteredData, [filteredData])
 
@@ -1073,7 +1064,7 @@ const Jobs = () => {
       data,
       initialState: {
         pageIndex: 0,
-        pageSize: 10,
+        pageSize: 50,
         sortBy: [{ id: 'postingDate', desc: true }],
       },
     },
@@ -1235,32 +1226,33 @@ const Jobs = () => {
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 sm:gap-2 items-center w-full sm:w-auto">
-                {/* Search — opens right-side filter drawer */}
+                {/* Job name search + advanced filters drawer */}
+                <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
+                  <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem]" aria-hidden />
+                  <input
+                    type="search"
+                    className="form-control !h-8 !py-1 !ps-8 !pe-3 !text-[0.75rem] !rounded-lg w-full"
+                    placeholder="Search by job name…"
+                    value={jobNameSearch}
+                    onChange={(e) => setJobNameSearch(e.target.value)}
+                    aria-label="Search by job name"
+                  />
+                </div>
                 <button
                   type="button"
-                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 whitespace-nowrap ${jobsFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
                   aria-expanded={jobsFilterPanelOpen}
                   aria-controls="jobs-filter-panel"
                   onClick={() => setJobsFilterPanelOpen((v) => !v)}
                 >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
+                  <i className="ri-filter-3-line font-semibold align-middle me-1"></i>
+                  Advanced Search / Apply Filter
                   {hasActiveFilters && (
                     <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
                       {activeFilterCount}
                     </span>
                   )}
                 </button>
-                <select
-                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
-                  value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
-                >
-                  {[10, 25, 50, 100].map((size) => (
-                    <option key={size} value={size}>
-                      Show {size}
-                    </option>
-                  ))}
-                </select>
                 <div className="hs-dropdown ti-dropdown me-2">
                   <button
                     type="button"
@@ -1436,18 +1428,13 @@ const Jobs = () => {
                         if (HSOverlay?.open) HSOverlay.open('#job-preview-panel')
                       }, 50)
                     }
-                    let relative = ''
-                    if (job.postingDate) {
-                      const d = new Date(job.postingDate)
-                      if (!Number.isNaN(d.getTime())) {
-                        const diffDays = Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000))
-                        if (diffDays === 0) relative = 'Today'
-                        else if (diffDays === 1) relative = 'Yesterday'
-                        else if (diffDays < 30) relative = `${diffDays}d ago`
-                        else if (diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
-                        else relative = `${Math.floor(diffDays / 365)}y ago`
-                      }
-                    }
+                    const { formatted: postedOn, relative } = formatPostingDateMeta(job.postingDate)
+                    const locationText = job.location != null ? String(job.location).trim() : ''
+                    const dateLine = postedOn
+                      ? relative
+                        ? `${postedOn} · ${relative}`
+                        : postedOn
+                      : ''
                     return (
                       <div
                         key={row.id || `card-${i}`}
@@ -1465,6 +1452,22 @@ const Jobs = () => {
                             <div className="mt-0.5 text-xs text-defaulttextcolor/75 truncate" title={job.company}>
                               {job.company}
                             </div>
+                            {(dateLine || locationText) && (
+                              <div className="mt-1.5 space-y-0.5 text-[0.7rem] leading-snug text-defaulttextcolor/70">
+                                {dateLine && (
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <i className="ri-calendar-line shrink-0 text-[0.75rem]" aria-hidden />
+                                    <span className="truncate">{dateLine}</span>
+                                  </div>
+                                )}
+                                {locationText && (
+                                  <div className="flex items-start gap-1 min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]">
+                                    <i className="ri-map-pin-line shrink-0 mt-0.5 text-[0.75rem]" aria-hidden />
+                                    <span>{locationText}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                           {canDelete && !isSalesAgent && (
                             <input
@@ -1477,18 +1480,6 @@ const Jobs = () => {
                           )}
                         </div>
                         <div className="mt-2.5 flex flex-wrap gap-1.5 text-[0.7rem]">
-                          {job.location && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
-                              <i className="ri-map-pin-line text-[0.75rem]" />
-                              <span className="truncate max-w-[10rem]">{job.location}</span>
-                            </span>
-                          )}
-                          {job.experience && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
-                              <i className="ri-briefcase-line text-[0.75rem]" />
-                              {job.experience}
-                            </span>
-                          )}
                           {job.salary && (
                             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5 text-defaulttextcolor/85">
                               <i className="ri-money-dollar-circle-line text-[0.75rem]" />
@@ -1509,10 +1500,7 @@ const Jobs = () => {
                             {job.jobOrigin === 'external' ? 'External' : 'Internal'}
                           </span>
                         </div>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="text-[0.7rem] text-defaulttextcolor/60">
-                            {relative || (job.postingDate ?? '—')}
-                          </span>
+                        <div className="mt-3 flex items-center justify-end gap-2">
                           <div className="flex items-center gap-1.5">
                             {canEdit && !isSalesAgent && job.jobOrigin !== 'external' && (
                               <Link
@@ -1575,15 +1563,8 @@ const Jobs = () => {
                           const isCheckboxCol = column.id === 'checkbox'
                           const headerSortTitle = column.id === 'jobTitle'
                           const headerSortCompany = column.id === 'company'
-                          const headerSortLocation = column.id === 'location'
-                          const headerSortExperience = column.id === 'experience'
-                          /** postingDate is visible now; header click sort kept off here (toolbar handles ordering). */
-                          const hidePostingCol = false
-                          const clickableHeader =
-                            headerSortTitle ||
-                            headerSortCompany ||
-                            headerSortLocation ||
-                            headerSortExperience
+                          const hidePostingCol = column.id === 'postingDate'
+                          const clickableHeader = headerSortTitle || headerSortCompany
 
                           let sortIcon: React.ReactNode = null
                           if (headerSortTitle && (selectedSort === 'title-asc' || selectedSort === 'title-desc')) {
@@ -1603,35 +1584,13 @@ const Jobs = () => {
                               ) : (
                                 <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
                               )
-                          } else if (
-                            headerSortLocation &&
-                            (selectedSort === 'location-asc' || selectedSort === 'location-desc')
-                          ) {
-                            sortIcon =
-                              selectedSort === 'location-desc' ? (
-                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
-                              ) : (
-                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
-                              )
-                          } else if (
-                            headerSortExperience &&
-                            (selectedSort === 'experience-asc' || selectedSort === 'experience-desc')
-                          ) {
-                            sortIcon =
-                              selectedSort === 'experience-desc' ? (
-                                <i className="ri-arrow-down-s-line text-[0.875rem]" aria-hidden />
-                              ) : (
-                                <i className="ri-arrow-up-s-line text-[0.875rem]" aria-hidden />
-                              )
                           }
 
                           return (
                             <th
                               {...headerProps}
                               scope="col"
-                              className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20 ${
-                                column.id === 'location' ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]' : ''
-                              }${hidePostingCol ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}${
+                              className={`text-start sticky top-0 z-10 bg-gray-50 dark:bg-black/20${hidePostingCol ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''}${
                                 clickableHeader ? ' cursor-pointer select-none' : ''
                               } ${COLUMN_VISIBILITY[column.id] ?? ''}`}
                               key={column.id || `col-${i}`}
@@ -1647,24 +1606,12 @@ const Jobs = () => {
                                             ? ('ascending' as const)
                                             : headerSortCompany && selectedSort === 'company-desc'
                                               ? ('descending' as const)
-                                              : headerSortLocation && selectedSort === 'location-asc'
-                                                ? ('ascending' as const)
-                                                : headerSortLocation && selectedSort === 'location-desc'
-                                                  ? ('descending' as const)
-                                                  : headerSortExperience && selectedSort === 'experience-asc'
-                                                    ? ('ascending' as const)
-                                                    : headerSortExperience && selectedSort === 'experience-desc'
-                                                      ? ('descending' as const)
-                                                      : ('none' as const),
+                                              : ('none' as const),
                                     onClick: () => {
                                       if (headerSortTitle) {
                                         handleSortChange(nextJobTitleSortToggle(selectedSort))
                                       } else if (headerSortCompany) {
                                         handleSortChange(nextCompanySortToggle(selectedSort))
-                                      } else if (headerSortLocation) {
-                                        handleSortChange(nextLocationSortToggle(selectedSort))
-                                      } else if (headerSortExperience) {
-                                        handleSortChange(nextExperienceSortToggle(selectedSort))
                                       }
                                     },
                                     onKeyDown: (e: React.KeyboardEvent) => {
@@ -1674,10 +1621,6 @@ const Jobs = () => {
                                           handleSortChange(nextJobTitleSortToggle(selectedSort))
                                         } else if (headerSortCompany) {
                                           handleSortChange(nextCompanySortToggle(selectedSort))
-                                        } else if (headerSortLocation) {
-                                          handleSortChange(nextLocationSortToggle(selectedSort))
-                                        } else if (headerSortExperience) {
-                                          handleSortChange(nextExperienceSortToggle(selectedSort))
                                         }
                                       }
                                     },
@@ -1694,19 +1637,7 @@ const Jobs = () => {
                                               ? 'Click to remove sort'
                                               : 'Toggle to Z–A'
                                             : 'Sort by company (A–Z first)'
-                                          : headerSortLocation
-                                            ? selectedSort === 'location-asc' || selectedSort === 'location-desc'
-                                              ? selectedSort === 'location-desc'
-                                                ? 'Click to remove sort'
-                                                : 'Toggle to Z–A'
-                                              : 'Sort by location (A–Z first)'
-                                            : headerSortExperience
-                                                ? selectedSort === 'experience-asc' || selectedSort === 'experience-desc'
-                                                  ? selectedSort === 'experience-desc'
-                                                    ? 'Click to remove sort'
-                                                    : 'Toggle to high–low'
-                                                  : 'Sort by experience (low–high first)'
-                                                : undefined,
+                                          : undefined,
                                   }
                                 : {})}
                               style={{
@@ -1745,17 +1676,12 @@ const Jobs = () => {
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
                           {row.cells.map((cell: any, i: number) => {
-                            const isLocation = cell.column.id === 'location'
-                            const hidePostingCell = false
+                            const hidePostingCell = cell.column.id === 'postingDate'
                             const cellProps = cell.getCellProps()
                             return (
                               <td
                                 {...cellProps}
-                                className={`${cellProps.className ?? ''} ${
-                                  isLocation
-                                    ? '!whitespace-normal align-top max-w-[13rem] sm:max-w-[16rem]'
-                                    : ''
-                                }${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''} ${COLUMN_VISIBILITY[cell.column.id] ?? ''}`.trim()}
+                                className={`${cellProps.className ?? ''} ${hidePostingCell ? ' hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden' : ''} ${COLUMN_VISIBILITY[cell.column.id] ?? ''}`.trim()}
                                 key={cell.column.id || `cell-${i}`}
                               >
                                 {cell.render('Cell')}
@@ -1771,6 +1697,18 @@ const Jobs = () => {
             </div>
             <div className="box-footer !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
+                <select
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  aria-label="Jobs per page"
+                >
+                  {[10, 25, 50, 100].map((size) => (
+                    <option key={size} value={size}>
+                      Show {size}
+                    </option>
+                  ))}
+                </select>
                 <div>
                   Showing {pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
                   <i className="bi bi-arrow-right ms-2 font-semibold"></i>

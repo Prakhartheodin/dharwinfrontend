@@ -368,12 +368,12 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
             </span>
             <div className="leading-tight">
               <div className="text-[0.95rem] font-semibold text-gray-900 dark:text-white">
-                Search & Filters
+                Advanced Search / Apply Filter
               </div>
               <div className="text-[0.7rem] text-gray-500 dark:text-gray-400">
                 {draftActiveCount > 0
                   ? `${draftActiveCount} pending change${draftActiveCount === 1 ? '' : 's'}`
-                  : 'Narrow down your job list'}
+                  : 'Company, location, salary, status & more'}
               </div>
             </div>
           </div>
