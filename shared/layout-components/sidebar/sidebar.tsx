@@ -12,8 +12,9 @@ import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
 	PATH_PERMISSION_PREFIX,
-	hasPermissionForPath,
+	canAccessPath,
 	getRequiredPermissionForPath,
+	hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
 
 function menuPathMatchesItem(item: { path?: string }, currentPath: string): boolean {
@@ -60,9 +61,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		}
 
 		if (!menuPath) return true;
-		const requiredPrefix = getRequiredPermissionForPath(menuPath);
-		if (!requiredPrefix) return true;
-		return hasPermissionForPath(userPermissions, requiredPrefix);
+		return canAccessPath(userPermissions, menuPath);
 	};
 
 	const filteredMenuItems = useMemo(() => {

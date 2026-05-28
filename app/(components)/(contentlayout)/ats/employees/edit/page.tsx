@@ -11,6 +11,7 @@ import AssignAgentSopModal from "../_components/AssignAgentSopModal";
 import AssignTrainingCourseSopModal from "../_components/AssignTrainingCourseSopModal";
 import { canAssignCandidateAgent, canAssignTrainingCourseFromSop } from "@/shared/lib/candidate-permissions";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
+import { hasPermission } from "@/shared/lib/permissions";
 
 const EditEmployee = () => {
   const searchParams = useSearchParams();
@@ -29,6 +30,11 @@ const EditEmployee = () => {
     () => canAssignTrainingCourseFromSop(permissions, isPlatformSuperUser),
     [permissions, isPlatformSuperUser]
   );
+  const canUpdateEmployee = useMemo(
+    () => hasPermission({ permissions: permissions ?? [], isPlatformSuperUser }, "update_employee"),
+    [permissions, isPlatformSuperUser]
+  );
+  const canEditThisProfile = isEmployee || canUpdateEmployee;
 
   const stripAssignAgentParam = useCallback(() => {
     const p = new URLSearchParams(searchParams.toString());
@@ -129,6 +135,14 @@ const EditEmployee = () => {
                 {loading ? (
                   <div className="p-6 flex items-center justify-center">
                     <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : !permissionsLoaded || rolesLoading ? (
+                  <div className="p-6 flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+                  </div>
+                ) : !canEditThisProfile ? (
+                  <div className="p-6 text-center text-gray-500">
+                    You do not have permission to edit employees.
                   </div>
                 ) : initialData ? (
                   <>

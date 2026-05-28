@@ -7,6 +7,7 @@ import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
+  canAccessPath,
 } from "@/shared/lib/route-permissions";
 import { isDesignatedSuperadminPath } from "@/shared/lib/designated-superadmin-paths";
 import { usePathname, useRouter } from "next/navigation";
@@ -59,7 +60,7 @@ function PermissionGuardInner({
     }
     const required = getRequiredPermissionForPath(pathname ?? "");
     if (required == null) return true;
-    return hasPermissionForPath(userPermissions, required);
+    return canAccessPath(userPermissions, pathname ?? "");
   }, [
     permissionsLoaded,
     pathname,

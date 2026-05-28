@@ -4,6 +4,61 @@
  * Paths not listed are allowed for any authenticated user (e.g. /dashboard, /settings).
  */
 
+type CrudAction = "view" | "create" | "edit" | "delete";
+
+interface PathAccessRule {
+  permissionPrefixes: string[];
+  anyOf: CrudAction[];
+}
+
+const EMPLOYEES_PATH_PREFIXES = ["ats.employees:", "ats.candidates:"];
+
+/**
+ * Action-aware rules for Employees routes. Longest path wins (add/import before list).
+ * View grants nav + list; create gates add/import only.
+ */
+const PATH_ACCESS_ACTIONS: Record<string, PathAccessRule> = {
+  "/ats/employees/add": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
+  "/ats/employees/import": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
+  "/ats/candidates/add": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
+  "/ats/candidates/import": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
+  "/ats/employees": {
+    permissionPrefixes: EMPLOYEES_PATH_PREFIXES,
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  "/ats/candidates": {
+    permissionPrefixes: EMPLOYEES_PATH_PREFIXES,
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+};
+
+const PATH_ACCESS_KEYS = Object.keys(PATH_ACCESS_ACTIONS).sort(
+  (a, b) => b.length - a.length
+);
+
+function permissionStringGrantsRule(perm: string, rule: PathAccessRule): boolean {
+  const colon = perm.indexOf(":");
+  if (colon < 0) return false;
+  const keyWithColon = `${perm.slice(0, colon).trim()}:`;
+  if (!rule.permissionPrefixes.includes(keyWithColon)) return false;
+  const actions = perm
+    .slice(colon + 1)
+    .split(",")
+    .map((a) => a.trim().toLowerCase())
+    .filter(Boolean);
+  return rule.anyOf.some((needed) => actions.includes(needed));
+}
+
+function getPathAccessRule(pathname: string): PathAccessRule | null {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  for (const path of PATH_ACCESS_KEYS) {
+    if (normalized === path || normalized.startsWith(`${path}/`)) {
+      return PATH_ACCESS_ACTIONS[path];
+    }
+  }
+  return null;
+}
+
 export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/logs/logs-activity": "logs.activity:",
   // ATS
@@ -59,6 +114,8 @@ const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
   "training.courses:": ["training.modules:", "training.categories:"],
   /** Referral leads matrix row uses ats.referralLeads:*; legacy roles only have ats.candidates:view. */
   "ats.referralLeads:": ["ats.candidates:"],
+  /** Employees page (PR3): legacy roles may still hold ats.candidates:* until migration completes everywhere. */
+  "ats.employees:": ["ats.candidates:"],
   /** Kanban board: backend grants tasks.read → kanban.read, so any role with project.tasks:* can render the page. */
   "project.kanban:": ["project.tasks:"],
 };
@@ -104,6 +161,20 @@ export function hasPermissionForPath(
   return userPermissions.some((p) =>
     prefixes.some((prefix) => p.startsWith(prefix))
   );
+}
+
+/**
+ * Route access with optional CRUD action rules (Employees: view → list/nav, create → add/import).
+ * Falls back to prefix-only check for paths without action rules.
+ */
+export function canAccessPath(userPermissions: string[], pathname: string): boolean {
+  const rule = getPathAccessRule(pathname);
+  if (rule) {
+    return userPermissions.some((p) => permissionStringGrantsRule(p, rule));
+  }
+  const required = getRequiredPermissionForPath(pathname);
+  if (required == null) return true;
+  return hasPermissionForPath(userPermissions, required);
 }
 
 /** Path for candidate's own profile (role 'user' from share-candidate-form). */

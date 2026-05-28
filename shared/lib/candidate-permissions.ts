@@ -3,6 +3,7 @@ const ATS_EMPLOYEES_FULL = "ats.employees:view,create,edit,delete";
 const ATS_ONBOARDING_FULL = "ats.onboarding:view,create,edit,delete";
 
 const MANAGE_ACTIONS = ["create", "edit", "delete"] as const;
+const EDIT_ACTIONS = ["edit"] as const;
 
 function matchesPrefixWithManage(raw: string, key: string): boolean {
   if (!raw) return false;
@@ -11,6 +12,15 @@ function matchesPrefixWithManage(raw: string, key: string): boolean {
   if (raw.slice(0, colon).trim() !== key) return false;
   const actions = raw.slice(colon + 1).split(",").map((a) => a.trim().toLowerCase());
   return actions.some((a) => MANAGE_ACTIONS.includes(a as typeof MANAGE_ACTIONS[number]));
+}
+
+function matchesPrefixWithEdit(raw: string, key: string): boolean {
+  if (!raw) return false;
+  const colon = raw.indexOf(":");
+  if (colon < 0) return false;
+  if (raw.slice(0, colon).trim() !== key) return false;
+  const actions = raw.slice(colon + 1).split(",").map((a) => a.trim().toLowerCase());
+  return actions.some((a) => EDIT_ACTIONS.includes(a as typeof EDIT_ACTIONS[number]));
 }
 
 /**
@@ -31,9 +41,9 @@ export function canEditCandidateJoiningDate(
   return rawPermissions.some((raw) => {
     if (raw === ATS_FULL || raw === ATS_EMPLOYEES_FULL || raw === ATS_ONBOARDING_FULL) return true;
     return (
-      matchesPrefixWithManage(raw, "ats.candidates") ||
-      matchesPrefixWithManage(raw, "ats.employees") ||
-      matchesPrefixWithManage(raw, "ats.onboarding")
+      matchesPrefixWithEdit(raw, "ats.candidates") ||
+      matchesPrefixWithEdit(raw, "ats.employees") ||
+      matchesPrefixWithEdit(raw, "ats.onboarding")
     );
   });
 }
@@ -53,8 +63,8 @@ export function canEditCandidateResignDate(
   return rawPermissions.some((raw) => {
     if (raw === ATS_FULL || raw === ATS_EMPLOYEES_FULL) return true;
     return (
-      matchesPrefixWithManage(raw, "ats.candidates") ||
-      matchesPrefixWithManage(raw, "ats.employees")
+      matchesPrefixWithEdit(raw, "ats.candidates") ||
+      matchesPrefixWithEdit(raw, "ats.employees")
     );
   });
 }
@@ -83,17 +93,15 @@ export function canImpersonateUser(
   });
 }
 
-/** POST /candidates/:id/assign-agent — employees.manage OR legacy candidates.manage. */
+/** POST /candidates/:id/assign-agent — employees.edit OR legacy candidates.manage. */
 export function canAssignCandidateAgent(rawPermissions: string[], isPlatformSuperUser: boolean): boolean {
   if (isPlatformSuperUser) return true;
   return rawPermissions.some((p) => {
     const lower = p.toLowerCase();
-    return (
-      lower === "candidates.manage" ||
-      lower === "employees.manage" ||
-      lower.includes("ats.candidates:view,create,edit,delete") ||
-      lower.includes("ats.employees:view,create,edit,delete")
-    );
+    if (lower === "candidates.manage" || lower === "employees.manage") return true;
+    if (lower.includes("ats.candidates:view,create,edit,delete")) return true;
+    if (lower.includes("ats.employees:view,create,edit,delete")) return true;
+    return matchesPrefixWithEdit(p, "ats.candidates") || matchesPrefixWithEdit(p, "ats.employees");
   });
 }
 

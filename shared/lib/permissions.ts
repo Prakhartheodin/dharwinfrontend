@@ -48,9 +48,28 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
   view_candidates: { prefixes: ["ats.candidates"], anyOf: ["view", "create", "edit", "delete"] },
   manage_candidates: { prefixes: ["ats.candidates"], anyOf: ["create", "edit", "delete"] },
 
-  // ATS Employees (PR2 — primary gate for /ats/employees)
-  view_employees: { prefixes: ["ats.employees"], anyOf: ["view", "create", "edit", "delete"] },
-  manage_employees: { prefixes: ["ats.employees"], anyOf: ["create", "edit", "delete"] },
+  // ATS Employees (PR3 — primary gate for /ats/employees; ats.candidates legacy backstop matches backend)
+  view_employees: {
+    prefixes: ["ats.employees", "ats.candidates"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  create_employee: {
+    prefixes: ["ats.employees", "ats.candidates"],
+    anyOf: ["create"],
+  },
+  update_employee: {
+    prefixes: ["ats.employees", "ats.candidates"],
+    anyOf: ["edit"],
+  },
+  delete_employee: {
+    prefixes: ["ats.employees", "ats.candidates"],
+    anyOf: ["delete"],
+  },
+  /** Any write action — prefer create/update/delete for UI gates. */
+  manage_employees: {
+    prefixes: ["ats.employees", "ats.candidates"],
+    anyOf: ["create", "edit", "delete"],
+  },
 });
 
 /**

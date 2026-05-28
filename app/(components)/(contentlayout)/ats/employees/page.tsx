@@ -56,6 +56,7 @@ import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
 import CandidateAttendanceOverlay from './_components/CandidateAttendanceOverlay'
 import { canEditCandidateJoiningDate, canEditCandidateResignDate, canImpersonateUser } from '@/shared/lib/candidate-permissions'
+import { hasPermission } from '@/shared/lib/permissions'
 import { ROUTES } from '@/shared/lib/constants'
 import { recommendSkillsByRole } from '@/shared/lib/api/auth'
 
@@ -461,6 +462,27 @@ const AiThinkingPanel = () => {
 const Candidates = () => {
   const router = useRouter()
   const { isAdministrator, isPlatformSuperUser, permissions, roleNames, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
+  const authForPermissions = useMemo(
+    () => ({ permissions: permissions ?? [], isPlatformSuperUser }),
+    [permissions, isPlatformSuperUser]
+  )
+  const canViewEmployees = useMemo(
+    () => hasPermission(authForPermissions, 'view_employees'),
+    [authForPermissions]
+  )
+  const canCreateEmployee = useMemo(
+    () => hasPermission(authForPermissions, 'create_employee'),
+    [authForPermissions]
+  )
+  const canUpdateEmployee = useMemo(
+    () => hasPermission(authForPermissions, 'update_employee'),
+    [authForPermissions]
+  )
+  const canDeleteEmployee = useMemo(
+    () => hasPermission(authForPermissions, 'delete_employee'),
+    [authForPermissions]
+  )
+  const canBulkSelectEmployees = canDeleteEmployee || canUpdateEmployee
   const canEditJoiningDate = useMemo(
     () => canEditCandidateJoiningDate(permissions ?? [], isAdministrator),
     [permissions, isAdministrator]
@@ -1633,23 +1655,27 @@ const Candidates = () => {
   // Define columns
   const columns = useMemo(
     () => [
-      {
-        Header: 'All',
-        accessor: 'checkbox',
-        disableSortBy: true,
-        width: 52,
-        minWidth: 52,
-        maxWidth: 52,
-        Cell: ({ row }: any) => (
-          <input
-            className="form-check-input"
-            type="checkbox"
-            checked={selectedRows.has(row.original.id)}
-            onChange={() => handleRowSelect(row.original.id)}
-            aria-label={`Select ${row.original.name}`}
-          />
-        ),
-      },
+      ...(canBulkSelectEmployees
+        ? [
+            {
+              Header: 'All',
+              accessor: 'checkbox',
+              disableSortBy: true,
+              width: 52,
+              minWidth: 52,
+              maxWidth: 52,
+              Cell: ({ row }: any) => (
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={selectedRows.has(row.original.id)}
+                  onChange={() => handleRowSelect(row.original.id)}
+                  aria-label={`Select ${row.original.name}`}
+                />
+              ),
+            },
+          ]
+        : []),
       {
         Header: 'Employee info',
         id: 'candidateInfo',
@@ -1829,12 +1855,14 @@ const Candidates = () => {
                   </button>
                 </div>
               )}
-              <div className="hs-tooltip ti-main-tooltip">
-                <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
-                  <i className="ri-pencil-line"></i>
-                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit employee</span>
-                </Link>
-              </div>
+              {canUpdateEmployee ? (
+                <div className="hs-tooltip ti-main-tooltip">
+                  <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
+                    <i className="ri-pencil-line"></i>
+                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit employee</span>
+                  </Link>
+                </div>
+              ) : null}
               {/* <div className="hs-tooltip ti-main-tooltip">
                 <button type="button" onClick={() => openDocumentsModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-secondary/10 text-secondary hover:bg-secondary hover:text-white" title="View Documents">
                   <i className="ri-file-list-line"></i>
@@ -1942,6 +1970,8 @@ const Candidates = () => {
       authLoading,
       impersonatingOwnerUserId,
       handleImpersonateFromCandidate,
+      canBulkSelectEmployees,
+      canUpdateEmployee,
     ]
   )
 
@@ -2289,76 +2319,86 @@ const Candidates = () => {
                     </ul>
                   ) : null}
                 </div>
-                <Link
-                  href="/ats/employees/add"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem]"
-                >
-                  <i className="ri-add-line font-semibold align-middle"></i>Add employee
-                </Link>
-                <div ref={employeesExcelDropdownRef} className="relative z-30">
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
-                    id="employees-excel-dropdown-button"
-                    aria-haspopup="menu"
-                    aria-expanded={employeesToolbarMenu === 'excel'}
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setEmployeesToolbarMenu((m) => (m === 'excel' ? null : 'excel'))
-                    }}
+                {canCreateEmployee ? (
+                  <Link
+                    href="/ats/employees/add"
+                    className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem]"
                   >
-                    <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                  </button>
-                  {employeesToolbarMenu === 'excel' ? (
-                    <ul
-                      className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
-                      role="menu"
-                      aria-labelledby="employees-excel-dropdown-button"
-                    >
-                    <li role="none">
+                    <i className="ri-add-line font-semibold align-middle"></i>Add employee
+                  </Link>
+                ) : null}
+                {(canViewEmployees || canCreateEmployee) ? (
+                    <div ref={employeesExcelDropdownRef} className="relative z-30">
                       <button
                         type="button"
-                        role="menuitem"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => {
-                          setEmployeesToolbarMenu(null)
-                          router.push('/ats/employees/import')
+                        className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+                        id="employees-excel-dropdown-button"
+                        aria-haspopup="menu"
+                        aria-expanded={employeesToolbarMenu === 'excel'}
+                        onClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setEmployeesToolbarMenu((m) => (m === 'excel' ? null : 'excel'))
                         }}
                       >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                        <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
+                        <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                       </button>
-                    </li>
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => {
-                          setEmployeesToolbarMenu(null)
-                          handleExportAllOpen()
-                        }}
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li role="none">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                        onClick={() => {
-                          setEmployeesToolbarMenu(null)
-                          downloadCandidateExcelTemplate()
-                        }}
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                    </ul>
-                  ) : null}
-                </div>
+                      {employeesToolbarMenu === 'excel' ? (
+                        <ul
+                          className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
+                          role="menu"
+                          aria-labelledby="employees-excel-dropdown-button"
+                        >
+                        {canCreateEmployee ? (
+                          <li role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                              onClick={() => {
+                                setEmployeesToolbarMenu(null)
+                                router.push('/ats/employees/import')
+                              }}
+                            >
+                              <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
+                            </button>
+                          </li>
+                        ) : null}
+                        {canViewEmployees ? (
+                          <li role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                              onClick={() => {
+                                setEmployeesToolbarMenu(null)
+                                handleExportAllOpen()
+                              }}
+                            >
+                              <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
+                            </button>
+                          </li>
+                        ) : null}
+                        {canCreateEmployee ? (
+                          <li role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                              onClick={() => {
+                                setEmployeesToolbarMenu(null)
+                                downloadCandidateExcelTemplate()
+                              }}
+                            >
+                              <i className="ri-download-line me-2 align-middle inline-block"></i>Template
+                            </button>
+                          </li>
+                        ) : null}
+                        </ul>
+                      ) : null}
+                    </div>
+                ) : null}
                 <button
                   type="button"
                   className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ${employeesFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
@@ -2373,7 +2413,7 @@ const Candidates = () => {
                   )}
                 </button>
               
-                {selectedRows.size > 0 && (
+                {canUpdateEmployee && selectedRows.size > 0 && (
                   <>
                     <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openWeekOffModal(Array.from(selectedRows))}>
                       <i className="ri-calendar-schedule-line font-semibold align-middle me-1"></i>Week-off
@@ -2383,6 +2423,7 @@ const Candidates = () => {
                     </button>
                   </>
                 )}
+                {canDeleteEmployee ? (
                 <button
                   type="button"
                   className="ti-btn ti-btn-danger !py-1 !px-2 !text-[0.75rem] disabled:opacity-50"
@@ -2396,6 +2437,7 @@ const Candidates = () => {
                 >
                   <i className="ri-delete-bin-line font-semibold align-middle me-1"></i>{bulkDeleteSubmitting ? 'Deleting...' : 'Delete'}
                 </button>
+                ) : null}
               </div>
             </div>
 
