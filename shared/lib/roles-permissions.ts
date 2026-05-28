@@ -46,10 +46,9 @@ export const PERMISSION_SECTIONS: {
       { id: "offers", label: "Offers" },
       { id: "pre-boarding", label: "Pre-boarding" },
       { id: "onboarding", label: "Onboarding" },
+      { id: "employees", label: "Employees" },
       { id: "analytics", label: "Analytics" },
       { id: "external-jobs", label: "External jobs" },
-      { id: "candidates.joiningDate", label: "Candidate joining date (field)" },
-      { id: "candidates.resignDate", label: "Candidate resign date (field)" },
     ],
   },
   {

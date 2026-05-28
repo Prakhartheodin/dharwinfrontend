@@ -1,44 +1,62 @@
 const ATS_FULL = "ats.candidates:view,create,edit,delete";
+const ATS_EMPLOYEES_FULL = "ats.employees:view,create,edit,delete";
+const ATS_ONBOARDING_FULL = "ats.onboarding:view,create,edit,delete";
 
-function matchesAtsCandidateSubPermission(
-  raw: string,
-  subKey: "ats.candidates.joiningDate" | "ats.candidates.resignDate"
-): boolean {
+const MANAGE_ACTIONS = ["create", "edit", "delete"] as const;
+
+function matchesPrefixWithManage(raw: string, key: string): boolean {
   if (!raw) return false;
-  if (raw === ATS_FULL) return true;
   const colon = raw.indexOf(":");
   if (colon < 0) return false;
-  const key = raw.slice(0, colon).trim();
-  const actionsPart = raw.slice(colon + 1);
-  if (key !== subKey) return false;
-  const actions = actionsPart.split(",").map((a) => a.trim().toLowerCase());
-  return actions.some((a) => ["view", "edit", "create", "delete"].includes(a));
+  if (raw.slice(0, colon).trim() !== key) return false;
+  const actions = raw.slice(colon + 1).split(",").map((a) => a.trim().toLowerCase());
+  return actions.some((a) => MANAGE_ACTIONS.includes(a as typeof MANAGE_ACTIONS[number]));
 }
 
 /**
- * Raw domain permissions (GET /auth/my-permissions) that allow updating a candidate's joining date.
- * Mirrors backend: candidates.manage OR candidates.joiningDate.manage (from ats.candidates.joiningDate:…).
+ * Raw-form check (matches backend's manage rule). Grants if role holds any of:
+ *  - ATS_FULL bundle (ats.candidates:view,create,edit,delete)
+ *  - ATS_EMPLOYEES_FULL bundle
+ *  - ATS_ONBOARDING_FULL bundle
+ *  - ats.candidates: with create/edit/delete
+ *  - ats.employees:  with create/edit/delete
+ *  - ats.onboarding: with create/edit/delete
  *
- * The named "Administrator" role does NOT auto-bypass — admin must hold the
- * explicit role-matrix permission, identical to every other role. The
- * `_isAdministrator` parameter is retained for call-site compatibility.
+ * Administrator does NOT auto-bypass.
  */
 export function canEditCandidateJoiningDate(
   rawPermissions: string[],
   _isAdministrator: boolean
 ): boolean {
-  return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.joiningDate"));
+  return rawPermissions.some((raw) => {
+    if (raw === ATS_FULL || raw === ATS_EMPLOYEES_FULL || raw === ATS_ONBOARDING_FULL) return true;
+    return (
+      matchesPrefixWithManage(raw, "ats.candidates") ||
+      matchesPrefixWithManage(raw, "ats.employees") ||
+      matchesPrefixWithManage(raw, "ats.onboarding")
+    );
+  });
 }
 
 /**
- * Same pattern for resign date (candidates.resignDate.manage from ats.candidates.resignDate:…).
- * Administrator does NOT auto-bypass; the role must hold the explicit permission.
+ * Raw-form check (matches backend's manage rule). Grants if role holds:
+ *  - ATS_FULL or ATS_EMPLOYEES_FULL bundle
+ *  - ats.candidates: with create/edit/delete
+ *  - ats.employees:  with create/edit/delete
+ *
+ * Resign date NOT under onboarding (spec §3.1). Administrator does NOT auto-bypass.
  */
 export function canEditCandidateResignDate(
   rawPermissions: string[],
   _isAdministrator: boolean
 ): boolean {
-  return rawPermissions.some((raw) => matchesAtsCandidateSubPermission(raw, "ats.candidates.resignDate"));
+  return rawPermissions.some((raw) => {
+    if (raw === ATS_FULL || raw === ATS_EMPLOYEES_FULL) return true;
+    return (
+      matchesPrefixWithManage(raw, "ats.candidates") ||
+      matchesPrefixWithManage(raw, "ats.employees")
+    );
+  });
 }
 
 /**
@@ -65,14 +83,16 @@ export function canImpersonateUser(
   });
 }
 
-/** POST /candidates/:id/assign-agent requires `candidates.manage` on the backend. */
+/** POST /candidates/:id/assign-agent — employees.manage OR legacy candidates.manage. */
 export function canAssignCandidateAgent(rawPermissions: string[], isPlatformSuperUser: boolean): boolean {
   if (isPlatformSuperUser) return true;
   return rawPermissions.some((p) => {
     const lower = p.toLowerCase();
     return (
       lower === "candidates.manage" ||
-      lower.includes("ats.candidates:view,create,edit,delete")
+      lower === "employees.manage" ||
+      lower.includes("ats.candidates:view,create,edit,delete") ||
+      lower.includes("ats.employees:view,create,edit,delete")
     );
   });
 }
