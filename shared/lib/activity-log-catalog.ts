@@ -42,6 +42,19 @@ export const ACTIVITY_LOG_ACTIONS: string[] = [
   "jobApplication.update",
   "jobApplication.delete",
   "settings.bolnaCandidateAgent.update",
+  "referralLeads.export",
+  "referral.attribution.override",
+  "referral.claim",
+  "referral.link.issued",
+  "referral.job.applied",
+  "referral.candidate.activated",
+  "referral.hire.joined",
+  "ticket.create",
+  "ticket.statusChange",
+  "ticket.priorityChange",
+  "ticket.assign",
+  "ticket.comment",
+  "ticket.delete",
 ];
 
 export const ACTIVITY_LOG_ENTITY_TYPES: string[] = [
@@ -59,6 +72,8 @@ export const ACTIVITY_LOG_ENTITY_TYPES: string[] = [
   "Job",
   "JobApplication",
   "BolnaCandidateAgentSettings",
+  "Referral",
+  "SupportTicket",
 ];
 
 export type ActivityLogLabel = { title: string; description: string };
@@ -113,6 +128,19 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
     title: "Calling agent settings updated",
     description: "Bolna employee calling agent integration settings changed.",
   },
+  "referralLeads.export": { title: "Referral leads exported", description: "Referral leads were exported to a file." },
+  "referral.attribution.override": { title: "Referral attribution overridden", description: "A referral's sales-agent attribution was manually changed." },
+  "referral.claim": { title: "Referral claimed", description: "A referrer claimed attribution for a candidate." },
+  "referral.link.issued": { title: "Referral link issued", description: "A signed referral link was minted." },
+  "referral.job.applied": { title: "Referral job applied", description: "A referred candidate moved to applied for a job." },
+  "referral.candidate.activated": { title: "Referral candidate activated", description: "A referred candidate's account became active." },
+  "referral.hire.joined": { title: "Referral hire joined", description: "A referred candidate's placement was marked joined." },
+  "ticket.create": { title: "Ticket created", description: "A support ticket was created." },
+  "ticket.statusChange": { title: "Ticket status changed", description: "A support ticket's status changed." },
+  "ticket.priorityChange": { title: "Ticket priority changed", description: "A support ticket's priority changed." },
+  "ticket.assign": { title: "Ticket assigned", description: "A support ticket was assigned." },
+  "ticket.comment": { title: "Ticket comment added", description: "A comment was added to a support ticket." },
+  "ticket.delete": { title: "Ticket deleted", description: "A support ticket was removed." },
 };
 
 export const ENTITY_TYPE_LABELS: Record<string, ActivityLogLabel> = {
@@ -133,6 +161,8 @@ export const ENTITY_TYPE_LABELS: Record<string, ActivityLogLabel> = {
     title: "Calling agent settings",
     description: "Voice employee-calling agent configuration.",
   },
+  Referral: { title: "Referral", description: "Referral link / attribution record." },
+  SupportTicket: { title: "Support ticket", description: "Support ticket record." },
 };
 
 export function getActionDisplay(action: string): ActivityLogLabel {
