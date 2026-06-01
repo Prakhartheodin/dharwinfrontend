@@ -5,7 +5,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import * as rolesApi from "@/shared/lib/api/roles";
 import { userCanListRoles } from "@/shared/lib/permissions";
 import type { Role } from "@/shared/lib/types";
-import { isEmployeeUserRoleNameLower } from "@/shared/lib/employee-user-role";
+import { isEmployeeOnly } from "@/shared/lib/persona";
 
 function normalizeRoleIdList(raw: unknown): string[] {
   if (!raw || !Array.isArray(raw)) return [];
@@ -22,15 +22,38 @@ function normalizeRoleIdList(raw: unknown): string[] {
 }
 
 /**
- * True when the user should call `getMyCandidate` (share-candidate / pending employee-only roles).
+ * True when the user should call `getMyCandidate` (employee-only persona,
+ * no staff capability). Routes through `isEmployeeOnly` so the gate stays
+ * consistent with `useHasEmployeeRole` and the auth-context post-login redirect.
  */
 export function useIsEmployeeForProfile(): { isEmployee: boolean; isLoading: boolean } {
-  const { user, roleNames, permissionsLoaded, permissions } = useAuth();
+  const {
+    user,
+    roleNames,
+    permissionsLoaded,
+    permissions,
+    isAdministrator,
+    isPlatformSuperUser,
+  } = useAuth();
   const [isEmployee, setIsEmployee] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyFromRoleNames = (names: string[]) => {
+      const isCandidateFlag =
+        (user as { isCandidate?: boolean } | null | undefined)?.isCandidate ?? null;
+      const onlyEmployee = isEmployeeOnly({
+        userRole: user?.role,
+        roleNames: names,
+        permissions,
+        isAdministrator,
+        isPlatformSuperUser,
+        isCandidateFlag,
+      });
+      setIsEmployee(onlyEmployee);
+    };
 
     const load = async () => {
       try {
@@ -56,12 +79,10 @@ export function useIsEmployeeForProfile(): { isEmployee: boolean; isLoading: boo
           return;
         }
 
-        const namesFromAuth = (roleNames ?? []).map((n) => n.trim().toLowerCase()).filter(Boolean);
+        const namesFromAuth = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
         if (namesFromAuth.length > 0) {
-          const onlyEmployee =
-            namesFromAuth.length > 0 && namesFromAuth.every((name) => isEmployeeUserRoleNameLower(name));
           if (!cancelled) {
-            setIsEmployee(onlyEmployee);
+            applyFromRoleNames(namesFromAuth);
             setIsLoading(false);
           }
           return;
@@ -69,7 +90,7 @@ export function useIsEmployeeForProfile(): { isEmployee: boolean; isLoading: boo
 
         if (!userCanListRoles(permissions)) {
           if (!cancelled) {
-            setIsEmployee(false);
+            applyFromRoleNames([]);
             setIsLoading(false);
           }
           return;
@@ -83,15 +104,12 @@ export function useIsEmployeeForProfile(): { isEmployee: boolean; isLoading: boo
           if (id) roleMap.set(String(id), r);
         });
 
-        const userRoleNames = ids
-          .map((id) => roleMap.get(id)?.name?.toLowerCase())
+        const resolvedNames = ids
+          .map((id) => roleMap.get(id)?.name)
           .filter((x): x is string => Boolean(x));
 
-        const onlyEmployee =
-          userRoleNames.length > 0 && userRoleNames.every((name) => isEmployeeUserRoleNameLower(name));
-
         if (!cancelled) {
-          setIsEmployee(onlyEmployee);
+          applyFromRoleNames(resolvedNames);
         }
       } catch {
         if (!cancelled) setIsEmployee(false);
@@ -104,7 +122,7 @@ export function useIsEmployeeForProfile(): { isEmployee: boolean; isLoading: boo
     return () => {
       cancelled = true;
     };
-  }, [user, permissionsLoaded, roleNames, permissions]);
+  }, [user, permissionsLoaded, roleNames, permissions, isAdministrator, isPlatformSuperUser]);
 
   return { isEmployee, isLoading };
 }

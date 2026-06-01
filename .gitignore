@@ -26,7 +26,15 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+.env
 .env*.local
+
+# documentation (local edits; do not commit)
+docs/
+
+# ad-hoc scripts and local test sandboxes
+scripts/
+tests/
 
 # vercel
 .vercel

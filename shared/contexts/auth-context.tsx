@@ -11,6 +11,7 @@ import {
 } from "@/shared/lib/activity-log-client-geo";
 import * as authApi from "@/shared/lib/api/auth";
 import { ROUTES } from "@/shared/lib/constants";
+import { isCandidatePersona } from "@/shared/lib/persona";
 import {
   clearImpersonationReturnPath,
   consumeImpersonationReturnPath,
@@ -323,8 +324,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           router.push(safeNext);
           return;
         }
-        // Candidates (role 'user' from share-candidate-form) go to their profile on first login
-        const isCandidate = res.user?.role === "user";
+        // Candidate persona goes to their profile on first login. Detection prefers a
+        // backend `isCandidate` flag, falls back to permission-based staff check, then
+        // to legacy role-name match (share-candidate-form sets role 'user').
+        const isCandidate = isCandidatePersona({
+          userRole: res.user?.role,
+          roleNames: perm?.roleNames ?? [],
+          permissions: perm?.permissions ?? [],
+          isAdministrator: perm?.isAdministrator ?? false,
+          isPlatformSuperUser: perm?.isPlatformSuperUser ?? false,
+          isCandidateFlag:
+            (res.user as { isCandidate?: boolean } | null | undefined)?.isCandidate ?? null,
+        });
         router.push(isCandidate ? ROUTES.candidateProfile : ROUTES.defaultAfterLogin);
       } finally {
         setIsLoading(false);

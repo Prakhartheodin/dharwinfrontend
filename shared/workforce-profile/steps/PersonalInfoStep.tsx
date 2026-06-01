@@ -5,6 +5,8 @@ import { useWorkforceStore } from "../state/workforce.store";
 import { useWizardContext } from "../engine/WizardContext";
 import { getPhoneCountry } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 const VISA_TYPES = [
   "F-1", "J-1", "H-1B", "H-2B", "L-1", "O-1", "P-1",
@@ -83,9 +85,11 @@ const newSocialId = () => `sl-${Date.now()}-${++socialIdCounter}`;
 export function PersonalInfoStep() {
   const pi = useWorkforceStore((s) => s.personalInfo);
   const setPersonalInfo = useWorkforceStore((s) => s.setPersonalInfo);
-  const { issuesByField, mode, role } = useWizardContext();
+  const { issuesByField, mode } = useWizardContext();
+  const auth = useAuth();
 
-  const showCompanyEmail = role === "admin" || role === "recruiter";
+  const showCompanyEmail =
+    hasPermission(auth, "create_employee") || hasPermission(auth, "update_employee");
   const showPasswordField = mode === "create-admin";
   const emailReadOnly =
     mode === "self-service-employee" || mode === "self-service-candidate";

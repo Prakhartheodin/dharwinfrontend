@@ -11,6 +11,9 @@ import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 import { ROUTES } from "@/shared/lib/constants";
 import { useEffect } from "react";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
+import { isCandidatePersona } from "@/shared/lib/persona";
 import {
   CANDIDATE_EXCEL_SHEETS,
   downloadCandidateExcelTemplate,
@@ -438,55 +441,47 @@ export const Basicwizard = ({
   selfServiceEdit?: boolean;
 }) => {
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<any>(null);
-
+  const auth = useAuth();
+  const canManageEmployees =
+    hasPermission(auth, "create_employee") || hasPermission(auth, "update_employee");
+  const isCandidate = isCandidatePersona({
+    userRole: auth.user?.role,
+    roleNames: auth.roleNames,
+    permissions: auth.permissions,
+    isAdministrator: auth.isAdministrator,
+    isPlatformSuperUser: auth.isPlatformSuperUser,
+    isCandidateFlag:
+      (auth.user as { isCandidate?: boolean } | null | undefined)?.isCandidate ?? null,
+  });
   // Security check for edit permissions
   useEffect(() => {
-    const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-    if (userData) {
-      const user = JSON.parse(userData);
-      setCurrentUser(user);
-      
-      // If editing existing data, check permissions
-      if (initialData) {
-        // Admin can edit any profile
-        if (user.role === 'admin') {
-          return; // Allow access
-        }
-        
-        // Regular users can only edit their own profile
-        if (user.role === 'user' && String(user.id) !== String(initialData.owner)) {
-          Swal.fire({
-            icon: 'error',
-            title: 'Access Denied',
-            text: 'You can only edit your own profile.',
-            confirmButtonText: 'OK'
-          }).then(() => {
-            router.push(ROUTES.candidateProfile);
-          });
-          return;
-        }
+    if (!auth.permissionsLoaded) return;
+
+    if (initialData) {
+      if (canManageEmployees) return;
+      const ownerId = String(initialData.owner ?? "");
+      const userId = String(auth.user?.id ?? "");
+      if (ownerId && userId && ownerId !== userId) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Access Denied',
+          text: 'You can only edit your own profile.',
+          confirmButtonText: 'OK'
+        }).then(() => {
+          router.push(ROUTES.candidateProfile);
+        });
       }
     }
-  }, [initialData, router]);
+  }, [initialData, router, auth.permissionsLoaded, auth.user, canManageEmployees]);
 
   const [formData, setFormData] = useState({ 
     fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", compensationType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
     companyAssignedEmail: "",
     companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
   });
-  const [userRole, setUserRole] = useState<string>("user");
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const userData = localStorage.getItem("user");
-    if (!userData) return;
-    try {
-      const parsedUser = JSON.parse(userData);
-      setUserRole(parsedUser.role || "user");
-    } catch {
-      setUserRole("user");
-    }
-  }, []);
+  /** Kept as a "user" sentinel for legacy comparisons below; persona/permission gates
+   *  drive every real decision via `canManageEmployees` and `isCandidate`. */
+  const userRole = isCandidate ? "user" : "staff";
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
   const [profilePictureRemoved, setProfilePictureRemoved] = useState<boolean>(false);
@@ -2040,9 +2035,7 @@ export const Basicwizard = ({
       let res: any;
       
       if (isEdit) {
-        const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-        const user = userData ? JSON.parse(userData) : null;
-        if (user?.role === 'user' || selfServiceEdit) {
+        if (selfServiceEdit || (!canManageEmployees && isCandidate)) {
           res = await updateMyCandidate(payload as any);
         } else {
           res = await updateCandidate(String(initialData.id || initialData._id), payload as any);
@@ -2071,10 +2064,8 @@ export const Basicwizard = ({
         });
       }
 
-      // Redirect after successful operation – candidates (role user) go to profile
-      const userData = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
-      const user = userData ? JSON.parse(userData) : null;
-      router.push(user?.role === 'user' ? ROUTES.candidateProfile : "/ats/employees");
+      // Redirect after successful operation - candidate persona goes to their profile.
+      router.push(isCandidate && !canManageEmployees ? ROUTES.candidateProfile : "/ats/employees");
     } catch (err: any) {
       setError(isEdit ? "Failed to update candidate" : "Failed to add candidate");
       await Swal.fire({

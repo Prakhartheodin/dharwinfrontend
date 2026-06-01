@@ -9,7 +9,6 @@ import {
   hasEmailReadAccess,
   hasJobsReadAccess,
   hasSettingsFeatureAccess,
-  hasSettingsUsersManage,
   userCanListRoles,
 } from "@/shared/lib/permissions";
 import { canAssignCandidateAgent } from "@/shared/lib/candidate-permissions";
@@ -27,7 +26,6 @@ function getActiveTab(
   | "email-templates"
   | "job-templates"
   | "email-templates-admin"
-  | "bolna-voice-agent"
   | "company-email"
   | null {
   if (pathname.startsWith("/settings/roles")) return "roles";
@@ -35,7 +33,6 @@ function getActiveTab(
   if (pathname.startsWith("/settings/attendance")) return "attendance";
   if (pathname.startsWith("/settings/agents")) return "agents";
   if (pathname.startsWith("/settings/company-email")) return "company-email";
-  if (pathname.startsWith("/settings/bolna-voice-agent")) return "bolna-voice-agent";
   if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
@@ -170,14 +167,6 @@ export default function SettingsLayout({
         ? hasSettingsFeatureAccess(raw, "email-templates-admin")
         : isAdministrator || hasSettingsFeatureAccess(raw, "email-templates-admin");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
-    } else if (activeTab === "bolna-voice-agent") {
-      const can = matrixMode
-        ? hasSettingsFeatureAccess(raw, "bolna-voice-agent")
-        : isPlatformSuperUser ||
-          isAdministrator ||
-          (permissionsLoaded && hasSettingsUsersManage(permissions)) ||
-          hasSettingsFeatureAccess(raw, "bolna-voice-agent");
-      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "company-email") {
       const can = matrixMode
         ? hasSettingsFeatureAccess(raw, "company-email")
@@ -210,7 +199,6 @@ export default function SettingsLayout({
       | "email-templates"
       | "job-templates"
       | "email-templates-admin"
-      | "bolna-voice-agent"
       | "company-email"
   ) =>
     `m-1 inline-flex shrink-0 items-center py-2 px-3 text-[0.75rem] font-medium rounded-md hover:text-primary ${

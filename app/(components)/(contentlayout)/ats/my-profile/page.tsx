@@ -1,7 +1,6 @@
 "use client";
 
 import Seo from "@/shared/layout-components/seo/seo";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Link from "next/link";
 import React, { Fragment, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -261,10 +260,13 @@ function TimelineItem({
 function DynamicProfileView({
   candidate,
   serverEmailVerified,
+  isEmployeeOrCandidate,
 }: {
   candidate?: CandidateWithProfile | null;
   /** From GET /auth/me/with-candidate `user.isEmailVerified` — avoids stale auth context after verify */
   serverEmailVerified?: boolean | null;
+  /** True when the signed-in user's role is Employee / Candidate (legacy `user`). Gates Employee ID + Jobs tab. */
+  isEmployeeOrCandidate: boolean;
 }) {
   const { user, refreshUser, roleNames, permissionsLoaded } = useAuth();
   const [activities, setActivities] = useState<ActivityLog[]>([]);
@@ -374,7 +376,9 @@ function DynamicProfileView({
     ...(displayPhone
       ? [{ label: "Phone", value: `${displayCountryCode ? displayCountryCode + " " : ""}${displayPhone}` }]
       : []),
-    { label: "Employee ID", value: displayEmployeeId, mono: true },
+    ...(isEmployeeOrCandidate
+      ? [{ label: "Employee ID", value: displayEmployeeId, mono: true }]
+      : []),
     { label: roleDisplayName.includes(",") ? "Roles" : "Role", value: roleDisplayName },
     ...(displayAddress ? [{ label: "Address", value: displayAddress }] : []),
     ...(u.education ? [{ label: "Education", value: u.education }] : []),
@@ -545,7 +549,7 @@ function DynamicProfileView({
                   <span className="max-w-[18rem] truncate">{displayAddress}</span>
                 </span>
               )}
-              {displayEmployeeId && displayEmployeeId !== "—" && (
+              {isEmployeeOrCandidate && displayEmployeeId && displayEmployeeId !== "—" && (
                 <span className="inline-flex items-center gap-1.5 font-mono text-[0.72rem] tracking-tight">
                   <i className="ri-id-card-line" />
                   {displayEmployeeId}
@@ -727,10 +731,12 @@ function DynamicProfileView({
             <div className="flex items-center gap-1 overflow-x-auto border-b border-defaultborder/60 px-3 pt-3 dark:border-defaultborder/15">
               {(
                 [
-                  { id: "overview", label: "Overview", icon: "ri-user-3-line", count: undefined as number | undefined },
-                  { id: "activity", label: "Activity", icon: "ri-history-line", count: activities.length || undefined },
-                  { id: "jobs", label: "Jobs", icon: "ri-briefcase-line", count: matchingJobs.length || undefined },
-                ] as const
+                  { id: "overview" as const, label: "Overview", icon: "ri-user-3-line", count: undefined as number | undefined },
+                  { id: "activity" as const, label: "Activity", icon: "ri-history-line", count: activities.length || undefined },
+                  ...(isEmployeeOrCandidate
+                    ? [{ id: "jobs" as const, label: "Jobs", icon: "ri-briefcase-line", count: (matchingJobs.length || undefined) as number | undefined }]
+                    : []),
+                ]
               ).map((tab) => {
                 const isActive = activeTab === tab.id;
                 return (
@@ -958,7 +964,7 @@ function DynamicProfileView({
               </div>
             )}
 
-            {activeTab === "jobs" && (
+            {activeTab === "jobs" && isEmployeeOrCandidate && (
               <div className="p-4 md:p-5 motion-safe:animate-[fadeIn_0.3s_ease-out]">
                 {!candidate?.skills?.length ? (
                   <div className="py-12 text-center">
@@ -1171,8 +1177,11 @@ export default function MyProfilePage() {
     return (
       <Fragment>
         <Seo title="My Profile" />
-        <Pageheader currentpage="My Profile" activepage="ATS" mainpage="My Profile" />
-        <DynamicProfileView candidate={candidate} serverEmailVerified={serverEmailVerified} />
+        <DynamicProfileView
+          candidate={candidate}
+          serverEmailVerified={serverEmailVerified}
+          isEmployeeOrCandidate={hasEmployeeProfile}
+        />
       </Fragment>
     );
   }

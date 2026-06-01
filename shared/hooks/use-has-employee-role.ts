@@ -6,6 +6,7 @@ import * as rolesApi from "@/shared/lib/api/roles";
 import { userCanListRoles } from "@/shared/lib/permissions";
 import type { Role } from "@/shared/lib/types";
 import { isEmployeeUserRoleNameLower } from "@/shared/lib/employee-user-role";
+import { hasStaffAccess, isCandidatePersona } from "@/shared/lib/persona";
 
 function normalizeRoleIdList(raw: unknown): string[] {
   if (!raw || !Array.isArray(raw)) return [];
@@ -22,15 +23,28 @@ function normalizeRoleIdList(raw: unknown): string[] {
 }
 
 /**
- * - `hasEmployeeRole`: user has Employee (or legacy `Candidate` / `user`) role in roleIds, staff-only “employee” nav when not Agent/Administrator.
- * - `hasEmployeeProfile`: use for `GET /auth/me/with-candidate` so profile fields load for hybrid users (e.g. Agent+Employee).
+ * - `hasEmployeeRole`: user resolves to employee persona AND holds no staff capability.
+ *   Drives staff-only "employee" nav.
+ * - `hasEmployeeProfile`: user resolves to employee persona regardless of staff capability
+ *   (hybrid Agent+Employee should still load `/auth/me/with-candidate`).
+ *
+ * Staff is detected via permission probe + `isAdministrator` / `isPlatformSuperUser`,
+ * not via role-name string match. Persona prefers a backend `isCandidate` flag
+ * when present and otherwise maps `roleNames` through `isEmployeeUserRoleNameLower`.
  */
 export function useHasEmployeeRole(): {
   hasEmployeeRole: boolean;
   hasEmployeeProfile: boolean;
   isLoading: boolean;
 } {
-  const { user, roleNames, permissionsLoaded, permissions } = useAuth();
+  const {
+    user,
+    roleNames,
+    permissionsLoaded,
+    permissions,
+    isAdministrator,
+    isPlatformSuperUser,
+  } = useAuth();
   const [hasEmployeeRole, setHasEmployeeRole] = useState(false);
   const [hasEmployeeProfile, setHasEmployeeProfile] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -39,12 +53,24 @@ export function useHasEmployeeRole(): {
     let cancelled = false;
 
     const applyFromRoleNames = (names: string[]) => {
-      const lower = names.map((n) => n.trim().toLowerCase()).filter(Boolean);
-      const hasStaffRole = lower.some((n) => n === "agent" || n === "administrator");
-      const hasEmployeeRoleName = lower.some((n) => isEmployeeUserRoleNameLower(n));
-      const employeeOnly = !hasStaffRole && hasEmployeeRoleName;
-      setHasEmployeeRole(employeeOnly);
-      setHasEmployeeProfile(hasEmployeeRoleName);
+      const isCandidateFlag =
+        (user as { isCandidate?: boolean } | null | undefined)?.isCandidate ?? null;
+      const personaInput = {
+        userRole: user?.role,
+        roleNames: names,
+        permissions,
+        isAdministrator,
+        isPlatformSuperUser,
+        isCandidateFlag,
+      };
+      const staff = hasStaffAccess(personaInput);
+      const personaIsEmployee =
+        isCandidateFlag === true ||
+        (isCandidateFlag !== false &&
+          (names.some((n) => isEmployeeUserRoleNameLower(n.toLowerCase())) ||
+            isCandidatePersona(personaInput)));
+      setHasEmployeeRole(!staff && personaIsEmployee);
+      setHasEmployeeProfile(personaIsEmployee);
     };
 
     const load = async () => {
@@ -82,12 +108,8 @@ export function useHasEmployeeRole(): {
       }
 
       if (!userCanListRoles(permissions)) {
-        const r = (user.role ?? "").toString().trim().toLowerCase();
-        const hasEmployeeRoleName = isEmployeeUserRoleNameLower(r);
-        const hasStaffRole = r === "agent" || r === "administrator";
         if (!cancelled) {
-          setHasEmployeeRole(!hasStaffRole && hasEmployeeRoleName);
-          setHasEmployeeProfile(hasEmployeeRoleName);
+          applyFromRoleNames([]);
           setIsLoading(false);
         }
         return;
@@ -103,20 +125,11 @@ export function useHasEmployeeRole(): {
         });
 
         const resolvedNames = ids
-          .map((id) => roleMap.get(id)?.name?.toLowerCase())
+          .map((id) => roleMap.get(id)?.name)
           .filter((x): x is string => Boolean(x));
 
-        if (resolvedNames.length > 0) {
-          const hasStaffRole = resolvedNames.some((name) => name === "agent" || name === "administrator");
-          const hasEmployeeRoleName = resolvedNames.some((name) => isEmployeeUserRoleNameLower(name));
-          const employeeOnly = !hasStaffRole && hasEmployeeRoleName;
-          if (!cancelled) {
-            setHasEmployeeRole(employeeOnly);
-            setHasEmployeeProfile(hasEmployeeRoleName);
-          }
-        } else if (!cancelled) {
-          setHasEmployeeRole(false);
-          setHasEmployeeProfile(false);
+        if (!cancelled) {
+          applyFromRoleNames(resolvedNames);
         }
       } catch {
         if (!cancelled) {
@@ -132,7 +145,7 @@ export function useHasEmployeeRole(): {
     return () => {
       cancelled = true;
     };
-  }, [user, permissionsLoaded, roleNames, permissions]);
+  }, [user, permissionsLoaded, roleNames, permissions, isAdministrator, isPlatformSuperUser]);
 
   return { hasEmployeeRole, hasEmployeeProfile, isLoading };
 }

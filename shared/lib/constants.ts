@@ -83,8 +83,6 @@ export const ROUTES = {
   settingsAgents: "/settings/agents/",
   /** candidates.manage — company work email assignment hub */
   settingsCompanyEmail: "/settings/company-email/",
-  /** Voice agent (Bolna) + per-agent knowledge base — users.manage / Administrator */
-  settingsBolnaVoiceAgent: "/settings/bolna-voice-agent/",
   /** Administrator — employee onboarding checklist (SOP) template */
   settingsCandidateSop: "/settings/candidates/sop/",
   /** Agent only — email templates & signatures for Communication → Email */

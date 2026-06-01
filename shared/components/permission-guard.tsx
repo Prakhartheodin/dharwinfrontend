@@ -2,19 +2,19 @@
 
 import { useEffect, useMemo, type ReactNode } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { ROUTES } from "@/shared/lib/constants";
 import { isPublicLayoutPath } from "@/shared/lib/public-layout-paths";
 import {
   getRequiredPermissionForPath,
   hasPermissionForPath,
   canAccessPath,
+  CANDIDATE_PROFILE_PATH,
 } from "@/shared/lib/route-permissions";
 import { isDesignatedSuperadminPath } from "@/shared/lib/designated-superadmin-paths";
 import { usePathname, useRouter } from "next/navigation";
 
 interface PermissionGuardProps {
   children: ReactNode;
-  /** Where to redirect when user has no permission; default dashboard with ?unauthorized=1 */
+  /** Where to redirect when user has no permission; default /ats/my-profile with ?unauthorized=1 (dashboard itself is matrix-gated). */
   redirectTo?: string;
   /**
    * When provided, renders the layout chrome (nav, header, sidebar, etc.) even during
@@ -38,7 +38,11 @@ function PermissionGuardInner({
   } = useAuth();
 
   const targetRedirect =
-    redirectTo ?? `${ROUTES.defaultAfterLogin}?unauthorized=1`;
+    redirectTo ?? `${CANDIDATE_PROFILE_PATH}?unauthorized=1`;
+
+  const normalizedPath = (pathname ?? "").replace(/\/$/, "") || "/";
+  const targetPathOnly = targetRedirect.split("?")[0].replace(/\/$/, "") || "/";
+  const alreadyAtRedirect = normalizedPath === targetPathOnly;
 
   const allowed = useMemo(() => {
     if (!permissionsLoaded) return null;
@@ -69,10 +73,10 @@ function PermissionGuardInner({
   ]);
 
   useEffect(() => {
-    if (allowed === false) {
+    if (allowed === false && !alreadyAtRedirect) {
       router.replace(targetRedirect);
     }
-  }, [allowed, targetRedirect, router]);
+  }, [allowed, alreadyAtRedirect, targetRedirect, router]);
 
   const loadingContent = (
     <div className="flex min-h-[40vh] items-center justify-center">

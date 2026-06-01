@@ -60,6 +60,8 @@ function getPathAccessRule(pathname: string): PathAccessRule | null {
 }
 
 export const PATH_PERMISSION_PREFIX: Record<string, string> = {
+  // General
+  "/dashboard": "general.dashboard:",
   "/logs/logs-activity": "logs.activity:",
   // ATS
   "/ats/jobs": "ats.jobs:",
@@ -177,8 +179,11 @@ export function canAccessPath(userPermissions: string[], pathname: string): bool
   return hasPermissionForPath(userPermissions, required);
 }
 
-/** Path for candidate's own profile (role 'user' from share-candidate-form). */
+/** Path for candidate's own profile (role 'user' from share-candidate-form). Also used as the fallback redirect when a user lacks permission for the requested route (incl. /dashboard). */
 export const CANDIDATE_PROFILE_PATH = "/ats/my-profile";
+
+/** Permission prefix for the main dashboard. Admin-only by default; grantable per role via the matrix. */
+export const DASHBOARD_PERMISSION_PREFIX = "general.dashboard:";
 
 /** Permission prefix for the candidate-only courses section. */
 export const COURSES_PERMISSION_PREFIX = "candidate.courses:";
