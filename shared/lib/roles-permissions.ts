@@ -8,6 +8,13 @@ export const PERMISSION_SECTIONS: {
   features: { id: string; label: string }[];
 }[] = [
   {
+    id: "general",
+    label: "General",
+    features: [
+      { id: "dashboard", label: "Dashboard" },
+    ],
+  },
+  {
     id: "settings",
     label: "Settings",
     features: [
@@ -56,7 +63,6 @@ export const PERMISSION_SECTIONS: {
     label: "Communication",
     features: [
       { id: "emails", label: "Emails" },
-      { id: "templates", label: "Templates" },
       { id: "campaigns", label: "Campaigns" },
       { id: "chats", label: "Chats" },
       { id: "calling", label: "Calling" },
