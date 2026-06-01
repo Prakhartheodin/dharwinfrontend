@@ -63,6 +63,35 @@ function toIsoEndOfDay(date: string | null): string | undefined {
   }
 }
 
+type DatePreset = "7d" | "30d" | "3m" | "all" | "custom";
+
+// Local calendar date (YYYY-MM-DD), NOT toISOString() — avoids UTC day-drift near midnight.
+function toLocalYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function presetToRange(preset: DatePreset): { start: string; end: string } {
+  if (preset === "all" || preset === "custom") return { start: "", end: "" };
+  const now = new Date();
+  const end = toLocalYmd(now);
+  const startDate = new Date(now);
+  if (preset === "7d") startDate.setDate(now.getDate() - 6);
+  else if (preset === "30d") startDate.setDate(now.getDate() - 29);
+  else if (preset === "3m") startDate.setMonth(now.getMonth() - 3);
+  return { start: toLocalYmd(startDate), end };
+}
+
+const DATE_PRESETS: { key: DatePreset; label: string }[] = [
+  { key: "7d", label: "Last 7 days" },
+  { key: "30d", label: "Last 30 days" },
+  { key: "3m", label: "Last 3 months" },
+  { key: "all", label: "All time" },
+  { key: "custom", label: "Custom…" },
+];
+
 export default function LogsActivityPage() {
   const {
     user: currentUser,
@@ -98,33 +127,46 @@ export default function LogsActivityPage() {
   const [error, setError] = useState<string>("");
   const [forbidden, setForbidden] = useState(false);
 
-  const [actorId, setActorId] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [q, setQ] = useState("");
   const [action, setAction] = useState("");
   const [entityType, setEntityType] = useState("");
-  const [entityId, setEntityId] = useState("");
+  const [datePreset, setDatePreset] = useState<DatePreset>("7d");
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
 
+  const canFilter =
+    isPlatformSuperUser ||
+    logsActivityFeature.canDelete ||
+    (logsActivityFeature.canCreate && logsActivityFeature.canEdit);
+
   const hasActiveFilters =
-    actorId.trim() ||
-    action.trim() ||
-    entityType.trim() ||
-    entityId.trim() ||
-    startDate ||
-    endDate;
+    q.trim() || action.trim() || entityType.trim() || datePreset !== "7d";
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setQ(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const fetchLogs = async () => {
     setLoading(true);
     setError("");
     setForbidden(false);
 
+    const range =
+      datePreset === "custom"
+        ? { start: startDate, end: endDate }
+        : presetToRange(datePreset);
+
     const params: activityLogsApi.ListActivityLogsParams = {
-      actor: actorId.trim() || undefined,
       action: action.trim() || undefined,
       entityType: entityType.trim() || undefined,
-      entityId: entityId.trim() || undefined,
-      startDate: toIsoStartOfDay(startDate) ?? undefined,
-      endDate: toIsoEndOfDay(endDate) ?? undefined,
+      q: q.trim() || undefined,
+      startDate: toIsoStartOfDay(range.start || null) ?? undefined,
+      endDate: toIsoEndOfDay(range.end || null) ?? undefined,
       sortBy: "createdAt:desc",
       page,
       limit,
@@ -166,19 +208,20 @@ export default function LogsActivityPage() {
     canReadActivityLogs,
     page,
     limit,
-    actorId,
+    q,
     action,
     entityType,
-    entityId,
+    datePreset,
     startDate,
     endDate,
   ]);
 
   const handleClearFilters = () => {
-    setActorId("");
+    setSearchInput("");
+    setQ("");
     setAction("");
     setEntityType("");
-    setEntityId("");
+    setDatePreset("7d");
     setStartDate("");
     setEndDate("");
     setPage(1);
@@ -249,131 +292,166 @@ export default function LogsActivityPage() {
         ) : (
           !forbidden && (
             <>
-              <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30 flex flex-wrap items-end gap-3">
-                <div className="flex items-center gap-2 text-defaulttextcolor/80">
-                  <i className="ri-filter-3-line text-[1.25rem]"></i>
-                  <span className="text-[0.8125rem] font-medium">Filter logs</span>
-                </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-actor" className="form-label !text-[0.75rem] mb-1">
-                    Actor user ID
-                  </label>
+              {canFilter && (
+              <div className="mb-4 p-4 rounded-lg border border-defaultborder bg-gray-50/50 dark:bg-gray-800/30">
+                <div className="flex items-center gap-2 mb-3">
                   <input
-                    id="logs-actor"
                     type="text"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    placeholder="Actor id..."
-                    value={actorId}
-                    onChange={(e) => {
-                      setActorId(e.target.value);
-                      setPage(1);
-                    }}
+                    className="form-control !py-2 !text-[0.8125rem] flex-1"
+                    placeholder="Search by person name, email, or what changed…"
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                   />
                 </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
-                    Action
-                  </label>
-                  <select
-                    id="logs-action"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    value={action}
-                    onChange={(e) => {
-                      setAction(e.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Any action</option>
-                    {ACTIVITY_LOG_ACTIONS.map((actionKey) => {
-                      const display = getActionDisplay(actionKey);
-                      return (
-                        <option key={actionKey} value={actionKey} title={display.description}>
-                          {display.title} ({actionKey})
-                        </option>
-                      );
-                    })}
-                  </select>
+
+                <div className="flex flex-wrap items-center gap-2 mb-3">
+                  <span className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/50">
+                    When
+                  </span>
+                  {DATE_PRESETS.map((p) => (
+                    <button
+                      key={p.key}
+                      type="button"
+                      onClick={() => {
+                        setDatePreset(p.key);
+                        setPage(1);
+                      }}
+                      className={
+                        "ti-btn !py-1 !px-3 !text-[0.75rem] !mb-0 " +
+                        (datePreset === p.key ? "ti-btn-primary" : "ti-btn-light")
+                      }
+                    >
+                      {p.label}
+                    </button>
+                  ))}
                 </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
-                    Entity type
-                  </label>
-                  <select
-                    id="logs-entity-type"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    value={entityType}
-                    onChange={(e) => {
-                      setEntityType(e.target.value);
-                      setPage(1);
-                    }}
-                  >
-                    <option value="">Any entity</option>
-                    {ACTIVITY_LOG_ENTITY_TYPES.map((typeKey) => {
-                      const display = getEntityTypeDisplay(typeKey);
-                      return (
-                        <option key={typeKey} value={typeKey} title={display.description}>
-                          {display.title} ({typeKey})
-                        </option>
-                      );
-                    })}
-                  </select>
+
+                <div className="flex flex-wrap items-end gap-3">
+                  <div className="min-w-[12rem]">
+                    <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
+                      Action
+                    </label>
+                    <select
+                      id="logs-action"
+                      className="form-control !py-1.5 !text-[0.8125rem]"
+                      value={action}
+                      onChange={(e) => {
+                        setAction(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="">Any action</option>
+                      {ACTIVITY_LOG_ACTIONS.map((actionKey) => {
+                        const display = getActionDisplay(actionKey);
+                        return (
+                          <option key={actionKey} value={actionKey} title={`${display.description} (${actionKey})`}>
+                            {display.title}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="min-w-[12rem]">
+                    <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
+                      Entity type
+                    </label>
+                    <select
+                      id="logs-entity-type"
+                      className="form-control !py-1.5 !text-[0.8125rem]"
+                      value={entityType}
+                      onChange={(e) => {
+                        setEntityType(e.target.value);
+                        setPage(1);
+                      }}
+                    >
+                      <option value="">Any entity</option>
+                      {ACTIVITY_LOG_ENTITY_TYPES.map((typeKey) => {
+                        const display = getEntityTypeDisplay(typeKey);
+                        return (
+                          <option key={typeKey} value={typeKey} title={`${display.description} (${typeKey})`}>
+                            {display.title}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {datePreset === "custom" && (
+                    <>
+                      <div className="min-w-[10rem]">
+                        <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
+                          Start date
+                        </label>
+                        <input
+                          id="logs-start-date"
+                          type="date"
+                          className="form-control !py-1.5 !text-[0.8125rem]"
+                          value={startDate}
+                          onChange={(e) => {
+                            setStartDate(e.target.value);
+                            setPage(1);
+                          }}
+                        />
+                      </div>
+                      <div className="min-w-[10rem]">
+                        <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
+                          End date
+                        </label>
+                        <input
+                          id="logs-end-date"
+                          type="date"
+                          className="form-control !py-1.5 !text-[0.8125rem]"
+                          value={endDate}
+                          onChange={(e) => {
+                            setEndDate(e.target.value);
+                            setPage(1);
+                          }}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-entity-id" className="form-label !text-[0.75rem] mb-1">
-                    Entity ID
-                  </label>
-                  <input
-                    id="logs-entity-id"
-                    type="text"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    placeholder="Entity id..."
-                    value={entityId}
-                    onChange={(e) => {
-                      setEntityId(e.target.value);
-                      setPage(1);
-                    }}
-                  />
-                </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
-                    Start date
-                  </label>
-                  <input
-                    id="logs-start-date"
-                    type="date"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    value={startDate}
-                    onChange={(e) => {
-                      setStartDate(e.target.value);
-                      setPage(1);
-                    }}
-                  />
-                </div>
-                <div className="min-w-[10rem]">
-                  <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
-                    End date
-                  </label>
-                  <input
-                    id="logs-end-date"
-                    type="date"
-                    className="form-control !py-1.5 !text-[0.8125rem]"
-                    value={endDate}
-                    onChange={(e) => {
-                      setEndDate(e.target.value);
-                      setPage(1);
-                    }}
-                  />
-                </div>
+
                 {hasActiveFilters && (
-                  <button
-                    type="button"
-                    onClick={handleClearFilters}
-                    className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem]"
-                  >
-                    Clear filters
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-defaultborder">
+                    <span className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/50">
+                      Active
+                    </span>
+                    {datePreset !== "7d" && (
+                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                        {DATE_PRESETS.find((p) => p.key === datePreset)?.label}
+                        <button type="button" onClick={() => { setDatePreset("7d"); setPage(1); }}>✕</button>
+                      </span>
+                    )}
+                    {action.trim() && (
+                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                        {getActionDisplay(action).title}
+                        <button type="button" onClick={() => { setAction(""); setPage(1); }}>✕</button>
+                      </span>
+                    )}
+                    {entityType.trim() && (
+                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                        {getEntityTypeDisplay(entityType).title}
+                        <button type="button" onClick={() => { setEntityType(""); setPage(1); }}>✕</button>
+                      </span>
+                    )}
+                    {q.trim() && (
+                      <span className="inline-flex items-center gap-1 text-[0.75rem] px-2 py-1 rounded bg-primary/10 text-primary">
+                        “{q.trim()}”
+                        <button type="button" onClick={() => { setSearchInput(""); setQ(""); setPage(1); }}>✕</button>
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleClearFilters}
+                      className="ti-btn ti-btn-light !py-1 !px-3 !text-[0.75rem] !mb-0"
+                    >
+                      Clear all
+                    </button>
+                  </div>
                 )}
               </div>
+              )}
 
               <div className="table-responsive overflow-x-auto">
                 <table className="table min-w-full table-bordered border-defaultborder">
