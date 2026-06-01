@@ -29,18 +29,14 @@ yarn-error.log*
 .env
 .env*.local
 
-# documentation (local edits; do not commit)
+# local / generated — do not commit
 docs/
-
-# ad-hoc scripts and local test sandboxes
 scripts/
 tests/
+graphify-out/
 
 # vercel
 .vercel
-
-# graphify AST cache (regeneratable; `graphify update .`)
-graphify-out/cache/
 
 # typescript
 *.tsbuildinfo
