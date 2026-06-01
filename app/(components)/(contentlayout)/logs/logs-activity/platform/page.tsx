@@ -1,5 +1,11 @@
 "use client";
 
+// Platform audit console — designated-platform-account only. This is intentionally NOT the
+// search-first consumer filter bar used on /logs/logs-activity. It is raw forensic tooling:
+// exact actor-id / entity-id / IP-prefix lookups, UTC-precise presets, attendance toggle, and
+// density controls a platform auditor relies on. The plan's "search-first" redesign (Task 3)
+// deliberately does not apply here (Task 4, branch B: raw audit tooling left unchanged).
+
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
