@@ -49,6 +49,7 @@ function RecordChatCallJoin({ callId }: { callId: string | null }) {
 
 function RoomContent({
   onLeave,
+  onEndForAll,
   onReconnect,
   initialAudioEnabled,
   initialVideoEnabled,
@@ -59,6 +60,7 @@ function RoomContent({
   waitingParticipantIdentities,
 }: {
   onLeave: () => void;
+  onEndForAll?: () => void;
   onReconnect: () => void;
   initialAudioEnabled: boolean;
   initialVideoEnabled: boolean;
@@ -701,6 +703,17 @@ function RoomContent({
           }}
         />
       )}
+      {isHost && !isChatCall && onEndForAll && (
+        <button
+          type="button"
+          onClick={onEndForAll}
+          title="End the meeting for everyone (closes the room and invalidates the link)"
+          className="absolute top-4 right-4 z-[120] ti-btn ti-btn-danger rounded-xl shadow-lg"
+        >
+          <i className="ti ti-phone-off me-2" />
+          End meeting for all
+        </button>
+      )}
       {reconnecting && (
         <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[200]">
           <div className="text-center text-white max-w-sm px-8 py-8 rounded-2xl bg-white/5 border border-white/10">
@@ -829,12 +842,19 @@ export default function MeetingRoomClient() {
         : "/communication/chats";
       router.push(returnUrl);
     } else {
-      if (isHost) {
-        updateMeeting(roomName, { status: "ended" }).catch(() => {});
-      }
+      // Leaving only disconnects the host locally — it must NOT end the meeting for
+      // everyone. Participants can stay, and the host (or anyone) can rejoin the same
+      // link. The meeting ends only via the explicit "End meeting for all" button or
+      // the scheduled-window auto-end on the backend.
       router.push("/meetings/pre-join/");
     }
-  }, [router, roomId, isHost, fromChat, returnConvId]);
+  }, [router, roomId, fromChat, returnConvId]);
+
+  const handleEndForAll = useCallback(async () => {
+    const roomName = decodeURIComponent(roomId);
+    await updateMeeting(roomName, { status: "ended" }).catch(() => {});
+    router.push("/meetings/pre-join/");
+  }, [router, roomId]);
 
   const handleDisconnect = useCallback(() => {
     console.log("Disconnected from room - RoomContent will handle reconnection");
@@ -1017,6 +1037,7 @@ export default function MeetingRoomClient() {
       {recordChatCallJoinId ? <RecordChatCallJoin callId={recordChatCallJoinId} /> : null}
       <RoomContent
         onLeave={handleLeave}
+        onEndForAll={handleEndForAll}
         onReconnect={handleReconnect}
         initialAudioEnabled={audioEnabled}
         initialVideoEnabled={videoEnabled}

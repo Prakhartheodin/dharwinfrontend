@@ -2194,10 +2194,9 @@ export default function PublicMeetingRoomClient() {
   }, [waitingForAdmission, participantName, participantEmail, participantIdentity, livekitUrl, roomId]);
 
   const handleLeave = useCallback(() => {
-    if (isHost && participantEmail) {
-      const roomName = decodeURIComponent(roomId);
-      endMeetingPublic(roomName, participantEmail).catch(() => {});
-    }
+    // Leaving only disconnects this participant locally — it must NOT end the meeting
+    // for everyone. The link stays joinable for the scheduled window so anyone can
+    // rejoin after a drop. Ending is an explicit host action / scheduled-window auto-end.
     setPreJoinCommitted(false);
     setToken("");
     setParticipantIdentity(null);

@@ -22,6 +22,9 @@ const PATH_ACCESS_ACTIONS: Record<string, PathAccessRule> = {
   "/ats/employees/import": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
   "/ats/candidates/add": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
   "/ats/candidates/import": { permissionPrefixes: EMPLOYEES_PATH_PREFIXES, anyOf: ["create"] },
+  /** Jobs: view grants nav + list + detail; create/edit gate the create and edit pages only. */
+  "/ats/jobs/create": { permissionPrefixes: ["ats.jobs:"], anyOf: ["create"] },
+  "/ats/jobs/edit": { permissionPrefixes: ["ats.jobs:"], anyOf: ["edit"] },
   "/ats/employees": {
     permissionPrefixes: EMPLOYEES_PATH_PREFIXES,
     anyOf: ["view", "create", "edit", "delete"],
