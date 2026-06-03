@@ -134,23 +134,36 @@ const Filemanager = () => {
   const fetchAllFilesForCounts = useCallback(async () => {
     setCategoryLoading(true);
     try {
-      const result = await listFiles(undefined, undefined);
-      setAllFiles(result.files);
+      const all: FileStorageFile[] = [];
+      const folderSet = new Map<string, number>();
+      let token: string | undefined;
+      let truncated = true;
+      while (truncated) {
+        const result = await listFiles(undefined, token);
+        all.push(...result.files);
+        for (const folder of result.folders) {
+          folderSet.set(folder.name, (folderSet.get(folder.name) || 0) + 1);
+        }
+        token = result.nextContinuationToken || undefined;
+        truncated = result.isTruncated && !!token;
+        if (!truncated) break;
+      }
+      setAllFiles(all);
       const counts: Record<string, number> = {};
-      for (const f of result.files) {
+      for (const f of all) {
         const cat = getCategory(f.name);
         counts[cat] = (counts[cat] || 0) + 1;
       }
-      for (const folder of result.folders) {
-        counts[folder.name] = (counts[folder.name] || 0) + 1;
+      for (const [name, count] of folderSet) {
+        counts[name] = (counts[name] || 0) + count;
       }
       setCategoryCounts(counts);
     } catch {
-      // silent fail for counts
+      showToast("Failed to load file counts", "error");
     } finally {
       setCategoryLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
   useEffect(() => {
     fetchList(currentPrefix);

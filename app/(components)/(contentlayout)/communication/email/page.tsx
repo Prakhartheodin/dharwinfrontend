@@ -23,6 +23,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
+import { LABEL_ICONS, PRACTICAL_ATTACHMENT_LIMIT_BYTES } from "./_constants/mailConstants";
 import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
 import { escapeHtmlForTextNode, sanitizeRichHtml } from "@/shared/lib/sanitize-html";
 import PerfectScrollbar from "react-perfect-scrollbar";
@@ -51,11 +52,6 @@ const AI_LENGTH_OPTIONS: { value: EmailDraftLength; label: string }[] = [
   { value: "long", label: "Long" },
 ];
 
-const PRACTICAL_ATTACHMENT_LIMIT_BYTES = {
-  gmail: 22 * 1024 * 1024,
-  outlook: 18 * 1024 * 1024,
-} as const;
-
 const mailBody = DM_Sans({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
@@ -66,29 +62,6 @@ const mailDisplay = Newsreader({
   weight: ["500", "600", "700"],
   display: "swap",
 });
-
-const LABEL_ICONS: Record<string, string> = {
-  // Gmail
-  INBOX: "ri-inbox-line",
-  SENT: "ri-send-plane-line",
-  DRAFT: "ri-file-edit-line",
-  TRASH: "ri-delete-bin-line",
-  SPAM: "ri-spam-2-line",
-  STARRED: "ri-star-line",
-  IMPORTANT: "ri-flag-line",
-  UNREAD: "ri-mail-line",
-  CATEGORY_PERSONAL: "ri-inbox-archive-line",
-  CATEGORY_SOCIAL: "ri-user-shared-line",
-  CATEGORY_PROMOTIONS: "ri-price-tag-3-line",
-  CATEGORY_UPDATES: "ri-refresh-line",
-  CATEGORY_FORUMS: "ri-chat-3-line",
-  // Outlook
-  JUNK: "ri-spam-2-line",
-  ARCHIVE: "ri-archive-line",
-  OUTBOX: "ri-send-plane-2-line",
-  conversationhistory: "ri-chat-history-line",
-  notes: "ri-sticky-note-line",
-};
 
 const MAX_GMAIL_ACCOUNTS = 3;
 const MAX_OUTLOOK_ACCOUNTS = 1;
@@ -381,6 +354,8 @@ const Mailapp = () => {
   const composeMessageRef = useRef<EmailMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inlineReplyFileInputRef = useRef<HTMLInputElement>(null);
+  /** Prevents URL→thread sync from re-opening a thread while router.replace clears ?thread= */
+  const ignoreThreadParamRef = useRef(false);
   const [showMailMenu, setShowMailMenu] = useState(false);
   const mailMenuButtonRef = useRef<HTMLButtonElement>(null);
   const mailMenuRef = useRef<HTMLUListElement | null>(null);
@@ -436,13 +411,14 @@ const Mailapp = () => {
   }, []);
 
   const backToThreadList = useCallback(() => {
+    ignoreThreadParamRef.current = true;
+    restoreMobileListLayout();
     setSelectedThreadId(null);
     setThreadMessages([]);
     const params = new URLSearchParams(searchParams.toString());
     params.delete("thread");
     const q = params.toString();
     router.replace(q ? `${pathname}?${q}` : pathname, { scroll: false });
-    restoreMobileListLayout();
   }, [router, pathname, searchParams, restoreMobileListLayout]);
 
   useEffect(() => {
@@ -453,9 +429,15 @@ const Mailapp = () => {
         setTotalMailsVisible(false);
         setTotalMailsHidden(true);
       } else if (window.innerWidth <= 1399) {
-        setMailsInformationVisible(true);
-        setTotalMailsVisible(false);
-        setTotalMailsHidden(true);
+        if (selectedThreadId) {
+          setMailsInformationVisible(true);
+          setTotalMailsVisible(false);
+          setTotalMailsHidden(true);
+        } else {
+          setMailsInformationVisible(false);
+          setTotalMailsVisible(true);
+          setTotalMailsHidden(false);
+        }
       } else {
         setMailNavigationVisible(false);
         setTotalMailsVisible(true);
@@ -471,7 +453,7 @@ const Mailapp = () => {
     }
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, []);
+  }, [selectedThreadId]);
 
   useEffect(() => {
     try {
@@ -871,6 +853,10 @@ const Mailapp = () => {
 
   useEffect(() => {
     const tid = searchParams.get("thread");
+    if (ignoreThreadParamRef.current) {
+      if (!tid) ignoreThreadParamRef.current = false;
+      return;
+    }
     if (!tid || threads.length === 0) return;
     if (!threads.some((t) => t.id === tid)) return;
     if (selectedThreadId === tid) return;
@@ -2418,7 +2404,7 @@ const Mailapp = () => {
             </div>
 
             <div
-              className={`mails-information ${isMailsInformationVisible ? "!block" : ""} border dark:border-defaultborder/10 text-defaulttextcolor text-defaultsize ${mailStyles.readingPane}`}
+              className={`mails-information border dark:border-defaultborder/10 text-defaulttextcolor text-defaultsize ${mailStyles.readingPane} ${isMailsInformationVisible ? mailStyles.readingPaneOpen : ""}`}
             >
               {!selectedThreadId ? (
                 <div

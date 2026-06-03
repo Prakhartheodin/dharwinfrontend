@@ -54,33 +54,54 @@ export default function TranscriptModal({
 }: TranscriptModalProps) {
   const [data, setData] = useState<RecordingTranscriptResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [segmentPage, setSegmentPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const fetchTranscript = useCallback(async (id: string) => {
-    setLoading(true);
+  const fetchTranscript = useCallback(async (id: string, page = 1, append = false) => {
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     setError(null);
     try {
-      const res = await getRecordingTranscript(id);
-      setData(res);
+      const res = await getRecordingTranscript(id, { page, limit: 50 });
+      setData((prev) => {
+        if (append && prev) {
+          return {
+            ...res,
+            segments: [...prev.segments, ...res.segments],
+          };
+        }
+        return res;
+      });
+      setSegmentPage(res.page ?? page);
     } catch (e) {
       const msg =
         e && typeof e === "object" && "response" in e
           ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
           : null;
       setError(msg || (e instanceof Error ? e.message : "Failed to load transcript"));
-      setData(null);
+      if (!append) setData(null);
     } finally {
-      setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }, []);
+
+  const loadMoreSegments = useCallback(() => {
+    if (!recordingId || loadingMore) return;
+    const totalPages = data?.totalPages ?? 1;
+    if (segmentPage >= totalPages) return;
+    void fetchTranscript(recordingId, segmentPage + 1, true);
+  }, [recordingId, loadingMore, data?.totalPages, segmentPage, fetchTranscript]);
 
   useEffect(() => {
     if (!recordingId) return;
     setSearch("");
     setData(null);
-    fetchTranscript(recordingId);
+    setSegmentPage(1);
+    fetchTranscript(recordingId, 1, false);
   }, [recordingId, fetchTranscript]);
 
   useEffect(() => {
@@ -249,7 +270,7 @@ export default function TranscriptModal({
               <span className="flex-1">{error}</span>
               <button
                 type="button"
-                onClick={() => recordingId && fetchTranscript(recordingId)}
+                onClick={() => recordingId && fetchTranscript(recordingId, 1, false)}
                 className="text-xs font-medium underline"
               >
                 Retry
@@ -333,6 +354,26 @@ export default function TranscriptModal({
               )}
             </div>
           ))}
+
+          {!loading && !error && data && segmentPage < (data.totalPages ?? 1) && (
+            <div className="text-center pt-2 pb-4">
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm ti-btn-outline-secondary !rounded-full"
+                onClick={loadMoreSegments}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <>
+                    <i className="ri-loader-4-line animate-spin me-1" />
+                    Loading…
+                  </>
+                ) : (
+                  `Load more (${data.segments.length} of ${data.totalSegments})`
+                )}
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

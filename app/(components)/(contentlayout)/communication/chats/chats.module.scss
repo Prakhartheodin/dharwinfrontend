@@ -1627,6 +1627,71 @@
   background: linear-gradient(0deg, var(--chat-surface) 0%, var(--chat-elevated) 100%);
 }
 
+.chatToast {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--chat-radius-md);
+  box-shadow: var(--chat-shadow-strong);
+  font-size: 0.875rem;
+  max-width: min(24rem, calc(100vw - 2rem));
+}
+
+.chatToastError {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid rgba(185, 28, 28, 0.2);
+}
+
+.chatToastSuccess {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid rgba(4, 120, 87, 0.2);
+}
+
+:global(.dark) .chatToastError {
+  background: rgba(127, 29, 29, 0.35);
+  color: #fca5a5;
+}
+
+:global(.dark) .chatToastSuccess {
+  background: rgba(6, 78, 59, 0.35);
+  color: #6ee7b7;
+}
+
+.uploadProgress {
+  position: relative;
+  width: 100%;
+  height: 0.35rem;
+  background: var(--chat-border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.35rem;
+}
+
+.uploadProgressBar {
+  height: 100%;
+  background: var(--chat-accent);
+  transition: width 0.15s ease;
+}
+
+.uploadProgressLabel {
+  position: absolute;
+  top: 0.5rem;
+  left: 0;
+  font-size: 0.65rem;
+  color: var(--chat-ink-muted);
+}
+
+.composer {
+  flex-wrap: wrap;
+}
+
 /* Reset legacy chat list padding so module card spacing wins */
 .shell :global(.main-chart-wrapper .chat-info .chat-users-tab ul) > li:not([data-chat-section]),
 .shell :global(.main-chart-wrapper .chat-info .chat-groups-tab li) {

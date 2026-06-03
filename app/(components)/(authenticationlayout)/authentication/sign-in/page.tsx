@@ -11,6 +11,7 @@ import Swal from "sweetalert2";
 import { consumeCandidateResignedRedirect } from "@/shared/lib/api/client";
 import { AuthPageLayout } from "@/shared/components/auth-page-layout";
 import { AuthFormCard } from "@/shared/components/auth-form-card";
+import { AuthPasswordToggle } from "@/shared/components/auth-password-toggle";
 import { getSafePostLoginPath } from "@/shared/lib/jobReferralRef";
 
 const RESIGNED_POPUP = {
@@ -97,18 +98,7 @@ export default function SignInPage() {
                   alignSelf: "center",
                 }}
               >
-                <h1
-                  style={{
-                    fontFamily: "'Poppins', sans-serif",
-                    fontWeight: 600,
-                    fontSize: 28,
-                    lineHeight: "100%",
-                    color: "#101828",
-                    margin: 0,
-                  }}
-                >
-                  Login to your account
-                </h1>
+                <h1 className="auth-form-title m-0">Login to your account</h1>
               </div>
 
               {registeredMessage && (
@@ -169,104 +159,53 @@ export default function SignInPage() {
                   }}
                 >
                   {/* Frame 26: Email - gap 12px */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
-                    <label htmlFor="signin-email" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                  <div className="flex w-full flex-col gap-3">
+                    <label htmlFor="signin-email" className="auth-form-label">
                       Email
                     </label>
                     <input
-                    type="email"
-                    id="signin-email"
-                    placeholder="baiamia@gmail.com"
-                    value={email}
-                    onChange={(e) => { setEmail(e.target.value); setError(""); }}
-                    autoComplete="email"
-                    required
-                    className="w-full max-w-full"
-                    style={{
-                      height: 48,
-                      padding: "12px 16px",
-                      border: "3px solid #D1E9FF",
-                      borderRadius: 8,
-                      fontSize: 14,
-                      fontWeight: 400,
-                      color: "#344054",
-                      outline: "none",
-                      fontFamily: "'Poppins', sans-serif",
-                      boxSizing: "border-box",
-                    }}
-                    onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                    onBlur={(e) => { e.target.style.borderColor = "#D1E9FF"; }}
-                  />
+                      type="email"
+                      id="signin-email"
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        setError("");
+                      }}
+                      autoComplete="email"
+                      required
+                      className="auth-form-input w-full"
+                    />
                   </div>
 
                   {/* Frame 28: Password - gap 12px */}
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
-                    <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                      <label htmlFor="signin-password" style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#344054", textTransform: "capitalize" }}>
+                  <div className="flex w-full flex-col gap-3">
+                    <div className="flex w-full items-center justify-between">
+                      <label htmlFor="signin-password" className="auth-form-label">
                         Password
                       </label>
-                      <Link href={ROUTES.resetPassword} style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
+                      <Link href={ROUTES.resetPassword} className="auth-form-link text-base capitalize no-underline">
                         Forgot ?
                       </Link>
                     </div>
-                    <div style={{ position: "relative", width: "100%" }}>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      id="signin-password"
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => { setPassword(e.target.value); setError(""); }}
-                      autoComplete="current-password"
-                      required
-                      className="w-full max-w-full"
-                      style={{
-                        height: 48,
-                        padding: "12px 48px 12px 16px",
-                        border: "1px solid #D0D5DD",
-                        borderRadius: 8,
-                        fontSize: 14,
-                        fontWeight: 400,
-                        color: "#344054",
-                        outline: "none",
-                        fontFamily: "'Poppins', sans-serif",
-                        boxSizing: "border-box",
-                      }}
-                      onFocus={(e) => { e.target.style.borderColor = "#34B34C"; }}
-                      onBlur={(e) => { e.target.style.borderColor = "#D0D5DD"; }}
-                    />
-                    <button
-                      type="button"
-                      aria-label="toggle password visibility"
-                      onClick={() => setShowPassword(!showPassword)}
-                      style={{
-                        position: "absolute",
-                        right: 16,
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                        padding: 0,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                    >
-                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                        {showPassword ? (
-                          <>
-                            <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke="#98A2B3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="#98A2B3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                          </>
-                        ) : (
-                          <>
-                            <path d="M1 12C1 12 5 4 12 4C19 4 23 12 23 12C23 12 19 20 12 20C5 20 1 12 1 12Z" stroke="#98A2B3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M12 15C13.6569 15 15 13.6569 15 12C15 10.3431 13.6569 9 12 9C10.3431 9 9 10.3431 9 12C9 13.6569 10.3431 15 12 15Z" stroke="#98A2B3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            <path d="M2 2L22 22" stroke="#98A2B3" strokeWidth="1.5" strokeLinecap="round" />
-                          </>
-                        )}
-                      </svg>
-                    </button>
+                    <div className="relative w-full">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        id="signin-password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          setError("");
+                        }}
+                        autoComplete="current-password"
+                        required
+                        className="auth-form-input auth-form-input--with-toggle w-full"
+                      />
+                      <AuthPasswordToggle
+                        visible={showPassword}
+                        onToggle={() => setShowPassword(!showPassword)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -284,25 +223,7 @@ export default function SignInPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full max-w-full"
-                  style={{
-                    height: 52,
-                    background: "#34B34C",
-                    borderRadius: 8,
-                    border: "none",
-                    cursor: isLoading ? "not-allowed" : "pointer",
-                    opacity: isLoading ? 0.6 : 1,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                    fontWeight: 600,
-                    color: "#FCFCFD",
-                    fontFamily: "'Poppins', sans-serif",
-                    transition: "background 0.2s",
-                  }}
-                  onMouseEnter={(e) => { if (!isLoading) (e.target as HTMLElement).style.background = "#2da043"; }}
-                  onMouseLeave={(e) => { (e.target as HTMLElement).style.background = "#34B34C"; }}
+                  className="auth-form-btn flex w-full items-center justify-center"
                 >
                   {isLoading ? (
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -319,10 +240,10 @@ export default function SignInPage() {
 
                 {/* Frame 29: Sign up link */}
                 <div style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#98A2B3", textTransform: "capitalize" }}>
+                  <span className="auth-form-muted text-base capitalize">
                     Don&apos;t Have An Account ?
                   </span>
-                  <Link href={ROUTES.register} style={{ fontFamily: "'Poppins', sans-serif", fontSize: 16, fontWeight: 400, color: "#34B34C", textDecoration: "none", textTransform: "capitalize" }}>
+                  <Link href={ROUTES.register} className="auth-form-link text-base capitalize no-underline">
                     Sign Up
                   </Link>
                 </div>

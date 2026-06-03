@@ -18,8 +18,6 @@ import {
   updateGroupName,
   uploadGroupAvatar,
   listCalls,
-  initiateCall,
-  endCallByRoom,
   getActiveCallForConversation,
   getCallsForConversation,
   deleteMessage,
@@ -35,85 +33,18 @@ import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
 import chatStyles from "./chats.module.scss";
+import { ChatToast, useChatToast } from "./_components/ChatToast";
+import {
+  getId,
+  lastMessageFromMsg,
+  callLogStatusLabel,
+  timelineCallPillText,
+  participantIdFromCallUser,
+  callsTabHeadline,
+  callJoinedParticipantsLine,
+} from "./_utils/chatHelpers";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
-
-function callLogStatusLabel(status: string | undefined): string {
-  if (!status || status === "ongoing") return "";
-  if (status === "completed" || status === "ended") return "Ended";
-  if (status === "missed") return "Missed";
-  if (status === "declined") return "Declined";
-  if (status === "initiated") return "Started";
-  return status;
-}
-
-/** Short line for merged thread timeline (enriched calls from getCallsForConversation). */
-function timelineCallPillText(call: {
-  direction?: "incoming" | "outgoing";
-  peer?: { name?: string; isGroup?: boolean };
-  callType?: string;
-  status?: string;
-}): string {
-  const kind = call.callType === "video" ? "Video" : "Voice";
-  const dir = call.direction === "outgoing" ? "Outgoing" : "Incoming";
-  const status = callLogStatusLabel(call.status);
-  const peerName = (call.peer?.name || "Unknown").trim() || "Unknown";
-  const chunks: string[] = [];
-  if (call.peer?.isGroup) {
-    chunks.push(`${peerName} · ${kind} · ${dir}`);
-  } else if (call.direction === "outgoing") {
-    chunks.push(`You called ${peerName} · ${kind}`);
-  } else if (call.direction === "incoming") {
-    chunks.push(`${peerName} called · ${kind}`);
-  } else {
-    chunks.push(`${kind} call`);
-  }
-  if (status) chunks.push(status);
-  return chunks.join(" · ");
-}
-
-function participantIdFromCallUser(p: { id?: string; _id?: string } | null | undefined): string {
-  if (!p) return "";
-  return String((p as { id?: string }).id ?? (p as { _id?: string })._id ?? "").trim();
-}
-
-/** Calls list row title: explicit callee (outgoing) or caller (incoming); group name for group calls. */
-function callsTabHeadline(call: ChatCall): string {
-  const peer = call.peer;
-  const name = (peer?.name || (call.caller as { name?: string } | undefined)?.name || "Unknown").trim() || "Unknown";
-  if (peer?.isGroup) {
-    if (call.direction === "outgoing") return `You called ${name}`;
-    return name;
-  }
-  if (call.direction === "outgoing") return `You called ${name}`;
-  if (call.direction === "incoming") return `${name} called you`;
-  return name;
-}
-
-/** Names of users who actually joined the LiveKit room (You for viewer); omit if no join data. */
-function callJoinedParticipantsLine(
-  call: { roomJoinedUserIds?: Array<{ id?: string; _id?: string; name?: string }> },
-  myId: string | undefined
-): string | null {
-  const list = call.roomJoinedUserIds?.length ? call.roomJoinedUserIds : [];
-  if (list.length === 0) return null;
-  const labels: string[] = [];
-  const seen = new Set<string>();
-  for (const p of list) {
-    const pid = participantIdFromCallUser(p);
-    const label =
-      myId && pid && pid === String(myId) ? "You" : (p.name || "Unknown").trim() || "Unknown";
-    const dedupe = label.toLowerCase();
-    if (seen.has(dedupe)) continue;
-    seen.add(dedupe);
-    labels.push(label);
-  }
-  if (labels.length === 0) return null;
-  return labels.join(", ");
-}
-
-const getId = (x: { id?: string; _id?: string } | null | undefined) =>
-  x && (x.id || (x as any)._id?.toString?.());
 
 function GroupInfoPanel({
   conversation,
@@ -580,7 +511,11 @@ const Chat = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [convCalls, setConvCalls] = useState<any[]>([]);
   const [messageInput, setMessageInput] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshingConversations, setRefreshingConversations] = useState(false);
+  const [convPage, setConvPage] = useState(1);
+  const [convTotalPages, setConvTotalPages] = useState(1);
+  const [loadingMoreConvs, setLoadingMoreConvs] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
@@ -596,6 +531,8 @@ const Chat = () => {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const { toast, showToast } = useChatToast();
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [activeCallForConv, setActiveCallForConv] = useState<{
@@ -626,6 +563,9 @@ const Chat = () => {
   const typingDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef<number>(0);
   const chatContainerRef = useRef<HTMLElement | null>(null);
+  const convRefreshDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const shouldScrollToBottomRef = useRef(false);
+  const skipNextScrollRef = useRef(false);
 
   const myId = (user as any)?.id || (user as any)?._id?.toString?.();
 
@@ -637,26 +577,77 @@ const Chat = () => {
     });
   }, []);
 
-  // ── Fetch helpers ──
-  const fetchConversations = useCallback(async () => {
-    try {
-      setLoading(true);
-      const res = await listConversations({ page: 1, limit: 50 });
-      const next = res.results || [];
-      setConversations(next);
-      setSelectedConversation((sel) => {
-        if (!sel) return sel;
-        const sid = getId(sel);
-        const found = next.find((c) => getId(c) === sid);
-        return found ?? sel;
-      });
-    } catch (e: any) {
-      setError(e?.response?.data?.message || "Failed to load conversations");
-      setConversations([]);
-    } finally {
-      setLoading(false);
-    }
+  const isNearBottom = useCallback(() => {
+    const el = chatContainerRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120;
   }, []);
+
+  /** Optimistically bump conversation to top after local send/upload. */
+  const bumpConversationAfterMessage = useCallback((convId: string, msg: Message) => {
+    setConversations((prev) => {
+      const idx = prev.findIndex((c) => getId(c) === convId);
+      if (idx === -1) return prev;
+      const updated: Conversation = {
+        ...prev[idx],
+        lastMessage: lastMessageFromMsg(msg),
+        lastMessageAt: msg.createdAt,
+        unreadCount: 0,
+      };
+      const rest = prev.filter((_, i) => i !== idx);
+      return [updated, ...rest];
+    });
+  }, []);
+
+  // ── Fetch helpers ──
+  const fetchConversations = useCallback(
+    async (options?: { initial?: boolean; page?: number; append?: boolean }) => {
+      const page = options?.page ?? 1;
+      const append = options?.append ?? false;
+      const isInitial = options?.initial ?? false;
+      if (isInitial) setInitialLoading(true);
+      else if (!append) setRefreshingConversations(true);
+      else setLoadingMoreConvs(true);
+      try {
+        const res = await listConversations({ page, limit: 50 });
+        const next = res.results || [];
+        setConvPage(res.page ?? page);
+        setConvTotalPages(res.totalPages ?? 1);
+        setConversations((prev) => (append ? [...prev, ...next] : next));
+        if (!append) {
+          setSelectedConversation((sel) => {
+            if (!sel) return sel;
+            const sid = getId(sel);
+            const found = next.find((c) => getId(c) === sid);
+            return found ?? sel;
+          });
+        }
+      } catch (e: any) {
+        if (isInitial || !append) {
+          setError(e?.response?.data?.message || "Failed to load conversations");
+          if (!append) setConversations([]);
+        }
+      } finally {
+        if (isInitial) setInitialLoading(false);
+        else if (!append) setRefreshingConversations(false);
+        else setLoadingMoreConvs(false);
+      }
+    },
+    [],
+  );
+
+  /** Debounced background refresh — avoids sidebar flash on every socket event. */
+  const scheduleConversationRefresh = useCallback(() => {
+    if (convRefreshDebounceRef.current) clearTimeout(convRefreshDebounceRef.current);
+    convRefreshDebounceRef.current = setTimeout(() => {
+      fetchConversations({ initial: false, page: 1, append: false });
+    }, 300);
+  }, [fetchConversations]);
+
+  const loadMoreConversations = useCallback(async () => {
+    if (loadingMoreConvs || convPage >= convTotalPages) return;
+    await fetchConversations({ page: convPage + 1, append: true });
+  }, [loadingMoreConvs, convPage, convTotalPages, fetchConversations]);
 
   const fetchMessages = useCallback(async (convId: string) => {
     if (!convId) return;
@@ -670,6 +661,7 @@ const Chat = () => {
       setMessages(msgs || []);
       setConvCalls(calls || []);
       setHasMoreMessages((msgs || []).length >= 50);
+      shouldScrollToBottomRef.current = true;
       await markAsRead(convId);
     } catch {
       setMessages([]);
@@ -684,17 +676,27 @@ const Chat = () => {
     if (!cid || loadingOlder || !hasMoreMessages) return;
     const oldestId = messages.length > 0 ? (messages[0] as any).id || (messages[0] as any)._id : null;
     if (!oldestId) return;
+    const el = chatContainerRef.current;
+    const prevScrollHeight = el?.scrollHeight ?? 0;
     setLoadingOlder(true);
     try {
       const older = await getMessages(cid, { before: oldestId, limit: 50 });
       if ((older || []).length < 50) setHasMoreMessages(false);
+      skipNextScrollRef.current = true;
       setMessages((prev) => [...(older || []), ...prev]);
+      requestAnimationFrame(() => {
+        const container = chatContainerRef.current;
+        if (container) {
+          container.scrollTop = container.scrollHeight - prevScrollHeight;
+        }
+      });
     } catch {
       setHasMoreMessages(false);
+      showToast("Failed to load older messages");
     } finally {
       setLoadingOlder(false);
     }
-  }, [selectedConversation, loadingOlder, hasMoreMessages, messages]);
+  }, [selectedConversation, loadingOlder, hasMoreMessages, messages, showToast]);
 
   const fetchCalls = useCallback(async () => {
     try {
@@ -731,8 +733,9 @@ const Chat = () => {
 
   // ── Effects ──
   useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
+    void fetchConversations({ initial: true, page: 1 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Select conversation from ?conv= when returning from meeting
   useEffect(() => {
@@ -749,22 +752,29 @@ const Chat = () => {
     if (!selectedConversation) setIsOpen(false);
   }, [selectedConversation]);
 
-  // Scroll to bottom when messages change
+  // Scroll to bottom only when explicitly requested (send, new msg near bottom, open conv)
   useEffect(() => {
-    if (messages.length > 0) scrollToBottom();
+    if (skipNextScrollRef.current) {
+      skipNextScrollRef.current = false;
+      return;
+    }
+    if (shouldScrollToBottomRef.current && messages.length > 0) {
+      shouldScrollToBottomRef.current = false;
+      scrollToBottom();
+    }
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
     const onFocus = () => {
-      fetchConversations();
-      if (convId) fetchMessages(convId);
+      scheduleConversationRefresh();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [convId, fetchConversations, fetchMessages]);
+  }, [scheduleConversationRefresh]);
 
   useEffect(() => {
     if (convId) {
+      shouldScrollToBottomRef.current = true;
       fetchMessages(convId);
       joinConversation(convId);
       setReplyingTo(null);
@@ -793,6 +803,7 @@ const Chat = () => {
     const unsub = onNewMessage((msg: any) => {
       const msgConvId = msg?.conversation;
       if (msgConvId && convId && String(msgConvId) === String(convId)) {
+        const nearBottom = isNearBottom();
         setMessages((prev) => {
           const msgId = String(msg?.id || msg?._id || "");
           if (!msgId) return [...prev, msg as Message];
@@ -800,24 +811,25 @@ const Chat = () => {
           if (exists) return prev;
           return [...prev, msg as Message];
         });
+        if (nearBottom) shouldScrollToBottomRef.current = true;
         emitMessageRead(convId);
       }
-      fetchConversations();
+      scheduleConversationRefresh();
     });
     return unsub;
-  }, [onNewMessage, convId, fetchConversations, emitMessageRead]);
+  }, [onNewMessage, convId, scheduleConversationRefresh, emitMessageRead, isNearBottom]);
 
   // Conversation updated (for persistence across users)
   useEffect(() => {
     const unsub = onConversationUpdated(() => {
-      fetchConversations();
+      scheduleConversationRefresh();
       if (isOpen && selectedConversation?.type === "group") {
         const cid = getId(selectedConversation);
         if (cid) getConversation(cid).then(setGroupInfoData).catch(() => {});
       }
     });
     return unsub;
-  }, [onConversationUpdated, fetchConversations, isOpen, selectedConversation]);
+  }, [onConversationUpdated, scheduleConversationRefresh, isOpen, selectedConversation]);
 
   // Conversation deleted (remove from list and clear selection)
   useEffect(() => {
@@ -907,7 +919,7 @@ const Chat = () => {
   // call_ended: clear active call for that conversation
   useEffect(() => {
     const unsub = onCallEnded((data) => {
-      if (data.conversationId && String(data.conversationId) === String(convId)) {
+      if (data.conversationId && convId && String(data.conversationId) === String(convId)) {
         setActiveCallForConv(null);
         fetchMessages(convId);
       }
@@ -979,9 +991,14 @@ const Chat = () => {
       setMessages((prev) => addMessageIfNew(prev, msg));
       setMessageInput("");
       setReplyingTo(null);
-      fetchConversations();
-    } catch {
-      // Error
+      shouldScrollToBottomRef.current = true;
+      bumpConversationAfterMessage(cid, msg);
+    } catch (err: unknown) {
+      const apiMsg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      showToast(apiMsg || (err instanceof Error ? err.message : "Failed to send message"));
     } finally {
       setSending(false);
     }
@@ -992,16 +1009,23 @@ const Chat = () => {
     const cid = getId(selectedConversation);
     if (!files.length || !cid) return;
     setUploading(true);
+    setUploadProgress(0);
     try {
       const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
-      const msg = await uploadChatFiles(cid, files, undefined, replyToId);
+      const msg = await uploadChatFiles(cid, files, undefined, replyToId, (pct) => setUploadProgress(pct));
       setMessages((prev) => addMessageIfNew(prev, msg));
       setReplyingTo(null);
-      fetchConversations();
-    } catch {
-      // Error
+      shouldScrollToBottomRef.current = true;
+      bumpConversationAfterMessage(cid, msg);
+    } catch (err: unknown) {
+      const apiMsg =
+        err && typeof err === "object" && "response" in err
+          ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      showToast(apiMsg || (err instanceof Error ? err.message : "Failed to upload file"));
     } finally {
       setUploading(false);
+      setUploadProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -1024,25 +1048,32 @@ const Chat = () => {
         if (blob.size < 1000) return; // too short, ignore
         const file = new File([blob], "voice-note.webm", { type: blob.type });
         setUploading(true);
+        setUploadProgress(0);
         try {
           const replyToId = replyingTo ? String((replyingTo as any).id || (replyingTo as any)._id) : undefined;
-          const msg = await uploadChatFiles(cid, [file], undefined, replyToId);
+          const msg = await uploadChatFiles(cid, [file], undefined, replyToId, (pct) => setUploadProgress(pct));
           setMessages((prev) => addMessageIfNew(prev, msg));
           setReplyingTo(null);
-          fetchConversations();
-        } catch {
-          // Error
+          shouldScrollToBottomRef.current = true;
+          bumpConversationAfterMessage(cid, msg);
+        } catch (err: unknown) {
+          const apiMsg =
+            err && typeof err === "object" && "response" in err
+              ? (err as { response?: { data?: { message?: string } } }).response?.data?.message
+              : null;
+          showToast(apiMsg || (err instanceof Error ? err.message : "Failed to send voice note"));
         } finally {
           setUploading(false);
+          setUploadProgress(null);
         }
       };
       recorder.start();
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
     } catch {
-      // Permission denied or not supported
+      showToast("Microphone access denied or not supported");
     }
-  }, [selectedConversation, replyingTo]);
+  }, [selectedConversation, replyingTo, addMessageIfNew, bumpConversationAfterMessage, showToast]);
 
   const stopVoiceNote = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -1411,6 +1442,7 @@ const Chat = () => {
   return (
     <div className={`mt-5 sm:mt-6 ${chatStyles.shell}`}>
       <Seo title="Chat" />
+      <ChatToast toast={toast} />
       {showCallNotificationBanner && (
         <div className={chatStyles.notifBanner}>
           <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1488,7 +1520,7 @@ const Chat = () => {
             {activeTab === "recent" && (
               <div className="tab-pane fade show active !border-0 chat-users-tab">
                 <div className={chatStyles.listPane}>
-                {loading ? (
+                {initialLoading ? (
                   <p className={chatStyles.emptyList}>Loading…</p>
                 ) : error ? (
                   <p className="text-danger px-1">{error}</p>
@@ -1539,6 +1571,30 @@ const Chat = () => {
                       </React.Fragment>
                     ))}
                   </ul>
+                )}
+                {!initialLoading && convPage < convTotalPages && (
+                  <div className="px-2 py-2 text-center">
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-sm ti-btn-outline-secondary !rounded-full"
+                      onClick={loadMoreConversations}
+                      disabled={loadingMoreConvs}
+                    >
+                      {loadingMoreConvs ? (
+                        <>
+                          <i className="ri-loader-4-line animate-spin me-1" />
+                          Loading…
+                        </>
+                      ) : (
+                        "Load more conversations"
+                      )}
+                    </button>
+                  </div>
+                )}
+                {refreshingConversations && !initialLoading && (
+                  <p className={`${chatStyles.emptyList} !py-1 text-xs opacity-60`} aria-live="polite">
+                    Updating…
+                  </p>
                 )}
                 </div>
               </div>
@@ -2012,6 +2068,12 @@ const Chat = () => {
                 </div>
               )}
               <div className={`chat-footer ${chatStyles.composer}`}>
+                {uploadProgress != null && (
+                  <div className={chatStyles.uploadProgress} role="progressbar" aria-valuenow={uploadProgress} aria-valuemin={0} aria-valuemax={100}>
+                    <div className={chatStyles.uploadProgressBar} style={{ width: `${uploadProgress}%` }} />
+                    <span className={chatStyles.uploadProgressLabel}>Uploading… {uploadProgress}%</span>
+                  </div>
+                )}
                 <input
                   type="file"
                   ref={fileInputRef}

@@ -262,16 +262,21 @@ export interface RecordingTranscriptResponse {
   meetingTitle: string;
   segments: TranscriptSegment[];
   totalSegments: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
   /** Which key found the segments: `recordingId` (preferred) or `meetingId` (legacy fallback). */
   source: "recordingId" | "meetingId";
 }
 
 /** Fetch transcript segments for a recording (sequenceNumber asc). */
 export async function getRecordingTranscript(
-  recordingId: string
+  recordingId: string,
+  params?: { page?: number; limit?: number }
 ): Promise<RecordingTranscriptResponse> {
   const { data } = await apiClient.get<RecordingTranscriptResponse>(
-    `/recordings/${recordingId}/transcript`
+    `/recordings/${recordingId}/transcript`,
+    { params }
   );
   return data;
 }

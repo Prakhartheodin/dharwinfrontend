@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { io, Socket } from "socket.io-client";
 import { apiClient } from "@/shared/lib/api/client";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -45,6 +46,22 @@ export interface CallStartData {
   roomName: string;
   callType: "audio" | "video";
   token: string;
+}
+
+/** Bolna telephony live update payload from socket `call:update`. */
+export interface CallUpdateData {
+  executionId?: string;
+  status?: string;
+  duration?: number;
+  recordingUrl?: string;
+  fromPhoneNumber?: string;
+  toPhoneNumber?: string;
+  recipientPhoneNumber?: string;
+  phone?: string;
+  businessName?: string;
+  purpose?: string;
+  errorMessage?: string;
+  completedAt?: string;
 }
 
 interface ChatSocketContextValue {
@@ -96,6 +113,9 @@ function authUserId(user: { id?: string; _id?: string } | null | undefined): str
 
 export function ChatSocketProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const userId = authUserId(user as { id?: string; _id?: string } | null);
 
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -367,7 +387,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
             notification.onclick = () => {
               window.focus();
               if (typedMsg?.conversation) {
-                window.location.href = `/communication/chats?conv=${typedMsg.conversation}`;
+                routerRef.current.push(`/communication/chats?conv=${typedMsg.conversation}`);
               }
             };
           }

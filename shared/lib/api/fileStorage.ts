@@ -63,8 +63,13 @@ export async function uploadFile(
   formData.append("file", file);
   if (folder !== undefined && folder !== "") formData.append("folder", folder);
   const { data } = await apiClient.post<UploadFileResponse>(`${BASE}/upload`, formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+    transformRequest: [
+      (payload: unknown, headers: Record<string, string>) => {
+        delete headers["Content-Type"];
+        return payload;
+      },
+    ],
+  } as Parameters<typeof apiClient.post>[2]);
   return data.data;
 }
 

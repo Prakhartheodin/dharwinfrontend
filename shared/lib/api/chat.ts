@@ -79,7 +79,7 @@ const BASE = "/chats";
 export async function listConversations(params?: {
   page?: number;
   limit?: number;
-}): Promise<{ results: Conversation[]; page: number; limit: number; totalPages: number }> {
+}): Promise<{ results: Conversation[]; page: number; limit: number; total?: number; totalPages: number }> {
   const { data } = await apiClient.get(`${BASE}/conversations`, { params });
   return data;
 }
@@ -128,24 +128,29 @@ export async function uploadChatFiles(
   conversationId: string,
   files: File[],
   content?: string,
-  replyTo?: string
+  replyTo?: string,
+  onProgress?: (percent: number) => void
 ): Promise<Message> {
   const formData = new FormData();
   files.forEach((f) => formData.append("files", f));
   if (content) formData.append("content", content);
   if (replyTo) formData.append("replyTo", replyTo);
-  // Don't set Content-Type - let browser set multipart/form-data with boundary
   const { data } = await apiClient.post(
     `${BASE}/conversations/${conversationId}/messages/upload`,
     formData,
     {
       transformRequest: [
-        (data: unknown, headers: Record<string, string>) => {
+        (payload: unknown, headers: Record<string, string>) => {
           delete headers["Content-Type"];
-          return data;
+          return payload;
         },
       ],
-    } as any
+      onUploadProgress: (event) => {
+        if (onProgress && event.total) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      },
+    } as Parameters<typeof apiClient.post>[2]
   );
   return data;
 }

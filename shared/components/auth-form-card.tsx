@@ -6,7 +6,7 @@ import React, { type ReactNode } from "react";
 export function AuthFormCard({ children }: { children: ReactNode }) {
   return (
     <div
-      className="flex flex-col justify-center items-center w-full"
+      className="auth-form flex flex-col justify-center items-center w-full"
       style={{
         width: "100%",
         maxWidth: 540,

@@ -5,11 +5,11 @@ import React, { Fragment, useCallback, useEffect, useMemo, useState } from "reac
 import Link from "next/link";
 import {
   deleteBolnaCallRecord,
-  getBolnaCallRecords,
   syncBolnaCallRecords,
   type CallRecord,
 } from "@/shared/lib/api/bolna";
-import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
+import type { ChatCall } from "@/shared/lib/api/chat";
+import { listUnifiedCalls, type UnifiedCallResult } from "@/shared/lib/api/communication";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
 
@@ -19,6 +19,14 @@ type PurposeFilter = "all" | "job_recruiter" | "student_candidate";
 type UnifiedCall =
   | { source: "telephony"; data: CallRecord }
   | { source: "in_app"; data: ChatCall };
+
+/** Map server unified row to UI union type. */
+function mapUnifiedResult(row: UnifiedCallResult): UnifiedCall {
+  if (row.source === "telephony" && row.telephony) {
+    return { source: "telephony", data: row.telephony };
+  }
+  return { source: "in_app", data: (row.chatCall || {}) as ChatCall };
+}
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All Status" },
@@ -176,8 +184,10 @@ const Calling = () => {
 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [purposeFilter, setPurposeFilter] = useState<PurposeFilter>("all");
-  const [telephonyRecords, setTelephonyRecords] = useState<CallRecord[]>([]);
-  const [chatCalls, setChatCalls] = useState<ChatCall[]>([]);
+  const [unifiedCalls, setUnifiedCalls] = useState<UnifiedCall[]>([]);
+  const [totalCalls, setTotalCalls] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [sourceCounts, setSourceCounts] = useState({ all: 0, telephony: 0, in_app: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -185,10 +195,6 @@ const Calling = () => {
   const [statusFilter, setStatusFilter] = useState("all");
   const [pageSize, setPageSize] = useState(25);
   const [page, setPage] = useState(1);
-  const [telephonyTotal, setTelephonyTotal] = useState(0);
-  const [telephonyPages, setTelephonyPages] = useState(0);
-  const [chatTotal, setChatTotal] = useState(0);
-  const [chatPages, setChatPages] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
@@ -240,74 +246,61 @@ const Calling = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [detailsPanelOpen, closeCallDetails]);
 
-  const fetchTelephony = useCallback(async () => {
-    const data = await getBolnaCallRecords({
-      page,
-      limit: pageSize,
-      search: searchSubmitted || undefined,
-      status: statusFilter !== "all" ? statusFilter : undefined,
-      sortBy: "createdAt",
-      order: "desc",
-    });
-    return { records: data.records || [], total: data.total ?? 0, totalPages: data.totalPages ?? 1 };
-  }, [page, pageSize, searchSubmitted, statusFilter]);
-
-  const fetchChatCalls = useCallback(async () => {
-    const data = await listChatCalls({ page: 1, limit: 500 });
-    return {
-      results: data.results || [],
-      total: (data.results || []).length,
-      totalPages: data.totalPages ?? 1,
-    };
+  const fetchSourceCounts = useCallback(async () => {
+    try {
+      const [allRes, telRes, appRes] = await Promise.all([
+        listUnifiedCalls({ source: "all", page: 1, limit: 1 }),
+        listUnifiedCalls({ source: "telephony", page: 1, limit: 1 }),
+        listUnifiedCalls({ source: "in_app", page: 1, limit: 1 }),
+      ]);
+      setSourceCounts({
+        all: allRes.total,
+        telephony: telRes.total,
+        in_app: appRes.total,
+      });
+    } catch {
+      /* counts are non-blocking */
+    }
   }, []);
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const fetchTelephonyNeeded = sourceFilter === "all" || sourceFilter === "telephony";
-      const fetchChatNeeded = sourceFilter === "all" || sourceFilter === "in_app";
-
-      const [telephonyRes, chatRes] = await Promise.all([
-        fetchTelephonyNeeded ? fetchTelephony() : Promise.resolve(null),
-        fetchChatNeeded ? fetchChatCalls() : Promise.resolve(null),
-      ]);
-
-      if (telephonyRes) {
-        setTelephonyRecords(telephonyRes.records);
-        setTelephonyTotal(telephonyRes.total);
-        setTelephonyPages(telephonyRes.totalPages);
-      } else {
-        setTelephonyRecords([]);
-        setTelephonyTotal(0);
-        setTelephonyPages(0);
-      }
-
-      if (chatRes) {
-        setChatCalls(chatRes.results);
-        setChatTotal(chatRes.total);
-        setChatPages(chatRes.totalPages);
-      } else {
-        setChatCalls([]);
-        setChatTotal(0);
-        setChatPages(0);
-      }
+      const data = await listUnifiedCalls({
+        page,
+        limit: pageSize,
+        source: sourceFilter,
+        search: searchSubmitted || undefined,
+        status: statusFilter !== "all" ? statusFilter : undefined,
+        purpose: isAdministrator && purposeFilter !== "all" ? purposeFilter : undefined,
+        sortBy: "createdAt",
+        order: "desc",
+      });
+      setUnifiedCalls((data.results || []).map(mapUnifiedResult));
+      setTotalCalls(data.total ?? 0);
+      setTotalPages(data.totalPages ?? 1);
     } catch (e) {
       const msg =
         e && typeof e === "object" && "response" in e
           ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
           : null;
       setError(msg || (e instanceof Error ? e.message : "Failed to load call records"));
-      setTelephonyRecords([]);
-      setChatCalls([]);
+      setUnifiedCalls([]);
+      setTotalCalls(0);
+      setTotalPages(1);
     } finally {
       setLoading(false);
     }
-  }, [sourceFilter, fetchTelephony, fetchChatCalls]);
+  }, [page, pageSize, sourceFilter, searchSubmitted, statusFilter, isAdministrator, purposeFilter]);
 
   useEffect(() => {
     fetchRecords();
   }, [fetchRecords]);
+
+  useEffect(() => {
+    fetchSourceCounts();
+  }, [fetchSourceCounts, syncing]);
 
   // Live updates from backend callSync.service.js. Admin sees every call:update;
   // non-admins receive only deltas they're scoped to (candidate/job rooms).
@@ -318,29 +311,33 @@ const Calling = () => {
     const off = onCallUpdate((evt: CallUpdateData) => {
       if (!evt?.executionId) return;
       let matched = false;
-      setTelephonyRecords((prev) => {
-        const idx = prev.findIndex((r) => r.executionId === evt.executionId);
+      setUnifiedCalls((prev) => {
+        const idx = prev.findIndex(
+          (u) => u.source === "telephony" && (u.data as CallRecord).executionId === evt.executionId
+        );
         if (idx === -1) return prev;
         matched = true;
         const next = prev.slice();
+        const record = next[idx].data as CallRecord;
         next[idx] = {
-          ...next[idx],
-          status: evt.status ?? next[idx].status,
-          duration: evt.duration ?? next[idx].duration,
-          recordingUrl: evt.recordingUrl ?? next[idx].recordingUrl,
-          fromPhoneNumber: evt.fromPhoneNumber ?? next[idx].fromPhoneNumber,
-          toPhoneNumber: evt.toPhoneNumber ?? next[idx].toPhoneNumber,
-          recipientPhoneNumber: evt.recipientPhoneNumber ?? next[idx].recipientPhoneNumber,
-          phone: evt.phone ?? next[idx].phone,
-          businessName: evt.businessName ?? next[idx].businessName,
-          purpose: evt.purpose ?? next[idx].purpose,
-          errorMessage: evt.errorMessage ?? next[idx].errorMessage,
-          completedAt: evt.completedAt ?? next[idx].completedAt,
+          source: "telephony",
+          data: {
+            ...record,
+            status: evt.status ?? record.status,
+            duration: evt.duration ?? record.duration,
+            recordingUrl: evt.recordingUrl ?? record.recordingUrl,
+            fromPhoneNumber: evt.fromPhoneNumber ?? record.fromPhoneNumber,
+            toPhoneNumber: evt.toPhoneNumber ?? record.toPhoneNumber,
+            recipientPhoneNumber: evt.recipientPhoneNumber ?? record.recipientPhoneNumber,
+            phone: evt.phone ?? record.phone,
+            businessName: evt.businessName ?? record.businessName,
+            purpose: evt.purpose ?? record.purpose,
+            errorMessage: evt.errorMessage ?? record.errorMessage,
+            completedAt: evt.completedAt ?? record.completedAt,
+          },
         };
         return next;
       });
-      // Unknown executionId on first page → refetch so new record appears with
-      // server-side enrichment (displayCategory + displayName).
       if (!matched) {
         fetchRecords();
       }
@@ -348,44 +345,9 @@ const Calling = () => {
     return off;
   }, [onCallUpdate, fetchRecords]);
 
-  const mergedCalls = useMemo((): UnifiedCall[] => {
-    const list: UnifiedCall[] = [];
-    if (sourceFilter === "telephony" || sourceFilter === "all") {
-      telephonyRecords.forEach((r) => list.push({ source: "telephony", data: r }));
-    }
-    if (sourceFilter === "in_app" || sourceFilter === "all") {
-      chatCalls.forEach((c) => list.push({ source: "in_app", data: c }));
-    }
-    let filtered = list;
-    if (statusFilter !== "all") {
-      filtered = filtered.filter((u) => {
-        const s = (getUnifiedStatus(u) || "").toLowerCase();
-        return s === statusFilter.toLowerCase().replace(/-/g, "_");
-      });
-    }
-    if (isAdministrator && purposeFilter !== "all" && (sourceFilter === "telephony" || sourceFilter === "all")) {
-      filtered = filtered.filter((u) => {
-        if (u.source === "in_app") return true;
-        const r = u.data as CallRecord;
-        const cat = purposeToCategory(r.purpose, r.displayCategory);
-        return categoryMatchesPurposeFilter(cat, purposeFilter);
-      });
-    }
-    filtered.sort((a, b) => {
-      const da = new Date(getUnifiedDate(a) || 0).getTime();
-      const db = new Date(getUnifiedDate(b) || 0).getTime();
-      return db - da;
-    });
-    return filtered;
-  }, [sourceFilter, telephonyRecords, chatCalls, statusFilter, isAdministrator, purposeFilter]);
-
-  const paginatedCalls = useMemo(() => {
-    const start = (page - 1) * pageSize;
-    return mergedCalls.slice(start, start + pageSize);
-  }, [mergedCalls, page, pageSize]);
-
-  const totalMerged = mergedCalls.length;
-  const totalPagesMerged = Math.ceil(totalMerged / pageSize) || 1;
+  const paginatedCalls = unifiedCalls;
+  const totalMerged = totalCalls;
+  const totalPagesMerged = totalPages;
   const rangeStart = totalMerged === 0 ? 0 : (page - 1) * pageSize + 1;
   const rangeEnd = Math.min(page * pageSize, totalMerged);
   const pageItems = useMemo(
@@ -409,6 +371,7 @@ const Calling = () => {
     try {
       await syncBolnaCallRecords();
       await fetchRecords();
+      await fetchSourceCounts();
     } catch (e) {
       const msg =
         e && typeof e === "object" && "response" in e
@@ -442,25 +405,6 @@ const Calling = () => {
       setDeletingId(null);
     }
   };
-
-  const sourceCounts = useMemo(() => {
-    let telephony = 0;
-    let inApp = 0;
-    for (const r of telephonyRecords) {
-      if (
-        purposeFilter === "all" ||
-        !isAdministrator ||
-        categoryMatchesPurposeFilter(
-          purposeToCategory(r.purpose, r.displayCategory),
-          purposeFilter
-        )
-      ) {
-        telephony += 1;
-      }
-    }
-    inApp = chatCalls.length;
-    return { all: telephony + inApp, telephony, in_app: inApp };
-  }, [telephonyRecords, chatCalls, purposeFilter, isAdministrator]);
 
   return (
     <Fragment>
