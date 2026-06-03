@@ -23,6 +23,16 @@ describe('timezone helpers', () => {
     expect(wall.date).toBe('2026-05-20');
     expect(wall.time).toMatch(/^\d{2}:\d{2}$/);
   });
+
+  // Regression: instant-meeting bug where an IST 8:00 PM wall-clock was stored as
+  // 20:00 UTC (via `${date}T${time}:00.000Z`) instead of 14:30 UTC, shifting the
+  // invitation email by +05:30 to "1:30 AM next day". Must convert with the zone.
+  it('stores an IST 20:00 wall-clock as 14:30 UTC, not 20:00 UTC', () => {
+    const utc = wallClockToUtc('2026-06-01', '20:00', 'Asia/Kolkata').toISOString();
+    expect(utc).toBe('2026-06-01T14:30:00.000Z');
+    // The old append-Z behavior would have produced this wrong instant:
+    expect(utc).not.toBe('2026-06-01T20:00:00.000Z');
+  });
 });
 
 describe('zone offset helpers', () => {

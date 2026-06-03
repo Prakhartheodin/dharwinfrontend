@@ -4,6 +4,7 @@ import Seo from "@/shared/layout-components/seo/seo"
 import React, { Fragment, useMemo, useState, useEffect, useCallback } from "react"
 import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl } from "@/shared/lib/join-room-url"
+import { wallClockToUtc, utcInstantToWallClock, getViewerTimezone } from "@/shared/lib/timezone"
 import { useTable, useSortBy, usePagination } from "react-table"
 import {
   createInternalMeeting,
@@ -46,16 +47,6 @@ function formatMeetingDate(iso: string): string {
   } catch {
     return "—"
   }
-}
-
-function buildScheduledAtFromForm(dateStr: string, timeStr: string): string {
-  const t = timeStr.trim()
-  const parts = t.split(":").filter((p) => p !== "")
-  const h = String(parts[0] ?? "0").padStart(2, "0").slice(-2)
-  const m = String(parts[1] ?? "00").padStart(2, "0").slice(0, 2)
-  const secRaw = String(parts[2] ?? "00").replace(/\D/g, "")
-  const s = secRaw.padStart(2, "0").slice(0, 2)
-  return `${dateStr}T${h}:${m}:${s}.000Z`
 }
 
 function participantsSummary(m: InternalMeeting): string {
@@ -300,12 +291,16 @@ export default function InternalMeetingsClient() {
       const meetingType =
         typeRaw === "video" ? "Video" : typeRaw === "in-person" ? "In-Person" : "Phone"
       const notes = getVal("internal-schedule-notes")
-      const scheduledAt = buildScheduledAtFromForm(date, time)
+      // The date/time inputs are the viewer's local wall-clock; convert to a UTC
+      // instant using that SAME zone (was: appending "Z", which mis-stored local
+      // wall-clock as UTC and shifted the email time by the viewer's offset).
+      const tz = getViewerTimezone()
+      const scheduledAt = wallClockToUtc(date, time, tz).toISOString()
       const payload: CreateInternalMeetingPayload = {
         title,
         description: description || undefined,
         scheduledAt,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Calcutta",
+        timezone: tz,
         durationMinutes,
         maxParticipants,
         allowGuestJoin,
@@ -385,7 +380,10 @@ export default function InternalMeetingsClient() {
         typeRaw === "video" ? "Video" : typeRaw === "in-person" ? "In-Person" : "Phone"
       const notes = getVal("edit-internal-notes")
       const status = getVal("edit-internal-status") as "scheduled" | "ended" | "cancelled"
-      const scheduledAt = date && time ? `${date}T${time}:00.000Z` : editMeeting.scheduledAt
+      // Convert the wall-clock edit inputs back to a UTC instant using the meeting's
+      // stored zone, matching how the create path and the edit display interpret them.
+      const editTz = editMeeting.timezone || getViewerTimezone()
+      const scheduledAt = date && time ? wallClockToUtc(date, time, editTz).toISOString() : editMeeting.scheduledAt
       const payload: UpdateInternalMeetingPayload = {
         title: title || editMeeting.title,
         description: description || undefined,
@@ -1001,7 +999,7 @@ export default function InternalMeetingsClient() {
                         type="date"
                         id="edit-internal-date"
                         key={editMeeting._id + "-dt"}
-                        defaultValue={editMeeting.scheduledAt?.slice(0, 10) ?? ""}
+                        defaultValue={editMeeting.scheduledAt ? utcInstantToWallClock(editMeeting.scheduledAt, editMeeting.timezone || getViewerTimezone()).date : ""}
                         className="form-control !py-2 !text-sm w-full rounded-lg"
                       />
                     </div>
@@ -1013,7 +1011,7 @@ export default function InternalMeetingsClient() {
                         type="time"
                         id="edit-internal-time"
                         key={editMeeting._id + "-tm"}
-                        defaultValue={editMeeting.scheduledAt?.slice(11, 16) ?? ""}
+                        defaultValue={editMeeting.scheduledAt ? utcInstantToWallClock(editMeeting.scheduledAt, editMeeting.timezone || getViewerTimezone()).time : ""}
                         className="form-control !py-2 !text-sm w-full rounded-lg"
                       />
                     </div>
