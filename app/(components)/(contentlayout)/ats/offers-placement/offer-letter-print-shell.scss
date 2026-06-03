@@ -136,6 +136,30 @@
     line-height: 1.55;
   }
 
+  /* Footer = position:fixed band pinned to the BOTTOM of every page (incl. a short last page,
+     where a <tfoot> would float up). The <tfoot> STAYS in the table as an invisible spacer:
+     table-footer-group reserves its height on every page intrinsically — so body text never
+     underlaps the fixed band — and unlike a @page bottom margin this can't be overridden by the
+     print dialog's "Margins: None". Its content is hidden so only the fixed band paints green. */
+  #offer-letter-preview-root [class*='letterPrintTable'] tfoot {
+    display: table-footer-group !important;
+  }
+
+  #offer-letter-preview-root [class*='letterPrintTable'] tfoot [class*='letterFooter'] {
+    visibility: hidden !important;
+  }
+
+  #offer-letter-preview-root [class*='printFixedFooter'] {
+    display: block !important;
+    position: fixed !important;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
   #offer-letter-preview-root,
   #offer-letter-preview-root * {
     -webkit-print-color-adjust: exact;
@@ -143,7 +167,8 @@
   }
 
   [class*='sectionTitleHl'] {
-    background-color: #ffd700 !important;
+    background-color: transparent !important;
+    color: #111 !important;
   }
 
   /* Long lists must fragment — do not set break-inside:avoid on ul/ol globally */

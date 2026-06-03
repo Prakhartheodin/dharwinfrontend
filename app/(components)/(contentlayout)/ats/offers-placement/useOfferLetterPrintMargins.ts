@@ -28,14 +28,25 @@ function pxToMm(px: number): number {
   return Math.ceil(px * PX_TO_MM * 10) / 10
 }
 
-const INFLOW_SIDE_MM = 10
-
-/** Multi-sheet letter: header/footer repeat in-flow in each sheet — no fixed bands. */
+/**
+ * Multi-sheet letter: header/footer are part of each in-flow sheet (which is sized to a
+ * full A4 page, 1123px ≈ 297mm). The @page margin MUST be 0 — any page margin shrinks the
+ * printable area below the sheet height, so the sheet overflows and its bottom band (the
+ * green footer) spills onto the next printed page. margin:0 also lets the footer bleed to
+ * the page edge (Figma). Horizontal insets come from the sheet's own padding.
+ */
 function injectInFlowSheetPrintMargins(): void {
+  /* Force A4 so the page box matches the in-flow sheet (sized 297mm in print). Without a
+     fixed size Chrome defaults to Letter (US) — 1056px tall vs the 1123px A4 sheet — so the
+     sheet overflows and the green footer spills to a second page. margin:0 = footer bleeds
+     to the page edge (Figma); horizontal insets come from the sheet's own padding. */
+  /* margin:0 (full-bleed footer). Footer space is reserved by an invisible <tfoot> spacer in
+     the table (intrinsic layout, immune to the print dialog's Margins setting) — NOT by @page
+     margin, which the user can override with "Margins: None". */
   const css = `@media print {
   @page {
-    size: auto;
-    margin: ${INFLOW_SIDE_MM}mm;
+    size: A4;
+    margin: 0;
   }
 }
 `

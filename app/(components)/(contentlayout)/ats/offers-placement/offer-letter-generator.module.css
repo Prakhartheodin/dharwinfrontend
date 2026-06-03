@@ -2,6 +2,10 @@
   position: relative;
   --brand-blue: #1e4080;
   --brand-green: #4a9e4a;
+  /* Figma "Letter of Appointment" template greens */
+  --brand-green-strong: #34b34c;
+  --brand-green-dark: #1f8a37;
+  --brand-green-tint: #edf8ef;
   --accent: #2563eb;
   --accent-light: #eff6ff;
   --surface: #ffffff;
@@ -471,6 +475,13 @@
 
 /* Stacked “pages” — each sheet repeats in-flow head + body + foot (print/PDF merges as one job). */
 .letterSheetsRoot {
+  /* The print iframe clones THIS root without its `.olg` ancestor, so the brand-green
+     custom properties (defined on `.olg`) must also live here — otherwise every
+     var(--brand-green-*) (footer band, header divider, section underlines, badge) resolves
+     to nothing in print and the green disappears. */
+  --brand-green-strong: #34b34c;
+  --brand-green-dark: #1f8a37;
+  --brand-green-tint: #edf8ef;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -486,6 +497,8 @@
 }
 
 .letterPrintSheet {
+  position: relative;
+  overflow: hidden; /* clips the corner watermark to the page edge (Figma bleed) */
   width: 794px;
   max-width: 100%;
   min-height: 1123px; /* ~A4 at 96dpi; body flex-grows so footer sits at bottom */
@@ -495,6 +508,30 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Faint green rotated rounded-square watermark, top-right, bleeding off the page (Figma). */
+.letterPrintSheet::before {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -70px;
+  width: 340px;
+  height: 320px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='320' viewBox='0 0 340 320' fill='none'%3E%3Cg stroke='%2334b34c' stroke-opacity='0.13' stroke-width='9'%3E%3Crect x='150' y='28' width='92' height='92' rx='17' transform='rotate(26 196 74)'/%3E%3Crect x='232' y='96' width='92' height='92' rx='17' transform='rotate(26 278 142)'/%3E%3Crect x='86' y='96' width='92' height='92' rx='17' transform='rotate(26 132 142)'/%3E%3Crect x='168' y='170' width='92' height='92' rx='17' transform='rotate(26 214 216)'/%3E%3Crect x='256' y='2' width='58' height='58' rx='11' transform='rotate(26 285 31)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: top right;
+}
+
+.letterPrintSheet .screenOnlyLetterHead,
+.letterPrintSheet .letterPage,
+.letterPrintSheet .screenOnlyLetterFooter {
+  position: relative;
+  z-index: 1;
 }
 
 .letterPrintSheet .screenOnlyLetterHead,
@@ -527,15 +564,15 @@
 .screenOnlyLetterHead {
   display: block;
   box-sizing: border-box;
-  padding: 10px 32px 8px 32px;
-  border-bottom: 1px solid #e0e0e0;
+  padding: 14px 48px 0 48px;
+  border-bottom: none;
 }
 
 .screenOnlyLetterFooter {
   display: block;
   box-sizing: border-box;
-  padding: 8px 32px 10px 32px;
-  border-top: 1px solid #e0e0e0;
+  padding: 0;
+  border: none;
 }
 
 .letterPage {
@@ -579,13 +616,15 @@
 }
 
 .contactIcon {
-  color: #1e4080;
+  color: var(--brand-green-strong);
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
 }
 
 .letterDivider {
   border: none;
-  border-top: 1.5px solid #222;
+  border-top: 1.5px solid var(--brand-green-strong);
   margin: 10px 0 12px;
 }
 
@@ -595,7 +634,8 @@
   font-size: 13.5pt;
   margin-bottom: 10px;
   text-decoration: underline;
-  color: #1e4080;
+  text-decoration-color: var(--brand-green-strong);
+  color: var(--brand-green-dark);
 }
 
 .letterDate {
@@ -606,15 +646,17 @@
 
 .offerBadge {
   display: inline-block;
-  border: 2px solid #f5c518;
-  background: #fff176;
-  padding: 3px 18px;
+  border: 1.5px solid var(--brand-green-strong);
+  background: var(--brand-green-tint);
+  padding: 5px 18px;
   font-weight: 700;
   font-size: 13pt;
   margin: 0 auto 14px;
   text-align: center;
   width: 100%;
-  color: #111;
+  border-radius: 4px;
+  color: var(--brand-green-dark);
+  letter-spacing: 0.2px;
 }
 
 .letterTo {
@@ -639,20 +681,26 @@
 }
 
 .sectionTitleHl {
-  background: #fff176;
+  background: transparent;
+  color: #111;
   font-weight: 700;
   font-size: 12.5pt;
   display: inline-block;
-  padding: 0 2px;
+  padding: 0;
   margin: 8px 0 4px;
   text-decoration: underline;
+  text-decoration-color: var(--brand-green-strong);
+  text-underline-offset: 2px;
 }
 
 .sectionTitlePlain {
   font-weight: 700;
   font-size: 12.5pt;
   margin: 8px 0 4px;
+  color: #111;
   text-decoration: underline;
+  text-decoration-color: var(--brand-green-strong);
+  text-underline-offset: 2px;
 }
 
 /* Groups section title + intro paragraph so print does not split them from the following <ul>. */
@@ -750,22 +798,107 @@
 }
 
 .letterFooter {
+  position: relative;
+  overflow: hidden;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #fff;
-  border-top: 1.5px solid #222;
-  padding: 8px 48px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  background: var(--brand-green-strong);
+  border: none;
+  padding: 20px 48px;
+  min-height: 92px;
   font-size: 10pt;
-  color: #333;
-  gap: 10px;
+  color: #fff;
+  gap: 7px;
   flex-shrink: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* Decorative rotated rounded-square watermark (Figma), bottom-right of the band. */
+.letterFooter::after {
+  content: '';
+  position: absolute;
+  right: -28px;
+  bottom: -34px;
+  width: 220px;
+  height: 150px;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='150' viewBox='0 0 220 150' fill='none'%3E%3Cg stroke='%23ffffff' stroke-opacity='0.22' stroke-width='4'%3E%3Crect x='120' y='6' width='52' height='52' rx='9' transform='rotate(20 146 32)'/%3E%3Crect x='168' y='44' width='52' height='52' rx='9' transform='rotate(20 194 70)'/%3E%3Crect x='150' y='84' width='34' height='34' rx='6' transform='rotate(20 167 101)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right bottom;
 }
 
 .footerItem {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
+  color: #fff;
+  font-weight: 500;
+}
+
+.footerItem svg {
+  flex-shrink: 0;
+}
+
+/* ---- Print table: repeating letterhead (<thead>) + green footer (<tfoot>) on every page.
+   The browser repeats table header/footer groups on each printed page natively, so this is
+   the one approach that renders the same in interactive window.print() and headless. ---- */
+.letterPrintTable {
+  width: 794px;
+  max-width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #fff;
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
+  color: #111;
+}
+
+.letterTableHeadCell {
+  position: relative;
+  overflow: hidden;
+  padding: 14px 48px 0 48px;
+  vertical-align: top;
+}
+
+/* Faint green corner watermark, repeats with the header on every page (Figma). */
+.letterTableHeadCell::after {
+  content: '';
+  position: absolute;
+  top: -60px;
+  right: -70px;
+  width: 340px;
+  height: 320px;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='320' viewBox='0 0 340 320' fill='none'%3E%3Cg stroke='%2334b34c' stroke-opacity='0.13' stroke-width='9'%3E%3Crect x='150' y='28' width='92' height='92' rx='17' transform='rotate(26 196 74)'/%3E%3Crect x='232' y='96' width='92' height='92' rx='17' transform='rotate(26 278 142)'/%3E%3Crect x='86' y='96' width='92' height='92' rx='17' transform='rotate(26 132 142)'/%3E%3Crect x='168' y='170' width='92' height='92' rx='17' transform='rotate(26 214 216)'/%3E%3Crect x='256' y='2' width='58' height='58' rx='11' transform='rotate(26 285 31)'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: top right;
+}
+
+.letterTableHeadCell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.letterTableBodyCell {
+  padding: 16px 48px 24px 48px;
+  vertical-align: top;
+}
+
+/* Footer cell has no padding so the green band bleeds full-width to the page edges. */
+.letterTableFootCell {
+  padding: 0;
+  vertical-align: bottom;
+}
+
+/* Print-only fixed footer (shown via offer-letter-print-shell @media print). Hidden on screen,
+   where the <tfoot> renders the footer at the bottom of the preview card instead. */
+.printFixedFooter {
+  display: none;
 }
 
 @media print {
@@ -934,11 +1067,21 @@
     display: none !important;
   }
 
-  /* Multi-sheet in-flow: head/foot print on every page; merge in one PDF job. */
+  /* Multi-sheet in-flow: head/foot print on every page; merge in one PDF job.
+     @page is forced A4/margin:0 (page box ≈ 1122.5px). The header + green footer are NORMAL
+     flex children (footer in-flow — Chrome's interactive print DROPS position:absolute inside
+     overflow:hidden, so it must NOT be absolute). The body (flex:1) grows to push the footer to
+     the bottom. Sheet height is fixed at 1121px (just under the page) so the in-flow footer
+     never tips onto a 2nd page; overflow:hidden clips any sub-pixel (packer keeps content in
+     budget, so nothing real is clipped). */
   .letterPrintSheet {
     display: flex !important;
     flex-direction: column !important;
-    min-height: 1123px;
+    width: 210mm;
+    height: 1121px !important;
+    min-height: 1121px !important;
+    max-height: 1121px !important;
+    overflow: hidden !important;
     break-after: page;
     page-break-after: always;
     box-shadow: none !important;
@@ -949,10 +1092,35 @@
     page-break-after: auto;
   }
 
-  /* Allow body column to absorb space so the footer isn’t stuck under short content. */
+  /* Body grows to push the in-flow green footer to the sheet bottom. */
   .letterPrintSheet .letterPage {
-    flex: 1 1 0 !important;
+    flex: 1 1 auto !important;
     min-height: 0 !important;
+  }
+
+  /* Print table: header/footer repeat on every page (native), body paginates between them. */
+  .letterPrintTable {
+    width: 100%;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .letterPrintTable thead {
+    display: table-header-group;
+  }
+  .letterPrintTable tfoot {
+    display: table-footer-group;
+  }
+  .letterPrintTable tbody {
+    display: table-row-group;
+  }
+  .letterTableBodyCell {
+    padding: 8px 48px 16px 48px !important;
+  }
+  .letterPrintTable,
+  .letterPrintTable * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   /* Repeating fixed #offer-letter-print-header / #offer-letter-print-footer: offer-letter-print-shell.scss */

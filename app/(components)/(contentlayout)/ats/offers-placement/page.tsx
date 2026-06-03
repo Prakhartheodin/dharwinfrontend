@@ -333,7 +333,12 @@ const OffersPlacement = () => {
     const needRoleDefaults = !base.rolesText.trim()
     const needTrainingDefaults = isIntern && !base.trainingText.trim()
     if (needRoleDefaults || needTrainingDefaults) {
-      getOfferLetterDefaults(o.job?.title || '')
+      /* Pass the linked job id so the server derives Roles & Responsibilities from that
+         job's description (deriveRoleResponsibilities) instead of generic title defaults. */
+      const offerJobId =
+        (o.job as { _id?: string; id?: string } | undefined)?._id ??
+        (o.job as { id?: string } | undefined)?.id
+      getOfferLetterDefaults(o.job?.title || '', offerJobId)
         .then((d) => {
           setLetterForm((f) => ({
             ...f,

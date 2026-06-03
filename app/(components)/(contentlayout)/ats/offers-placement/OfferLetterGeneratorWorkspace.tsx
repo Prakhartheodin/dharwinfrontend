@@ -9,7 +9,7 @@ import { useOfferLetterPrintMargins } from './useOfferLetterPrintMargins'
 import { DEFAULT_OFFER_LETTER_BODY_MAX_PX, packSectionHeightsIntoPageStarts } from './offer-letter-pack-sections'
 import './offer-letter-print-shell.scss'
 import type { StaticImageData } from 'next/image'
-import offerLetterLogoAsset from './offer-letter-images/logo.jpeg'
+import offerLetterLogoAsset from './offer-letter-images/logo.png'
 import offerLetterCeoSigAsset from './offer-letter-images/ceo-signature-harvinder.png'
 import {
   type EligibilityPresetKey,
@@ -297,23 +297,32 @@ export function OfferLetterGeneratorWorkspace({
     /** Branded logo: `logo.jpeg` + `ceo-signature-harvinder.png` in `offer-letter-images/`. */
     const letterheadLogoHtml = `<img class="${styles.letterLogoImg}" src="${offerLetterLogoSrcAbsolute()}" alt="Dharwin Business Solutions" />`
 
+    /* Inline line icons (stroke = currentColor): green in the header, white in the green footer band. */
+    const contactSvg = (paths: string) =>
+      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
+    const PATH_MAIL = '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/>'
+    const PATH_PIN = '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>'
+    const PATH_GLOBE = '<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20Z"/>'
+
     /** Shared letterhead (logo + contact + rule). Duplicated: on-screen in letterPage, print-only in letterPrintHeader. */
     const letterHeadAndRule = `
       <div class="${styles.letterHeader}">
         <div class="${styles.letterLogo}">${letterheadLogoHtml}</div>
         <div class="${styles.letterContact}">
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">✉</span><span>Support@dharwinbusinesssolutions.com</span></div>
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">📍</span><span>30N Gould St, STE R, Sheridan, WY, 82801</span></div>
-          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">🌐</span><span>www.dharwinbusinesssolutions.com</span></div>
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">${contactSvg(PATH_MAIL)}</span><span>Support@dharwinbusinesssolutions.com</span></div>
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">${contactSvg(PATH_PIN)}</span><span>30N Gould St, STE R, Sheridan, WY, 82801</span></div>
+          <div class="${styles.letterContactRow}"><span class="${styles.contactIcon}">${contactSvg(PATH_GLOBE)}</span><span>www.dharwinbusinesssolutions.com</span></div>
         </div>
       </div>
       <hr class="${styles.letterDivider}" />
     `
 
+    const footerSvg = (paths: string) =>
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`
     const letterFooter3Col = `
-      <div class="${styles.footerItem}">✉ support@dharwinbusinesssolutions.com</div>
-      <div class="${styles.footerItem}">📍 30 N Gould St, STE R Sheridan, WY82801, USA</div>
-      <div class="${styles.footerItem}">🌐 Website: www.dharwinbusinesssolutions.com</div>
+      <div class="${styles.footerItem}">${footerSvg(PATH_MAIL)}<span>support@dharwinbusinesssolutions.com</span></div>
+      <div class="${styles.footerItem}">${footerSvg(PATH_PIN)}<span>30 N Gould St, STE R Sheridan, WY82801, USA</span></div>
+      <div class="${styles.footerItem}">${footerSvg(PATH_GLOBE)}<span>www.dharwinbusinesssolutions.com</span></div>
     `
 
     let compSection = ''
@@ -517,8 +526,16 @@ export function OfferLetterGeneratorWorkspace({
       const heights = [...nodes].map((n) => n.getBoundingClientRect().height)
       const bodySlot = bodyBudgetProbeRef.current?.querySelector<HTMLElement>('[data-olg-body-budget]')
       const raw = bodySlot?.getBoundingClientRect().height ?? 0
-      /* Tighten slightly so a block that *barely* fits the probe doesn’t clip next to the footer. */
-      const maxPx = raw > 80 ? Math.floor(raw) - 8 : DEFAULT_OFFER_LETTER_BODY_MAX_PX
+      /* `raw` is the .letterPage *border-box*; sections lay out inside its content box, so
+         subtract the vertical padding (~56px). Without it the last block on a sheet overflows
+         the page bottom into the (taller) green footer band, pushing the footer to a 2nd page. */
+      let padV = 0
+      if (bodySlot) {
+        const cs = getComputedStyle(bodySlot)
+        padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0)
+      }
+      /* Tighten further so a block that *barely* fits the probe doesn’t clip next to the footer. */
+      const maxPx = raw > 80 ? Math.floor(raw - padV) - 8 : DEFAULT_OFFER_LETTER_BODY_MAX_PX
       const starts = packSectionHeightsIntoPageStarts(heights, maxPx)
       setSheetStarts((prev) =>
         prev.length === starts.length && prev.every((v, i) => v === starts[i]) ? prev : starts
@@ -1009,35 +1026,49 @@ export function OfferLetterGeneratorWorkspace({
           <div
             id={OFFER_LETTER_PREVIEW_ID}
             data-inflow-sheets
-            className={`${styles.letterSheetsRoot} ${styles.letterInFlowPaged} ${dmSans.variable}`}
+            className={`${styles.letterSheetsRoot} ${dmSans.variable}`}
             style={{ fontFamily: 'var(--font-offer-letter-dm), system-ui, sans-serif' }}
           >
-            {sheetStarts.map((start, pi) => {
-              const end = sheetStarts[pi + 1] ?? letterModel.sections.length
-              return (
-                <div key={pi} className={styles.letterPrintSheet}>
-                  <div
-                    className={styles.screenOnlyLetterHead}
-                    dangerouslySetInnerHTML={{ __html: letterModel.letterHeadAndRule }}
-                  />
-                  <div className={styles.letterPage}>
-                    {letterModel.sections.slice(start, end).map((s) => (
-                      <div
-                        key={`${pi}-${s.id}`}
-                        data-olg-section
-                        dangerouslySetInnerHTML={{ __html: s.html }}
-                      />
+            {/* Repeating letterhead/footer via <thead>/<tfoot>: the browser paints these on
+                EVERY printed page natively — identical in interactive window.print() and in
+                headless rendering — so there is no per-sheet height math, overflow clipping,
+                or absolute positioning (all of which Chrome's interactive print mishandles). */}
+            <table className={styles.letterPrintTable}>
+              <thead className={styles.letterTableHead}>
+                <tr>
+                  <td className={styles.letterTableHeadCell}>
+                    <div dangerouslySetInnerHTML={{ __html: letterModel.letterHeadAndRule }} />
+                  </td>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className={styles.letterTableBodyCell}>
+                    {letterModel.sections.map((s) => (
+                      <div key={s.id} dangerouslySetInnerHTML={{ __html: s.html }} />
                     ))}
-                  </div>
-                  <div className={styles.screenOnlyLetterFooter}>
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot className={styles.letterTableFoot}>
+                <tr>
+                  <td className={styles.letterTableFootCell}>
                     <div
                       className={styles.letterFooter}
                       dangerouslySetInnerHTML={{ __html: letterModel.letterFooter3Col }}
                     />
-                  </div>
-                </div>
-              )
-            })}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+            {/* Print-only: position:fixed footer so the green band sits at the BOTTOM of every
+                page (incl. a short last page). Hidden on screen (the <tfoot> shows there). */}
+            <div className={styles.printFixedFooter}>
+              <div
+                className={styles.letterFooter}
+                dangerouslySetInnerHTML={{ __html: letterModel.letterFooter3Col }}
+              />
+            </div>
           </div>
         </div>
       </div>

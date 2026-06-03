@@ -101,7 +101,11 @@ export default function NewOfferLetterPage() {
         const needRoleDefaults = !base.rolesText.trim();
         const needTrainingDefaults = isIntern && !base.trainingText.trim();
         if (needRoleDefaults || needTrainingDefaults) {
-          getOfferLetterDefaults(o.job?.title || "")
+          /* Pass job id so Roles & Responsibilities are derived from the linked job's description. */
+          const offerJobId =
+            (o.job as { _id?: string; id?: string } | undefined)?._id ??
+            (o.job as { id?: string } | undefined)?.id;
+          getOfferLetterDefaults(o.job?.title || "", offerJobId)
             .then((d) => {
               if (cancelled) return;
               setLetterForm((f) => ({
