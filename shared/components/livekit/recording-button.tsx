@@ -4,31 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useRoomContext } from "@livekit/components-react";
 import * as livekitApi from "@/shared/lib/api/livekit";
-
-/** Parse API / LiveKit startedAt to epoch ms (handles ns bigint-as-string, ISO, ms). */
-function parseRecordingStartedAtMs(raw: unknown): number | null {
-  if (raw == null || raw === "") return null;
-  if (typeof raw === "number" && Number.isFinite(raw)) {
-    return raw > 1e15 ? Math.floor(raw / 1e6) : Math.floor(raw);
-  }
-  if (typeof raw === "string") {
-    const s = raw.trim();
-    if (/^\d+$/.test(s)) {
-      if (s.length > 15) {
-        try {
-          return Number(BigInt(s) / 1000000n);
-        } catch {
-          return null;
-        }
-      }
-      const ms = Number(s);
-      return Number.isFinite(ms) ? Math.floor(ms) : null;
-    }
-    const t = Date.parse(s);
-    return Number.isNaN(t) ? null : t;
-  }
-  return null;
-}
+import {
+  reconcileRecordingState,
+  IDLE_RECORDING_STATE,
+  type RecordingUiState,
+} from "./recording-state";
 
 interface RecordingButtonProps {
   roomName: string;
@@ -46,7 +26,16 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
   const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showStopConfirm, setShowStopConfirm] = useState(false);
-  const localAnchorRef = useRef<number | null>(null);
+  // Source of truth for the poll reducer. The 5s interval closure can't see the
+  // latest React state, so it reads/writes this ref; applyState mirrors it to state.
+  const stateRef = useRef<RecordingUiState>(IDLE_RECORDING_STATE);
+
+  const applyState = (next: RecordingUiState) => {
+    stateRef.current = next;
+    setIsRecording(next.isRecording);
+    setEgressId(next.egressId);
+    setRecordingStartTime(next.startTime);
+  };
 
   const getStatus = () =>
     hostEmail
@@ -57,19 +46,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
     const checkStatus = async () => {
       try {
         const data = await getStatus();
-        setIsRecording(data.isRecording);
-        if (data.recordings && data.recordings.length > 0) {
-          setEgressId(data.recordings[0].egressId);
-          const startedMs = parseRecordingStartedAtMs(data.recordings[0].startedAt);
-          if (startedMs != null && Number.isFinite(startedMs)) {
-            setRecordingStartTime(startedMs);
-          } else if (data.isRecording && localAnchorRef.current != null) {
-            setRecordingStartTime(localAnchorRef.current);
-          }
-        } else {
-          setRecordingStartTime(null);
-          localAnchorRef.current = null;
-        }
+        applyState(reconcileRecordingState(stateRef.current, data, Date.now()));
       } catch (err) {
         console.error("Error checking recording status:", err);
       }
@@ -78,6 +55,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
     checkStatus();
     const interval = setInterval(checkStatus, 5000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomName, hostEmail]);
 
   useEffect(() => {
@@ -109,11 +87,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       const data = hostEmail
         ? await livekitApi.startRecordingPublic(roomName, hostEmail)
         : await livekitApi.startRecording(roomName);
-      setIsRecording(true);
-      setEgressId(data.egressId);
-      const now = Date.now();
-      localAnchorRef.current = now;
-      setRecordingStartTime(now);
+      applyState({ isRecording: true, egressId: data.egressId, startTime: Date.now(), missCount: 0 });
       onRecordingStarted?.();
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
@@ -137,10 +111,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
       } else {
         await livekitApi.stopRecording(egressId, roomName);
       }
-      setIsRecording(false);
-      setEgressId(null);
-      setRecordingStartTime(null);
-      localAnchorRef.current = null;
+      applyState(IDLE_RECORDING_STATE);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { message?: string } }; message?: string };
       setError(e?.response?.data?.message || e?.message || "Failed to stop recording");
