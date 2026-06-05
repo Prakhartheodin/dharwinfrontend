@@ -6,6 +6,7 @@ import { connect } from 'react-redux';
 import store from '@/shared/redux/store';
 import { basePath } from '@/next.config';
 import { useAuth } from '@/shared/contexts/auth-context';
+import { useHeaderProfileSummary } from '@/shared/hooks/use-header-profile-summary';
 import { ROUTES } from '@/shared/lib/constants';
 import { isPublicLayoutPath } from '@/shared/lib/public-layout-paths';
 import { usePathname } from 'next/navigation';
@@ -38,6 +39,7 @@ function groupByDate<T extends { createdAt?: string }>(items: T[]): Record<strin
 
 const Header = ({ local_varaiable, ThemeChanger }: any) => {
   const { user, impersonation, logout, stopImpersonation, isLoading: authIsLoading } = useAuth();
+  const { roleDisplayName, employeeId, showEmployeeId } = useHeaderProfileSummary();
   const pathname = usePathname();
   const router = useRouter();
   const guestPublicLayout = !user && isPublicLayoutPath(pathname ?? "");
@@ -717,9 +719,24 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                       {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
                     </span>
                   )}
-                  <span className="md:block hidden dropdown-profile text-start">
-                    <span className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] block">{user?.name ?? user?.email ?? "User"}</span>
-                    <span className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] ">{user?.role ?? "User"}</span>
+                  <span className="md:block hidden dropdown-profile text-start max-w-[10rem]">
+                    <span className="font-semibold mb-0 leading-none text-[#536485] text-[0.813rem] block truncate" title={user?.name ?? user?.email ?? "User"}>
+                      {user?.name ?? user?.email ?? "User"}
+                    </span>
+                    <span
+                      className="opacity-[0.7] font-normal text-[#536485] block text-[0.6875rem] truncate"
+                      title={roleDisplayName}
+                    >
+                      {roleDisplayName}
+                    </span>
+                    {showEmployeeId && employeeId ? (
+                      <span
+                        className="opacity-[0.85] font-mono font-normal text-[#536485] block text-[0.625rem] tracking-tight truncate"
+                        title={`Employee ID: ${employeeId}`}
+                      >
+                        {employeeId}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
                 <div

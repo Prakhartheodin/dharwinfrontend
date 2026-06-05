@@ -37,7 +37,7 @@ function Menuloop({ local_varaiable ,MenuItems, toggleSidemenu, level , HoverTog
         {level <= 1 ? <li className="slide side-menu__label1">
           <Link href="#!" scroll={false}>{MenuItems.title}</Link>
         </li> : ""}
-        {MenuItems.children.map((firstlevel: any, index:any) =>
+        {MenuItems.children.filter((firstlevel: any) => !firstlevel?.hidden).map((firstlevel: any, index:any) =>
           <li className={`${firstlevel.menutitle ? 'slide__category' : ''} ${firstlevel?.type == 'empty' ? 'slide' : ''} ${firstlevel?.type == 'link' ? 'slide' : ''} ${firstlevel?.type == 'sub' ? 'slide has-sub' : ''} ${firstlevel?.active ? 'open' : ''} ${firstlevel?.selected ? 'active' : ''}`} key={index}>
             {firstlevel.type === "link" ?
               <Link href={firstlevel.path} className={`side-menu__item ${firstlevel.selected ? 'active' : ''}`}>{firstlevel.icon}

@@ -10,6 +10,7 @@ import Menuloop from "./menuloop";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { MenuItems } from "./nav";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 import {
 	PATH_PERMISSION_PREFIX,
 	canAccessPath,
@@ -65,6 +66,39 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	};
 
 	const filteredMenuItems = useMemo(() => {
+		// Training Curriculum: label the Categories/Positions nav child by the user's view permissions.
+		// Mutates the original child (refs preserved so submenu toggle + active highlight keep working).
+		if (permissionsLoaded) {
+			const authView = { permissions: userPermissions, isPlatformSuperUser: isDesignatedSuperadmin };
+			const catView = hasPermission(authView, "view_training_categories");
+			const posView = hasPermission(authView, "view_training_positions");
+			const modView = hasPermission(authView, "view_training_modules");
+			const tc = (MenuItems as any[]).find((m) => m?.path === "/training/curriculum");
+			const setupChild = tc?.children?.find(
+				(c: any) => typeof c?.path === "string" && c.path.startsWith("/training/curriculum/setup")
+			);
+			if (setupChild) {
+				if (posView && !catView) {
+					setupChild.title = "Positions";
+					setupChild.path = "/training/curriculum/setup?tab=positions";
+				} else if (catView && !posView) {
+					setupChild.title = "Categories";
+					setupChild.path = "/training/curriculum/setup?tab=categories";
+				} else {
+					setupChild.title = "Categories & Positions";
+					setupChild.path = "/training/curriculum/setup?tab=categories";
+				}
+				// Hide the Categories/Positions link entirely when the user can view neither.
+				setupChild.hidden = !(catView || posView);
+			}
+			const modulesChild = tc?.children?.find(
+				(c: any) => c?.path === "/training/curriculum/modules"
+			);
+			if (modulesChild) {
+				modulesChild.hidden = !modView;
+			}
+		}
+
 		// Build menu from MenuItems: section titles only shown if they have at least one visible child.
 		const result: any[] = [];
 

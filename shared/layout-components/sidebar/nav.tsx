@@ -297,18 +297,9 @@ export const MenuItems: any = [
             children: [
               {
                 icon: CategoriesIcon,
-                title: "Categories",
+                title: "Categories & Positions",
                 type: "link",
-                path: "/training/curriculum/categories",
-                active: false,
-                selected: false,
-                dirchange: false,
-              },
-              {
-                icon: CategoriesIcon,
-                title: "Positions",
-                type: "link",
-                path: "/training/positions",
+                path: "/training/curriculum/setup?tab=categories",
                 active: false,
                 selected: false,
                 dirchange: false,
