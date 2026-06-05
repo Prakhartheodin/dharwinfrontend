@@ -680,6 +680,35 @@
   text-align: justify;
 }
 
+.letterRichContent {
+  margin: 6px 0 10px;
+  font-size: 12pt;
+  text-align: justify;
+  line-height: 1.45;
+}
+
+.letterRichContent :global(p) {
+  margin: 0 0 10px;
+}
+
+.letterRichContent :global(p:last-child) {
+  margin-bottom: 0;
+}
+
+.letterRichContent :global(ul),
+.letterRichContent :global(ol) {
+  padding-left: 22px;
+  margin: 4px 0 10px;
+}
+
+.letterRichContent :global(li) {
+  margin-bottom: 2px;
+}
+
+.letterRolesBlock .letterRichContent + p.letterBody {
+  margin-top: 12px;
+}
+
 .sectionTitleHl {
   background: transparent;
   color: #111;

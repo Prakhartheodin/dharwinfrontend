@@ -392,6 +392,39 @@ export function formatJobDescriptionForDisplay(raw: string): string {
   return sanitizeRichHtml(built);
 }
 
+/** Plain responsibility lines → sanitized HTML list (offer letter save fallback). */
+export function roleResponsibilitiesLinesToHtml(lines: string[]): string {
+  const items = lines.map((l) => l.trim()).filter(Boolean);
+  if (!items.length) return "";
+  return `<ul>${items.map((l) => `<li>${escapeHtmlText(l)}</li>`).join("")}</ul>`;
+}
+
+/** Extract responsibility lines from rich HTML for API `roleResponsibilities`. */
+export function roleResponsibilityLinesFromHtml(html: string): string[] {
+  if (!html?.trim()) return [];
+  const decoded = decodeHtmlEntities(html);
+  if (typeof document !== "undefined") {
+    const doc = new DOMParser().parseFromString(decoded, "text/html");
+    const fromLi = [...doc.querySelectorAll("li")]
+      .map((el) => el.textContent?.replace(/\s+/g, " ").trim())
+      .filter(Boolean) as string[];
+    if (fromLi.length) return fromLi;
+    const fromP = [...doc.querySelectorAll("p")]
+      .map((el) => el.textContent?.replace(/\s+/g, " ").trim())
+      .filter(Boolean) as string[];
+    if (fromP.length) return fromP;
+    const plain = doc.body.textContent?.replace(/\s+/g, " ").trim();
+    if (plain) return plain.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    return [];
+  }
+  const stripped = decoded
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ");
+  return stripped.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+}
+
 /** Tailwind Typography classes for job / company long-form text */
 export const JOB_DESCRIPTION_PROSE_CLASS =
   "prose prose-sm sm:prose-base dark:prose-invert max-w-none job-description-content " +

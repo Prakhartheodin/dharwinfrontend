@@ -20,7 +20,8 @@ import {
 import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-payload";
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
-import { combinedJobPostingDocText } from "../../job-posting-doc";
+import { combinedJobPostingDocText, resolveOfferLetterRolesHtml, resolveOfferLetterTrainingHtml } from "../../job-posting-doc";
+import { roleResponsibilitiesLinesToHtml } from "@/shared/lib/ats/jobDescriptionHtml";
 import { letterDateStampYmd } from "../../letter-date-stamp";
 
 function formatCandidateAddress(c: { address?: Offer["candidate"]["address"] } | null | undefined) {
@@ -84,8 +85,8 @@ export default function NewOfferLetterPage() {
           jobType: jt,
           weeklyHours: (o.weeklyHours === 25 ? 25 : 40) as 25 | 40,
           workLocation: o.workLocation || "Remote (USA)",
-          rolesText: o.roleResponsibilities && o.roleResponsibilities.length ? o.roleResponsibilities.join("\n") : "",
-          trainingText: o.trainingOutcomes && o.trainingOutcomes.length ? o.trainingOutcomes.join("\n") : "",
+          rolesText: resolveOfferLetterRolesHtml(o),
+          trainingText: resolveOfferLetterTrainingHtml(o),
           annualGrossCtc:
             o.ctcBreakdown?.gross != null && Number(o.ctcBreakdown.gross) > 0 ? String(o.ctcBreakdown.gross) : "",
           ctcCurrency: (o.ctcBreakdown?.currency || "USD").toUpperCase() === "INR" ? "INR" : "USD",
@@ -110,9 +111,9 @@ export default function NewOfferLetterPage() {
               if (cancelled) return;
               setLetterForm((f) => ({
                 ...f,
-                rolesText: f.rolesText.trim() ? f.rolesText : d.roleResponsibilities.join("\n"),
+                rolesText: f.rolesText.trim() ? f.rolesText : roleResponsibilitiesLinesToHtml(d.roleResponsibilities),
                 trainingText:
-                  f.trainingText.trim() ? f.trainingText : isIntern ? d.trainingOutcomes.join("\n") : f.trainingText,
+                  f.trainingText.trim() ? f.trainingText : isIntern ? roleResponsibilitiesLinesToHtml(d.trainingOutcomes) : f.trainingText,
               }));
             })
             .catch(() => {});

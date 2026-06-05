@@ -80,7 +80,9 @@ export interface Offer {
   weeklyHours?: 25 | 40;
   workLocation?: string | null;
   roleResponsibilities?: string[];
+  positionOverviewHtml?: string | null;
   trainingOutcomes?: string[];
+  trainingOutcomesHtml?: string | null;
   compensationNarrative?: string | null;
   academicAlignmentNote?: string | null;
   employmentEligibilityLines?: string[];
@@ -154,7 +156,9 @@ export interface CreateOfferPayload {
   weeklyHours?: 25 | 40;
   workLocation?: string;
   roleResponsibilities?: string[];
+  positionOverviewHtml?: string;
   trainingOutcomes?: string[];
+  trainingOutcomesHtml?: string | null;
   compensationNarrative?: string;
   academicAlignmentNote?: string;
   employmentEligibilityLines?: string[];
@@ -181,7 +185,9 @@ export interface UpdateOfferPayload {
   weeklyHours?: 25 | 40;
   workLocation?: string;
   roleResponsibilities?: string[];
+  positionOverviewHtml?: string;
   trainingOutcomes?: string[];
+  trainingOutcomesHtml?: string | null;
   compensationNarrative?: string;
   academicAlignmentNote?: string;
   employmentEligibilityLines?: string[];

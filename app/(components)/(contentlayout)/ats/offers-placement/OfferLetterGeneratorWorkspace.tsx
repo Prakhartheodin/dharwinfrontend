@@ -3,6 +3,14 @@
 import React, { useMemo, useCallback, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { DM_Sans } from 'next/font/google'
 import { enhanceOfferLetterRoles, type OfferLetterJobType } from '@/shared/lib/api/offers'
+import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
+import {
+  formatJobDescriptionForDisplay,
+  JOB_DESCRIPTION_PROSE_CLASS,
+  roleResponsibilityLinesFromHtml,
+  roleResponsibilitiesLinesToHtml,
+} from '@/shared/lib/ats/jobDescriptionHtml'
+import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import styles from './offer-letter-generator.module.css'
 import { OFFER_LETTER_PREVIEW_ID, printOfferLetterInIframe } from './print-offer-letter-iframe'
 import { useOfferLetterPrintMargins } from './useOfferLetterPrintMargins'
@@ -69,6 +77,7 @@ export type OfferLetterFormFields = {
   jobType: OfferLetterJobType
   weeklyHours: 25 | 40
   workLocation: string
+  /** Rich HTML (Tiptap) — same content as linked job description / Position Overview. */
   rolesText: string
   trainingText: string
   annualGrossCtc: string
@@ -141,14 +150,21 @@ function TopbarLogoIcon() {
   )
 }
 
-function bulletLinesHtml(text: string): string {
-  if (!text?.trim()) return ''
-  return text
-    .trim()
+function formatOfferLetterOverviewHtml(raw: string): string {
+  if (!raw?.trim()) return ''
+  return formatJobDescriptionForDisplay(raw)
+}
+
+function mergeAiRoleLinesIntoHtml(existingHtml: string, linesText: string, jobPostingDoc?: string | null): string {
+  const lines = String(linesText || '')
     .split('\n')
-    .filter((l) => l.trim())
-    .map((l) => `<li>${escHtml(l.trim())}</li>`)
-    .join('')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!lines.length) return existingHtml
+  const listHtml = roleResponsibilitiesLinesToHtml(lines)
+  const base = existingHtml.trim() || (jobPostingDoc?.trim() ? normalizeTipTapHtmlFromApi(jobPostingDoc) : '')
+  if (!base) return listHtml
+  return `${base}${listHtml}`
 }
 
 function compensationHtml(compPara: string): string {
@@ -199,17 +215,17 @@ export function OfferLetterGeneratorWorkspace({
     }
     setRolesAiLoading(true)
     try {
-      const existing = letterForm.rolesText.trim()
+      const existing = roleResponsibilityLinesFromHtml(letterForm.rolesText).join('\n')
       const { text } = await enhanceOfferLetterRoles({
         jobTitle: title,
         jobDescription: jobPostingDoc?.trim() || undefined,
         existingRoles: existing,
-        existingTraining: letterForm.trainingText.trim(),
+        existingTraining: roleResponsibilityLinesFromHtml(letterForm.trainingText).join('\n'),
         isInternship: letterForm.jobType === 'INTERN_UNPAID',
         enhanceFocus: letterForm.jobType === 'INTERN_UNPAID' ? 'roles' : undefined,
       })
       if (text) {
-        setLetterForm((f) => ({ ...f, rolesText: text }))
+        setLetterForm((f) => ({ ...f, rolesText: mergeAiRoleLinesIntoHtml(f.rolesText, text, jobPostingDoc) }))
       }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -233,13 +249,16 @@ export function OfferLetterGeneratorWorkspace({
       const { trainingText } = await enhanceOfferLetterRoles({
         jobTitle: title,
         jobDescription: jobPostingDoc?.trim() || undefined,
-        existingRoles: letterForm.rolesText.trim(),
-        existingTraining: letterForm.trainingText.trim(),
+        existingRoles: roleResponsibilityLinesFromHtml(letterForm.rolesText).join('\n'),
+        existingTraining: roleResponsibilityLinesFromHtml(letterForm.trainingText).join('\n'),
         isInternship: true,
         enhanceFocus: 'training',
       })
       if (trainingText) {
-        setLetterForm((f) => ({ ...f, trainingText }))
+        setLetterForm((f) => ({
+          ...f,
+          trainingText: mergeAiRoleLinesIntoHtml(f.trainingText, trainingText, jobPostingDoc),
+        }))
       }
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
@@ -259,8 +278,8 @@ export function OfferLetterGeneratorWorkspace({
     if (!data) return
     setLetterForm((f) => ({
       ...f,
-      rolesText: f.rolesText.trim() ? f.rolesText : data.roles.join('\n'),
-      trainingText: f.trainingText.trim() ? f.trainingText : data.learning.join('\n'),
+      rolesText: f.rolesText.trim() ? f.rolesText : roleResponsibilitiesLinesToHtml(data.roles),
+      trainingText: f.trainingText.trim() ? f.trainingText : roleResponsibilitiesLinesToHtml(data.learning),
     }))
   }, [letterForm.positionTitle, setLetterForm])
 
@@ -337,8 +356,8 @@ export function OfferLetterGeneratorWorkspace({
       }
     }
 
-    const rolesBullets = bulletLinesHtml(letterForm.rolesText)
-    const learningBullets = bulletLinesHtml(letterForm.trainingText)
+    const overviewHtml = formatOfferLetterOverviewHtml(letterForm.rolesText)
+    const learningHtml = formatOfferLetterOverviewHtml(letterForm.trainingText)
 
     let openingPara = ''
     if (isInternship) {
@@ -359,9 +378,6 @@ export function OfferLetterGeneratorWorkspace({
     </div>`
 
     const rolesSectionTitle = isInternship ? 'Roles &amp; Responsibilities:' : 'Position Overview:'
-    const rolesIntro = isInternship
-      ? 'During the internship, you will receive guided exposure and training in areas including, but not limited to:'
-      : `As a ${escHtml(pos)}, your responsibilities will include but are not limited to:`
 
     const learningSection = isInternship
       ? `<div class="${styles.letterPrintSection}">
@@ -370,8 +386,8 @@ export function OfferLetterGeneratorWorkspace({
       <p class="${styles.letterBody}">This internship will focus on enhancing your knowledge in:</p>
     </div></div>
       ${
-        learningBullets
-          ? `<ul class="${styles.bulletList}">${learningBullets}</ul>`
+        learningHtml
+          ? `<div class="${styles.letterRichContent} ${JOB_DESCRIPTION_PROSE_CLASS}">${learningHtml}</div>`
           : `<p class="${styles.letterBody}" style="color:var(--text-secondary);font-style:italic;">Add learning outcomes below or use Enhance with AI.</p>`
       }
       <p class="${styles.letterBody}">All tasks will be <strong>non-billable, supervised, and training-oriented</strong>.</p>
@@ -481,14 +497,16 @@ export function OfferLetterGeneratorWorkspace({
       </ul>
       </div>`
 
+    const rolesOverviewBlock = overviewHtml
+      ? `<div class="${styles.letterRichContent} ${JOB_DESCRIPTION_PROSE_CLASS}">${overviewHtml}</div>`
+      : `<p class="${styles.letterBody}" style="color:var(--text-secondary);font-style:italic;">Add the job description below, or use Enhance with AI. Content is prefilled from the linked job when available.</p>`
     const rolesHtml = `<div class="${styles.letterRolesBlock}">
         <div class="${styles.letterRolesHead}">
         <div class="${styles.letterSectionIntro}">
           <div class="${styles.sectionTitleHl}">${rolesSectionTitle}</div>
-          <p class="${styles.letterBody}">${rolesIntro}</p>
         </div>
         </div>
-        <ul class="${styles.bulletList}">${rolesBullets}</ul>
+        ${rolesOverviewBlock}
       </div>`
 
     const sections: OfferLetterPrintSection[] = [
@@ -804,7 +822,7 @@ export function OfferLetterGeneratorWorkspace({
                 title={
                   !letterForm.positionTitle.trim()
                     ? 'Enter position / job title first'
-                    : letterForm.rolesText.trim()
+                    : roleResponsibilityLinesFromHtml(letterForm.rolesText).length
                       ? jobPostingDoc?.trim()
                         ? 'Improve responsibilities using your job posting (JD), job title, and current text'
                         : 'Improve responsibilities using job title + current text'
@@ -818,18 +836,21 @@ export function OfferLetterGeneratorWorkspace({
             </div>
             <div className={styles.sectionBody}>
               <p className={styles.helpText}>
-                Auto-filled from position title when it matches a template. One item per line.{' '}
+                Same rich editor as Jobs — prefilled from the linked job description when you open the letter. Edit overview,
+                responsibilities, bold, underline, and lists here; the preview matches what you see in Jobs.{' '}
                 {jobPostingDoc?.trim()
-                  ? 'Enhance with AI reads the official job description (JD) for this listing (plus the title)—including named products, platforms, or projects (e.g. specific tools or programmes)—and turns that into responsibilities. If this box is empty it generates from the JD; otherwise it refines your text to align with it.'
-                  : 'Enhance with AI uses the role title (add a full JD on the Job record to ground AI in the posting). If this box is empty it generates new lines; otherwise it refines what you already have.'}
+                  ? 'Enhance with AI uses the official job posting (JD) to refine or generate responsibility bullets inside this editor.'
+                  : 'Enhance with AI uses the role title (add a full JD on the Job record to ground AI in the posting).'}
               </p>
               <div className={styles.field}>
-                <textarea
-                  className={styles.textarea}
-                  rows={6}
-                  value={letterForm.rolesText}
-                  onChange={(e) => setLetterForm((f) => ({ ...f, rolesText: e.target.value }))}
-                />
+                <label>Job description</label>
+                <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md min-h-[260px]">
+                  <TiptapEditor
+                    content={normalizeTipTapHtmlFromApi(letterForm.rolesText)}
+                    placeholder="Job description and responsibilities from the linked job posting…"
+                    onChange={(html) => setLetterForm((f) => ({ ...f, rolesText: html }))}
+                  />
+                </div>
               </div>
             </div>
           </div>
@@ -851,7 +872,7 @@ export function OfferLetterGeneratorWorkspace({
                   title={
                     !letterForm.positionTitle.trim()
                       ? 'Enter position / job title first'
-                      : letterForm.trainingText.trim()
+                      : roleResponsibilityLinesFromHtml(letterForm.trainingText).length
                         ? jobPostingDoc?.trim()
                           ? 'Improve outcomes using JD + title, roles, and current outcomes'
                           : 'Improve outcomes using job title, current roles, and existing outcomes'
@@ -865,19 +886,22 @@ export function OfferLetterGeneratorWorkspace({
               </div>
               <div className={styles.sectionBody}>
                 <p className={styles.helpText}>
-                  One outcome per line. Enhance with AI uses{' '}
+                  Same rich editor as Jobs — format outcomes with bold, underline, and lists. The preview preserves
+                  spacing and formatting in the printed letter. Enhance with AI uses{' '}
                   {jobPostingDoc?.trim()
                     ? 'your job posting (JD), the title,'
                     : 'the title'}{' '}
                   and your roles text (if any) so outcomes match the position.
                 </p>
                 <div className={styles.field}>
-                  <textarea
-                    className={styles.textarea}
-                    rows={5}
-                    value={letterForm.trainingText}
-                    onChange={(e) => setLetterForm((f) => ({ ...f, trainingText: e.target.value }))}
-                  />
+                  <label>Training &amp; learning outcomes</label>
+                  <div className="border border-gray-200 dark:border-defaultborder/10 rounded-md min-h-[220px]">
+                    <TiptapEditor
+                      content={normalizeTipTapHtmlFromApi(letterForm.trainingText)}
+                      placeholder="Training and learning outcomes for this internship…"
+                      onChange={(html) => setLetterForm((f) => ({ ...f, trainingText: html }))}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

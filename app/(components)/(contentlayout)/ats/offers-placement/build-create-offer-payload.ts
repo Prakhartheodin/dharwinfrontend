@@ -1,5 +1,6 @@
 import type { CreateOfferPayload } from "@/shared/lib/api/offers"
 import { buildEligibilityLinesFromForm, type OfferLetterFormFields } from "./OfferLetterGeneratorWorkspace"
+import { roleResponsibilityLinesFromHtml } from "@/shared/lib/ats/jobDescriptionHtml"
 import { letterDateStampYmd } from "./letter-date-stamp"
 
 /** Maps workshop letter fields + CTC line items into `POST /offers` (same data model as the full-page create form). */
@@ -12,14 +13,10 @@ export function buildCreateOfferPayloadFromLetterForm(
   letterForm: OfferLetterFormFields
 ): CreateOfferPayload {
   const isIntern = letterForm.jobType === "INTERN_UNPAID"
-  const roleResponsibilities = letterForm.rolesText
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
-  const trainingOutcomes = letterForm.trainingText
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const roleResponsibilities = roleResponsibilityLinesFromHtml(letterForm.rolesText)
+  const trainingOutcomes = roleResponsibilityLinesFromHtml(letterForm.trainingText)
+  const trainingHtml = letterForm.trainingText.trim()
+  const overviewHtml = letterForm.rolesText.trim()
   const employmentEligibilityLines =
     letterForm.eligibilityPreset === "none" ? [] : (buildEligibilityLinesFromForm(letterForm) ?? [])
   const weeklyHours: 25 | 40 =
@@ -44,7 +41,9 @@ export function buildCreateOfferPayloadFromLetterForm(
     weeklyHours,
     workLocation: letterForm.workLocation.trim() || undefined,
     roleResponsibilities: roleResponsibilities.length ? roleResponsibilities : undefined,
+    positionOverviewHtml: overviewHtml || undefined,
     trainingOutcomes: isIntern && trainingOutcomes.length > 0 ? trainingOutcomes : undefined,
+    trainingOutcomesHtml: isIntern && trainingHtml ? trainingHtml : undefined,
     academicAlignmentNote: letterForm.academicNote.trim() || undefined,
     employmentEligibilityLines: employmentEligibilityLines.length ? employmentEligibilityLines : undefined,
     supervisor: {
