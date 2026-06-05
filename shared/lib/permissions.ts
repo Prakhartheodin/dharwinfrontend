@@ -70,6 +70,35 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     prefixes: ["ats.employees", "ats.candidates"],
     anyOf: ["create", "edit", "delete"],
   },
+
+  // Training categories (course assignment tab)
+  // Cross-deps (backend): view loads GET /categories + GET /modules + GET /mentors + GET /modules/:id/employees.
+  // Assign/remove employees on a module row needs training.modules:edit (modules.manage), not categories:edit alone.
+  view_training_categories: {
+    prefixes: ["training.categories", "training.modules"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  create_training_category: { prefixes: ["training.categories"], anyOf: ["create"] },
+  update_training_category: { prefixes: ["training.categories"], anyOf: ["edit"] },
+  delete_training_category: { prefixes: ["training.categories"], anyOf: ["delete"] },
+
+  // Training modules — employee/mentor assignment on Categories tab; module↔position linking on Positions tab.
+  edit_training_module: { prefixes: ["training.modules"], anyOf: ["edit", "create", "delete"] },
+
+  // Training positions (roster tab)
+  // Cross-deps (backend): GET /positions/roster (positions.read); module column from roster payload.
+  // Linking modules to a position: training.positions:edit OR training.modules:edit (positions.manage / modules.manage).
+  view_training_positions: {
+    prefixes: ["training.positions", "training.modules"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  edit_training_position: { prefixes: ["training.positions"], anyOf: ["edit", "create", "delete"] },
+
+  // Training modules (standalone Training Modules page / nav child)
+  view_training_modules: {
+    prefixes: ["training.modules"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
 });
 
 /**

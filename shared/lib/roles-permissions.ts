@@ -75,12 +75,12 @@ export const PERMISSION_SECTIONS: {
     features: [
       { id: "courses", label: "Courses" },
       { id: "categories", label: "Categories" },
+      { id: "positions", label: "Positions" },
       { id: "modules", label: "Modules" },
       { id: "assessments", label: "Assessments" },
       { id: "attendance", label: "Attendance Tracking" },
       { id: "mentors", label: "Mentors" },
       { id: "students", label: "Students" },
-      { id: "positions", label: "Positions" },
       { id: "evaluation", label: "Evaluation" },
       { id: "analytics", label: "Analytics" },
     ],

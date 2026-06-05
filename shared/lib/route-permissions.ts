@@ -116,7 +116,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
  * (roles UI has separate Modules/Categories checkboxes but nav shows one Training Curriculum section).
  */
 const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
-  "training.courses:": ["training.modules:", "training.categories:"],
+  "training.courses:": ["training.modules:", "training.categories:", "training.positions:"],
   /** Referral leads matrix row uses ats.referralLeads:*; legacy roles only have ats.candidates:view. */
   "ats.referralLeads:": ["ats.candidates:"],
   /** Employees page (PR3): legacy roles may still hold ats.candidates:* until migration completes everywhere. */
