@@ -48,7 +48,11 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
         const data = await getStatus();
         applyState(reconcileRecordingState(stateRef.current, data, Date.now()));
       } catch (err) {
-        console.error("Error checking recording status:", err);
+        // Non-critical 5s poll: a transient blip (backend reload, momentary network
+        // drop) must not reset state or fire a console.error that pops the Next dev
+        // error overlay. Keep the last known state and retry next tick. Genuine
+        // recording failures surface via the start/stop handlers' visible error UI.
+        console.debug("Recording status poll skipped (transient):", err);
       }
     };
 
