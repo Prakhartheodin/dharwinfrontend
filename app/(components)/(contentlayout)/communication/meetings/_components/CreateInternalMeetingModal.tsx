@@ -115,8 +115,8 @@ export default function CreateInternalMeetingModal({
     }
     if (durationInput) durationInput.value = "60"
     if (maxInput) maxInput.value = "10"
-    if (allowGuest) allowGuest.checked = true
-    if (requireApproval) requireApproval.checked = false
+    if (allowGuest) allowGuest.checked = false
+    if (requireApproval) requireApproval.checked = true
     if (videoType) videoType.checked = true
     if (notesInput && !notesInput.value.trim()) notesInput.value = "Instant meeting"
 
@@ -308,11 +308,11 @@ export default function CreateInternalMeetingModal({
                 </div>
                 <div className="flex flex-wrap gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="internal-schedule-allow-guest" defaultChecked className="form-check-input !w-4 !h-4 text-primary" />
+                    <input type="checkbox" id="internal-schedule-allow-guest" className="form-check-input !w-4 !h-4 text-primary" />
                     <span className="text-sm">Allow guest join</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="internal-schedule-require-approval" className="form-check-input !w-4 !h-4 text-primary" />
+                    <input type="checkbox" id="internal-schedule-require-approval" defaultChecked className="form-check-input !w-4 !h-4 text-primary" />
                     <span className="text-sm">Require approval</span>
                   </label>
                 </div>

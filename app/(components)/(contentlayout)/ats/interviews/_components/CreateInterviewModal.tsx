@@ -152,6 +152,14 @@ export default function CreateInterviewModal({
   const [selectedCandidateId, setSelectedCandidateId] = useState('')
   /** Agent id auto-filled from the selected candidate (shows the "auto" badge). */
   const [autoFilledAgentId, setAutoFilledAgentId] = useState<string | null>(null)
+  // Mirror autoFilledAgentId so applyCandidateAgent reads the latest value WITHOUT
+  // nesting setSelectedAgentIds (a parent setter) inside setAutoFilledAgentId's updater.
+  // Updaters run during render, so a parent setState there triggers React's
+  // "Cannot update a component while rendering a different component" error.
+  const autoFilledAgentIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    autoFilledAgentIdRef.current = autoFilledAgentId
+  }, [autoFilledAgentId])
   const [scheduleTimezone, setScheduleTimezone] = useState('UTC')
   const [dateTimeOverlayOpen, setDateTimeOverlayOpen] = useState(false)
   const [selectedJobId, setSelectedJobId] = useState('')
@@ -190,10 +198,10 @@ export default function CreateInterviewModal({
     async (candidateId: string) => {
       const reqId = ++candidateAgentReqId.current
       if (!candidateId) {
-        setAutoFilledAgentId((prevAuto) => {
-          if (prevAuto) setSelectedAgentIds((ids) => ids.filter((id) => id !== prevAuto))
-          return null
-        })
+        const prevAuto = autoFilledAgentIdRef.current
+        if (prevAuto) setSelectedAgentIds((ids) => ids.filter((id) => id !== prevAuto))
+        setAutoFilledAgentId(null)
+        autoFilledAgentIdRef.current = null
         onAssignedAgentResolved?.(null)
         return
       }
@@ -211,14 +219,14 @@ export default function CreateInterviewModal({
       }
       if (reqId !== candidateAgentReqId.current) return
       onAssignedAgentResolved?.(agentRef)
-      setAutoFilledAgentId((prevAuto) => {
-        setSelectedAgentIds((ids) => {
-          let next = prevAuto ? ids.filter((id) => id !== prevAuto) : ids
-          if (agentId && !next.includes(agentId)) next = [agentId, ...next]
-          return next
-        })
-        return agentId
+      const prevAuto = autoFilledAgentIdRef.current
+      setSelectedAgentIds((ids) => {
+        let next = prevAuto ? ids.filter((id) => id !== prevAuto) : ids
+        if (agentId && !next.includes(agentId)) next = [agentId, ...next]
+        return next
       })
+      setAutoFilledAgentId(agentId)
+      autoFilledAgentIdRef.current = agentId
     },
     [setSelectedAgentIds, onAssignedAgentResolved]
   )
@@ -346,8 +354,8 @@ export default function CreateInterviewModal({
       scheduledAtIso: scheduledInterviewAt ? scheduledInterviewAt.toISOString() : null,
       durationMinutes: el<HTMLInputElement>('schedule-duration')?.value ?? '60',
       maxParticipants: el<HTMLInputElement>('schedule-max-participants')?.value ?? '10',
-      allowGuestJoin: el<HTMLInputElement>('schedule-allow-guest')?.checked ?? true,
-      requireApproval: el<HTMLInputElement>('schedule-require-approval')?.checked ?? false,
+      allowGuestJoin: el<HTMLInputElement>('schedule-allow-guest')?.checked ?? false,
+      requireApproval: el<HTMLInputElement>('schedule-require-approval')?.checked ?? true,
       interviewType:
         (document.querySelector('input[name="schedule-type"]:checked') as HTMLInputElement | null)?.value ?? 'video',
       hosts,
@@ -455,8 +463,8 @@ export default function CreateInterviewModal({
     }
     if (durationInput) durationInput.value = '60'
     if (maxInput) maxInput.value = '10'
-    if (allowGuest) allowGuest.checked = true
-    if (requireApproval) requireApproval.checked = false
+    if (allowGuest) allowGuest.checked = false
+    if (requireApproval) requireApproval.checked = true
     if (videoType) videoType.checked = true
     if (notesInput && !notesInput.value.trim()) notesInput.value = 'Instant interview'
 
@@ -742,11 +750,11 @@ export default function CreateInterviewModal({
                 </div>
                 <div className="flex flex-wrap gap-6">
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="schedule-allow-guest" defaultChecked className="form-check-input !w-4 !h-4 text-primary" />
+                    <input type="checkbox" id="schedule-allow-guest" className="form-check-input !w-4 !h-4 text-primary" />
                     <span className="text-sm text-defaulttextcolor dark:text-white">Allow guest join</span>
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" id="schedule-require-approval" className="form-check-input !w-4 !h-4 text-primary" />
+                    <input type="checkbox" id="schedule-require-approval" defaultChecked className="form-check-input !w-4 !h-4 text-primary" />
                     <span className="text-sm text-defaulttextcolor dark:text-white">Require approval</span>
                   </label>
                 </div>

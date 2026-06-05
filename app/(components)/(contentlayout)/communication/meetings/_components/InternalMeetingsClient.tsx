@@ -283,9 +283,9 @@ export default function InternalMeetingsClient() {
         (form.querySelector("#internal-schedule-max-p") as HTMLInputElement)?.value || "10",
         10
       ) || 10
-      const allowGuestJoin = (form.querySelector("#internal-schedule-allow-guest") as HTMLInputElement)?.checked ?? true
+      const allowGuestJoin = (form.querySelector("#internal-schedule-allow-guest") as HTMLInputElement)?.checked ?? false
       const requireApproval =
-        (form.querySelector("#internal-schedule-require-approval") as HTMLInputElement)?.checked ?? false
+        (form.querySelector("#internal-schedule-require-approval") as HTMLInputElement)?.checked ?? true
       const typeRaw =
         (form.querySelector('input[name="internal-schedule-type"]:checked') as HTMLInputElement)?.value || "video"
       const meetingType =

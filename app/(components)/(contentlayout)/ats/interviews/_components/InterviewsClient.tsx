@@ -986,8 +986,8 @@ export default function InterviewsClient() {
     }
     const durationMinutes = parseInt(getVal('schedule-duration') || '60', 10) || 60
     const maxParticipants = parseInt(getVal('schedule-max-participants') || '10', 10) || 10
-    const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? true
-    const requireApproval = (form.querySelector('#schedule-require-approval') as HTMLInputElement)?.checked ?? false
+    const allowGuestJoin = (form.querySelector('#schedule-allow-guest') as HTMLInputElement)?.checked ?? false
+    const requireApproval = (form.querySelector('#schedule-require-approval') as HTMLInputElement)?.checked ?? true
     const candidateSelect = form.querySelector('#schedule-candidate') as HTMLSelectElement
     if (candidateSelect?.value && !jobId) {
       setFormError('Select a job this candidate has applied for.')
