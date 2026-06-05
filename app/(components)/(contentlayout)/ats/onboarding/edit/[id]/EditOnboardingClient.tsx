@@ -750,7 +750,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                         <span className="font-medium">No roster positions yet.</span>{' '}
                                         Use the applied title above or add rows in{' '}
                                         <Link
-                                          href="/training/positions"
+                                          href="/training/curriculum/setup?tab=positions"
                                           className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary"
                                         >
                                           Training → Positions

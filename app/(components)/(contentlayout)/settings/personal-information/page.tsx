@@ -23,6 +23,7 @@ import type { CandidateWithProfile, UpdateMeWithCandidatePayload } from "@/share
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 import { formatUserAgentSummary } from "@/shared/lib/parse-user-agent";
+import { formatUserRoleDisplayName } from "@/shared/lib/user-role-display";
 
 type NotificationPrefKey = keyof NotificationPreferences;
 
@@ -491,24 +492,10 @@ export default function PersonalInformationPage() {
     });
   };
 
-  const roleDisplayName = useMemo(() => {
-    if (!user) return "—";
-    const apiNames = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
-    if (permissionsLoaded && apiNames.length > 0) {
-      return apiNames.join(", ");
-    }
-    const ids = normalizeRoleIdList(user.roleIds);
-    if (ids.length === 0) {
-      const r = (user.role ?? "").toString().trim().toLowerCase();
-      if (!r) return "—";
-      if (r === "user" || r === "candidate" || r === "employee") return "Employee";
-      return r.charAt(0).toUpperCase() + r.slice(1);
-    }
-    const fallback = (user.role ?? "").toString().trim();
-    if (!fallback) return "—";
-    if (fallback.toLowerCase() === "user" && hasEmployeeRole) return "Employee";
-    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
-  }, [user, hasEmployeeRole, roleNames, permissionsLoaded]);
+  const roleDisplayName = useMemo(
+    () => formatUserRoleDisplayName({ user, roleNames, permissionsLoaded }),
+    [user, roleNames, permissionsLoaded],
+  );
 
   useEffect(() => {
     if (!user) return;

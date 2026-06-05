@@ -127,6 +127,7 @@ type ModuleFormStatus = 'draft' | 'published' | 'archived'
 
 type ModuleFormData = {
   categoryIds: string[]
+  positionIds: string[]
   name: string
   coverImage: string
   shortDescription: string
@@ -455,6 +456,7 @@ const CreateModule = () => {
   const [activeTab, setActiveTab] = useState<'info' | 'playlist'>('info')
   const [formData, setFormData] = useState<ModuleFormData>({
     categoryIds: [],
+    positionIds: [],
     name: '',
     coverImage: '',
     shortDescription: '',
@@ -573,6 +575,7 @@ const CreateModule = () => {
           .filter(Boolean)
         setFormData({
           categoryIds: module.categories?.map((c: { id: string }) => c.id) ?? [],
+          positionIds: module.positions?.map((p: { id: string }) => p.id) ?? [],
           name: module.moduleName,
           coverImage: module.coverImage?.url ?? '',
           shortDescription: module.shortDescription,
@@ -1702,6 +1705,7 @@ const CreateModule = () => {
         moduleName: formData.name,
         shortDescription: formData.shortDescription,
         categories: formData.categoryIds,
+        positions: formData.positionIds,
         students: formData.studentIds,
         mentorsAssigned: formData.mentorIds,
         status,
@@ -1843,6 +1847,38 @@ const CreateModule = () => {
                             isDisabled={fetchingData}
                           />
                         )}
+                      </div>
+
+                      {/* Linked Positions — drives which employees this module can train */}
+                      <div className="xl:col-span-6 col-span-12">
+                        <label htmlFor="module-positions" className="form-label">
+                          Positions
+                        </label>
+                        {fetchingData ? (
+                          <div className="form-control flex items-center justify-center py-2">
+                            <span className="text-[#8c9097] dark:text-white/50 text-sm">Loading positions...</span>
+                          </div>
+                        ) : (
+                          <Select
+                            inputId="module-positions"
+                            isMulti
+                            value={positionOptions.filter((opt) => formData.positionIds.includes(opt.value))}
+                            onChange={(selected: unknown) =>
+                              handleInputChange(
+                                'positionIds',
+                                ((selected as { value: string }[] | null) ?? []).map((o) => o.value)
+                              )
+                            }
+                            options={positionOptions}
+                            classNamePrefix="Select2"
+                            placeholder="Select positions"
+                            menuPlacement="auto"
+                            isDisabled={fetchingData}
+                          />
+                        )}
+                        <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-1 mb-0">
+                          Employees in these positions become eligible for this module (used by Course Assignment).
+                        </p>
                       </div>
 
                       {/* Module Name */}

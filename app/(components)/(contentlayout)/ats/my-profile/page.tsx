@@ -13,6 +13,8 @@ import type { User, ActivityLog } from "@/shared/lib/types";
 import { getDocumentDownloadUrl } from "@/shared/lib/api/candidates";
 import { getMyMatchingJobs } from "@/shared/lib/api/employees";
 import type { JobMatch } from "@/shared/lib/api/employees";
+import { formatPhoneForDisplay } from "@/shared/lib/phoneCountries";
+import { formatUserRoleDisplayName } from "@/shared/lib/user-role-display";
 import Swal from "sweetalert2";
 
 function normalizeSocialUrlForHref(raw: string): string {
@@ -20,20 +22,6 @@ function normalizeSocialUrlForHref(raw: string): string {
   if (!u) return "#";
   if (/^https?:\/\//i.test(u)) return u;
   return `https://${u}`;
-}
-
-function normalizeRoleIdList(raw: unknown): string[] {
-  if (!raw || !Array.isArray(raw)) return [];
-  return raw
-    .map((x) => {
-      if (typeof x === "string" || typeof x === "number") return String(x);
-      if (x && typeof x === "object") {
-        const o = x as { id?: string; _id?: string };
-        return String(o.id ?? o._id ?? "");
-      }
-      return "";
-    })
-    .filter(Boolean);
 }
 
 function getInitial(name: string | undefined | null): string {
@@ -290,6 +278,10 @@ function DynamicProfileView({
   const displayName = (candidate?.fullName ?? u?.name ?? u?.email) ?? "—";
   const displayPhone = candidate?.phoneNumber ?? u?.phoneNumber;
   const displayCountryCode = candidate?.countryCode ?? (u as { countryCode?: string })?.countryCode;
+  const displayPhoneFormatted = useMemo(
+    () => formatPhoneForDisplay(displayPhone, displayCountryCode),
+    [displayPhone, displayCountryCode]
+  );
   const displayBio = candidate?.shortBio ?? (u as { profileSummary?: string })?.profileSummary;
   const displayAddress = candidate?.address
     ? [
@@ -303,23 +295,10 @@ function DynamicProfileView({
         .join(", ")
     : (u as { location?: string })?.location;
 
-  const roleDisplayName = useMemo(() => {
-    if (!u) return "—";
-    const apiNames = (roleNames ?? []).map((n) => n.trim()).filter(Boolean);
-    if (permissionsLoaded && apiNames.length > 0) {
-      return apiNames.join(", ");
-    }
-    const ids = normalizeRoleIdList(u.roleIds);
-    if (ids.length === 0) {
-      const r = (u.role ?? "").toString().trim().toLowerCase();
-      if (!r) return "—";
-      if (r === "user" || r === "candidate" || r === "employee") return "Employee";
-      return r.charAt(0).toUpperCase() + r.slice(1);
-    }
-    const fallback = (u.role ?? "").toString().trim();
-    if (!fallback) return "—";
-    return fallback.charAt(0).toUpperCase() + fallback.slice(1);
-  }, [u, roleNames, permissionsLoaded]);
+  const roleDisplayName = useMemo(
+    () => formatUserRoleDisplayName({ user: u, roleNames, permissionsLoaded }),
+    [u, roleNames, permissionsLoaded]
+  );
 
   useEffect(() => {
     if (!u) return;
@@ -374,7 +353,7 @@ function DynamicProfileView({
   const personalInfo: { label: string; value: string; mono?: boolean }[] = [
     { label: "Email", value: u?.email ?? "—" },
     ...(displayPhone
-      ? [{ label: "Phone", value: `${displayCountryCode ? displayCountryCode + " " : ""}${displayPhone}` }]
+      ? [{ label: "Phone", value: displayPhoneFormatted }]
       : []),
     ...(isEmployeeOrCandidate
       ? [{ label: "Employee ID", value: displayEmployeeId, mono: true }]
@@ -539,8 +518,7 @@ function DynamicProfileView({
               {displayPhone && (
                 <span className="inline-flex items-center gap-1.5">
                   <i className="ri-phone-line" />
-                  {displayCountryCode ? `${displayCountryCode} ` : ""}
-                  {displayPhone}
+                  {displayPhoneFormatted}
                 </span>
               )}
               {displayAddress && (

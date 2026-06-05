@@ -110,14 +110,92 @@ export function getPhoneValidationError(phone: string, countryCode: string): str
 
 /** Returns dial code without + for building full phone (e.g. "91" for India). */
 export function getDialCodeForApi(countryCode: string): string {
-  const config = byCode.get(countryCode);
-  return config ? config.dialCode.replace("+", "") : "";
+  const dial = resolveDialCodeForDisplay(countryCode);
+  return dial ? dial.replace(/^\+/, "") : "";
 }
 
 /** Build full phone for API: +919876543210 */
 export function formatPhoneForApi(digits: string, countryCode: string): string {
   const dial = getDialCodeForApi(countryCode);
   return dial ? `+${dial}${digits}` : digits;
+}
+
+const COUNTRY_NAME_TO_ISO: Record<string, string> = {
+  "united states": "US",
+  usa: "US",
+  "united states of america": "US",
+  india: "IN",
+  "united kingdom": "GB",
+  uk: "GB",
+  "great britain": "GB",
+  canada: "CA",
+  australia: "AU",
+  uae: "AE",
+  "united arab emirates": "AE",
+};
+
+/** Resolve ISO / name / dial hint to a + prefix for display. */
+function resolveDialCodeForDisplay(countryCode: string | null | undefined): string | null {
+  const raw = (countryCode ?? "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("+")) return raw.replace(/\s/g, "");
+
+  const iso = raw.toUpperCase();
+  const fromIso = byCode.get(iso)?.dialCode;
+  if (fromIso) return fromIso;
+
+  const mappedIso = COUNTRY_NAME_TO_ISO[raw.toLowerCase()];
+  if (mappedIso) return byCode.get(mappedIso)?.dialCode ?? null;
+
+  if (/^\d{1,4}$/.test(raw)) return `+${raw}`;
+
+  return null;
+}
+
+function stripEmbeddedCountryPrefix(phone: string, countryCode: string | null | undefined): string {
+  const trimmed = phone.trim();
+  const code = (countryCode ?? "").trim();
+  if (!code || code.startsWith("+")) return trimmed;
+
+  const iso = code.toUpperCase();
+  const fromAbbrev = trimmed.replace(new RegExp(`^${iso}\\s+`, "i"), "").trim();
+  if (fromAbbrev !== trimmed) return fromAbbrev;
+
+  const mappedIso = COUNTRY_NAME_TO_ISO[code.toLowerCase()];
+  if (mappedIso) {
+    return trimmed.replace(new RegExp(`^${mappedIso}\\s+`, "i"), "").trim();
+  }
+
+  return trimmed;
+}
+
+/** Format national digits + ISO country code for display (e.g. "+1 2017059336"). */
+export function formatPhoneForDisplay(
+  nationalDigits: string | null | undefined,
+  countryCode: string | null | undefined,
+): string {
+  let phone = (nationalDigits ?? "").trim();
+  if (!phone) return "";
+
+  if (phone.startsWith("+")) {
+    return phone;
+  }
+
+  phone = stripEmbeddedCountryPrefix(phone, countryCode);
+  if (!phone) return "";
+
+  const dialCode = resolveDialCodeForDisplay(countryCode);
+  if (dialCode) {
+    return `${dialCode} ${phone}`;
+  }
+
+  const parsed = parseStoredPhone(phone, countryCode);
+  const parsedDial = resolveDialCodeForDisplay(parsed.countryCode);
+  if (parsedDial && parsed.digits) {
+    return `${parsedDial} ${parsed.digits}`;
+  }
+
+  return phone;
 }
 
 /**
