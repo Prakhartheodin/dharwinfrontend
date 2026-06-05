@@ -12,6 +12,12 @@ export interface LiveKitTokenResponse {
   canPublish?: boolean;
   /** ISO end time for scheduled interviews (scheduledAt + durationMinutes); absent for non-calendar rooms. */
   meetingEndAt?: string | null;
+  /** True when the joiner is uninvited: they hold a blind lobby token and must be admitted
+   *  by the host. Combined with allowGuestJoin to decide auto-knock vs explicit ask button. */
+  knocking?: boolean;
+  /** Meeting's guest policy. true → uninvited guest auto-knocks (waiting screen);
+   *  false → show explicit "Ask for permission" button ("guests are not allowed"). */
+  allowGuestJoin?: boolean;
 }
 
 export interface StartRecordingResponse {

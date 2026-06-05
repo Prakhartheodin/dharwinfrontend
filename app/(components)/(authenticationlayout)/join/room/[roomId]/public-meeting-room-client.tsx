@@ -1141,6 +1141,33 @@ function PublicRoomContent({
   const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
   const [recordingToast, setRecordingToast] = useState(false);
   const [meetingEndedToast, setMeetingEndedToast] = useState(false);
+  const [endingMeeting, setEndingMeeting] = useState(false);
+
+  // Host-only "End meeting for all". Leaving (handleLeave) intentionally only
+  // disconnects the host locally so they can rejoin; ending the meeting for
+  // everyone is this explicit action. endMeetingPublic deletes the LiveKit room
+  // server-side, which disconnects every participant; we then leave locally.
+  const handleEndMeetingForAll = useCallback(async () => {
+    if (!isHost || endingMeeting) return;
+    const confirmed = window.confirm(
+      "End the meeting for everyone? All participants will be disconnected."
+    );
+    if (!confirmed) return;
+    setEndingMeeting(true);
+    isManuallyLeavingRef.current = true;
+    try {
+      if (participantEmail) await endMeetingPublic(roomName, participantEmail);
+    } catch {
+      // Server end failed — still tear down locally so the host isn't stuck.
+    }
+    try {
+      await room.disconnect();
+    } catch {
+      // already disconnected
+    }
+    setMeetingEndedToast(true);
+    setTimeout(() => onLeave(), 1200);
+  }, [isHost, endingMeeting, participantEmail, roomName, room, onLeave]);
 
   useEffect(() => {
     const handleDisconnect = (reason?: DisconnectReason) => {
@@ -1714,6 +1741,29 @@ function PublicRoomContent({
             />,
             recordingSlot
           )}
+        {isHost && (
+          <button
+            type="button"
+            onClick={handleEndMeetingForAll}
+            disabled={endingMeeting}
+            className="fixed top-4 right-4 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full disabled:opacity-60 disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(255,82,82,0.92)",
+              border: "1px solid rgba(255,82,82,0.55)",
+              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,82,82,0.2)",
+              color: "#fff",
+              fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
+              fontSize: "11px",
+              letterSpacing: "0.14em",
+              textTransform: "uppercase",
+              cursor: endingMeeting ? "not-allowed" : "pointer",
+            }}
+            title="End the meeting for all participants"
+          >
+            <i className="ri-phone-fill text-base" style={{ transform: "rotate(135deg)" }} />
+            {endingMeeting ? "Ending…" : "End meeting"}
+          </button>
+        )}
         {recordingToast && isHost && (
           <div
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full"
@@ -1850,6 +1900,10 @@ export default function PublicMeetingRoomClient() {
   const [waitingForAdmission, setWaitingForAdmission] = useState(false);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(false);
+  /** Uninvited guest on an invite-only meeting: holds a blind lobby token but does not
+   *  connect until they explicitly click "Ask for permission" (then they enter the waiting flow). */
+  const [knocking, setKnocking] = useState(false);
+  const [knockRequested, setKnockRequested] = useState(false);
   const [waitingParticipantIdentities, setWaitingParticipantIdentities] = useState<string[]>([]);
   /** Calendar end from token API (scheduledAt + duration) for countdown / auto-leave */
   const [meetingEndAtIso, setMeetingEndAtIso] = useState<string | null>(null);
@@ -2078,6 +2132,31 @@ export default function PublicMeetingRoomClient() {
     [preJoinName, preJoinAudio, preJoinVideo, audioPermissionGranted, videoPermissionGranted]
   );
 
+  /**
+   * Pick the token endpoint by auth state. A logged-in user (e.g. the host who
+   * opened the public link) gets the AUTHENTICATED endpoint, so the server can
+   * recognize the host from the trusted session and skip the approval/waiting
+   * room. The public path forces forcePublicGuest=true, which can never be host —
+   * with requireApproval on, that strands the host in the waiting room with nobody
+   * to admit them. If the authenticated path is not authorized (403 — wrong tenant
+   * or not invited), fall back to the public guest endpoint so guests are unaffected.
+   */
+  const requestToken = useCallback(
+    async (identity?: string) => {
+      const roomName = decodeURIComponent(roomId);
+      const authedEmail = authChecked ? authUser?.email?.trim() : "";
+      if (authedEmail) {
+        try {
+          return await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || authedEmail);
+        } catch {
+          // Not authorized on the authenticated path — fall back to the public guest path.
+        }
+      }
+      return livekitApi.getPublicLiveKitToken(roomName, participantName, participantEmail || undefined, identity);
+    },
+    [roomId, authChecked, authUser, participantName, participantEmail]
+  );
+
   const fetchToken = useCallback(async () => {
     if (!livekitUrl || !participantName) {
       setShowRoom(false);
@@ -2087,12 +2166,7 @@ export default function PublicMeetingRoomClient() {
     try {
       setIsLoading(true);
       setError("");
-      const roomName = decodeURIComponent(roomId);
-      const data = await livekitApi.getPublicLiveKitToken(
-        roomName,
-        participantName,
-        participantEmail || undefined
-      );
+      const data = await requestToken();
       setToken(data.token);
       setMeetingEndAtIso(data.meetingEndAt ?? null);
       const pid = data.participantIdentity ?? null;
@@ -2100,8 +2174,16 @@ export default function PublicMeetingRoomClient() {
       participantIdentityRef.current = pid;
       setIsHost(data.isHost === true);
       if (tokenAllowsRoomJoin(data)) {
+        setKnocking(false);
         setWaitingForAdmission(false);
         setShowRoom(true);
+      } else if (data.knocking && !knockRequested) {
+        // Uninvited guest on a meeting where guests are NOT allowed: show the explicit
+        // "Ask for permission" gate. We hold a blind lobby token but don't connect/poll
+        // until they click. (Approval-required waiters are handled by the else branch.)
+        setKnocking(true);
+        setWaitingForAdmission(false);
+        setShowRoom(false);
       } else {
         setWaitingForAdmission(true);
         setShowRoom(false);
@@ -2120,7 +2202,7 @@ export default function PublicMeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail, livekitUrl]);
+  }, [participantName, livekitUrl, requestToken, knockRequested]);
 
   useEffect(() => {
     if (participantName && livekitUrl && !showRoom && !token) {
@@ -2132,7 +2214,6 @@ export default function PublicMeetingRoomClient() {
   useEffect(() => {
     if (!waitingForAdmission || !participantName || !livekitUrl || !roomId || !participantIdentity) return;
 
-    const roomName = decodeURIComponent(roomId);
     let pollCount = 0;
     const maxPolls = 300;
 
@@ -2151,12 +2232,7 @@ export default function PublicMeetingRoomClient() {
       }
 
       try {
-        const data = await livekitApi.getPublicLiveKitToken(
-          roomName,
-          participantName,
-          participantEmail || undefined,
-          identity
-        );
+        const data = await requestToken(identity);
 
         if (tokenAllowsRoomJoin(data)) {
           if (admissionPollRef.current) {
@@ -2191,7 +2267,7 @@ export default function PublicMeetingRoomClient() {
         admissionPollRef.current = null;
       }
     };
-  }, [waitingForAdmission, participantName, participantEmail, participantIdentity, livekitUrl, roomId]);
+  }, [waitingForAdmission, participantName, participantIdentity, livekitUrl, roomId, requestToken]);
 
   const handleLeave = useCallback(() => {
     // Leaving only disconnects this participant locally — it must NOT end the meeting
@@ -2203,6 +2279,8 @@ export default function PublicMeetingRoomClient() {
     participantIdentityRef.current = null;
     setShowRoom(false);
     setWaitingForAdmission(false);
+    setKnocking(false);
+    setKnockRequested(false);
     router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
   }, [router, roomId, isHost, participantEmail]);
 
@@ -2214,13 +2292,7 @@ export default function PublicMeetingRoomClient() {
     }
     try {
       setIsLoading(true);
-      const roomName = decodeURIComponent(roomId);
-      const data = await livekitApi.getPublicLiveKitToken(
-        roomName,
-        participantName,
-        participantEmail || undefined,
-        participantIdentityRef.current ?? participantIdentity ?? undefined
-      );
+      const data = await requestToken(participantIdentityRef.current ?? participantIdentity ?? undefined);
       reconnectAttemptsRef.current = 0;
       setToken(data.token);
       setMeetingEndAtIso(data.meetingEndAt ?? null);
@@ -2286,7 +2358,7 @@ export default function PublicMeetingRoomClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, participantName, participantEmail, participantIdentity, handleLeave]);
+  }, [roomId, participantName, participantIdentity, handleLeave, requestToken]);
 
   const handleError = useCallback((error: Error) => {
     const errorMessage = error.message.toLowerCase();
@@ -2457,6 +2529,72 @@ export default function PublicMeetingRoomClient() {
             </form>
           </div>
         </section>
+      </div>
+    );
+  }
+
+  // Uninvited guest on an invite-only meeting: explicit "Ask for permission" gate.
+  // Until they request, we do NOT connect them to the room (no presence, no media).
+  if (knocking && !knockRequested && participantName && token) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#0B0D0E]">
+        <ObsidianStudioStyles />
+        <div className="obs-wait">
+          <div className="obs-wait__bg" aria-hidden />
+          <div className="obs-wait__grain" aria-hidden />
+          <div className="obs-wait__card">
+            <div className="obs-wait__pill obs-mono">
+              <span className="obs-wait__pill-dot" />
+              GUESTS NOT ALLOWED
+            </div>
+            <h1 className="obs-display obs-wait__title">
+              Ask to <em className="obs-display-italic">join.</em>
+            </h1>
+            <p className="obs-wait__sub">
+              Guests aren&apos;t allowed in this meeting. You can request access — the host will
+              be notified and the room opens the moment they let you in.
+            </p>
+
+            {(participantName || participantEmail) && (
+              <div className="obs-wait__identity">
+                <span className="obs-mono obs-wait__identity-label">REQUESTING AS</span>
+                <span className="obs-wait__identity-name">{participantName || "Guest"}</span>
+                {participantEmail && (
+                  <span className="obs-mono obs-wait__identity-email">{participantEmail}</span>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setKnockRequested(true);
+                setWaitingForAdmission(true);
+              }}
+              className="obs-btn obs-btn--primary"
+              style={{ marginTop: "1.25rem" }}
+            >
+              Ask for permission
+              <i className="ri-hand-line" aria-hidden style={{ marginLeft: "0.4rem" }} />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setKnocking(false);
+                setKnockRequested(false);
+                setToken("");
+                setParticipantIdentity(null);
+                participantIdentityRef.current = null;
+                setPreJoinCommitted(false);
+                router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
+              }}
+              className="obs-btn obs-btn--ghost obs-wait__cancel"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
