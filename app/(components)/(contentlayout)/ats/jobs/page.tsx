@@ -359,6 +359,161 @@ const Jobs = () => {
     }
   }
 
+  // Excel import
+  const [excelImporting, setExcelImporting] = useState(false)
+  const excelInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Apply candidate to job
+  const [applyModalOpen, setApplyModalOpen] = useState(false)
+  const [applyJob, setApplyJob] = useState<any>(null)
+  const [candidatesList, setCandidatesList] = useState<{ id: string; fullName: string }[]>([])
+  const [selectedCandidateId, setSelectedCandidateId] = useState('')
+  const [applySubmitting, setApplySubmitting] = useState(false)
+  const [callingJobId, setCallingJobId] = useState<string | null>(null)
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
+  const [previewJobApplications, setPreviewJobApplications] = useState<JobApplication[]>([])
+  const [previewJobApplicationsLoading, setPreviewJobApplicationsLoading] = useState(false)
+  const [jobPreviewTab, setJobPreviewTab] = useState<'details' | 'applicants'>('details')
+
+  // Load applications for the job preview panel when a job is selected
+  useEffect(() => {
+    if (!previewJob?.id) {
+      setPreviewJobApplications([])
+      setJobPreviewTab('details')
+      return
+    }
+    setJobPreviewTab('details')
+    setPreviewJobApplicationsLoading(true)
+    listJobApplications({ jobId: previewJob.id, limit: 200 })
+      .then((res) => setPreviewJobApplications(res.results ?? []))
+      .catch(() => setPreviewJobApplications([]))
+      .finally(() => setPreviewJobApplicationsLoading(false))
+  }, [previewJob?.id])
+
+  const getOrganisationPhone = (job: any): string => {
+    const maybePhone = job?.companyInfo?.phone
+    return typeof maybePhone === 'string' ? maybePhone.trim() : ''
+  }
+
+  /** Recruiter / job-post verification → POST /bolna/call → BOLNA_AGENT_ID (not applicant agent). */
+  const handleInitiateCall = async (job: any) => {
+    const phone = getOrganisationPhone(job)
+    if (!phone) {
+      alert('Organisation phone is required to initiate a call.')
+      return
+    }
+
+    setCallingJobId(job.id)
+    try {
+      const res = await initiateBolnaCall({
+        jobId: job.id,
+        phone,
+        candidateName: job.company || job.jobTitle || 'Organisation',
+      })
+      alert(`Job posting verification call started. Execution ID: ${res.executionId}`)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to initiate call')
+    } finally {
+      setCallingJobId(null)
+    }
+  }
+
+  const handleApplyClick = (job: any) => {
+    setApplyJob(job)
+    setSelectedCandidateId('')
+    listCandidates({ limit: 500, ownerUserRole: 'jobSeeker' })
+      .then((res) => setCandidatesList((res.results ?? []).map((c: any) => ({ id: c._id ?? c.id, fullName: c.fullName ?? c.name ?? '' }))))
+      .catch(() => setCandidatesList([]))
+    setApplyModalOpen(true)
+  }
+  const handleApplySubmit = async () => {
+    if (!applyJob?.id || !selectedCandidateId) {
+      alert('Please select a candidate')
+      return
+    }
+    setApplySubmitting(true)
+    try {
+      await applyToJob(applyJob.id, selectedCandidateId)
+      alert('Candidate applied successfully')
+      setApplyModalOpen(false)
+      setApplyJob(null)
+      setSelectedCandidateId('')
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to apply candidate')
+    } finally {
+      setApplySubmitting(false)
+    }
+  }
+
+  const refreshJobs = () => {
+    listJobs(listJobsParams)
+      .then((res) => setJobsData((res.results ?? []).map(mapJobToDisplay)))
+      .catch(() => {})
+  }
+
+  const handleExportExcel = async () => {
+    try {
+      const blob = await exportJobsToExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `jobs_export_${Date.now()}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to export jobs')
+    }
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await downloadJobsTemplate()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'jobs_template.xlsx'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      alert('Failed to download template')
+    }
+  }
+
+  const handleImportExcel = () => {
+    excelInputRef.current?.click()
+  }
+
+  const onExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setExcelImporting(true)
+    try {
+      const result = await importJobsFromExcel(file)
+      refreshJobs()
+      const msg = result.summary
+        ? `Imported ${result.summary.successful} of ${result.summary.total}. Failed: ${result.summary.failed}`
+        : result.message
+      alert(msg)
+    } catch (err: any) {
+      alert(err?.response?.data?.message || 'Failed to import jobs')
+    } finally {
+      setExcelImporting(false)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedRows.size === 0) return
+    if (!confirm(`Delete ${selectedRows.size} selected job(s)?`)) return
+    try {
+      await Promise.all(Array.from(selectedRows).map((id) => deleteJob(id)))
+      setSelectedRows(new Set())
+      refreshJobs()
+    } catch (err) {
+      alert('Failed to delete one or more jobs')
+    }
+  }
+
   // Handle individual row checkbox
   const handleRowSelect = (id: string) => {
     const newSelected = new Set(selectedRows)
@@ -703,6 +858,51 @@ const Jobs = () => {
               <i className="ri-team-line text-primary"></i>
               <span className="font-medium">{value}</span>
             </span>
+          )
+        },
+      },
+      {
+        Header: 'Vacancies',
+        accessor: 'vacancies',
+        Cell: ({ value }: { value?: number | null }) => {
+          if (value == null || value <= 0) {
+            return <span className="text-gray-400 dark:text-gray-500">—</span>
+          }
+          return (
+            <span className="inline-flex items-center gap-1 text-gray-800 dark:text-white">
+              <i className="ri-team-line text-primary"></i>
+              <span className="font-medium">{value}</span>
+            </span>
+          )
+        },
+      },
+      {
+        Header: 'Posted Date',
+        accessor: 'postingDate',
+        id: 'postingDate',
+        Cell: ({ row }: any) => {
+          const raw: string | undefined = row.original.postingDate
+          if (!raw) return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
+          const d = new Date(raw)
+          if (Number.isNaN(d.getTime())) {
+            return <span className="text-sm text-defaulttextcolor">{raw}</span>
+          }
+          const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+          const dayMs = 24 * 60 * 60 * 1000
+          const diffDays = Math.floor((Date.now() - d.getTime()) / dayMs)
+          let relative = ''
+          if (diffDays === 0) relative = 'Today'
+          else if (diffDays === 1) relative = 'Yesterday'
+          else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`
+          else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
+          else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
+          return (
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium text-defaulttextcolor whitespace-nowrap">{formatted}</span>
+              {relative && (
+                <span className="text-[11px] text-defaulttextcolor/60">{relative}</span>
+              )}
+            </div>
           )
         },
       },
