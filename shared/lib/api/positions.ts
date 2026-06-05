@@ -12,6 +12,37 @@ export interface Position {
   updatedAt?: string;
 }
 
+export interface PositionAssignedEmployee {
+  id: string;
+  name: string;
+}
+
+export interface PositionAssignedModule {
+  id: string;
+  name: string;
+}
+
+export interface PositionRosterItem extends Position {
+  employeeCount: number;
+  assignedEmployees?: PositionAssignedEmployee[];
+  assignedModules?: PositionAssignedModule[];
+  /** Title-only grouping when no Position catalog row exists (read-only roster). */
+  unlinked?: boolean;
+}
+
+export interface SetPositionModulesResponse {
+  positionId: string;
+  assignedModules: PositionAssignedModule[];
+}
+
+export interface PositionEmployeesResponse {
+  results: PositionAssignedEmployee[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
 export interface PositionsListResponse {
   results: Position[];
   page: number;
@@ -34,6 +65,28 @@ export async function getAllPositions(): Promise<Position[]> {
   return data;
 }
 
+/** Positions with active employee counts (single request). */
+export async function getPositionRoster(): Promise<PositionRosterItem[]> {
+  const { data } = await apiClient.get<PositionRosterItem[]>("/positions/roster");
+  return data;
+}
+
+export interface ListPositionEmployeesParams {
+  search?: string;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+}
+
+/** Active HR employees whose position or designation matches this position. */
+export async function listPositionEmployees(
+  positionId: string,
+  params?: ListPositionEmployeesParams
+): Promise<PositionEmployeesResponse> {
+  const { data } = await apiClient.get<PositionEmployeesResponse>(`/positions/${positionId}/employees`, { params });
+  return data;
+}
+
 export async function listPositions(params?: ListPositionsParams): Promise<PositionsListResponse> {
   const { data } = await apiClient.get<PositionsListResponse>("/positions", { params });
   return data;
@@ -49,11 +102,14 @@ export async function createPosition(payload: { name: string; department?: strin
   return data;
 }
 
-export async function updatePosition(positionId: string, payload: { name: string; department?: string; skillsSuggested?: string[] }): Promise<Position> {
-  const { data } = await apiClient.patch<Position>(`/positions/${positionId}`, payload);
+/** Replace which training modules include this position (PUT /positions/:id/modules). */
+export async function setPositionModules(
+  positionId: string,
+  moduleIds: string[]
+): Promise<SetPositionModulesResponse> {
+  const { data } = await apiClient.put<SetPositionModulesResponse>(`/positions/${positionId}/modules`, {
+    moduleIds,
+  });
   return data;
 }
 
-export async function deletePosition(positionId: string): Promise<void> {
-  await apiClient.delete(`/positions/${positionId}`);
-}

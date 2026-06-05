@@ -1,6 +1,7 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import type { Student } from "@/shared/lib/api/students";
 
 export interface FileUpload {
   key: string;
@@ -57,9 +58,16 @@ export interface PlaylistItem {
   sectionIndex?: number;
 }
 
+export interface TrainingModulePosition {
+  id: string;
+  name: string;
+  department?: string;
+}
+
 export interface TrainingModule {
   id: string;
   categories: Array<{ id: string; name: string; createdAt?: string; updatedAt?: string }>;
+  positions?: TrainingModulePosition[];
   moduleName: string;
   coverImage?: FileUpload;
   shortDescription: string;
@@ -104,6 +112,8 @@ export interface CreateTrainingModulePayload {
   moduleName: string;
   shortDescription: string;
   categories?: string[];
+  /** Positions this module serves; drives the module's eligible-employee pool. */
+  positions?: string[];
   students?: string[];
   mentorsAssigned?: string[];
   status?: "draft" | "published" | "archived";
@@ -136,6 +146,33 @@ export async function getTrainingModule(moduleId: string): Promise<TrainingModul
   return data;
 }
 
+export interface ModuleEmployeesListResponse {
+  results: Student[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export interface ListModuleEmployeesParams {
+  search?: string;
+  sortBy?: string;
+  limit?: number;
+  page?: number;
+}
+
+/** Active students whose position is linked to this module (TrainingModule.positions). */
+export async function listModuleEmployees(
+  moduleId: string,
+  params?: ListModuleEmployeesParams
+): Promise<ModuleEmployeesListResponse> {
+  const { data } = await apiClient.get<ModuleEmployeesListResponse>(
+    `/training/modules/${moduleId}/employees`,
+    { params }
+  );
+  return data;
+}
+
 function studentIdsFromModule(mod: TrainingModule): string[] {
   const ids: string[] = [];
   for (const s of mod.students ?? []) {
@@ -154,6 +191,38 @@ export async function addStudentToTrainingModule(moduleId: string, studentId: st
   if (set.has(sid)) return mod;
   set.add(sid);
   return updateTrainingModule(moduleId, { students: Array.from(set) });
+}
+
+function mentorIdsFromModule(mod: TrainingModule): string[] {
+  const ids: string[] = [];
+  for (const m of mod.mentorsAssigned ?? []) {
+    const id = String(m.id ?? (m as { _id?: string })._id ?? "").trim();
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+/** Remove a training student from a module roster. Idempotent. */
+export async function removeStudentFromTrainingModule(
+  moduleId: string,
+  studentId: string
+): Promise<TrainingModule> {
+  const sid = studentId.trim();
+  if (!sid) throw new Error("studentId is required");
+  const mod = await getTrainingModule(moduleId);
+  const next = studentIdsFromModule(mod).filter((id) => id !== sid);
+  return updateTrainingModule(moduleId, { students: next });
+}
+
+/** Add a mentor to a module roster. Idempotent. */
+export async function addMentorToTrainingModule(moduleId: string, mentorId: string): Promise<TrainingModule> {
+  const mid = mentorId.trim();
+  if (!mid) throw new Error("mentorId is required");
+  const mod = await getTrainingModule(moduleId);
+  const set = new Set(mentorIdsFromModule(mod));
+  if (set.has(mid)) return mod;
+  set.add(mid);
+  return updateTrainingModule(moduleId, { mentorsAssigned: Array.from(set) });
 }
 
 function appendIdArray(formData: FormData, field: string, values?: string[]): void {
@@ -289,6 +358,7 @@ export async function createTrainingModule(
   formData.append("shortDescription", payload.shortDescription);
   formData.append("status", payload.status ?? "draft");
   appendIdArray(formData, "categories", payload.categories);
+  appendIdArray(formData, "positions", payload.positions);
   appendIdArrayField(formData, "students", payload.students);
   appendIdArrayField(formData, "mentorsAssigned", payload.mentorsAssigned);
 
@@ -329,6 +399,13 @@ export async function updateTrainingModule(
       formData.append("categories", "[]");
     } else {
       appendIdArray(formData, "categories", payload.categories);
+    }
+  }
+  if (payload.positions !== undefined) {
+    if (payload.positions.length === 0) {
+      formData.append("positions", "[]");
+    } else {
+      appendIdArray(formData, "positions", payload.positions);
     }
   }
   appendIdArrayField(formData, "students", payload.students);
