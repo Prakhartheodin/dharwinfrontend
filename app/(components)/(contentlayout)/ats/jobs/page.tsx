@@ -24,13 +24,14 @@ import {
   getJobStats,
   type JobBookmarkNote,
   type JobStatsResponse,
+  type JobsListParams,
 } from '@/shared/lib/api/jobs'
 import { listCandidates } from '@/shared/lib/api/candidates'
 import { listJobApplications, updateJobApplicationStatus, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { initiateBolnaCall } from '@/shared/lib/api/bolna'
 import { createJobShareReferralLink } from '@/shared/lib/api/referralLeads'
 import { getApiErrorMessage } from '@/shared/lib/api/client'
-import { mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
+import { isJobSalarySpecified, mapJobToDisplay, type DisplayJob } from '@/shared/lib/ats/jobMappers'
 import {
   formatJobDescriptionForDisplay,
   JOB_DESCRIPTION_PROSE_CLASS,
@@ -50,6 +51,7 @@ interface FilterState {
   experience: [number, number] // [min, max] in years
   location: string[]
   salary: [number, number] // [min, max]
+  salaryNotSpecified: boolean
   status: string // 'all' | actual backend status string (Active, Inactive, Draft, Archived, ...)
   postingDate: string
 }
@@ -125,41 +127,6 @@ const Jobs = () => {
   const [listJobOrigin, setListJobOrigin] = useState<'' | 'internal' | 'external'>('')
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
 
-  const listJobsParams = useMemo(
-    () => ({
-      limit: 500 as const,
-      jobOrigin:
-        listJobOrigin === 'internal' || listJobOrigin === 'external'
-          ? listJobOrigin
-          : undefined,
-    }),
-    [listJobOrigin]
-  )
-
-  useEffect(() => {
-    const ac = new AbortController()
-    setJobsListFetching(true)
-    listJobs(listJobsParams, { signal: ac.signal })
-      .then((res) => {
-        if (ac.signal.aborted) return
-        setJobsData((res.results ?? []).map(mapJobToDisplay))
-      })
-      .catch((err: unknown) => {
-        const aborted =
-          ac.signal.aborted ||
-          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
-          (err as { name?: string })?.name === "CanceledError"
-        if (aborted) return
-        setJobsData([])
-      })
-      .finally(() => {
-        if (ac.signal.aborted) return
-        jobsEverLoadedRef.current = true
-        setJobsListFetching(false)
-      })
-    return () => ac.abort()
-  }, [listJobsParams])
-
   const [bookmarkedJobs, setBookmarkedJobs] = useState<Set<string>>(new Set())
   const [previewJob, setPreviewJob] = useState<any>(null)
   const [companyModal, setCompanyModal] = useState<any>(null)
@@ -193,9 +160,54 @@ const Jobs = () => {
     experience: [experienceRangesConst.min, experienceRangesConst.max],
     location: [],
     salary: [salaryRangesConst.min, salaryRangesConst.max],
+    salaryNotSpecified: false,
     status: initialStatusFilter,
     postingDate: ''
   })
+
+  const listJobsParams = useMemo(() => {
+    const params: JobsListParams = {
+      limit: 500,
+      jobOrigin:
+        listJobOrigin === 'internal' || listJobOrigin === 'external'
+          ? listJobOrigin
+          : undefined,
+    }
+    if (filters.salaryNotSpecified) {
+      params.salaryNotSpecified = true
+    } else if (
+      filters.salary[0] !== salaryRangesConst.min ||
+      filters.salary[1] !== salaryRangesConst.max
+    ) {
+      params.salaryMin = filters.salary[0]
+      params.salaryMax = filters.salary[1]
+    }
+    return params
+  }, [listJobOrigin, filters.salary, filters.salaryNotSpecified])
+
+  useEffect(() => {
+    const ac = new AbortController()
+    setJobsListFetching(true)
+    listJobs(listJobsParams, { signal: ac.signal })
+      .then((res) => {
+        if (ac.signal.aborted) return
+        setJobsData((res.results ?? []).map(mapJobToDisplay))
+      })
+      .catch((err: unknown) => {
+        const aborted =
+          ac.signal.aborted ||
+          (err as { code?: string; name?: string })?.code === "ERR_CANCELED" ||
+          (err as { name?: string })?.name === "CanceledError"
+        if (aborted) return
+        setJobsData([])
+      })
+      .finally(() => {
+        if (ac.signal.aborted) return
+        jobsEverLoadedRef.current = true
+        setJobsListFetching(false)
+      })
+    return () => ac.abort()
+  }, [listJobsParams])
 
   // Search states for filter dropdowns
   const [searchJobTitle, setSearchJobTitle] = useState('')
@@ -707,61 +719,28 @@ const Jobs = () => {
         },
       },
       {
-        Header: 'Vacancies',
-        accessor: 'vacancies',
-        Cell: ({ value }: { value?: number | null }) => {
-          if (value == null || value <= 0) {
-            return <span className="text-gray-400 dark:text-gray-500">—</span>
-          }
-          return (
-            <span className="inline-flex items-center gap-1 text-gray-800 dark:text-white">
-              <i className="ri-team-line text-primary"></i>
-              <span className="font-medium">{value}</span>
-            </span>
-          )
-        },
-      },
-      {
-        Header: 'Posted Date',
-        accessor: 'postingDate',
-        id: 'postingDate',
-        Cell: ({ row }: any) => {
-          const raw: string | undefined = row.original.postingDate
-          if (!raw) return <span className="text-defaulttextcolor/50 text-xs italic">—</span>
-          const d = new Date(raw)
-          if (Number.isNaN(d.getTime())) {
-            return <span className="text-sm text-defaulttextcolor">{raw}</span>
-          }
-          const formatted = d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
-          const dayMs = 24 * 60 * 60 * 1000
-          const diffDays = Math.floor((Date.now() - d.getTime()) / dayMs)
-          let relative = ''
-          if (diffDays === 0) relative = 'Today'
-          else if (diffDays === 1) relative = 'Yesterday'
-          else if (diffDays > 1 && diffDays < 30) relative = `${diffDays}d ago`
-          else if (diffDays >= 30 && diffDays < 365) relative = `${Math.floor(diffDays / 30)}mo ago`
-          else if (diffDays >= 365) relative = `${Math.floor(diffDays / 365)}y ago`
-          return (
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-medium text-defaulttextcolor whitespace-nowrap">{formatted}</span>
-              {relative && (
-                <span className="text-[11px] text-defaulttextcolor/60">{relative}</span>
-              )}
-            </div>
-          )
-        },
-      },
-      {
         Header: 'Salary',
         accessor: 'salary',
         disableSortBy: true,
         Cell: ({ row }: any) => {
           const job = row.original
+          const hasSalary = Boolean(job.salary?.trim())
+          const salaryLabel = hasSalary ? job.salary : 'Not specified'
           const salaryTierIcon = getSalaryTierIcon(job.salaryTier || 'medium')
           return (
             <div className="flex items-center gap-2">
-              <span className="font-medium text-gray-800 dark:text-white">{job.salary}</span>
-              <i className={`${salaryTierIcon.icon} ${salaryTierIcon.color} text-lg`}></i>
+              <span
+                className={
+                  hasSalary
+                    ? 'font-medium text-gray-800 dark:text-white'
+                    : 'text-sm text-gray-400 dark:text-gray-500'
+                }
+              >
+                {salaryLabel}
+              </span>
+              {hasSalary && (
+                <i className={`${salaryTierIcon.icon} ${salaryTierIcon.color} text-lg`}></i>
+              )}
             </div>
           )
         },
@@ -920,8 +899,8 @@ const Jobs = () => {
       
       // Experience filter (range) — overlap test against numeric job range.
       // Falls back to parsing the formatted string if the numeric range is
-      // missing (legacy rows). Jobs with no detectable experience are kept
-      // (treated as "unspecified", no exclusion).
+      // missing (legacy rows). When the user narrows experience, jobs with no
+      // detectable range are excluded (they cannot satisfy the filter).
       const expMinActive = filters.experience[0] !== experienceRangesConst.min
       const expMaxActive = filters.experience[1] !== experienceRangesConst.max
       if (expMinActive || expMaxActive) {
@@ -942,12 +921,13 @@ const Jobs = () => {
             jobMax = parseFloat(upTo[1])
           }
         }
-        if (jobMin != null || jobMax != null) {
-          const lo = jobMin ?? 0
-          const hi = jobMax ?? experienceRangesConst.max
-          if (hi < filters.experience[0] || lo > filters.experience[1]) {
-            return false
-          }
+        if (jobMin == null && jobMax == null) {
+          return false
+        }
+        const lo = jobMin ?? 0
+        const hi = jobMax ?? jobMin ?? experienceRangesConst.max
+        if (hi < filters.experience[0] || lo > filters.experience[1]) {
+          return false
         }
       }
 
@@ -956,28 +936,39 @@ const Jobs = () => {
         return false
       }
 
-      // Salary filter (range) — overlap test against numeric job range.
-      const salMinActive = filters.salary[0] !== salaryRangesConst.min
-      const salMaxActive = filters.salary[1] !== salaryRangesConst.max
-      if (salMinActive || salMaxActive) {
-        let jobMin: number | null = job.salaryMinNum ?? null
-        let jobMax: number | null = job.salaryMaxNum ?? null
-        if (jobMin == null && jobMax == null && job.salary) {
-          const matches = job.salary.match(/[\d,]+(?:\.\d+)?/g)
-          if (matches && matches.length >= 1) {
-            const nums = matches.map((m) => Number(m.replace(/,/g, ''))).filter((n) => Number.isFinite(n))
-            if (nums.length >= 2) {
-              jobMin = nums[0]
-              jobMax = nums[1]
-            } else if (nums.length === 1) {
-              jobMin = nums[0]
-              jobMax = nums[0]
+      // Salary filter — "Not specified" or numeric range overlap.
+      if (filters.salaryNotSpecified) {
+        if (isJobSalarySpecified(job)) {
+          return false
+        }
+      } else {
+        const salMinActive = filters.salary[0] !== salaryRangesConst.min
+        const salMaxActive = filters.salary[1] !== salaryRangesConst.max
+        if (salMinActive || salMaxActive) {
+          let jobMin: number | null = job.salaryMinNum ?? null
+          let jobMax: number | null = job.salaryMaxNum ?? null
+          if (jobMin === 0 && jobMax === 0) {
+            jobMin = null
+            jobMax = null
+          }
+          if (jobMin == null && jobMax == null && job.salary) {
+            const matches = job.salary.match(/[\d,]+(?:\.\d+)?/g)
+            if (matches && matches.length >= 1) {
+              const nums = matches.map((m) => Number(m.replace(/,/g, ''))).filter((n) => Number.isFinite(n))
+              if (nums.length >= 2) {
+                jobMin = nums[0]
+                jobMax = nums[1]
+              } else if (nums.length === 1) {
+                jobMin = nums[0]
+                jobMax = nums[0]
+              }
             }
           }
-        }
-        if (jobMin != null || jobMax != null) {
+          if (jobMin == null && jobMax == null) {
+            return false
+          }
           const lo = jobMin ?? 0
-          const hi = jobMax ?? Number.MAX_SAFE_INTEGER
+          const hi = jobMax ?? jobMin ?? lo
           if (hi < filters.salary[0] || lo > filters.salary[1]) {
             return false
           }
@@ -1075,6 +1066,7 @@ const Jobs = () => {
       experience: [experienceRangesConst.min, experienceRangesConst.max],
       location: [],
       salary: [salaryRangesConst.min, salaryRangesConst.max],
+      salaryNotSpecified: false,
       status: 'Active',
       postingDate: ''
     })
@@ -1088,8 +1080,10 @@ const Jobs = () => {
     filters.experience[0] !== experienceRangesConst.min ||
     filters.experience[1] !== experienceRangesConst.max ||
     filters.location.length > 0 ||
-    filters.salary[0] !== salaryRangesConst.min ||
-    filters.salary[1] !== salaryRangesConst.max ||
+    filters.salaryNotSpecified ||
+    (!filters.salaryNotSpecified &&
+      (filters.salary[0] !== salaryRangesConst.min ||
+        filters.salary[1] !== salaryRangesConst.max)) ||
     filters.status !== 'Active' ||
     filters.postingDate !== ''
 
@@ -1099,7 +1093,11 @@ const Jobs = () => {
     filters.company.length +
     (filters.experience[0] !== experienceRangesConst.min || filters.experience[1] !== experienceRangesConst.max ? 1 : 0) +
     filters.location.length +
-    (filters.salary[0] !== salaryRangesConst.min || filters.salary[1] !== salaryRangesConst.max ? 1 : 0) +
+    (filters.salaryNotSpecified ? 1 : 0) +
+    (!filters.salaryNotSpecified &&
+    (filters.salary[0] !== salaryRangesConst.min || filters.salary[1] !== salaryRangesConst.max)
+      ? 1
+      : 0) +
     (filters.status !== 'Active' ? 1 : 0) +
     (filters.postingDate !== '' ? 1 : 0)
 

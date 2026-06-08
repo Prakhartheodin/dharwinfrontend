@@ -63,6 +63,26 @@ import { recommendSkillsByRole } from '@/shared/lib/api/auth'
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+const verificationEmailToast = Swal.mixin({
+  toast: true,
+  position: 'top-end',
+  showConfirmButton: false,
+  timer: 4500,
+  timerProgressBar: true,
+  didOpen: (toast) => {
+    toast.onmouseenter = Swal.stopTimer
+    toast.onmouseleave = Swal.resumeTimer
+  },
+})
+
 /** True if the row has an S3 key or a usable HTTPS S3 URL (not localhost-only placeholder). */
 function candidateDocumentCanView(doc: { key?: string; url?: string } | null | undefined): boolean {
   if (!doc) return false
@@ -497,6 +517,7 @@ const Candidates = () => {
   )
   const [candidates, setCandidates] = useState<CandidateDisplay[]>([])
   const [impersonatingOwnerUserId, setImpersonatingOwnerUserId] = useState<string | null>(null)
+  const [resendingVerificationCandidateId, setResendingVerificationCandidateId] = useState<string | null>(null)
   const [candidatesLoading, setCandidatesLoading] = useState(true)
   const [candidatesError, setCandidatesError] = useState<string | null>(null)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
@@ -1157,27 +1178,78 @@ const Candidates = () => {
     }
   }
 
-  const handleResendVerification = async (candidate: CandidateDisplay) => {
-    setActionError(null)
-    try {
-      const res = await resendVerificationEmail(candidate.id)
-      const to = res.sentToEmail?.trim()
-      setActionSuccess(
-        to ? `Verification email sent to ${to}` : `Verification email sent${res.message ? `: ${res.message}` : ''}`
-      )
-      refreshCandidates(true)
-      setTimeout(() => setActionSuccess(null), 3000)
-    } catch (err: any) {
-      const message = err?.response?.data?.message ?? err?.message ?? 'Failed to send verification email'
-      if (/already verified/i.test(String(message))) {
-        setActionSuccess('Email already verified')
-        refreshCandidates(true)
-        setTimeout(() => setActionSuccess(null), 3000)
-        return
+  const handleResendVerification = useCallback(
+    async (candidate: CandidateDisplay) => {
+      const name = candidate.name?.trim() || 'This employee'
+      const profileEmail = displayApplicantEmail(candidate.email)
+      const safeName = escapeHtml(name)
+      const safeEmail = profileEmail ? escapeHtml(profileEmail) : ''
+
+      setActionError(null)
+      setResendingVerificationCandidateId(candidate.id)
+
+      try {
+        const result = await Swal.fire({
+          title: 'Resend verification email?',
+          html: `
+            <p class="text-sm text-gray-600 dark:text-gray-300 mb-3 text-start">
+              Send a fresh verification link to <strong>${safeName}</strong>.
+            </p>
+            ${
+              safeEmail
+                ? `<p class="text-xs text-gray-500 dark:text-gray-400 m-0 text-start">Profile email: <span class="font-medium">${safeEmail}</span>. The message is delivered to this employee&apos;s login inbox (may differ).</p>`
+                : `<p class="text-xs text-gray-500 dark:text-gray-400 m-0 text-start">The message is sent to this employee&apos;s login email address.</p>`
+            }
+          `,
+          icon: 'question',
+          showCancelButton: true,
+          confirmButtonText: 'Send email',
+          cancelButtonText: 'Cancel',
+          confirmButtonColor: '#14b8a6',
+          cancelButtonColor: '#6b7280',
+          reverseButtons: true,
+          focusCancel: true,
+          showLoaderOnConfirm: true,
+          allowOutsideClick: () => !Swal.isLoading(),
+          preConfirm: async () => {
+            try {
+              return await resendVerificationEmail(candidate.id)
+            } catch (err: unknown) {
+              const message =
+                (err as { response?: { data?: { message?: string } }; message?: string })?.response
+                  ?.data?.message ??
+                (err as { message?: string })?.message ??
+                'Failed to send verification email'
+              if (/already verified/i.test(String(message))) {
+                Swal.close()
+                await verificationEmailToast.fire({
+                  icon: 'info',
+                  title: 'Email already verified',
+                })
+                refreshCandidates(true)
+                return false
+              }
+              Swal.showValidationMessage(message)
+              return false
+            }
+          },
+        })
+
+        if (result.isConfirmed && result.value) {
+          const res = result.value as { sentToEmail?: string; message?: string }
+          const to = res.sentToEmail?.trim()
+          await verificationEmailToast.fire({
+            icon: 'success',
+            title: to ? `Verification email sent to ${to}` : 'Verification email sent',
+          })
+          refreshCandidates(true)
+        }
+      } finally {
+        setResendingVerificationCandidateId(null)
       }
-      setActionError(message)
-    }
-  }
+    },
+    [refreshCandidates]
+  )
 
   const handleDeleteCandidate = async (candidate: CandidateDisplay) => {
     const result = await Swal.fire({
@@ -1897,9 +1969,27 @@ const Candidates = () => {
               </div>
               {c.isEmailVerified === false && c.ownerUserId && (
                 <div className="hs-tooltip ti-main-tooltip">
-                  <button type="button" onClick={() => handleResendVerification(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white" title="Resend Email Verification">
-                    <i className="ri-mail-send-line"></i>
-                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Resend Email Verification</span>
+                  <button
+                    type="button"
+                    onClick={() => handleResendVerification(c)}
+                    disabled={resendingVerificationCandidateId === c.id}
+                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-teal-500/10 text-teal-500 hover:bg-teal-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-teal-500/10 disabled:hover:text-teal-500"
+                    title={
+                      resendingVerificationCandidateId === c.id
+                        ? 'Sending verification email…'
+                        : 'Resend email verification'
+                    }
+                    aria-label={`Resend email verification for ${c.name}`}
+                    aria-busy={resendingVerificationCandidateId === c.id}
+                  >
+                    {resendingVerificationCandidateId === c.id ? (
+                      <i className="ri-loader-4-line animate-spin" aria-hidden />
+                    ) : (
+                      <i className="ri-mail-send-line" aria-hidden />
+                    )}
+                    <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">
+                      Resend email verification
+                    </span>
                   </button>
                 </div>
               )}
@@ -1970,6 +2060,8 @@ const Candidates = () => {
       authLoading,
       impersonatingOwnerUserId,
       handleImpersonateFromCandidate,
+      resendingVerificationCandidateId,
+      handleResendVerification,
       canBulkSelectEmployees,
       canUpdateEmployee,
     ]

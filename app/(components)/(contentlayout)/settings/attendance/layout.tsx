@@ -31,7 +31,8 @@ function hasAttendanceAssign(permissions: string[], isAdministrator: boolean): b
     (p) =>
       p === "attendance.manage" ||
       p === "training.attendance:view,create,edit" ||
-      (p.includes("training.attendance") && (p.includes("create") || p.includes("edit") || p.includes("view")))
+      ((p.includes("training.attendance") || p.includes("settings.attendance")) &&
+        (p.includes("create") || p.includes("edit") || p.includes("view")))
   );
   return hasStudentsManage || hasAttendanceManage;
 }

@@ -7,7 +7,7 @@ import { EmailTemplateModal } from "@/shared/components/email-template-modal";
 import TiptapEditor from "@/shared/data/forms/form-editors/tiptapeditor";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
-import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
+import { hasEmailManageAccess, hasEmailReadAccess, hasSettingsFeatureAccess, hasSettingsFeatureAction } from "@/shared/lib/permissions";
 import * as emailApi from "@/shared/lib/api/email";
 import type { AgentEmailTemplate, AgentEmailTemplateShared } from "@/shared/lib/api/email";
 import { AxiosError } from "axios";
@@ -16,8 +16,14 @@ import Swal from "sweetalert2";
 export default function SettingsEmailTemplatesPage() {
   const router = useRouter();
   const { permissions, permissionsLoaded } = useAuth();
-  const canReadEmailPreferences = hasEmailReadAccess(permissions ?? []);
-  const canManageEmailPreferences = hasEmailManageAccess(permissions ?? []);
+  const canReadEmailPreferences =
+    hasEmailReadAccess(permissions ?? []) ||
+    hasSettingsFeatureAccess(permissions ?? [], "email-templates");
+  const canManageEmailPreferences =
+    hasEmailManageAccess(permissions ?? []) ||
+    hasSettingsFeatureAction(permissions ?? [], "email-templates", "create") ||
+    hasSettingsFeatureAction(permissions ?? [], "email-templates", "edit") ||
+    hasSettingsFeatureAction(permissions ?? [], "email-templates", "delete");
 
   const [loading, setLoading] = useState(true);
   const [own, setOwn] = useState<AgentEmailTemplate[]>([]);

@@ -49,7 +49,11 @@ function hasWeekOffAccess(permissions: string[], isAdministrator: boolean): bool
     (p) => (p.includes("settings.students") || p === "students.manage") && (p.includes("create") || p.includes("edit") || p.includes("delete") || p.includes("manage"))
   );
   const hasAttendanceManage = permissions.some(
-    (p) => (p.includes("training.attendance") || p === "attendance.manage") && (p.includes("create") || p.includes("edit") || p.includes("view,create,edit"))
+    (p) =>
+      (p.includes("training.attendance") ||
+        p.includes("settings.attendance") ||
+        p === "attendance.manage") &&
+      (p.includes("create") || p.includes("edit") || p.includes("view,create,edit"))
   );
   return hasStudentsManage || hasAttendanceManage;
 }

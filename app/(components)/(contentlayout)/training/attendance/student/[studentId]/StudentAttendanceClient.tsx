@@ -257,7 +257,10 @@ export function StudentAttendanceClient() {
     setPunchLoading(true);
     setError(null);
     try {
-      await attendanceApi.punchOutAttendance(studentId, { punchOutTime: new Date().toISOString() });
+      await attendanceApi.punchOutAttendance(studentId, {
+        punchOutTime: new Date().toISOString(),
+        timezone: getDetectedTimezone(),
+      });
       await fetchStatus();
       refetchForMonth();
     } catch (e: unknown) {

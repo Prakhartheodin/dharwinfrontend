@@ -8,6 +8,7 @@ interface FilterState {
   experience: [number, number]
   location: string[]
   salary: [number, number]
+  salaryNotSpecified: boolean
   status: string
   postingDate: string
 }
@@ -184,9 +185,12 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
   const [salaryMaxStr, setSalaryMaxStr] = useState<string>(
     filters.salary[1] === salaryRangesConst.max ? '' : formatNumberWithCommas(filters.salary[1])
   )
+  const layoutWasOpenRef = useRef(false)
 
   useEffect(() => {
-    if (!layoutOpen) return
+    const justOpened = layoutOpen && !layoutWasOpenRef.current
+    layoutWasOpenRef.current = layoutOpen
+    if (!justOpened) return
     setDraft(filters)
     setDraftOrigin(listJobOrigin)
     setSalaryMinStr(
@@ -274,6 +278,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
     const num = parseDigits(formatted)
     setDraft((prev) => ({
       ...prev,
+      salaryNotSpecified: false,
       salary: [num ?? salaryRangesConst.min, prev.salary[1]],
     }))
   }
@@ -283,6 +288,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
     const num = parseDigits(formatted)
     setDraft((prev) => ({
       ...prev,
+      salaryNotSpecified: false,
       salary: [prev.salary[0], num ?? salaryRangesConst.max],
     }))
   }
@@ -290,7 +296,17 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
   const applySalaryPreset = (min: number, max: number) => {
     setSalaryMinStr(min === salaryRangesConst.min ? '' : formatNumberWithCommas(min))
     setSalaryMaxStr(max === salaryRangesConst.max ? '' : formatNumberWithCommas(max))
-    setDraft((prev) => ({ ...prev, salary: [min, max] }))
+    setDraft((prev) => ({ ...prev, salaryNotSpecified: false, salary: [min, max] }))
+  }
+
+  const applySalaryNotSpecified = () => {
+    setSalaryMinStr('')
+    setSalaryMaxStr('')
+    setDraft((prev) => ({
+      ...prev,
+      salaryNotSpecified: true,
+      salary: [salaryRangesConst.min, salaryRangesConst.max],
+    }))
   }
 
   const draftActiveCount = useMemo(() => {
@@ -308,6 +324,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
     )
       n += 1
     if (
+      draft.salaryNotSpecified ||
       draft.salary[0] !== salaryRangesConst.min ||
       draft.salary[1] !== salaryRangesConst.max
     )
@@ -322,6 +339,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
       experience: [experienceRangesConst.min, experienceRangesConst.max],
       location: [],
       salary: [salaryRangesConst.min, salaryRangesConst.max],
+      salaryNotSpecified: false,
       // Default status filter is Active so Clear All matches the page default.
       status: 'Active',
       postingDate: '',
@@ -758,28 +776,48 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
             <div className="flex items-center justify-between mb-2">
               <label className={SECTION_TITLE}>Salary Range</label>
               <span className="text-[0.7rem] font-medium text-primary bg-primary/10 px-2 py-0.5 rounded-full">
-                {salaryMinStr || 'Any'} – {salaryMaxStr || 'Any'}
+                {draft.salaryNotSpecified
+                  ? 'Not specified'
+                  : `${salaryMinStr || 'Any'} – ${salaryMaxStr || 'Any'}`}
               </span>
             </div>
             <div className="flex flex-wrap gap-1.5 mb-3">
               {buildSalaryPresets(salaryRangesConst.max).map((p) => {
-                const active = draft.salary[0] === p.min && draft.salary[1] === p.max
+                const active =
+                  !draft.salaryNotSpecified &&
+                  draft.salary[0] === p.min &&
+                  draft.salary[1] === p.max
                 return (
                   <button
                     key={p.label}
                     type="button"
                     onClick={() => applySalaryPreset(p.min, p.max)}
+                    disabled={draft.salaryNotSpecified}
                     className={
                       'px-2.5 py-1 rounded-full text-[0.7rem] font-medium border transition-colors ' +
-                      (active
-                        ? 'bg-primary text-white border-primary'
-                        : 'bg-white dark:bg-bodybg text-gray-700 dark:text-gray-200 border-defaultborder/60 dark:border-white/10 hover:border-primary/50 hover:text-primary')
+                      (draft.salaryNotSpecified
+                        ? 'opacity-50 cursor-not-allowed bg-white dark:bg-bodybg text-gray-400 border-defaultborder/40'
+                        : active
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-white dark:bg-bodybg text-gray-700 dark:text-gray-200 border-defaultborder/60 dark:border-white/10 hover:border-primary/50 hover:text-primary')
                     }
                   >
                     {p.label}
                   </button>
                 )
               })}
+              <button
+                type="button"
+                onClick={applySalaryNotSpecified}
+                className={
+                  'px-2.5 py-1 rounded-full text-[0.7rem] font-medium border transition-colors ' +
+                  (draft.salaryNotSpecified
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white dark:bg-bodybg text-gray-700 dark:text-gray-200 border-defaultborder/60 dark:border-white/10 hover:border-primary/50 hover:text-primary')
+                }
+              >
+                Not specified
+              </button>
             </div>
             <div className="grid grid-cols-2 gap-2.5">
               <div>
@@ -796,6 +834,7 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                     className={`${INPUT_BASE} !pl-6 !pr-2`}
                     placeholder="Any"
                     value={salaryMinStr}
+                    disabled={draft.salaryNotSpecified}
                     onChange={(e) => handleSalaryMinChange(e.target.value)}
                   />
                 </div>
@@ -814,13 +853,16 @@ const JobsFilterPanel: React.FC<JobsFilterPanelProps> = ({
                     className={`${INPUT_BASE} !pl-6 !pr-2`}
                     placeholder="Any"
                     value={salaryMaxStr}
+                    disabled={draft.salaryNotSpecified}
                     onChange={(e) => handleSalaryMaxChange(e.target.value)}
                   />
                 </div>
               </div>
             </div>
             <p className="mt-2 text-[0.68rem] text-gray-400 dark:text-gray-500">
-              Leave empty for no limit. Numbers auto-format with commas.
+              {draft.salaryNotSpecified
+                ? 'Shows jobs with no salary range on file.'
+                : 'Leave empty for no limit. Numbers auto-format with commas.'}
             </p>
           </section>
         </div>

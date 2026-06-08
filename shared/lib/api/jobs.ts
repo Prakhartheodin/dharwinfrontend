@@ -84,6 +84,9 @@ export interface JobsListParams {
   sortBy?: string;
   limit?: number;
   page?: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  salaryNotSpecified?: boolean;
 }
 
 export interface JobsListResponse {

@@ -158,9 +158,9 @@ export default function SettingsLayout({
         : hasEmailReadAccess(raw) || hasSettingsFeatureAccess(raw, "email-templates");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "job-templates") {
-      const can =
-        hasJobsReadAccess(raw) ||
-        hasSettingsFeatureAccess(raw, "job-templates");
+      const can = matrixMode
+        ? hasSettingsFeatureAccess(raw, "job-templates")
+        : hasJobsReadAccess(raw) || hasSettingsFeatureAccess(raw, "job-templates");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates-admin") {
       const can = matrixMode
@@ -231,9 +231,10 @@ export default function SettingsLayout({
   const showEmailTemplatesTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates")
     : hasEmailReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "email-templates");
-  /** Same idea as ATS Jobs: `jobs.read` / `ats.jobs:*` — not only `settings.job-templates` (matrix roles often lack that grant). */
-  const showJobTemplatesTab =
-    hasJobsReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "job-templates");
+  /** In matrix mode, gate strictly on settings.job-templates; legacy roles keep jobs.read fallback. */
+  const showJobTemplatesTab = settingsMatrixMode
+    ? hasSettingsFeatureAccess(rawPerms, "job-templates")
+    : hasJobsReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "job-templates");
   const showEmailTemplatesAdminTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates-admin")
     : isAdministrator || hasSettingsFeatureAccess(rawPerms, "email-templates-admin");

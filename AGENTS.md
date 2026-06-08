@@ -1,16 +1,20 @@
 <claude-mem-context>
 # Memory Context
 
-# claude-mem status
+# [uat.dharwin.frontend] recent context, 2026-06-08 11:35am GMT+5:30
 
-This project has no memory yet. The current session will seed it; subsequent sessions will receive auto-injected context for relevant past work.
+Legend: 🎯session 🔴bugfix 🟣feature 🔄refactor ✅change 🔵discovery ⚖️decision 🚨security_alert 🔐security_note
+Format: ID TIME TYPE TITLE
+Fetch details: get_observations([IDs]) | Search: mem-search skill
 
-Memory injection starts on your second session in a project.
+Stats: 5 obs (2,171t read) | 46,955t work | 95% savings
 
-`/learn-codebase` is available if the user wants to front-load the entire repo into memory in a single pass (~5 minutes on a typical repo, optional). Otherwise memory builds passively as work happens.
+### Jun 8, 2026
+4605 11:01a 🔄 Offer Letter Print Layout Migrated from Per-Sheet Divs to CSS Table thead/tfoot
+4606 " 🔴 Print CSS Injection Rewritten to Inline Fetched Stylesheet Text Instead of Cloning Link Elements
+4607 " 🔴 @page Print Margins Changed to 0 with Explicit A4 Size to Prevent Footer Overflow
+4608 " 🟣 Job ID Passed to getOfferLetterDefaults for Description-Based Role Defaults
+4609 " 🔐 Security Review of Offer Letter Iframe Print Changes Found No Exploitable Vulnerabilities
 
-Live activity: http://localhost:37777
-How it works: `/how-it-works`
-
-This message disappears once the first observation lands.
+Access 47k tokens of past work via get_observations([IDs]) or mem-search skill.
 </claude-mem-context>

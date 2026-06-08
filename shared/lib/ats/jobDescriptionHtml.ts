@@ -396,7 +396,12 @@ export function formatJobDescriptionForDisplay(raw: string): string {
 export function roleResponsibilitiesLinesToHtml(lines: string[]): string {
   const items = lines.map((l) => l.trim()).filter(Boolean);
   if (!items.length) return "";
-  return `<ul>${items.map((l) => `<li>${escapeHtmlText(l)}</li>`).join("")}</ul>`;
+  const numbered = items.every((l) => /^\d+[.)]\s+/.test(l));
+  const tag = numbered ? "ol" : "ul";
+  const normalized = numbered
+    ? items.map((l) => l.replace(/^\d+[.)]\s+/, ""))
+    : items;
+  return `<${tag}>${normalized.map((l) => `<li>${escapeHtmlText(l)}</li>`).join("")}</${tag}>`;
 }
 
 /** Extract responsibility lines from rich HTML for API `roleResponsibilities`. */

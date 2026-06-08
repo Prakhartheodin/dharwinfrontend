@@ -111,9 +111,17 @@ export default function NewOfferLetterPage() {
               if (cancelled) return;
               setLetterForm((f) => ({
                 ...f,
-                rolesText: f.rolesText.trim() ? f.rolesText : roleResponsibilitiesLinesToHtml(d.roleResponsibilities),
+                rolesText: f.rolesText.trim()
+                  ? f.rolesText
+                  : (String(d.positionOverviewHtml ?? "").trim() ||
+                      roleResponsibilitiesLinesToHtml(d.roleResponsibilities)),
                 trainingText:
-                  f.trainingText.trim() ? f.trainingText : isIntern ? roleResponsibilitiesLinesToHtml(d.trainingOutcomes) : f.trainingText,
+                  f.trainingText.trim()
+                    ? f.trainingText
+                    : isIntern
+                      ? String(d.trainingOutcomesHtml ?? "").trim() ||
+                        roleResponsibilitiesLinesToHtml(d.trainingOutcomes)
+                      : f.trainingText,
               }));
             })
             .catch(() => {});

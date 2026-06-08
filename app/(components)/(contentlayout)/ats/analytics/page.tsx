@@ -36,6 +36,124 @@ const CHART_COLORS = {
 
 const DONUT_PALETTE = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6']
 
+/** Semantic colors for application pipeline stages (funnel chart). */
+const FUNNEL_STAGE_COLORS: Record<string, string> = {
+  Applied: CHART_COLORS.info,
+  Screening: CHART_COLORS.primary,
+  Interview: CHART_COLORS.purple,
+  Offered: CHART_COLORS.warning,
+  Hired: CHART_COLORS.success,
+  Rejected: CHART_COLORS.danger,
+}
+
+/** Months shown at once in line charts; slider appears when timeline has more. */
+const MONTH_WINDOW_SIZE = 3
+
+/** Definite chart-area height (px). Definite avoids the ApexCharts 100%-of-flex circular sizing. */
+const CHART_HEIGHT = 280
+/** Line cards carry the ~56px slider footer; shrink their chart so the row isn't taller than its neighbour. */
+const LINE_CHART_HEIGHT = 224
+
+/** Recruiter leaderboard rows shown in the analytics card (fills paired chart height). */
+const RECRUITER_LEADERBOARD_ROWS = 5
+
+function extendTimelineForRange(
+  buckets: { period: string; count: number }[],
+  range: AtsAnalyticsRange | ''
+): { period: string; count: number }[] {
+  const filled = fillMonthlyTimeBuckets(buckets)
+  if (!filled.length) return filled
+
+  const countByPeriod = new Map(filled.map((b) => [b.period, b.count]))
+  const now = new Date()
+  const endMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  let monthsBack: number | null = null
+  if (range === '3m') monthsBack = 2
+  else if (range === '12m') monthsBack = 11
+
+  if (monthsBack == null) {
+    if (!range) {
+      const earliest = parseMonthPeriod(filled[0].period)
+      if (!earliest) return filled
+      const extended: typeof filled = []
+      const cursor = new Date(earliest.getFullYear(), earliest.getMonth(), 1)
+      while (cursor <= endMonth) {
+        const period = formatMonthPeriod(cursor)
+        extended.push({ period, count: countByPeriod.get(period) ?? 0 })
+        cursor.setMonth(cursor.getMonth() + 1)
+      }
+      return extended
+    }
+    return filled
+  }
+
+  const startMonth = new Date(endMonth)
+  startMonth.setMonth(startMonth.getMonth() - monthsBack)
+  const extended: typeof filled = []
+  const cursor = new Date(startMonth)
+  while (cursor <= endMonth) {
+    const period = formatMonthPeriod(cursor)
+    extended.push({ period, count: countByPeriod.get(period) ?? 0 })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return extended
+}
+
+function getMonthlyWindowSlice<T extends { period: string; count: number }>(
+  buckets: T[],
+  startIdx: number,
+  windowSize: number
+) {
+  const maxStart = Math.max(0, buckets.length - windowSize)
+  const clamped = Math.min(Math.max(0, startIdx), maxStart)
+  return {
+    visible: buckets.slice(clamped, clamped + windowSize),
+    startIdx: clamped,
+    maxStart,
+  }
+}
+
+function timelineKey(buckets: { period: string }[]) {
+  return buckets.map((b) => b.period).join('|')
+}
+
+/** Parse backend period labels (`Mar 2026`) for gap-filling on time-series charts. */
+function parseMonthPeriod(period: string): Date | null {
+  const match = period.trim().match(/^([A-Za-z]{3})\s+(\d{4})$/)
+  if (!match) return null
+  const d = new Date(`${match[1]} 1, ${match[2]}`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function formatMonthPeriod(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+/** Insert zero-count months between sparse buckets so the x-axis reads continuously. */
+function fillMonthlyTimeBuckets<T extends { period: string; count: number }>(buckets: T[]): T[] {
+  if (buckets.length < 2) return buckets
+  const sorted = [...buckets].sort((a, b) => {
+    const da = parseMonthPeriod(a.period)?.getTime() ?? 0
+    const db = parseMonthPeriod(b.period)?.getTime() ?? 0
+    return da - db
+  })
+  const filled: T[] = []
+  for (let i = 0; i < sorted.length; i++) {
+    filled.push(sorted[i])
+    const cur = parseMonthPeriod(sorted[i].period)
+    const next = parseMonthPeriod(sorted[i + 1]?.period ?? '')
+    if (!cur || !next) continue
+    const cursor = new Date(cur)
+    cursor.setMonth(cursor.getMonth() + 1)
+    while (cursor < next) {
+      filled.push({ period: formatMonthPeriod(cursor), count: 0 } as T)
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+  }
+  return filled
+}
+
 // ---------------------------------------------------------------------------
 // CSV Export
 // ---------------------------------------------------------------------------
@@ -91,6 +209,93 @@ function DeltaBadge({ current, previous, label }: { current: number; previous: n
     <span className={`text-[0.6875rem] ${isPositive ? 'text-success' : 'text-danger'}`}>
       {isPositive ? '+' : ''}{pct}% vs {label}
     </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Month range slider (time-series charts)
+// ---------------------------------------------------------------------------
+function MonthWindowSlider({
+  periods,
+  startIdx,
+  maxStart,
+  windowSize,
+  onChange,
+}: {
+  periods: string[]
+  startIdx: number
+  maxStart: number
+  windowSize: number
+  onChange: (idx: number) => void
+}) {
+  if (periods.length < 2 || maxStart <= 0) return null
+
+  const total = periods.length
+  const endIdx = Math.min(startIdx + windowSize - 1, total - 1)
+  const rangeLabel = `${periods[startIdx]} – ${periods[endIdx]}`
+
+  // Viewport-scrollbar geometry: segment width = visible window / whole timeline.
+  const widthPct = Math.min(100, Math.max(14, (windowSize / total) * 100))
+  const leftPct = maxStart > 0 ? (startIdx / maxStart) * (100 - widthPct) : 0
+  const atStart = startIdx <= 0
+  const atEnd = startIdx >= maxStart
+
+  return (
+    <div
+      className="box-footer shrink-0 !py-2.5 !rounded-b-md flex items-center gap-2 bg-slate-50/70 sm:gap-3 dark:bg-white/[0.02]"
+      role="group"
+      aria-label="Month range navigator"
+    >
+      <button
+        type="button"
+        className="ti-btn ti-btn-icon !h-8 !w-8 shrink-0 rounded-full text-defaulttextcolor/70 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-25 disabled:hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        disabled={atStart}
+        onClick={() => onChange(Math.max(0, startIdx - 1))}
+        aria-label={`Earlier months, before ${periods[startIdx]}`}
+      >
+        <i className="ri-arrow-left-s-line text-[1.0625rem]" aria-hidden />
+      </button>
+
+      <div className="flex flex-1 min-w-0 flex-col gap-1.5">
+        <div className="group relative h-2.5 w-full rounded-full bg-defaultborder/35 dark:bg-white/10">
+          {/* Visible window — drag to pan the timeline */}
+          <div
+            className="pointer-events-none absolute top-0 h-2.5 rounded-full bg-primary shadow-sm transition-[left,width] duration-200 ease-out group-hover:bg-primary/90"
+            style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={maxStart}
+            step={1}
+            value={startIdx}
+            onChange={(e) => onChange(Number(e.target.value))}
+            className="absolute inset-0 m-0 h-full w-full cursor-grab appearance-none bg-transparent opacity-0 active:cursor-grabbing"
+            aria-label={`Months ${rangeLabel}`}
+            aria-valuemin={0}
+            aria-valuemax={maxStart}
+            aria-valuenow={startIdx}
+            aria-valuetext={rangeLabel}
+          />
+        </div>
+        <p className="m-0 truncate text-center text-[0.6875rem] tabular-nums text-defaulttextcolor/55">
+          {rangeLabel}
+          <span className="hidden text-defaulttextcolor/35 sm:inline">
+            {' · '}{startIdx + 1}–{endIdx + 1} of {total}
+          </span>
+        </p>
+      </div>
+
+      <button
+        type="button"
+        className="ti-btn ti-btn-icon !h-8 !w-8 shrink-0 rounded-full text-defaulttextcolor/70 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-25 disabled:hover:bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+        disabled={atEnd}
+        onClick={() => onChange(Math.min(maxStart, startIdx + 1))}
+        aria-label={`Later months, after ${periods[endIdx]}`}
+      >
+        <i className="ri-arrow-right-s-line text-[1.0625rem]" aria-hidden />
+      </button>
+    </div>
   )
 }
 
@@ -300,6 +505,8 @@ const ATSAnalytics = () => {
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<AtsAnalyticsResponse | null>(null)
   const [range, setRange] = useState<AtsAnalyticsRange | ''>('')
+  const [appsMonthStart, setAppsMonthStart] = useState(0)
+  const [jobsMonthStart, setJobsMonthStart] = useState(0)
   const [drillModal, setDrillModal] = useState<{ open: boolean; type: string; value: string }>({ open: false, type: '', value: '' })
 
   useEffect(() => {
@@ -333,28 +540,118 @@ const ATSAnalytics = () => {
   // ---- Chart data memos ----
 
   const funnelData = useMemo(() => {
-    if (!data?.applicationFunnel?.length) return { categories: [], series: [] }
+    if (!data?.applicationFunnel?.length) {
+      return {
+        categories: [] as string[],
+        values: [] as number[],
+        series: [] as { name: string; data: number[] }[],
+        total: 0,
+        topStage: null as { name: string; count: number } | null,
+      }
+    }
     const map = new Map(data.applicationFunnel.map((f) => [f.status, f.count]))
     const categories = FUNNEL_ORDER.filter((s) => map.has(s))
     const values = categories.map((s) => map.get(s) || 0)
-    return { categories, series: [{ name: 'Applications', data: values }] }
+    const total = values.reduce((sum, v) => sum + v, 0)
+    const maxCount = values.length ? Math.max(...values) : 0
+    const topIdx = values.findIndex((v) => v === maxCount && maxCount > 0)
+    const topStage = topIdx >= 0 ? { name: categories[topIdx], count: values[topIdx] } : null
+    return {
+      categories,
+      values,
+      series: [{ name: 'Applications', data: values }],
+      total,
+      topStage,
+    }
   }, [data?.applicationFunnel])
 
-  const applicationsOverTimeData = useMemo(() => {
-    if (!data?.applicationsOverTime?.length) return { categories: [], series: [] }
-    return {
-      categories: data.applicationsOverTime.map((t) => t.period),
-      series: [{ name: 'Applications', data: data.applicationsOverTime.map((t) => t.count) }],
+  const applicationsOverTimeFull = useMemo(() => {
+    if (!data?.applicationsOverTime?.length) {
+      return { buckets: [] as { period: string; count: number }[], timelineKey: '' }
     }
-  }, [data?.applicationsOverTime])
+    const buckets = extendTimelineForRange(data.applicationsOverTime, range)
+    return { buckets, timelineKey: timelineKey(buckets) }
+  }, [data?.applicationsOverTime, range])
+
+  const jobsOverTimeFull = useMemo(() => {
+    if (!data?.jobsOverTime?.length) {
+      return { buckets: [] as { period: string; count: number }[], timelineKey: '' }
+    }
+    const buckets = extendTimelineForRange(data.jobsOverTime, range)
+    return { buckets, timelineKey: timelineKey(buckets) }
+  }, [data?.jobsOverTime, range])
+
+  useEffect(() => {
+    const maxStart = Math.max(0, applicationsOverTimeFull.buckets.length - MONTH_WINDOW_SIZE)
+    setAppsMonthStart(maxStart)
+  }, [applicationsOverTimeFull.timelineKey])
+
+  useEffect(() => {
+    const maxStart = Math.max(0, jobsOverTimeFull.buckets.length - MONTH_WINDOW_SIZE)
+    setJobsMonthStart(maxStart)
+  }, [jobsOverTimeFull.timelineKey])
+
+  const applicationsOverTimeData = useMemo(() => {
+    const { buckets } = applicationsOverTimeFull
+    if (!buckets.length) {
+      return {
+        categories: [] as string[],
+        series: [] as { name: string; data: number[] }[],
+        total: 0,
+        peak: null as { period: string; count: number } | null,
+        allPeriods: [] as string[],
+        startIdx: 0,
+        maxStart: 0,
+        hasSlider: false,
+        chartKey: 'apps-over-time-empty',
+      }
+    }
+    const { visible, startIdx, maxStart } = getMonthlyWindowSlice(buckets, appsMonthStart, MONTH_WINDOW_SIZE)
+    const peak = visible.reduce((best, t) => (t.count > best.count ? t : best), visible[0])
+    const categories = visible.map((t) => t.period)
+    return {
+      categories,
+      series: [{ name: 'Applications', data: visible.map((t) => t.count) }],
+      total: visible.reduce((sum, t) => sum + t.count, 0),
+      peak,
+      allPeriods: buckets.map((t) => t.period),
+      startIdx,
+      maxStart,
+      hasSlider: buckets.length > MONTH_WINDOW_SIZE,
+      chartKey: `apps-over-time-${startIdx}-${categories.join('|')}`,
+    }
+  }, [applicationsOverTimeFull, appsMonthStart])
 
   const jobsOverTimeData = useMemo(() => {
-    if (!data?.jobsOverTime?.length) return { categories: [], series: [] }
-    return {
-      categories: data.jobsOverTime.map((t) => t.period),
-      series: [{ name: 'Jobs Created', data: data.jobsOverTime.map((t) => t.count) }],
+    const { buckets } = jobsOverTimeFull
+    if (!buckets.length) {
+      return {
+        categories: [] as string[],
+        series: [] as { name: string; data: number[] }[],
+        total: 0,
+        peak: null as { period: string; count: number } | null,
+        allPeriods: [] as string[],
+        startIdx: 0,
+        maxStart: 0,
+        hasSlider: false,
+        chartKey: 'jobs-over-time-empty',
+      }
     }
-  }, [data?.jobsOverTime])
+    const { visible, startIdx, maxStart } = getMonthlyWindowSlice(buckets, jobsMonthStart, MONTH_WINDOW_SIZE)
+    const peak = visible.reduce((best, t) => (t.count > best.count ? t : best), visible[0])
+    const categories = visible.map((t) => t.period)
+    return {
+      categories,
+      series: [{ name: 'Jobs Created', data: visible.map((t) => t.count) }],
+      total: visible.reduce((sum, t) => sum + t.count, 0),
+      peak,
+      allPeriods: buckets.map((t) => t.period),
+      startIdx,
+      maxStart,
+      hasSlider: buckets.length > MONTH_WINDOW_SIZE,
+      chartKey: `jobs-over-time-${startIdx}-${categories.join('|')}`,
+    }
+  }, [jobsOverTimeFull, jobsMonthStart])
 
   const jobStatusData = useMemo(() => {
     if (!data?.jobStatusBreakdown?.length) return { labels: [], series: [] }
@@ -399,21 +696,80 @@ const ATSAnalytics = () => {
   // ---- Shared chart options builders ----
 
   const lineChartOpts = useCallback(
-    (categories: string[]) => ({
-      chart: { toolbar: { show: false }, height: 320, fontFamily: 'Poppins, Arial, sans-serif' },
-      stroke: { curve: 'smooth' as const, width: 2 },
+    (categories: string[], seriesLabel = 'Count', chartId = 'ats-line-chart') => ({
+      chart: {
+        id: chartId,
+        toolbar: { show: false },
+        height: LINE_CHART_HEIGHT,
+        parentHeightOffset: 0,
+        fontFamily: 'Poppins, Arial, sans-serif',
+        zoom: { enabled: false },
+        animations: { enabled: true, speed: 400 },
+      },
+      stroke: { curve: 'smooth' as const, width: 2.5 },
       dataLabels: { enabled: false },
-      xaxis: { categories },
-      yaxis: { labels: { style: { colors: '#64748b' } } },
-      grid: { borderColor: '#f1f5f9', strokeDashArray: 3 },
+      markers: {
+        size: 4,
+        strokeWidth: 2,
+        strokeColors: '#fff',
+        hover: { size: 6, sizeOffset: 1 },
+      },
+      xaxis: {
+        type: 'category' as const,
+        categories,
+        tickPlacement: 'on' as const,
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+        crosshairs: {
+          show: true,
+          stroke: { color: '#cbd5e1', width: 1, dashArray: 4 },
+        },
+        labels: {
+          rotate: categories.length > 6 ? -35 : 0,
+          hideOverlappingLabels: true,
+          trim: false,
+          style: { colors: '#64748b', fontSize: '11px' },
+        },
+        tooltip: { enabled: false },
+      },
+      yaxis: {
+        min: 0,
+        forceNiceScale: true,
+        labels: {
+          offsetX: -4,
+          style: { colors: '#64748b', fontSize: '11px' },
+          formatter: (val: number) => (Number.isInteger(val) ? String(val) : val.toFixed(0)),
+        },
+      },
+      grid: {
+        borderColor: '#e2e8f0',
+        strokeDashArray: 4,
+        padding: { left: 0, right: 0 },
+        xaxis: { lines: { show: true } },
+        yaxis: { lines: { show: true } },
+      },
+      tooltip: {
+        enabled: true,
+        shared: false,
+        intersect: true,
+        followCursor: false,
+        theme: 'light',
+        x: { show: true },
+        y: {
+          formatter: (val: number) => `${val} ${seriesLabel.toLowerCase()}${val === 1 ? '' : 's'}`,
+          title: { formatter: () => seriesLabel },
+        },
+        marker: { show: true },
+      },
       colors: [CHART_COLORS.primary],
+      legend: { show: false },
     }),
     []
   )
 
   const barChartOpts = useCallback(
     (categories: string[], color = CHART_COLORS.primary) => ({
-      chart: { toolbar: { show: false }, height: 320, fontFamily: 'Poppins, Arial, sans-serif' },
+      chart: { toolbar: { show: false }, height: CHART_HEIGHT, parentHeightOffset: 0, fontFamily: 'Poppins, Arial, sans-serif' },
       plotOptions: { bar: { columnWidth: '50%', borderRadius: 4 } },
       dataLabels: { enabled: false },
       xaxis: { categories },
@@ -424,28 +780,119 @@ const ATSAnalytics = () => {
     []
   )
 
-  const horizontalBarOpts = useCallback(
-    (categories: string[]) => ({
-      chart: { toolbar: { show: false }, height: 320, fontFamily: 'Poppins, Arial, sans-serif' },
-      plotOptions: { bar: { horizontal: true, barHeight: '50%', borderRadius: 4 } },
-      dataLabels: { enabled: true, style: { fontSize: '12px' } },
-      xaxis: { categories },
-      yaxis: { labels: { style: { colors: '#64748b' } } },
-      grid: { borderColor: '#f1f5f9', strokeDashArray: 3 },
-      colors: [CHART_COLORS.teal],
-    }),
-    []
-  )
+  const funnelBarOpts = useCallback((categories: string[], values: number[], chartHeight: number | string) => {
+    const rowCount = categories.length
+    const maxVal = Math.max(...values, 1)
+    const xMax = Math.ceil(maxVal * 1.1)
+    const colors = categories.map((c) => FUNNEL_STAGE_COLORS[c] ?? CHART_COLORS.teal)
+    const barHeightPct = rowCount <= 3 ? '88%' : rowCount <= 5 ? '85%' : '72%'
+
+    return {
+      chart: {
+        toolbar: { show: false },
+        height: chartHeight,
+        fontFamily: 'Poppins, Arial, sans-serif',
+        animations: { enabled: true, speed: 350, animateGradually: { enabled: false } },
+        parentHeightOffset: 0,
+      },
+      plotOptions: {
+        bar: {
+          horizontal: true,
+          barHeight: barHeightPct,
+          borderRadius: 6,
+          borderRadiusApplication: 'around' as const,
+          distributed: true,
+          dataLabels: { position: 'center' as const, hideOverflowingLabels: false },
+        },
+      },
+      dataLabels: {
+        enabled: true,
+        offsetX: 0,
+        textAnchor: 'middle' as const,
+        formatter: (val: number) => (val > 0 ? String(val) : ''),
+        style: { fontSize: '12px', fontWeight: 600, colors: ['#ffffff'] },
+        dropShadow: { enabled: false },
+      },
+      xaxis: {
+        categories,
+        min: 0,
+        max: xMax,
+        tickAmount: Math.min(5, xMax),
+        floating: false,
+        labels: {
+          style: { colors: '#64748b', fontSize: '11px' },
+          offsetY: -2,
+          formatter: (val: string) => {
+            const n = Number(val)
+            if (!Number.isFinite(n) || n < 0) return ''
+            return Number.isInteger(n) ? String(n) : String(Math.round(n))
+          },
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+      },
+      yaxis: {
+        labels: {
+          align: 'left' as const,
+          minWidth: 52,
+          maxWidth: 88,
+          offsetX: 0,
+          style: { colors: '#475569', fontSize: '12px', fontWeight: 500 },
+        },
+        axisBorder: { show: false },
+        axisTicks: { show: false },
+      },
+      grid: {
+        borderColor: '#e2e8f0',
+        strokeDashArray: 4,
+        padding: { top: 0, bottom: 4, left: 8, right: 12 },
+        xaxis: { lines: { show: true } },
+        yaxis: { lines: { show: false } },
+      },
+      tooltip: {
+        enabled: true,
+        theme: 'light',
+        x: { show: false },
+        y: {
+          title: { formatter: () => '' },
+          formatter: (val: number, opts: { dataPointIndex: number }) =>
+            `${val} at ${categories[opts.dataPointIndex]}`,
+        },
+      },
+      colors,
+      legend: { show: false },
+      states: {
+        hover: { filter: { type: 'darken' as const, value: 0.06 } },
+        active: { filter: { type: 'darken' as const, value: 0.1 } },
+      },
+    }
+  }, [])
 
   const donutOpts = useCallback(
     (labels: string[]) => ({
-      chart: { height: 300 },
+      chart: { height: CHART_HEIGHT, parentHeightOffset: 0 },
       labels,
       legend: { position: 'bottom' as const },
       colors: DONUT_PALETTE.slice(0, labels.length),
     }),
     []
   )
+
+  const funnelChartOptions = useMemo(() => {
+    if (!funnelData.categories.length) return null
+    const base = funnelBarOpts(funnelData.categories, funnelData.values, CHART_HEIGHT)
+    return {
+      ...base,
+      chart: {
+        ...base.chart,
+        events: {
+          dataPointSelection: (_e: unknown, _chart: unknown, opts: { dataPointIndex: number }) => {
+            openDrill('applicationFunnel', funnelData.categories[opts.dataPointIndex])
+          },
+        },
+      },
+    }
+  }, [funnelData.categories, funnelData.values, funnelBarOpts, openDrill])
 
   const prevLabel = data?.previousPeriod?.periodLabel || ''
 
@@ -530,66 +977,146 @@ const ATSAnalytics = () => {
               />
             </div>
 
-            {/* ---- Row 1: Applications Over Time + Funnel ---- */}
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Applications Over Time</div></div>
-                <div className="box-body">
+            {/* ---- Charts: 2-column equal-height grid ---- */}
+            <div className="col-span-12 grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-6 items-stretch">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header flex flex-wrap items-start justify-between gap-2 shrink-0">
+                  <div>
+                    <div className="box-title">Applications Over Time</div>
+                    {applicationsOverTimeData.categories.length > 0 && (
+                      <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1 mb-0">
+                        {applicationsOverTimeData.hasSlider ? 'In view' : 'Monthly volume'}
+                        {applicationsOverTimeData.peak && applicationsOverTimeData.peak.count > 0 && (
+                          <>
+                            {' · '}
+                            Peak{' '}
+                            <span className="font-medium text-defaulttextcolor/80">
+                              {applicationsOverTimeData.peak.period}
+                            </span>{' '}
+                            ({applicationsOverTimeData.peak.count})
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  {applicationsOverTimeData.categories.length > 0 && (
+                    <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1 text-[0.75rem] font-medium tabular-nums text-primary">
+                      {applicationsOverTimeData.total}{applicationsOverTimeData.hasSlider ? ' in view' : ' total'}
+                    </span>
+                  )}
+                </div>
+                <div className="box-body pt-2 !pb-2 flex-1 flex flex-col min-h-0">
                   {applicationsOverTimeData.categories.length > 0 ? (
-                    <ReactApexChart
-                      type="line"
-                      series={applicationsOverTimeData.series}
-                      options={lineChartOpts(applicationsOverTimeData.categories)}
-                      height={320} width="100%"
-                    />
+                      <div
+                        className="h-[224px] w-full"
+                        role="img"
+                        aria-label={
+                          applicationsOverTimeData.peak
+                            ? `Applications over time. ${applicationsOverTimeData.total} in view. Peak ${applicationsOverTimeData.peak.period} with ${applicationsOverTimeData.peak.count} applications.`
+                            : `Applications over time. ${applicationsOverTimeData.total} in view.`
+                        }
+                      >
+                        <ReactApexChart
+                          key={applicationsOverTimeData.chartKey}
+                          type="line"
+                          series={applicationsOverTimeData.series}
+                          options={lineChartOpts(
+                            applicationsOverTimeData.categories,
+                            'Applications',
+                            'ats-applications-over-time'
+                          )}
+                          height={LINE_CHART_HEIGHT}
+                          width="100%"
+                        />
+                      </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 min-h-[260px] text-center">
+                      <i className="ri-line-chart-line text-[2rem] text-defaulttextcolor/30" aria-hidden />
+                      <p className="text-sm text-defaulttextcolor/70 m-0">No applications in this period</p>
+                      <p className="text-[0.75rem] text-defaulttextcolor/50 m-0">Try a wider date range above</p>
+                    </div>
                   )}
                 </div>
+                {applicationsOverTimeData.categories.length > 0 && (
+                  <MonthWindowSlider
+                    periods={applicationsOverTimeData.allPeriods}
+                    startIdx={applicationsOverTimeData.startIdx}
+                    maxStart={applicationsOverTimeData.maxStart}
+                    windowSize={MONTH_WINDOW_SIZE}
+                    onChange={setAppsMonthStart}
+                  />
+                )}
               </div>
             </div>
 
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Application Funnel</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0 flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-0">
+                  <div>
+                    <div className="box-title">Application Funnel</div>
+                    {funnelData.categories.length > 0 && (
+                      <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1 mb-0">
+                        Current count at each stage
+                        {funnelData.topStage && (
+                          <>
+                            {' · '}
+                            Largest stage{' '}
+                            <span className="font-medium text-defaulttextcolor/80">
+                              {funnelData.topStage.name}
+                            </span>{' '}
+                            ({funnelData.topStage.count})
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  {funnelData.total > 0 && (
+                    <span className="inline-flex items-center rounded-md bg-teal-500/10 px-2.5 py-1 text-[0.75rem] font-medium tabular-nums text-teal-700 dark:text-teal-300">
+                      {funnelData.total} total
+                    </span>
+                  )}
+                </div>
+                <div className="box-body flex-1 flex flex-col min-h-0 pt-2">
                   {funnelData.categories.length > 0 ? (
-                    <ReactApexChart
-                      type="bar"
-                      series={funnelData.series}
-                      options={{
-                        ...horizontalBarOpts(funnelData.categories),
-                        chart: {
-                          ...horizontalBarOpts(funnelData.categories).chart,
-                          events: {
-                            dataPointSelection: (_e: unknown, _chart: unknown, opts: { dataPointIndex: number }) => {
-                              openDrill('applicationFunnel', funnelData.categories[opts.dataPointIndex])
-                            },
-                          },
-                        },
-                      }}
-                      height={320} width="100%"
-                    />
+                    <div
+                      className="h-[280px] w-full overflow-hidden"
+                      role="img"
+                      aria-label={`Application funnel. ${funnelData.total} applications across ${funnelData.categories.length} stages.`}
+                    >
+                      <ReactApexChart
+                        type="bar"
+                        series={funnelData.series}
+                        options={funnelChartOptions!}
+                        height={CHART_HEIGHT}
+                        width="100%"
+                      />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 min-h-[260px] text-center">
+                      <i className="ri-filter-3-line text-[2rem] text-defaulttextcolor/30" aria-hidden />
+                      <p className="text-sm text-defaulttextcolor/70 m-0">No applications in this period</p>
+                      <p className="text-[0.75rem] text-defaulttextcolor/50 m-0">Try a wider date range above</p>
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* ---- Row 2: Job Status Donut + Application Status Donut ---- */}
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Job Status Breakdown</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0"><div className="box-title">Job Status Breakdown</div></div>
+                <div className="box-body flex-1 flex flex-col min-h-0">
                   {jobStatusData.series.length > 0 ? (
+                    <div className="h-[280px]">
                     <ReactApexChart
                       type="donut"
                       series={jobStatusData.series}
                       options={{
                         ...donutOpts(jobStatusData.labels),
                         chart: {
-                          height: 300,
+                          height: CHART_HEIGHT,
+                          parentHeightOffset: 0,
                           events: {
                             dataPointSelection: (_e: unknown, _chart: unknown, opts: { dataPointIndex: number }) => {
                               openDrill('jobStatus', jobStatusData.labels[opts.dataPointIndex])
@@ -597,27 +1124,30 @@ const ATSAnalytics = () => {
                           },
                         },
                       }}
-                      height={300} width="100%"
+                      height={CHART_HEIGHT} width="100%"
                     />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 items-center justify-center min-h-[260px] text-defaulttextcolor/60 text-sm">No data yet</div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Application Status Breakdown</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0"><div className="box-title">Application Status Breakdown</div></div>
+                <div className="box-body flex-1 flex flex-col min-h-0">
                   {appStatusData.series.length > 0 ? (
+                    <div className="h-[280px]">
                     <ReactApexChart
                       type="donut"
                       series={appStatusData.series}
                       options={{
                         ...donutOpts(appStatusData.labels),
                         chart: {
-                          height: 300,
+                          height: CHART_HEIGHT,
+                          parentHeightOffset: 0,
                           events: {
                             dataPointSelection: (_e: unknown, _chart: unknown, opts: { dataPointIndex: number }) => {
                               openDrill('applicationStatus', appStatusData.labels[opts.dataPointIndex])
@@ -625,21 +1155,22 @@ const ATSAnalytics = () => {
                           },
                         },
                       }}
-                      height={300} width="100%"
+                      height={CHART_HEIGHT} width="100%"
                     />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 items-center justify-center min-h-[260px] text-defaulttextcolor/60 text-sm">No data yet</div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* ---- Row 3: Job Type Distribution + Jobs Created Over Time ---- */}
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Job Type Distribution</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0"><div className="box-title">Job Type Distribution</div></div>
+                <div className="box-body flex-1 flex flex-col min-h-0">
                   {jobTypeData.categories.length > 0 ? (
+                    <div className="h-[280px]">
                     <ReactApexChart
                       type="bar"
                       series={jobTypeData.series}
@@ -654,78 +1185,150 @@ const ATSAnalytics = () => {
                           },
                         },
                       }}
-                      height={320} width="100%"
+                      height={CHART_HEIGHT} width="100%"
                     />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 items-center justify-center min-h-[260px] text-defaulttextcolor/60 text-sm">No data yet</div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Jobs Created Over Time</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header flex flex-wrap items-start justify-between gap-2 shrink-0">
+                  <div>
+                    <div className="box-title">Jobs Created Over Time</div>
+                    {jobsOverTimeData.categories.length > 0 && (
+                      <p className="text-[0.75rem] text-defaulttextcolor/60 mt-1 mb-0">
+                        {jobsOverTimeData.hasSlider ? 'In view' : 'Monthly volume'}
+                        {jobsOverTimeData.peak && jobsOverTimeData.peak.count > 0 && (
+                          <>
+                            {' · '}
+                            Peak{' '}
+                            <span className="font-medium text-defaulttextcolor/80">
+                              {jobsOverTimeData.peak.period}
+                            </span>{' '}
+                            ({jobsOverTimeData.peak.count})
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  {jobsOverTimeData.categories.length > 0 && (
+                    <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1 text-[0.75rem] font-medium tabular-nums text-primary">
+                      {jobsOverTimeData.total}{jobsOverTimeData.hasSlider ? ' in view' : ' total'}
+                    </span>
+                  )}
+                </div>
+                <div className="box-body pt-2 !pb-2 flex-1 flex flex-col min-h-0">
                   {jobsOverTimeData.categories.length > 0 ? (
-                    <ReactApexChart
-                      type="line"
-                      series={jobsOverTimeData.series}
-                      options={lineChartOpts(jobsOverTimeData.categories)}
-                      height={320} width="100%"
-                    />
+                      <div
+                        className="h-[224px] w-full"
+                        role="img"
+                        aria-label={
+                          jobsOverTimeData.peak
+                            ? `Jobs created over time. ${jobsOverTimeData.total} in view. Peak ${jobsOverTimeData.peak.period} with ${jobsOverTimeData.peak.count} jobs.`
+                            : `Jobs created over time. ${jobsOverTimeData.total} in view.`
+                        }
+                      >
+                        <ReactApexChart
+                          key={jobsOverTimeData.chartKey}
+                          type="line"
+                          series={jobsOverTimeData.series}
+                          options={lineChartOpts(
+                            jobsOverTimeData.categories,
+                            'Jobs',
+                            'ats-jobs-over-time'
+                          )}
+                          height={LINE_CHART_HEIGHT}
+                          width="100%"
+                        />
+                      </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No data yet</div>
+                    <div className="flex flex-1 flex-col items-center justify-center gap-2 min-h-[260px] text-center">
+                      <i className="ri-line-chart-line text-[2rem] text-defaulttextcolor/30" aria-hidden />
+                      <p className="text-sm text-defaulttextcolor/70 m-0">No jobs created in this period</p>
+                      <p className="text-[0.75rem] text-defaulttextcolor/50 m-0">Try a wider date range above</p>
+                    </div>
                   )}
                 </div>
+                {jobsOverTimeData.categories.length > 0 && (
+                  <MonthWindowSlider
+                    periods={jobsOverTimeData.allPeriods}
+                    startIdx={jobsOverTimeData.startIdx}
+                    maxStart={jobsOverTimeData.maxStart}
+                    windowSize={MONTH_WINDOW_SIZE}
+                    onChange={setJobsMonthStart}
+                  />
+                )}
               </div>
             </div>
 
-            {/* ---- Row 4: Recruiter Activity Bar + Leaderboard Table ---- */}
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Recruiter Activity by Type</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0"><div className="box-title">Recruiter Activity by Type</div></div>
+                <div className="box-body flex-1 flex flex-col min-h-0">
                   {recruiterActivityBarData.categories.length > 0 ? (
+                    <div className="h-[280px]">
                     <ReactApexChart
                       type="bar"
                       series={recruiterActivityBarData.series}
                       options={barChartOpts(recruiterActivityBarData.categories, CHART_COLORS.purple)}
-                      height={320} width="100%"
+                      height={CHART_HEIGHT} width="100%"
                     />
+                    </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No activity data</div>
+                    <div className="flex flex-1 items-center justify-center min-h-[260px] text-defaulttextcolor/60 text-sm">No activity data</div>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="lg:col-span-6 col-span-12">
-              <div className="box">
-                <div className="box-header"><div className="box-title">Recruiter Leaderboard</div></div>
-                <div className="box-body">
+            <div className="h-full">
+              <div className="box h-full">
+                <div className="box-header shrink-0"><div className="box-title">Recruiter Leaderboard</div></div>
+                <div className="box-body flex-1 flex flex-col min-h-0">
                   {data.recruiterActivitySummary?.length > 0 ? (
-                    <div className="table-responsive">
-                      <table className="table table-bordered table-hover min-w-full text-[0.8125rem]">
+                    <div className="table-responsive flex-1 min-h-[260px]">
+                      <table className="table table-bordered table-hover min-w-full h-full text-[0.8125rem] mb-0">
                         <thead>
                           <tr className="bg-gray-50 dark:bg-white/5">
                             <th className="!text-start">Recruiter</th>
-                            <th className="!text-end">Total Activities</th>
-                            <th className="!text-end">Jobs Posted</th>
-                            <th className="!text-end">Screened</th>
-                            <th className="!text-end">Interviews</th>
+                            <th className="!text-end tabular-nums">Total Activities</th>
+                            <th className="!text-end tabular-nums">Jobs Posted</th>
+                            <th className="!text-end tabular-nums">Screened</th>
+                            <th className="!text-end tabular-nums">Interviews</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {data.recruiterActivitySummary.slice(0, 10).map((r, idx) => {
-                            const actMap = new Map(r.activities.map((a) => [a.activityType, a.count]))
+                          {Array.from({ length: RECRUITER_LEADERBOARD_ROWS }, (_, idx) => {
+                            const r = data.recruiterActivitySummary[idx]
+                            const rowClass = 'h-[56px] [&>td]:align-middle [&>td]:py-0'
+                            if (!r) {
+                              return (
+                                <tr key={`leaderboard-empty-${idx}`} className={`${rowClass} text-defaulttextcolor/40`}>
+                                  <td className="!text-start">—</td>
+                                  <td className="text-end tabular-nums">0</td>
+                                  <td className="text-end tabular-nums">0</td>
+                                  <td className="text-end tabular-nums">0</td>
+                                  <td className="text-end tabular-nums">0</td>
+                                </tr>
+                              )
+                            }
+                            const actMap = new Map((r.activities ?? []).map((a) => [a.activityType, a.count]))
+                            const isInactive = r.totalActivities === 0
                             return (
-                              <tr key={r.recruiter?.id || idx}>
-                                <td>{r.recruiter?.name || '—'}</td>
-                                <td className="text-end">{r.totalActivities}</td>
-                                <td className="text-end">{actMap.get('job_posting_created') || 0}</td>
-                                <td className="text-end">{actMap.get('candidate_screened') || 0}</td>
-                                <td className="text-end">{actMap.get('interview_scheduled') || 0}</td>
+                              <tr
+                                key={r.recruiter?.id || idx}
+                                className={`${rowClass}${isInactive ? ' text-defaulttextcolor/70' : ''}`}
+                              >
+                                <td className="!text-start">{r.recruiter?.name || '—'}</td>
+                                <td className="text-end tabular-nums">{r.totalActivities}</td>
+                                <td className="text-end tabular-nums">{actMap.get('job_posting_created') || 0}</td>
+                                <td className="text-end tabular-nums">{actMap.get('candidate_screened') || 0}</td>
+                                <td className="text-end tabular-nums">{actMap.get('interview_scheduled') || 0}</td>
                               </tr>
                             )
                           })}
@@ -733,13 +1336,15 @@ const ATSAnalytics = () => {
                       </table>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center py-12 text-defaulttextcolor/60 text-sm">No recruiter data</div>
+                    <div className="flex flex-1 items-center justify-center min-h-[260px] text-defaulttextcolor/60 text-sm">No recruiter data</div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* ---- Row 5: Top Jobs by Applications ---- */}
+            </div>
+
+            {/* ---- Top Jobs by Applications (full width) ---- */}
             {data.topJobsByApplications?.length > 0 && (
               <div className="col-span-12">
                 <div className="box">

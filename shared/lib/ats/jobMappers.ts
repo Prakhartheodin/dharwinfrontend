@@ -54,6 +54,23 @@ export function formatSalaryRange(range?: { min?: number | null; max?: number | 
   return `${currency}${fmt(min)} - ${currency}${fmt(max)}`;
 }
 
+/** True when the job has a meaningful numeric or formatted salary (not ATS "Not specified"). */
+export function isJobSalarySpecified(job: {
+  salary?: string | null;
+  salaryMinNum?: number | null;
+  salaryMaxNum?: number | null;
+}): boolean {
+  const min = job.salaryMinNum;
+  const max = job.salaryMaxNum;
+  if (min != null || max != null) {
+    if (min === 0 && max === 0) return false;
+    return true;
+  }
+  const text = job.salary?.trim();
+  if (!text) return false;
+  return text.toLowerCase() !== "not specified";
+}
+
 export interface DisplayJob {
   id: string;
   jobTitle: string;
@@ -127,13 +144,19 @@ export function mapJobToDisplay(apiJob: Job): DisplayJob {
       typeof apiJob.maxExperience === "number" && Number.isFinite(apiJob.maxExperience)
         ? apiJob.maxExperience
         : EXPERIENCE_LEVEL_BOUNDS[apiJob.experienceLevel ?? ""]?.max ?? null,
-    salaryMinNum:
-      typeof apiJob.salaryRange?.min === "number" && Number.isFinite(apiJob.salaryRange.min)
-        ? apiJob.salaryRange.min
-        : null,
-    salaryMaxNum:
-      typeof apiJob.salaryRange?.max === "number" && Number.isFinite(apiJob.salaryRange.max)
-        ? apiJob.salaryRange.max
-        : null,
+    salaryMinNum: (() => {
+      const min = apiJob.salaryRange?.min;
+      const max = apiJob.salaryRange?.max;
+      if (typeof min !== "number" || !Number.isFinite(min)) return null;
+      if (typeof max === "number" && Number.isFinite(max) && min === 0 && max === 0) return null;
+      return min;
+    })(),
+    salaryMaxNum: (() => {
+      const min = apiJob.salaryRange?.min;
+      const max = apiJob.salaryRange?.max;
+      if (typeof max !== "number" || !Number.isFinite(max)) return null;
+      if (typeof min === "number" && Number.isFinite(min) && min === 0 && max === 0) return null;
+      return max;
+    })(),
   };
 }
