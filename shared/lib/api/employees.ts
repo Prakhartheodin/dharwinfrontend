@@ -15,6 +15,7 @@ export interface CandidateListItem {
   shortBio?: string;
   employeeId?: string;
   department?: string | null;
+  departmentId?: string | { id?: string; _id?: string } | null;
   designation?: string | null;
   /** Position ID (ref to Position – Java Developer, Data Analyst, etc.) */
   position?: string | { id?: string; _id?: string; name?: string } | null;

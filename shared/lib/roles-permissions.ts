@@ -58,6 +58,15 @@ export const PERMISSION_SECTIONS: {
     ],
   },
   {
+    id: "organization",
+    label: "Organization",
+    features: [
+      { id: "chart", label: "Org Chart" },
+      { id: "structure", label: "Structure" },
+      { id: "departments", label: "Departments" },
+    ],
+  },
+  {
     id: "communication",
     label: "Communication",
     features: [

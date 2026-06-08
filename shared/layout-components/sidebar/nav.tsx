@@ -219,6 +219,37 @@ export const MenuItems: any = [
   },
 
   {
+    menutitle: "ORGANIZATION",
+  },
+  {
+    icon: AnalyticsIcon,
+    title: "Org Chart",
+    type: "link",
+    path: "/organization/chart",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+  {
+    icon: AnalyticsIcon,
+    title: "Structure",
+    type: "link",
+    path: "/organization/structure",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+  {
+    icon: AnalyticsIcon,
+    title: "Departments",
+    type: "link",
+    path: "/organization/departments",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+
+  {
     menutitle: "Communication",
   },
 

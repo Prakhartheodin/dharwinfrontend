@@ -13,6 +13,7 @@ import {
   assignAgentToStudent,
 } from '@/shared/lib/api/employees'
 import { createPosition, getAllPositions } from '@/shared/lib/api/positions'
+import { createDepartment, listDepartments, type Department } from '@/shared/lib/api/departments'
 import type { Placement } from '@/shared/lib/api/placements'
 import { listJobApplications, type JobApplication } from '@/shared/lib/api/jobApplications'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
@@ -36,6 +37,25 @@ const isValidMongoId = (id: unknown): id is string =>
 
 /** Placeholder roster row named for the settings screen — not a real job role. */
 const ATS_APPLIED_POSITION_SELECT_VALUE = '__ats_applied_role__'
+const ADD_DEPARTMENT_SELECT_VALUE = '__add_department__'
+
+function resolveDepartmentIdFromCandidate(
+  candidate: { department?: string | null; departmentId?: string | { id?: string; _id?: string } | null },
+  roster: Department[]
+): string {
+  const raw = candidate.departmentId
+  if (typeof raw === 'string' && isValidMongoId(raw)) return raw
+  if (raw && typeof raw === 'object') {
+    const id = (raw as { id?: string; _id?: string }).id ?? (raw as { _id?: string })._id
+    if (id && isValidMongoId(id)) return id
+  }
+  const name = (candidate.department ?? '').trim().toLowerCase()
+  if (name) {
+    const match = roster.find((d) => d.name.trim().toLowerCase() === name)
+    if (match?.id) return match.id
+  }
+  return ''
+}
 
 function isExcludedPlaceholderPosition(name: string | undefined | null): boolean {
   const n = (name ?? '').trim().toLowerCase()
@@ -129,14 +149,14 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<{
-    department: string
+    departmentId: string
     positionId: string
     agentId: string
     joiningDate: string
     placementStatus: 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled'
     preBoardingStatusComplete: boolean
   }>({
-    department: '',
+    departmentId: '',
     positionId: '',
     agentId: '',
     joiningDate: '',
@@ -145,6 +165,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   })
   const [agents, setAgents] = useState<{ id: string; name: string; email?: string }[]>([])
   const [positions, setPositions] = useState<{ id: string; name: string }[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [candidateId, setCandidateId] = useState<string | null>(null)
   const [candidateName, setCandidateName] = useState('')
   /** Offer/placement → job applications → referral; surfaced as dropdown option when needed. */
@@ -182,12 +203,15 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
         }
         setCandidateId(cid)
         setCandidateName((placement.candidate as { fullName?: string })?.fullName || 'Employee')
-        const [c, applicationsRes] = await Promise.all([
+        const [c, applicationsRes, deptList] = await Promise.all([
           getCandidate(String(cid)),
           listJobApplications({ candidateId: String(cid), limit: 20 }).catch(() => ({
             results: [] as JobApplication[],
           })),
+          listDepartments().catch(() => [] as Department[]),
         ])
+        const activeDepartments = deptList.filter((d) => d.isActive !== false)
+        setDepartments(activeDepartments)
         const appTitle = firstApplicationJobTitle(applicationsRes.results ?? [])
         const appliedJobTitle =
           placementJobTitle(placement) ||
@@ -236,7 +260,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
           ? placement.status
           : 'Onboarding'
         setForm({
-          department: c.department ?? '',
+          departmentId: resolveDepartmentIdFromCandidate(c, activeDepartments),
           positionId: nextPositionId,
           agentId: assignedId || rmId || '',
           joiningDate: joiningSlice,
@@ -289,6 +313,13 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
     return out
   }, [positions, form.positionId, atsAppliedJobTitle])
 
+  const departmentOptionsForSelect = useMemo(() => {
+    if (form.departmentId && !departments.some((d) => d.id === form.departmentId)) {
+      return [{ id: form.departmentId, name: 'Saved department', isActive: true }, ...departments]
+    }
+    return departments
+  }, [departments, form.departmentId])
+
   const sidebarRoleLabel = useMemo(() => {
     const opt = positionOptionsForSelect.find((o) => o.id === form.positionId)
     if (opt?.name) return opt.name
@@ -304,14 +335,44 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
     return shortPersonName(a.name)
   }, [agentOptionsForSelect, form.agentId])
 
+  const handleDepartmentSelectChange = async (value: string) => {
+    if (value !== ADD_DEPARTMENT_SELECT_VALUE) {
+      setForm((prev) => ({ ...prev, departmentId: value }))
+      return
+    }
+    const result = await Swal.fire({
+      title: 'New department',
+      input: 'text',
+      inputLabel: 'Department name',
+      inputPlaceholder: 'e.g. Engineering',
+      showCancelButton: true,
+      inputValidator: (v) => (!v?.trim() ? 'Name is required' : undefined),
+    })
+    if (!result.isConfirmed || !result.value?.trim()) return
+    try {
+      const created = await createDepartment({ name: result.value.trim() })
+      setDepartments((prev) =>
+        [...prev.filter((d) => d.id !== created.id), created].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      )
+      setForm((prev) => ({ ...prev, departmentId: created.id }))
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        'Could not create department'
+      await Swal.fire({ icon: 'error', title: 'Error', text: msg })
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!candidateId) return
     setError(null)
 
-    const departmentTrimmed = form.department.trim()
-    if (!departmentTrimmed) {
-      await showHrmsValidationToast('Department cannot be empty.')
+    const departmentId = form.departmentId.trim()
+    if (!departmentId || !isValidMongoId(departmentId)) {
+      await showHrmsValidationToast('Department is required — pick one from the list.')
       return
     }
     if (!form.joiningDate || !/^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate)) {
@@ -354,7 +415,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
       }
 
       await updateCandidate(candidateId, {
-        department: departmentTrimmed || undefined,
+        departmentId,
         designation: designationFromPosition,
         position: positionToSave || undefined,
       })
@@ -606,16 +667,21 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                         *
                                       </span>
                                     </label>
-                                    <input
+                                    <select
                                       id="hrms-department"
-                                      type="text"
                                       className="form-control"
-                                      value={form.department}
-                                      onChange={(e) => setForm({ ...form, department: e.target.value })}
-                                      placeholder="e.g. Engineering, Sales"
-                                      autoComplete="organization"
+                                      value={form.departmentId}
+                                      onChange={(e) => void handleDepartmentSelectChange(e.target.value)}
                                       aria-required="true"
-                                    />
+                                    >
+                                      <option value="">Select department…</option>
+                                      {departmentOptionsForSelect.map((d) => (
+                                        <option key={d.id} value={d.id}>
+                                          {d.name}
+                                        </option>
+                                      ))}
+                                      <option value={ADD_DEPARTMENT_SELECT_VALUE}>+ Add new department…</option>
+                                    </select>
                                   </div>
                                   <div className="flex min-h-0 min-w-0 flex-col gap-0">
                                     <label className="form-label mb-2" htmlFor="hrms-joining-date">

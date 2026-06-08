@@ -83,6 +83,10 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/ats/onboarding": "ats.onboarding:",
   "/ats/analytics": "ats.analytics:",
   "/ats/external-jobs": "ats.external-jobs:",
+  // Organization (separate module)
+  "/organization/chart": "organization.chart:",
+  "/organization/structure": "organization.structure:",
+  "/organization/departments": "organization.departments:",
   // Communication
   "/communication/calling": "communication.calling:",
   // Training Management
