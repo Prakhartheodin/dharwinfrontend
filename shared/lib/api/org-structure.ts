@@ -18,6 +18,7 @@ export interface OrgUnitNode {
   headEmployee?: OrgHeadEmployee | null;
   directToCeo?: boolean;
   order?: number;
+  isActive?: boolean;
   orphaned?: boolean;
   memberCount?: number;
   employees?: { id: string; fullName: string; email?: string }[];
@@ -61,12 +62,29 @@ export interface OrgComplianceReport {
   unassigned: { id: string; fullName: string; email: string }[];
 }
 
+export interface Paginated<T> {
+  results: T[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
 export const getOrgTree = async (): Promise<OrgTree> => (await apiClient.get("/org-structure/tree")).data;
 export const getOrgCoverage = async (): Promise<OrgCoverageSummary> =>
   (await apiClient.get("/org-structure/coverage")).data;
+export const listAssignableHeads = async (departmentId?: string | null): Promise<{ id: string; name: string }[]> =>
+  (await apiClient.get("/org-structure/employees", { params: departmentId ? { departmentId } : {} })).data;
 export const exportOrgComplianceReport = async (): Promise<OrgComplianceReport> =>
   (await apiClient.get("/org-structure/export")).data;
 export const listOrgUnits = async (): Promise<OrgUnitNode[]> => (await apiClient.get("/org-structure")).data;
+export const listOrgUnitsPaged = async (params: {
+  q?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  includeInactive?: boolean;
+}): Promise<Paginated<OrgUnitNode>> => (await apiClient.get("/org-structure", { params })).data;
 export const createOrgUnit = async (body: Partial<OrgUnitNode>): Promise<OrgUnitNode> =>
   (await apiClient.post("/org-structure", body)).data;
 export const updateOrgUnit = async (id: string, body: Partial<OrgUnitNode>) =>
@@ -76,3 +94,5 @@ export const reparentOrgUnit = async (id: string, parentId: string | null) =>
 export const assignHead = async (id: string, headEmployeeId: string | null) =>
   (await apiClient.patch(`/org-structure/${id}/head`, { headEmployeeId })).data;
 export const deactivateOrgUnit = async (id: string) => (await apiClient.delete(`/org-structure/${id}`)).data;
+export const reactivateOrgUnit = async (id: string) => (await apiClient.patch(`/org-structure/${id}/reactivate`)).data;
+export const deleteOrgUnit = async (id: string) => (await apiClient.delete(`/org-structure/${id}/permanent`)).data;

@@ -71,7 +71,7 @@ export default function DepartmentModal({ open, department, onClose, onSaved }: 
       }
     >
       <form id="department-form" onSubmit={handleSubmit}>
-        <div className="ti-modal-body space-y-4">
+        <div className="space-y-5 px-5 py-5">
           <OrgFormField id="dept-name" label="Name" required hint="Shown in dropdowns, org chart, and HRMS.">
             <input
               id="dept-name"

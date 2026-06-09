@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import Pageheader from "@/shared/layout-components/page-header/pageheader";
 import Seo from "@/shared/layout-components/seo/seo";
+import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
 import type { OrgUnitType } from "@/shared/lib/api/org-structure";
 
 export const ORG_UNIT_TYPE_META: Record<
@@ -105,12 +105,32 @@ export function OrgTableAction({ children, onClick, tone = "primary", disabled, 
     <button
       type="button"
       title={title}
+      aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className={`ti-btn ti-btn-sm ${toneClass} !py-1.5 !px-2.5 !text-[0.75rem] ${btnBase}`}
+      className={`ti-btn ${toneClass} !h-auto !w-auto !min-h-9 shrink-0 !py-1.5 !px-2.5 !text-[0.75rem] ${btnBase}`}
     >
       {children}
     </button>
+  );
+}
+
+/** Horizontal action group for table rows — avoids cramped/overlapping controls. */
+export function OrgTableActions({
+  children,
+  label = "Row actions",
+}: {
+  children: ReactNode;
+  label?: string;
+}) {
+  return (
+    <div
+      className="flex flex-wrap items-center justify-end gap-2"
+      role="group"
+      aria-label={label}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -184,6 +204,34 @@ export function OrgEmptyState({ icon, title, description, action }: OrgEmptyStat
   );
 }
 
+export function OrgErrorState({
+  title = "Couldn't load this data",
+  description = "Something went wrong reaching the server. Check your connection and try again.",
+  onRetry,
+}: {
+  title?: string;
+  description?: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="flex min-h-[14rem] flex-col items-center justify-center rounded-xl border border-dashed border-danger/40 bg-danger/[0.03] px-6 py-10 text-center" role="alert">
+      <span className="mb-3 inline-flex h-12 w-12 items-center justify-center rounded-full bg-danger/10 text-danger" aria-hidden>
+        <i className="ri-error-warning-line text-2xl leading-none" />
+      </span>
+      <h6 className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor">{title}</h6>
+      <p className="mb-0 max-w-md text-[0.8125rem] leading-relaxed text-defaulttextcolor/65">{description}</p>
+      {onRetry ? (
+        <div className="mt-4">
+          <OrgSecondaryButton onClick={onRetry}>
+            <i className="ri-refresh-line text-base" aria-hidden />
+            Retry
+          </OrgSecondaryButton>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 type OrgPageLayoutProps = {
   seoTitle: string;
   currentpage: string;
@@ -192,11 +240,10 @@ type OrgPageLayoutProps = {
   children: ReactNode;
 };
 
-export function OrgPageLayout({ seoTitle, currentpage, subtitle, headerActions, children }: OrgPageLayoutProps) {
+export function OrgPageLayout({ seoTitle, subtitle, headerActions, children }: OrgPageLayoutProps) {
   return (
     <>
       <Seo title={seoTitle} />
-      <Pageheader currentpage={currentpage} activepage="Organization" mainpage={seoTitle} />
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12">
           <div className="box custom-box overflow-hidden">
@@ -230,13 +277,20 @@ type OrgModalProps = {
 };
 
 export function OrgModal({ open, title, subtitle, onClose, children, footer, size = "md" }: OrgModalProps) {
+  const { containerRef, backdropProps, requestClose } = useModalBehavior({ isOpen: open, onClose });
   if (!open) return null;
   const widthClass = size === "lg" ? "max-w-2xl" : "max-w-lg";
   return (
-    <div className="ti-modal-overlay open" role="dialog" aria-modal="true" aria-labelledby="org-modal-title">
-      <div className={`ti-modal-box ${widthClass} w-full`}>
-        <div className="ti-modal-content overflow-hidden">
-          <div className="ti-modal-header border-b border-defaultborder/60 bg-light/30 dark:bg-white/[0.02]">
+    <div
+      className="fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-black/60 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="org-modal-title"
+      {...backdropProps}
+    >
+      <div ref={containerRef} className={`${widthClass} my-auto w-full`}>
+        <div className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-xl bg-white shadow-xl dark:bg-bodybg">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-defaultborder/60 bg-light/30 px-4 py-3 dark:bg-white/[0.02]">
             <div className="min-w-0 pe-3">
               <h6 id="org-modal-title" className="modal-title mb-0">
                 {title}
@@ -247,15 +301,15 @@ export function OrgModal({ open, title, subtitle, onClose, children, footer, siz
             </div>
             <button
               type="button"
-              className="hs-dropdown-toggle ti-modal-close-btn shrink-0"
-              onClick={onClose}
+              className="ti-modal-close-btn shrink-0 text-defaulttextcolor/60 hover:text-defaulttextcolor"
+              onClick={requestClose}
               aria-label="Close dialog"
             >
-              <i className="ri-close-line" aria-hidden />
+              <i className="ri-close-line text-xl" aria-hidden />
             </button>
           </div>
-          {children}
-          <div className="ti-modal-footer flex flex-wrap items-center justify-end gap-2 border-t border-defaultborder/60 bg-light/20 px-4 py-3 dark:bg-white/[0.02]">
+          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+          <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-defaultborder/60 bg-light/20 px-4 py-3 dark:bg-white/[0.02]">
             {footer}
           </div>
         </div>
@@ -308,7 +362,7 @@ export function OrgFormField({
 }) {
   return (
     <div>
-      <label className="form-label mb-2" htmlFor={id}>
+      <label className="form-label mb-1.5 !text-[0.8125rem] !font-medium" htmlFor={id}>
         {label}
         {required ? (
           <span className="text-danger ms-0.5" aria-hidden>

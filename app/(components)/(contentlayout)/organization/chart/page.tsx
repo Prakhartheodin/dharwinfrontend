@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Swal from "sweetalert2";
 import OrgChart from "../_components/OrgChart";
-import { OrgLinkButton, OrgLoadingBlock, OrgPageLayout, OrgPrimaryButton } from "../_components/org-ui";
+import { OrgErrorState, OrgLinkButton, OrgLoadingBlock, OrgPageLayout, OrgPrimaryButton } from "../_components/org-ui";
 import {
   exportOrgComplianceReport,
   getOrgCoverage,
@@ -30,16 +31,19 @@ export default function OrgChartPage() {
   const [tree, setTree] = useState<OrgTree | null>(null);
   const [coverage, setCoverage] = useState<OrgCoverageSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(false);
     try {
       const [t, c] = await Promise.all([getOrgTree(), getOrgCoverage()]);
       setTree(t);
       setCoverage(c);
     } catch {
-      setTree({ roots: [], unassigned: [] });
+      setError(true);
+      setTree(null);
       setCoverage(null);
     } finally {
       setLoading(false);
@@ -61,6 +65,12 @@ export default function OrgChartPage() {
       a.download = `org-compliance-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ??
+        (err as { message?: string })?.message ??
+        "Could not generate the compliance report. Please try again.";
+      await Swal.fire({ icon: "error", title: "Export failed", text: msg });
     } finally {
       setExporting(false);
     }
@@ -86,6 +96,8 @@ export default function OrgChartPage() {
     >
       {loading ? (
         <OrgLoadingBlock label="Building org chart…" />
+      ) : error ? (
+        <OrgErrorState onRetry={() => void load()} />
       ) : (
         <>
           {coverage ? (
@@ -96,7 +108,7 @@ export default function OrgChartPage() {
               <MetricCard label="Units missing head" value={coverage.unitsMissingHead} tone={coverage.unitsMissingHead ? "warning" : "default"} />
             </div>
           ) : null}
-          {tree ? <OrgChart tree={tree} /> : null}
+          {tree ? <OrgChart tree={tree} onChanged={load} /> : null}
         </>
       )}
     </OrgPageLayout>

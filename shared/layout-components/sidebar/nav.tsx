@@ -16,6 +16,9 @@ const ShareCandidateFormIcon = <i className="bx bx-share-alt side-menu__icon"></
 const ReferralLeadsIcon = <i className="bx bx-link-external side-menu__icon"></i>;
 const OnboardingIcon = <i className="bx bx-log-in-circle side-menu__icon"></i>;
 const AnalyticsIcon = <i className="bx bx-bar-chart-alt-2 side-menu__icon"></i>;
+const OrgChartIcon = <i className="bx bx-sitemap side-menu__icon"></i>;
+const OrgStructureIcon = <i className="bx bx-network-chart side-menu__icon"></i>;
+const DepartmentsIcon = <i className="bx bx-buildings side-menu__icon"></i>;
 
 // Communication Icons
 const EmailIcon = <i className="bx bx-envelope side-menu__icon"></i>;
@@ -222,7 +225,7 @@ export const MenuItems: any = [
     menutitle: "ORGANIZATION",
   },
   {
-    icon: AnalyticsIcon,
+    icon: OrgChartIcon,
     title: "Org Chart",
     type: "link",
     path: "/organization/chart",
@@ -231,7 +234,7 @@ export const MenuItems: any = [
     dirchange: false,
   },
   {
-    icon: AnalyticsIcon,
+    icon: OrgStructureIcon,
     title: "Structure",
     type: "link",
     path: "/organization/structure",
@@ -240,7 +243,7 @@ export const MenuItems: any = [
     dirchange: false,
   },
   {
-    icon: AnalyticsIcon,
+    icon: DepartmentsIcon,
     title: "Departments",
     type: "link",
     path: "/organization/departments",

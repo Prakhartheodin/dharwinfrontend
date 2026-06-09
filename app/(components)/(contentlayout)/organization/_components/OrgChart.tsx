@@ -1,15 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import ReactECharts from "echarts-for-react";
 import type { OrgTree, OrgUnitNode } from "@/shared/lib/api/org-structure";
-import { ORG_UNIT_TYPE_META, OrgChartLegend, OrgEmptyState, OrgLinkButton } from "./org-ui";
+import { ORG_UNIT_TYPE_META, OrgChartLegend, OrgEmptyState, OrgLinkButton, OrgPrimaryButton } from "./org-ui";
+import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
+import AssignToDepartmentModal from "./AssignToDepartmentModal";
 
+const truncate = (s: string, max = 28) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+// Head + members live in the tooltip; the on-node label stays short so long
+// names don't overflow the canvas.
 const nodeLabel = (n: OrgUnitNode) => {
-  const head = n.headEmployee?.fullName?.trim();
-  const headSuffix = head ? ` · Head: ${head}` : "";
   const count = n.memberCount ? ` (${n.memberCount})` : "";
-  return `${n.name}${count}${headSuffix}`;
+  return `${truncate(n.name)}${count}`;
 };
+
+// Deepest level in the tree, counting employees as one level below their department.
+const treeDepth = (nodes: OrgUnitNode[], d = 1): number =>
+  (nodes ?? []).reduce((m, n) => {
+    const childD = n.children?.length ? treeDepth(n.children, d + 1) : d;
+    const empD = n.employees?.length ? d + 1 : d;
+    return Math.max(m, childD, empD);
+  }, d);
+
+const countLeaves = (nodes: OrgUnitNode[]): number =>
+  (nodes ?? []).reduce((acc, n) => {
+    const childLeaves = n.children?.length ? countLeaves(n.children) : 0;
+    const empLeaves = n.employees?.length ?? 0;
+    const ownLeaf = !n.children?.length && !n.employees?.length ? 1 : 0;
+    return acc + childLeaves + empLeaves + ownLeaf;
+  }, 0);
 
 const nodeTooltip = (n: OrgUnitNode) => {
   const lines = [`${ORG_UNIT_TYPE_META[n.type]?.label ?? n.type}: ${n.name}`];
@@ -18,14 +39,29 @@ const nodeTooltip = (n: OrgUnitNode) => {
   return lines.join("<br/>");
 };
 
-const toEChartsNode = (n: OrgUnitNode): Record<string, unknown> => ({
-  name: nodeLabel(n),
-  tooltip: { formatter: nodeTooltip(n) },
-  itemStyle: { color: ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8", borderRadius: 4 },
-  children: (n.children ?? []).map(toEChartsNode),
-});
+const toEChartsNode = (n: OrgUnitNode): Record<string, unknown> => {
+  const unitChildren = (n.children ?? []).map(toEChartsNode);
+  // Department members render as small grey leaf nodes so people are visible on the chart.
+  const employeeChildren = (n.employees ?? []).map((e) => ({
+    name: truncate(e.fullName, 22),
+    symbol: "circle",
+    symbolSize: 7,
+    itemStyle: { color: "#94a3b8" },
+    lineStyle: { color: "#e2e8f0" },
+    label: { color: "#64748b", fontSize: 10 },
+    tooltip: { formatter: e.fullName },
+  }));
+  return {
+    name: nodeLabel(n),
+    tooltip: { formatter: nodeTooltip(n) },
+    itemStyle: { color: ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8", borderRadius: 4 },
+    children: [...unitChildren, ...employeeChildren],
+  };
+};
 
-export default function OrgChart({ tree }: { tree: OrgTree }) {
+export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged?: () => void }) {
+  const { canEdit: canAssignEmployees } = useFeaturePermissions("ats.employees");
+  const [assignOpen, setAssignOpen] = useState(false);
   if (!tree.roots.length) {
     return (
       <OrgEmptyState
@@ -48,14 +84,20 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
     );
   }
 
-  const data = [
-    {
-      name: "Organization",
-      children: tree.roots.map(toEChartsNode),
-      itemStyle: { opacity: 0 },
-      label: { show: false },
-    },
-  ];
+  const rootNodes = tree.roots.map(toEChartsNode);
+  // One root (the usual single CEO): use it directly so there's no stray line above it.
+  // Multiple roots: wrap in an invisible parent and hide the connecting edges.
+  const data =
+    rootNodes.length === 1
+      ? rootNodes
+      : [
+          {
+            name: "Organization",
+            children: rootNodes.map((r) => ({ ...r, lineStyle: { opacity: 0 } })),
+            itemStyle: { opacity: 0 },
+            label: { show: false },
+          },
+        ];
 
   const option = {
     tooltip: {
@@ -69,31 +111,33 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
       {
         type: "tree",
         data,
-        top: "4%",
-        bottom: "4%",
-        left: "8%",
-        right: "18%",
+        top: "12%",
+        bottom: "14%",
+        left: "3%",
+        right: "3%",
+        roam: true,
         layout: "orthogonal",
-        orient: "LR",
+        orient: "TB",
         symbol: "roundRect",
-        symbolSize: [10, 10],
+        symbolSize: [12, 12],
         expandAndCollapse: true,
-        initialTreeDepth: 3,
+        initialTreeDepth: -1,
         animationDuration: 250,
         animationDurationUpdate: 200,
-        lineStyle: { color: "#cbd5e1", width: 1.5, curveness: 0.4 },
+        lineStyle: { color: "#cbd5e1", width: 1.5, curveness: 0 },
         label: {
-          position: "left",
-          verticalAlign: "middle",
-          align: "right",
+          position: "top",
+          verticalAlign: "bottom",
+          align: "center",
+          distance: 6,
           fontSize: 11,
           color: "#334155",
         },
         leaves: {
           label: {
-            position: "right",
-            verticalAlign: "middle",
-            align: "left",
+            position: "bottom",
+            verticalAlign: "top",
+            align: "center",
           },
         },
         emphasis: {
@@ -104,14 +148,20 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
     ],
   };
 
+  // Top-down: height grows with depth (levels), width with breadth (leaves).
+  const chartHeight = Math.min(Math.max(460, (treeDepth(tree.roots) + 1) * 130), 1600);
+  const minChartWidth = Math.max(640, countLeaves(tree.roots) * 90);
+
   return (
     <div>
       <OrgChartLegend />
-      <div className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white dark:bg-bodybg">
-        <ReactECharts option={option} style={{ height: 620, width: "100%" }} opts={{ renderer: "canvas" }} />
+      <div className="overflow-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-bodybg">
+        <div style={{ minWidth: minChartWidth }}>
+          <ReactECharts option={option} style={{ height: chartHeight, width: "100%" }} opts={{ renderer: "canvas" }} />
+        </div>
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
-        Click nodes to expand or collapse branches. Labels include unit heads where assigned.
+        CEO at the top, then managers, supervisors, departments, and their members. Click a node to collapse/expand, drag to pan, scroll to zoom.
       </p>
 
       {tree.unassigned.length > 0 ? (
@@ -141,8 +191,32 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
               </span>
             ))}
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-warning/15 px-4 py-3">
+            <p className="mb-0 text-[0.75rem] text-defaulttextcolor/60">
+              Assign these employees to a department to place them on the chart.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {canAssignEmployees ? (
+                <OrgPrimaryButton onClick={() => setAssignOpen(true)}>
+                  <i className="ri-user-add-line text-base" aria-hidden />
+                  Assign to department
+                </OrgPrimaryButton>
+              ) : null}
+              <OrgLinkButton href="/ats/employees" variant="secondary">
+                <i className="ri-team-line text-base" aria-hidden />
+                Open employees
+              </OrgLinkButton>
+            </div>
+          </div>
         </div>
       ) : null}
+
+      <AssignToDepartmentModal
+        open={assignOpen}
+        employees={tree.unassigned}
+        onClose={() => setAssignOpen(false)}
+        onAssigned={() => onChanged?.()}
+      />
     </div>
   );
 }

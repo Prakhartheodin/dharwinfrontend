@@ -2,20 +2,31 @@
 
 import { useEffect, useState } from "react";
 import Swal from "sweetalert2";
-import { getPositionRoster } from "@/shared/lib/api/positions";
-import { assignHead } from "@/shared/lib/api/org-structure";
+import { assignHead, listAssignableHeads } from "@/shared/lib/api/org-structure";
 import { OrgFormField, OrgModal, OrgModalCancelButton, OrgModalSubmitButton } from "./org-ui";
 
 type Props = {
   open: boolean;
   unitId: string | null;
   unitName: string;
+  unitType?: string;
+  departmentId?: string | null;
   currentHeadId?: string | null;
   onClose: () => void;
   onSaved: () => void;
 };
 
-export default function AssignHeadModal({ open, unitId, unitName, currentHeadId, onClose, onSaved }: Props) {
+export default function AssignHeadModal({
+  open,
+  unitId,
+  unitName,
+  unitType,
+  departmentId,
+  currentHeadId,
+  onClose,
+  onSaved,
+}: Props) {
+  const isDepartment = unitType === "department";
   const [headEmployeeId, setHeadEmployeeId] = useState("");
   const [roster, setRoster] = useState<{ id: string; name: string }[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
@@ -25,19 +36,11 @@ export default function AssignHeadModal({ open, unitId, unitName, currentHeadId,
     if (!open) return;
     setHeadEmployeeId(currentHeadId ?? "");
     setLoadingRoster(true);
-    getPositionRoster()
-      .then((rows) => {
-        const byId = new Map<string, string>();
-        for (const row of rows) {
-          for (const e of row.assignedEmployees ?? []) {
-            if (e.id) byId.set(String(e.id), e.name);
-          }
-        }
-        setRoster([...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name)));
-      })
+    listAssignableHeads(isDepartment ? departmentId : undefined)
+      .then(setRoster)
       .catch(() => setRoster([]))
       .finally(() => setLoadingRoster(false));
-  }, [open, currentHeadId]);
+  }, [open, currentHeadId, isDepartment, departmentId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,11 +74,15 @@ export default function AssignHeadModal({ open, unitId, unitName, currentHeadId,
       }
     >
       <form id="assign-head-form" onSubmit={handleSubmit}>
-        <div className="ti-modal-body">
+        <div className="px-5 py-5">
           <OrgFormField
             id="head-employee"
             label="Employee"
-            hint="Only employees currently assigned to a position appear here."
+            hint={
+              isDepartment
+                ? "Only members of this department can lead it. Set an employee's department on their record to add them here."
+                : "Any active employee can lead this unit."
+            }
           >
             <select
               id="head-employee"
@@ -91,6 +98,11 @@ export default function AssignHeadModal({ open, unitId, unitName, currentHeadId,
                 </option>
               ))}
             </select>
+            {isDepartment && !loadingRoster && roster.length === 0 ? (
+              <p className="mb-0 mt-1.5 text-[0.75rem] text-warning">
+                No employees are assigned to this department yet. Assign one on their employee record first.
+              </p>
+            ) : null}
           </OrgFormField>
         </div>
       </form>
