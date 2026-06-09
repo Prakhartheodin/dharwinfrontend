@@ -145,6 +145,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   const rawId = placementIdFromQuery ?? params?.id
   const placementId = isValidMongoId(rawId) ? rawId : null
   const { canEdit } = useFeaturePermissions('ats.onboarding')
+  const { canCreate: canCreateDepartment } = useFeaturePermissions('organization.departments')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -680,7 +681,9 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                           {d.name}
                                         </option>
                                       ))}
-                                      <option value={ADD_DEPARTMENT_SELECT_VALUE}>+ Add new department…</option>
+                                      {canCreateDepartment ? (
+                                        <option value={ADD_DEPARTMENT_SELECT_VALUE}>+ Add new department…</option>
+                                      ) : null}
                                     </select>
                                   </div>
                                   <div className="flex min-h-0 min-w-0 flex-col gap-0">

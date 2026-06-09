@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import Select, { Props as SelectProps } from 'react-select';
 import { Selectoption4 } from '@/shared/data/pages/candidates/skillsdata';
 import { createCandidate, updateCandidate, updateMyCandidate, uploadDocuments, importCandidatesFromExcel } from "@/shared/lib/api/candidates";
+import { listDepartments, type Department } from "@/shared/lib/api/departments";
 import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
 import { resolveEmployeeJobTitle } from "@/shared/lib/employee-job-title";
 import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
@@ -474,13 +475,22 @@ export const Basicwizard = ({
     }
   }, [initialData, router, auth.permissionsLoaded, auth.user, canManageEmployees]);
 
+  useEffect(() => {
+    if (!canManageEmployees || !initialData) return;
+    listDepartments()
+      .then((rows) => setDepartments(rows.filter((d) => d.isActive !== false)))
+      .catch(() => setDepartments([]));
+  }, [canManageEmployees, initialData]);
+
   const [formData, setFormData] = useState({ 
     fullName: "", email: "", phoneNumber: "", countryCode: "IN", shortBio: "", sevisId: "", ead: "", degree: "", designation: "", compensationType: "", supervisorName: "", supervisorContact: "", supervisorCountryCode: "IN", visaType: "", customVisaType: "", salaryRange: "", streetAddress: "", streetAddress2: "", city: "", state: "", zipCode: "", country: "", password: "",
     companyAssignedEmail: "",
     companyEmailProvider: "" as "" | "gmail" | "outlook" | "unknown",
+    departmentId: "",
   });
   /** Kept as a "user" sentinel for legacy comparisons below; persona/permission gates
    *  drive every real decision via `canManageEmployees` and `isCandidate`. */
+  const [departments, setDepartments] = useState<Department[]>([]);
   const userRole = isCandidate ? "user" : "staff";
   const [profilePicture, setProfilePicture] = useState<File | null>(null);
   const [profilePicturePreview, setProfilePicturePreview] = useState<string>("");
@@ -1956,6 +1966,9 @@ export const Basicwizard = ({
         ead: formData.ead,
         degree: formData.degree,
         designation: formData.designation?.trim() || undefined,
+        ...(canManageEmployees && isEdit && formData.departmentId
+          ? { departmentId: formData.departmentId }
+          : {}),
         ...(!(isEdit && initialData?.compensationLocked) && formData.compensationType
           ? { compensationType: formData.compensationType }
           : {}),

@@ -26,6 +26,7 @@ export default function StructurePanel() {
   const [unitModalOpen, setUnitModalOpen] = useState(false);
   const [editing, setEditing] = useState<OrgUnitNode | null>(null);
   const [headUnit, setHeadUnit] = useState<OrgUnitNode | null>(null);
+  const [coverage, setCoverage] = useState<OrgCoverageSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -128,6 +129,28 @@ export default function StructurePanel() {
 
   return (
     <>
+      {coverage ? (
+        <div className="mb-4 overflow-hidden rounded-xl border border-defaultborder/60 bg-light/30 p-4 dark:bg-white/[0.02]">
+          <h6 className="mb-3 text-[0.875rem] font-semibold">Setup checklist</h6>
+          <ul className="mb-0 grid gap-2 sm:grid-cols-2">
+            {[
+              ["Create CEO node", coverage.checklist.hasCeo],
+              ["Add manager chain", coverage.checklist.hasManagers],
+              ["Add supervisors", coverage.checklist.hasSupervisors],
+              ["Link department nodes", coverage.checklist.hasDepartmentNodes],
+              ["All departments linked", coverage.checklist.allDepartmentsLinked],
+              ["Assign leadership heads", coverage.checklist.allLeadershipHeadsAssigned],
+              ["No unassigned employees", coverage.checklist.noUnassignedEmployees],
+            ].map(([label, done]) => (
+              <li key={String(label)} className="flex items-center gap-2 text-[0.8125rem]">
+                <i className={done ? "ri-checkbox-circle-fill text-success" : "ri-checkbox-blank-circle-line text-defaulttextcolor/45"} aria-hidden />
+                <span className={done ? "text-defaulttextcolor" : "text-defaulttextcolor/70"}>{label}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <p className="mb-0 text-[0.8125rem] text-defaulttextcolor/65">
           <span className="font-semibold text-defaulttextcolor">{rows.length}</span> org unit

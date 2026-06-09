@@ -4,8 +4,23 @@ import ReactECharts from "echarts-for-react";
 import type { OrgTree, OrgUnitNode } from "@/shared/lib/api/org-structure";
 import { ORG_UNIT_TYPE_META, OrgChartLegend, OrgEmptyState, OrgLinkButton } from "./org-ui";
 
+const nodeLabel = (n: OrgUnitNode) => {
+  const head = n.headEmployee?.fullName?.trim();
+  const headSuffix = head ? ` · Head: ${head}` : "";
+  const count = n.memberCount ? ` (${n.memberCount})` : "";
+  return `${n.name}${count}${headSuffix}`;
+};
+
+const nodeTooltip = (n: OrgUnitNode) => {
+  const lines = [`${ORG_UNIT_TYPE_META[n.type]?.label ?? n.type}: ${n.name}`];
+  if (n.headEmployee?.fullName) lines.push(`Head: ${n.headEmployee.fullName}`);
+  if (n.memberCount) lines.push(`Members: ${n.memberCount}`);
+  return lines.join("<br/>");
+};
+
 const toEChartsNode = (n: OrgUnitNode): Record<string, unknown> => ({
-  name: `${n.name}${n.memberCount ? ` (${n.memberCount})` : ""}`,
+  name: nodeLabel(n),
+  tooltip: { formatter: nodeTooltip(n) },
   itemStyle: { color: ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8", borderRadius: 4 },
   children: (n.children ?? []).map(toEChartsNode),
 });
@@ -71,7 +86,7 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
           position: "left",
           verticalAlign: "middle",
           align: "right",
-          fontSize: 12,
+          fontSize: 11,
           color: "#334155",
         },
         leaves: {
@@ -96,7 +111,7 @@ export default function OrgChart({ tree }: { tree: OrgTree }) {
         <ReactECharts option={option} style={{ height: 620, width: "100%" }} opts={{ renderer: "canvas" }} />
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
-        Click nodes to expand or collapse branches. Hover for unit details.
+        Click nodes to expand or collapse branches. Labels include unit heads where assigned.
       </p>
 
       {tree.unassigned.length > 0 ? (
