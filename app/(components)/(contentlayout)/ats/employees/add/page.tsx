@@ -1,7 +1,20 @@
 "use client";
 
-import { Basicwizard } from "@/shared/data/pages/candidates/candidateform";
+import dynamic from "next/dynamic";
 import Seo from "@/shared/layout-components/seo/seo";
+
+// Lazy-load the heavy wizard so the route shell compiles fast.
+const EmployeeForm = dynamic(
+  () => import("@/shared/data/pages/candidates/employeeform").then((m) => m.EmployeeForm),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      </div>
+    ),
+  }
+);
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
 import React, { Fragment, useMemo } from "react";
@@ -26,7 +39,7 @@ const AddEmployee = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                   </div>
                 ) : canCreate ? (
-                  <Basicwizard />
+                  <EmployeeForm />
                 ) : (
                   <div className="p-6 text-center text-gray-500">
                     You do not have permission to add employees.

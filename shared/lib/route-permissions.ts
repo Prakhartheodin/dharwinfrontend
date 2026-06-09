@@ -87,6 +87,8 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/organization/chart": "organization.chart:",
   "/organization/structure": "organization.structure:",
   "/organization/departments": "organization.departments:",
+  "/organization/directory": "organization.directory:",
+  "/organization/scenarios": "organization.scenarios:",
   // Communication
   "/communication/calling": "communication.calling:",
   // Training Management

@@ -1,7 +1,20 @@
 "use client";
 
-import { Basicwizard } from "@/shared/data/pages/candidates/candidateform";
+import dynamic from "next/dynamic";
 import Pageheader from "@/shared/layout-components/page-header/pageheader";
+
+// Lazy-load the heavy wizard so the route shell compiles fast.
+const EmployeeForm = dynamic(
+  () => import("@/shared/data/pages/candidates/employeeform").then((m) => m.EmployeeForm),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      </div>
+    ),
+  }
+);
 import Seo from "@/shared/layout-components/seo/seo";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
@@ -21,10 +34,10 @@ const ImportCandidates = () => {
 
   return (
     <Fragment>
-      <Seo title="Excel Import Candidates" />
+      <Seo title="Excel Import Employees" />
       <Pageheader
-        currentpage="Excel Import Candidates"
-        activepage="Candidates"
+        currentpage="Excel Import Employees"
+        activepage="Employees"
         mainpage="Excel Import"
       />
       <div className="container">
@@ -37,7 +50,7 @@ const ImportCandidates = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
                   </div>
                 ) : canCreate ? (
-                  <Basicwizard initialExcelMode returnToCandidatesOnBack />
+                  <EmployeeForm initialExcelMode returnToCandidatesOnBack />
                 ) : (
                   <div className="p-6 text-center text-gray-500">
                     You do not have permission to import employees.

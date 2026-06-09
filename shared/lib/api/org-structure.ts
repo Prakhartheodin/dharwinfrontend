@@ -8,6 +8,8 @@ export interface OrgHeadEmployee {
   designation?: string;
   departmentId?: string | null;
 }
+export type SpanBand = "ok" | "warn" | "critical";
+
 export interface OrgUnitNode {
   id: string;
   name: string;
@@ -21,6 +23,9 @@ export interface OrgUnitNode {
   isActive?: boolean;
   orphaned?: boolean;
   memberCount?: number;
+  spanDirect?: number;
+  spanIndirect?: number;
+  spanBand?: SpanBand;
   employees?: { id: string; fullName: string; email?: string }[];
   children: OrgUnitNode[];
 }
@@ -36,6 +41,7 @@ export interface OrgCoverageSummary {
   departmentsWithoutNode: number;
   departmentNodesWithoutEmployees: number;
   unitsMissingHead: number;
+  overSpanUnits?: number;
   hasCeo: boolean;
   checklist: {
     hasCeo: boolean;
@@ -70,13 +76,39 @@ export interface Paginated<T> {
   totalResults: number;
 }
 
+export interface OrgChartSearchResult {
+  units: { id: string; name: string; type: OrgUnitType }[];
+  employees: { id: string; fullName: string; departmentId?: string | null }[];
+  paths: { kind: "unit" | "employee"; id: string; unitId?: string; pathIds: string[] }[];
+}
+
 export const getOrgTree = async (): Promise<OrgTree> => (await apiClient.get("/org-structure/tree")).data;
+export const getOrgTreeLazy = async (rootId?: string | null, depth?: number): Promise<OrgTree> =>
+  (
+    await apiClient.get("/org-structure/tree", {
+      params: { ...(rootId != null ? { rootId } : {}), ...(depth != null ? { depth } : {}) },
+    })
+  ).data;
+export const searchOrgChart = async (q: string): Promise<OrgChartSearchResult> =>
+  (await apiClient.get("/org-structure/search", { params: { q } })).data;
 export const getOrgCoverage = async (): Promise<OrgCoverageSummary> =>
   (await apiClient.get("/org-structure/coverage")).data;
 export const listAssignableHeads = async (departmentId?: string | null): Promise<{ id: string; name: string }[]> =>
   (await apiClient.get("/org-structure/employees", { params: departmentId ? { departmentId } : {} })).data;
-export const exportOrgComplianceReport = async (): Promise<OrgComplianceReport> =>
-  (await apiClient.get("/org-structure/export")).data;
+export async function exportOrgComplianceReport(format?: "json"): Promise<OrgComplianceReport>;
+export async function exportOrgComplianceReport(format: "csv"): Promise<Blob>;
+export async function exportOrgComplianceReport(
+  format: "json" | "csv" = "json"
+): Promise<OrgComplianceReport | Blob> {
+  if (format === "csv") {
+    const { data } = await apiClient.get<Blob>("/org-structure/export", {
+      params: { format: "csv" },
+      responseType: "blob",
+    });
+    return data;
+  }
+  return (await apiClient.get<OrgComplianceReport>("/org-structure/export")).data;
+}
 export const listOrgUnits = async (): Promise<OrgUnitNode[]> => (await apiClient.get("/org-structure")).data;
 export const listOrgUnitsPaged = async (params: {
   q?: string;
@@ -91,6 +123,15 @@ export const updateOrgUnit = async (id: string, body: Partial<OrgUnitNode>) =>
   (await apiClient.patch(`/org-structure/${id}`, body)).data;
 export const reparentOrgUnit = async (id: string, parentId: string | null) =>
   (await apiClient.patch(`/org-structure/${id}/reparent`, { parentId })).data;
+/** Live chart drag-drop reparent with audit (Phase 3). */
+export const reparentOrgUnitFromChart = async (id: string, parentId: string | null) =>
+  (await apiClient.patch(`/org-structure/${id}/chart-reparent`, { parentId })).data;
+export const queryEmployeeDirectory = async (params?: {
+  q?: string;
+  page?: number;
+  limit?: number;
+}): Promise<Paginated<{ id: string; fullName: string; email: string; designation: string; departmentName: string }>> =>
+  (await apiClient.get("/org-structure/directory", { params })).data;
 export const assignHead = async (id: string, headEmployeeId: string | null) =>
   (await apiClient.patch(`/org-structure/${id}/head`, { headEmployeeId })).data;
 export const deactivateOrgUnit = async (id: string) => (await apiClient.delete(`/org-structure/${id}`)).data;

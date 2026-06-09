@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import Swal from "sweetalert2";
 import {
@@ -8,6 +9,7 @@ import {
   deleteOrgUnit,
   getOrgCoverage,
   getOrgTree,
+  listOrgUnits,
   listOrgUnitsPaged,
   reactivateOrgUnit,
   reparentOrgUnit,
@@ -16,9 +18,12 @@ import {
   type OrgUnitNode,
   type OrgUnitType,
 } from "@/shared/lib/api/org-structure";
-import OrgUnitModal from "./OrgUnitModal";
-import AssignHeadModal from "./AssignHeadModal";
-import AssignToDepartmentModal from "./AssignToDepartmentModal";
+// Modals only render on interaction — lazy-load them so the page compiles without
+// pulling their (employees/sweetalert2) dependency graphs upfront.
+const OrgUnitModal = dynamic(() => import("./OrgUnitModal"), { ssr: false });
+const AssignHeadModal = dynamic(() => import("./AssignHeadModal"), { ssr: false });
+const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
+import StructureHistoryPanel from "./StructureHistoryPanel";
 import {
   OrgEmptyState,
   OrgErrorState,
@@ -32,6 +37,7 @@ import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 
 const PAGE_SIZE = 10;
 const CHECKLIST_DISMISS_KEY = "org-setup-checklist-dismissed";
+type StructureTab = "units" | "history";
 
 type ChecklistCta = { label: string; onClick?: () => void; href?: string };
 type ChecklistItem = {
@@ -189,7 +195,12 @@ function SetupChecklist({ items }: { items: ChecklistItem[] }) {
 export default function StructurePanel() {
   const { canCreate, canEdit, canDelete } = useFeaturePermissions("organization.structure");
   const { canEdit: canAssignEmployees } = useFeaturePermissions("ats.employees");
-  const [masterUnits, setMasterUnits] = useState<OrgUnitNode[]>([]);
+  const [tab, setTab] = useState<StructureTab>("units");
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [pageRows, setPageRows] = useState<OrgUnitNode[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [allUnitsForReorder, setAllUnitsForReorder] = useState<OrgUnitNode[]>([]);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -215,72 +226,67 @@ export default function StructurePanel() {
     setPage(1);
   }, [debouncedSearch, includeInactive]);
 
+  const loadAllUnitsForReorder = useCallback(async () => {
+    if (!canEdit) return;
+    try {
+      const all = await listOrgUnits();
+      setAllUnitsForReorder(all.filter((u) => u.isActive !== false));
+    } catch {
+      /* reorder controls stay hidden if lookup fails */
+    }
+  }, [canEdit]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(false);
     try {
-      // Pull the whole set once; ordering/search/pagination happen client-side so the
-      // table can render the real hierarchy (parents above their children).
-      const [all, coverageSummary, tree] = await Promise.all([
-        listOrgUnitsPaged({ includeInactive: true, limit: 10000 }),
+      const [paged, coverageSummary, tree] = await Promise.all([
+        listOrgUnitsPaged({
+          page,
+          limit: PAGE_SIZE,
+          q: debouncedSearch || undefined,
+          includeInactive,
+        }),
         getOrgCoverage().catch(() => null),
         getOrgTree().catch(() => null),
       ]);
-      setMasterUnits(all.results);
+      setPageRows(paged.results);
+      setTotalPages(Math.max(1, paged.totalPages || 1));
+      setTotalResults(paged.totalResults ?? paged.results.length);
       setCoverage(coverageSummary);
       setUnassigned(tree?.unassigned ?? []);
     } catch {
       setError(true);
-      setMasterUnits([]);
+      setPageRows([]);
       setCoverage(null);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, includeInactive, page]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  // Active units drive the reorder / reparent / sibling logic.
-  const allUnits = useMemo(() => masterUnits.filter((u) => u.isActive !== false), [masterUnits]);
+  useEffect(() => {
+    if (canEdit) void loadAllUnitsForReorder();
+  }, [canEdit, loadAllUnitsForReorder]);
 
-  // Id → unit lookup for parent names (all units, so inactive parents still resolve).
-  const unitsById = useMemo(() => new Map(masterUnits.map((u) => [u.id, u])), [masterUnits]);
+  const refreshAfterMutation = useCallback(async () => {
+    await load();
+    if (canEdit) await loadAllUnitsForReorder();
+  }, [canEdit, load, loadAllUnitsForReorder]);
 
-  // Rows in hierarchy order with depth for indentation. Searching falls back to a flat
-  // filtered list (a filtered subset has no meaningful tree shape).
-  const orderedRows = useMemo(() => {
-    const pool = includeInactive ? masterUnits : masterUnits.filter((u) => u.isActive !== false);
-    const q = debouncedSearch.toLowerCase();
-    if (q) {
-      return pool.filter((u) => u.name.toLowerCase().includes(q)).map((u) => ({ unit: u, depth: 0 }));
-    }
-    const ids = new Set(pool.map((u) => u.id));
-    const childrenOf = new Map<string, OrgUnitNode[]>();
-    for (const u of pool) {
-      const key = u.parentId && ids.has(u.parentId) ? u.parentId : "__root__";
-      const arr = childrenOf.get(key);
-      if (arr) arr.push(u);
-      else childrenOf.set(key, [u]);
-    }
-    for (const arr of childrenOf.values()) {
-      arr.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name));
-    }
-    const out: { unit: OrgUnitNode; depth: number }[] = [];
-    const walk = (key: string, depth: number) => {
-      for (const u of childrenOf.get(key) ?? []) {
-        out.push({ unit: u, depth });
-        walk(u.id, depth + 1);
-      }
-    };
-    walk("__root__", 0);
-    return out;
-  }, [masterUnits, includeInactive, debouncedSearch]);
+  const allUnits = allUnitsForReorder;
 
-  const totalPages = Math.max(1, Math.ceil(orderedRows.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const pageRows = orderedRows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const unitsById = useMemo(() => {
+    const map = new Map<string, OrgUnitNode>();
+    for (const u of pageRows) map.set(u.id, u);
+    for (const u of allUnitsForReorder) map.set(u.id, u);
+    return map;
+  }, [allUnitsForReorder, pageRows]);
+
+  const tableRows = useMemo(() => pageRows.map((unit) => ({ unit, depth: 0 })), [pageRows]);
 
   // Each active unit's position among its siblings (same parent), ordered the way
   // the chart renders them. Drives the ↑/↓ reorder controls.
@@ -373,7 +379,7 @@ export default function StructurePanel() {
     if (parentId === undefined) return;
     try {
       await reparentOrgUnit(row.id, parentId || null);
-      await load();
+      await refreshAfterMutation();
       await Swal.fire({
         icon: "success",
         title: "Unit moved",
@@ -404,7 +410,7 @@ export default function StructurePanel() {
     if (!confirm.isConfirmed) return;
     try {
       await deactivateOrgUnit(row.id);
-      await load();
+      await refreshAfterMutation();
       await Swal.fire({
         icon: "success",
         title: "Unit deactivated",
@@ -423,7 +429,7 @@ export default function StructurePanel() {
   const handleReactivate = async (row: OrgUnitNode) => {
     try {
       await reactivateOrgUnit(row.id);
-      await load();
+      await refreshAfterMutation();
       await Swal.fire({
         icon: "success",
         title: "Unit reactivated",
@@ -455,7 +461,7 @@ export default function StructurePanel() {
           .map((u, idx) => ((u.order ?? 0) !== idx ? updateOrgUnit(u.id, { order: idx }) : null))
           .filter(Boolean) as Promise<unknown>[]
       );
-      await load();
+      await refreshAfterMutation();
       await Swal.fire({
         icon: "success",
         title: "Order updated",
@@ -485,7 +491,7 @@ export default function StructurePanel() {
     if (!confirm.isConfirmed) return;
     try {
       await deleteOrgUnit(row.id);
-      await load();
+      await refreshAfterMutation();
       await Swal.fire({
         icon: "success",
         title: "Unit deleted",
@@ -568,7 +574,7 @@ export default function StructurePanel() {
   if (error) return <OrgErrorState onRetry={() => void load()} />;
 
   // True empty state only when there are no units at all (no search, no filter).
-  if (!orderedRows.length && !hasFilters) {
+  if (!pageRows.length && !hasFilters && totalResults === 0) {
     return (
       <>
         <OrgEmptyState
@@ -584,15 +590,62 @@ export default function StructurePanel() {
             ) : undefined
           }
         />
-        <OrgUnitModal open={unitModalOpen} unit={editing} initialType={initialType} onClose={() => setUnitModalOpen(false)} onSaved={load} />
+        {unitModalOpen ? (
+          <OrgUnitModal open unit={editing} initialType={initialType} onClose={() => setUnitModalOpen(false)} onSaved={refreshAfterMutation} />
+        ) : null}
       </>
     );
   }
+
+  const viewHistory = (unitId: string) => {
+    setSelectedUnitId(unitId);
+    setTab("history");
+  };
 
   return (
     <>
       {coverage ? <SetupChecklist items={checklistItems} /> : null}
 
+      <div
+        className="mb-4 inline-flex rounded-lg border border-defaultborder/60 bg-light/30 p-1 dark:bg-white/[0.02]"
+        role="tablist"
+        aria-label="Structure views"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "units"}
+          className={`rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+            tab === "units"
+              ? "bg-white text-defaulttextcolor shadow-sm dark:bg-bodybg"
+              : "text-defaulttextcolor/65 hover:text-defaulttextcolor"
+          }`}
+          onClick={() => setTab("units")}
+        >
+          Units
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === "history"}
+          className={`rounded-md px-3 py-1.5 text-[0.8125rem] font-medium transition-colors ${
+            tab === "history"
+              ? "bg-white text-defaulttextcolor shadow-sm dark:bg-bodybg"
+              : "text-defaulttextcolor/65 hover:text-defaulttextcolor"
+          }`}
+          onClick={() => setTab("history")}
+        >
+          History
+        </button>
+      </div>
+
+      {tab === "history" ? (
+        <StructureHistoryPanel
+          entityId={selectedUnitId}
+          onSelectUnit={(id) => setSelectedUnitId(id)}
+        />
+      ) : (
+        <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
@@ -624,7 +677,7 @@ export default function StructurePanel() {
         ) : null}
       </div>
 
-      {!orderedRows.length ? (
+      {!pageRows.length ? (
         <OrgEmptyState
           icon="ri-search-line"
           title="No units match"
@@ -634,7 +687,7 @@ export default function StructurePanel() {
         <>
           {canEdit ? (
             <p className="mb-2 text-[0.75rem] text-defaulttextcolor/55">
-              Rows follow the org hierarchy (parents above their children). Use ↑ / ↓ to order siblings.
+              Server-paged unit list. Use reorder controls to change sibling order among active units.
             </p>
           ) : null}
           <div className="table-responsive rounded-lg border border-defaultborder/60">
@@ -645,6 +698,7 @@ export default function StructurePanel() {
                 <th scope="col">Type</th>
                 <th scope="col">Parent</th>
                 <th scope="col">Head</th>
+                <th scope="col">Span</th>
                 <th scope="col">Status</th>
                 <th scope="col" className="min-w-[17rem] text-end">
                   Actions
@@ -652,7 +706,7 @@ export default function StructurePanel() {
               </tr>
             </thead>
             <tbody>
-              {pageRows.map(({ unit: row, depth }) => {
+              {tableRows.map(({ unit: row, depth }) => {
                 const inactive = row.isActive === false;
                 return (
                   <tr key={row.id} className="border-defaultborder/50">
@@ -670,6 +724,22 @@ export default function StructurePanel() {
                     </td>
                     <td className="max-w-[10rem] truncate text-defaulttextcolor/75" title={headLabel(row)}>
                       {headLabel(row)}
+                    </td>
+                    <td>
+                      {row.spanBand === "warn" || row.spanBand === "critical" ? (
+                        <span
+                          className={`badge ${
+                            row.spanBand === "critical"
+                              ? "bg-danger/10 text-danger"
+                              : "bg-warning/10 text-warning"
+                          }`}
+                          title={`Direct reports: ${row.spanDirect ?? "?"}`}
+                        >
+                          Span {row.spanDirect ?? "?"}
+                        </span>
+                      ) : (
+                        <span className="text-defaulttextcolor/40">—</span>
+                      )}
                     </td>
                     <td>
                       {inactive ? (
@@ -729,6 +799,14 @@ export default function StructurePanel() {
                                 </OrgTableAction>
                                 <OrgTableAction
                                   tone="secondary"
+                                  title="View change history for this unit"
+                                  onClick={() => viewHistory(row.id)}
+                                >
+                                  <i className="ri-history-line text-[0.875rem]" aria-hidden />
+                                  History
+                                </OrgTableAction>
+                                <OrgTableAction
+                                  tone="secondary"
                                   title="Move unit to a different parent"
                                   onClick={() => handleReparent(row)}
                                 >
@@ -767,42 +845,50 @@ export default function StructurePanel() {
           <button
             type="button"
             className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] disabled:opacity-50"
-            onClick={() => setPage(Math.max(1, safePage - 1))}
-            disabled={safePage <= 1}
+            onClick={() => setPage(Math.max(1, page - 1))}
+            disabled={page <= 1}
           >
             <i className="ri-arrow-left-s-line" aria-hidden /> Prev
           </button>
           <span className="text-[0.8125rem] text-defaulttextcolor/65">
-            Page <span className="font-semibold text-defaulttextcolor">{safePage}</span> of {totalPages}
+            Page <span className="font-semibold text-defaulttextcolor">{page}</span> of {totalPages}
           </span>
           <button
             type="button"
             className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.8125rem] disabled:opacity-50"
-            onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-            disabled={safePage >= totalPages}
+            onClick={() => setPage(Math.min(totalPages, page + 1))}
+            disabled={page >= totalPages}
           >
             Next <i className="ri-arrow-right-s-line" aria-hidden />
           </button>
         </nav>
       ) : null}
 
-      <OrgUnitModal open={unitModalOpen} unit={editing} initialType={initialType} onClose={() => setUnitModalOpen(false)} onSaved={load} />
-      <AssignHeadModal
-        open={!!headUnit}
-        unitId={headUnit?.id ?? null}
-        unitName={headUnit?.name ?? ""}
-        unitType={headUnit?.type}
-        departmentId={headUnit?.departmentId}
-        currentHeadId={headUnit?.headEmployeeId}
-        onClose={() => setHeadUnit(null)}
-        onSaved={load}
-      />
-      <AssignToDepartmentModal
-        open={assignOpen}
-        employees={unassigned}
-        onClose={() => setAssignOpen(false)}
-        onAssigned={load}
-      />
+      {unitModalOpen ? (
+        <OrgUnitModal open unit={editing} initialType={initialType} onClose={() => setUnitModalOpen(false)} onSaved={refreshAfterMutation} />
+      ) : null}
+      {headUnit ? (
+        <AssignHeadModal
+          open
+          unitId={headUnit.id}
+          unitName={headUnit.name}
+          unitType={headUnit.type}
+          departmentId={headUnit.departmentId}
+          currentHeadId={headUnit.headEmployeeId}
+          onClose={() => setHeadUnit(null)}
+          onSaved={refreshAfterMutation}
+        />
+      ) : null}
+      {assignOpen ? (
+        <AssignToDepartmentModal
+          open
+          employees={unassigned}
+          onClose={() => setAssignOpen(false)}
+          onAssigned={refreshAfterMutation}
+        />
+      ) : null}
+        </>
+      )}
     </>
   );
 }

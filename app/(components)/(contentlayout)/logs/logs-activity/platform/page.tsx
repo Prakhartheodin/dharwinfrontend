@@ -18,11 +18,16 @@ import {
   getActionDisplay,
   getActivityActionDisplayForRow,
   getCandidateActivityEntitySummary,
+  getDepartmentActivityEntitySummary,
+  getEmployeeOrgActivityEntitySummary,
   getEntityTypeDisplay,
   getRoleActivityEntitySummary,
   getUserActivityEntitySummary,
   getImpersonationEntitySummary,
   getJobActivityEntitySummary,
+  getOrgMutateDeniedEntitySummary,
+  getOrgStructureActivityEntitySummary,
+  getOrgUnitActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
 import {
   canOpenActivityLogEntity,
@@ -948,6 +953,11 @@ export default function PlatformAuditLogsPage() {
                           !!isPlatformSuperUser
                         );
                         const entityRichSummary =
+                          getOrgMutateDeniedEntitySummary(log) ??
+                          getOrgUnitActivityEntitySummary(log) ??
+                          getDepartmentActivityEntitySummary(log) ??
+                          getOrgStructureActivityEntitySummary(log) ??
+                          getEmployeeOrgActivityEntitySummary(log) ??
                           getCandidateActivityEntitySummary(log) ??
                           getJobActivityEntitySummary(log) ??
                           getRoleActivityEntitySummary(log) ??

@@ -1,8 +1,22 @@
 "use client";
 
-import { Basicwizard } from "@/shared/data/pages/candidates/candidateform";
+import dynamic from "next/dynamic";
 import Seo from "@/shared/layout-components/seo/seo";
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+
+// Lazy-load the heavy candidate wizard so this route's shell compiles fast and stays
+// warm — its large dependency graph builds as a separate on-demand chunk.
+const EmployeeForm = dynamic(
+  () => import("@/shared/data/pages/candidates/employeeform").then((m) => m.EmployeeForm),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="p-6 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+      </div>
+    ),
+  }
+);
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getCandidate, getMyCandidate } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -146,7 +160,7 @@ const EditEmployee = () => {
                   </div>
                 ) : initialData ? (
                   <>
-                    <Basicwizard
+                    <EmployeeForm
                       initialData={initialData}
                       relaxPersonalInfoValidation={!isEmployee}
                       selfServiceEdit={isEmployee}

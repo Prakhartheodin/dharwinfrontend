@@ -55,6 +55,23 @@ export const ACTIVITY_LOG_ACTIONS: string[] = [
   "ticket.assign",
   "ticket.comment",
   "ticket.delete",
+  "orgUnit.create",
+  "orgUnit.update",
+  "orgUnit.reparent",
+  "orgUnit.headAssign",
+  "orgUnit.headClear",
+  "orgUnit.reorder",
+  "orgUnit.deactivate",
+  "orgUnit.reactivate",
+  "orgUnit.delete",
+  "department.create",
+  "department.update",
+  "department.deactivate",
+  "department.reactivate",
+  "department.delete",
+  "orgStructure.export",
+  "employee.departmentAssign",
+  "org.mutate.denied",
 ];
 
 export const ACTIVITY_LOG_ENTITY_TYPES: string[] = [
@@ -74,6 +91,10 @@ export const ACTIVITY_LOG_ENTITY_TYPES: string[] = [
   "BolnaCandidateAgentSettings",
   "Referral",
   "SupportTicket",
+  "OrgUnit",
+  "Department",
+  "OrgStructure",
+  "Employee",
 ];
 
 export type ActivityLogLabel = { title: string; description: string };
@@ -141,6 +162,34 @@ export const ACTION_LABELS: Record<string, ActivityLogLabel> = {
   "ticket.assign": { title: "Ticket assigned", description: "A support ticket was assigned." },
   "ticket.comment": { title: "Ticket comment added", description: "A comment was added to a support ticket." },
   "ticket.delete": { title: "Ticket deleted", description: "A support ticket was removed." },
+  "orgUnit.create": { title: "Org unit created", description: "A new organization chart unit was added." },
+  "orgUnit.update": { title: "Org unit updated", description: "Organization unit settings were changed." },
+  "orgUnit.reparent": { title: "Org unit moved", description: "An organization unit was reparented in the hierarchy." },
+  "orgUnit.headAssign": { title: "Org head assigned", description: "A leadership head was assigned to an org unit." },
+  "orgUnit.headClear": { title: "Org head cleared", description: "The leadership head was removed from an org unit." },
+  "orgUnit.reorder": { title: "Org units reordered", description: "Sibling org units were reordered." },
+  "orgUnit.deactivate": { title: "Org unit deactivated", description: "An organization unit was deactivated." },
+  "orgUnit.reactivate": { title: "Org unit reactivated", description: "An organization unit was reactivated." },
+  "orgUnit.delete": { title: "Org unit deleted", description: "An organization unit was permanently deleted." },
+  "department.create": { title: "Department created", description: "A new department catalog entry was added." },
+  "department.update": { title: "Department updated", description: "Department details were changed." },
+  "department.deactivate": { title: "Department deactivated", description: "A department was deactivated." },
+  "department.reactivate": { title: "Department reactivated", description: "A department was reactivated." },
+  "department.delete": { title: "Department deleted", description: "A department was permanently deleted." },
+  "orgStructure.export": { title: "Org structure exported", description: "Organization structure data was downloaded." },
+  "orgScenario.create": { title: "Org scenario created", description: "A sandbox reorg scenario was created." },
+  "orgScenario.apply": { title: "Org scenario applied", description: "A sandbox scenario was applied to live structure." },
+  "orgScenario.approve": { title: "Org scenario approved", description: "A sandbox scenario was marked approved." },
+  "orgSlot.create": { title: "Vacant slot created", description: "A vacant org slot was added to the chart." },
+  "orgSlot.update": { title: "Vacant slot updated", description: "A vacant org slot was updated." },
+  "employee.departmentAssign": {
+    title: "Employee department assigned",
+    description: "An employee was assigned to a different department.",
+  },
+  "org.mutate.denied": {
+    title: "Org change denied",
+    description: "An unauthorized organization mutation or export was blocked.",
+  },
 };
 
 export const ENTITY_TYPE_LABELS: Record<string, ActivityLogLabel> = {
@@ -163,6 +212,12 @@ export const ENTITY_TYPE_LABELS: Record<string, ActivityLogLabel> = {
   },
   Referral: { title: "Referral", description: "Referral link / attribution record." },
   SupportTicket: { title: "Support ticket", description: "Support ticket record." },
+  OrgUnit: { title: "Org unit", description: "Organization chart unit (CEO, manager, supervisor, department node)." },
+  Department: { title: "Department", description: "Department catalog record." },
+  OrgStructure: { title: "Org structure", description: "Organization structure export or aggregate surface." },
+  OrgScenario: { title: "Org scenario", description: "Sandbox reorganization scenario." },
+  OrgSlot: { title: "Org slot", description: "Vacant position slot on the org chart." },
+  Employee: { title: "Employee", description: "Employee / people record." },
 };
 
 export function getActionDisplay(action: string): ActivityLogLabel {
@@ -442,4 +497,116 @@ export function getJobActivityEntitySummary(log: {
   }
 
   return jobTitle ? { headline: jobTitle, detailLines: [] } : null;
+}
+
+function idMetaLine(beforeKey: string, afterKey: string, m: Record<string, unknown>): string | null {
+  const b = m[beforeKey];
+  const a = m[afterKey];
+  if (b == null && a == null) return null;
+  if (String(b ?? "null") === String(a ?? "null")) return null;
+  return `${beforeKey.replace(/Before$/, "")}: ${String(b ?? "null")} → ${String(a ?? "null")}`;
+}
+
+export function getOrgUnitActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "OrgUnit") return null;
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const action = log.action ?? "";
+  const detailLines: string[] = [];
+  const reparent = idMetaLine("parentIdBefore", "parentIdAfter", m);
+  if (reparent) detailLines.push(reparent);
+  const head = idMetaLine("headEmployeeIdBefore", "headEmployeeIdAfter", m);
+  if (head) detailLines.push(head);
+  if (typeof m.affectedUnitCount === "number") {
+    detailLines.push(`Affected units: ${m.affectedUnitCount}`);
+  }
+  if (m.statusBefore != null && m.statusAfter != null) {
+    detailLines.push(`Status: ${String(m.statusBefore)} → ${String(m.statusAfter)}`);
+  }
+  if (Array.isArray(m.fieldsUpdated) && m.fieldsUpdated.length) {
+    detailLines.push(`Fields: ${(m.fieldsUpdated as string[]).join(", ")}`);
+  }
+  if (action === "orgUnit.create") return { headline: "Org unit created", detailLines };
+  if (action === "orgUnit.reparent") return { headline: "Org unit reparented", detailLines };
+  if (action === "orgUnit.headAssign" || action === "orgUnit.headClear") {
+    return { headline: action === "orgUnit.headClear" ? "Org head cleared" : "Org head assigned", detailLines };
+  }
+  return detailLines.length ? { headline: "Org unit change", detailLines } : { headline: "Org unit", detailLines: [] };
+}
+
+export function getDepartmentActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "Department") return null;
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const detailLines: string[] = [];
+  if (Array.isArray(m.fieldsUpdated) && m.fieldsUpdated.length) {
+    detailLines.push(`Fields: ${(m.fieldsUpdated as string[]).join(", ")}`);
+  }
+  if (m.statusBefore != null && m.statusAfter != null) {
+    detailLines.push(`Status: ${String(m.statusBefore)} → ${String(m.statusAfter)}`);
+  }
+  const action = log.action ?? "";
+  if (action.startsWith("department.")) {
+    return { headline: getActionDisplay(action).title, detailLines };
+  }
+  return { headline: "Department", detailLines };
+}
+
+export function getOrgStructureActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "OrgStructure" || log.action !== "orgStructure.export") return null;
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const detailLines: string[] = [];
+  if (typeof m.format === "string") detailLines.push(`Format: ${m.format}`);
+  if (typeof m.rowCount === "number") detailLines.push(`Rows: ${m.rowCount}`);
+  if (typeof m.employeeCount === "number") detailLines.push(`Employees: ${m.employeeCount}`);
+  if (typeof m.outcome === "string") detailLines.push(`Outcome: ${m.outcome}`);
+  return { headline: "Structure export", detailLines };
+}
+
+export function getEmployeeOrgActivityEntitySummary(log: {
+  action?: string | null;
+  entityType?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.entityType !== "Employee" || log.action !== "employee.departmentAssign") return null;
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const line = idMetaLine("departmentIdBefore", "departmentIdAfter", m);
+  return { headline: "Department assignment", detailLines: line ? [line] : [] };
+}
+
+export function getOrgMutateDeniedEntitySummary(log: {
+  action?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): { headline: string; detailLines: string[] } | null {
+  if (log.action !== "org.mutate.denied") return null;
+  const m =
+    log.metadata && typeof log.metadata === "object" && !Array.isArray(log.metadata)
+      ? (log.metadata as Record<string, unknown>)
+      : {};
+  const detailLines: string[] = [];
+  if (typeof m.permission === "string") detailLines.push(`Permission: ${m.permission}`);
+  if (typeof m.route === "string") detailLines.push(`Route: ${m.route}`);
+  return { headline: "Denied org mutation", detailLines };
 }

@@ -1,22 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import ReactECharts from "echarts-for-react";
-import type { OrgTree, OrgUnitNode } from "@/shared/lib/api/org-structure";
-import { ORG_UNIT_TYPE_META, OrgChartLegend, OrgEmptyState, OrgLinkButton, OrgPrimaryButton } from "./org-ui";
+import type { ECharts } from "echarts";
+import Swal from "sweetalert2";
+import {
+  exportOrgComplianceReport,
+  listOrgUnits,
+  reparentOrgUnitFromChart,
+  searchOrgChart,
+  type OrgChartSearchResult,
+  type OrgTree,
+  type OrgUnitNode,
+} from "@/shared/lib/api/org-structure";
+import { useAuth } from "@/shared/contexts/auth-context";
+import {
+  ORG_UNIT_TYPE_META,
+  OrgChartLegend,
+  OrgEmptyState,
+  OrgLinkButton,
+  OrgPrimaryButton,
+  OrgSecondaryButton,
+} from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
-import AssignToDepartmentModal from "./AssignToDepartmentModal";
+const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
 
 const truncate = (s: string, max = 28) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
-// Head + members live in the tooltip; the on-node label stays short so long
-// names don't overflow the canvas.
-const nodeLabel = (n: OrgUnitNode) => {
-  const count = n.memberCount ? ` (${n.memberCount})` : "";
-  return `${truncate(n.name)}${count}`;
-};
-
-// Deepest level in the tree, counting employees as one level below their department.
 const treeDepth = (nodes: OrgUnitNode[], d = 1): number =>
   (nodes ?? []).reduce((m, n) => {
     const childD = n.children?.length ? treeDepth(n.children, d + 1) : d;
@@ -32,16 +44,46 @@ const countLeaves = (nodes: OrgUnitNode[]): number =>
     return acc + childLeaves + empLeaves + ownLeaf;
   }, 0);
 
+const flattenUnits = (nodes: OrgUnitNode[], acc: OrgUnitNode[] = []): OrgUnitNode[] => {
+  for (const n of nodes ?? []) {
+    acc.push(n);
+    if (n.children?.length) flattenUnits(n.children, acc);
+  }
+  return acc;
+};
+
+const spanTooltipLine = (n: OrgUnitNode) => {
+  if (n.spanDirect == null && !n.spanBand) return null;
+  const band = n.spanBand && n.spanBand !== "ok" ? ` (${n.spanBand})` : "";
+  return `Span: ${n.spanDirect ?? 0} direct${band}`;
+};
+
 const nodeTooltip = (n: OrgUnitNode) => {
   const lines = [`${ORG_UNIT_TYPE_META[n.type]?.label ?? n.type}: ${n.name}`];
   if (n.headEmployee?.fullName) lines.push(`Head: ${n.headEmployee.fullName}`);
   if (n.memberCount) lines.push(`Members: ${n.memberCount}`);
+  const spanLine = spanTooltipLine(n);
+  if (spanLine) lines.push(spanLine);
   return lines.join("<br/>");
 };
 
-const toEChartsNode = (n: OrgUnitNode): Record<string, unknown> => {
-  const unitChildren = (n.children ?? []).map(toEChartsNode);
-  // Department members render as small grey leaf nodes so people are visible on the chart.
+const highlightStyle = (unitId: string, highlightIds: Set<string>) => {
+  if (!highlightIds.has(unitId)) return {};
+  return {
+    borderColor: "#6366f1",
+    borderWidth: 2,
+    shadowBlur: 10,
+    shadowColor: "rgba(99, 102, 241, 0.45)",
+  };
+};
+
+const nodeLabel = (n: OrgUnitNode) => {
+  const count = n.memberCount ? ` (${n.memberCount})` : "";
+  return `${truncate(n.name)}${count}`;
+};
+
+const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string, unknown> => {
+  const unitChildren = (n.children ?? []).map((c) => toEChartsNode(c, highlightIds));
   const employeeChildren = (n.employees ?? []).map((e) => ({
     name: truncate(e.fullName, 22),
     symbol: "circle",
@@ -49,19 +91,195 @@ const toEChartsNode = (n: OrgUnitNode): Record<string, unknown> => {
     itemStyle: { color: "#94a3b8" },
     lineStyle: { color: "#e2e8f0" },
     label: { color: "#64748b", fontSize: 10 },
-    tooltip: { formatter: e.fullName },
+    tooltip: { formatter: `${e.fullName}<br/><a href="/ats/employees/edit?id=${e.id}">Open employee</a>` },
+    _employeeId: e.id,
   }));
+  const baseColor = ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8";
+  const highlighted = highlightIds.has(n.id);
   return {
     name: nodeLabel(n),
+    _unitId: n.id,
     tooltip: { formatter: nodeTooltip(n) },
-    itemStyle: { color: ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8", borderRadius: 4 },
+    itemStyle: {
+      color: baseColor,
+      borderRadius: 4,
+      ...highlightStyle(n.id, highlightIds),
+      ...(highlighted ? { color: baseColor } : {}),
+    },
+    lineStyle: highlighted ? { color: "#6366f1", width: 2 } : undefined,
     children: [...unitChildren, ...employeeChildren],
   };
 };
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged?: () => void }) {
   const { canEdit: canAssignEmployees } = useFeaturePermissions("ats.employees");
+  const { canEdit: canEditStructure } = useFeaturePermissions("organization.structure");
+  const { permissions, isPlatformSuperUser } = useAuth();
+  const chartRef = useRef<ReactECharts>(null);
   const [assignOpen, setAssignOpen] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchResult, setSearchResult] = useState<OrgChartSearchResult | null>(null);
+  const [highlightPathIds, setHighlightPathIds] = useState<string[]>([]);
+  const [exporting, setExporting] = useState<"csv" | "png" | "pdf" | null>(null);
+  const [flatUnits, setFlatUnits] = useState<OrgUnitNode[]>([]);
+  const [dragUnitId, setDragUnitId] = useState<string | null>(null);
+  const [reparenting, setReparenting] = useState(false);
+
+  const canExport = useMemo(() => {
+    if (isPlatformSuperUser) return true;
+    if (permissions.includes("structure.export")) return true;
+    return permissions.some(
+      (p) => p === "organization.structure:export" || (p.startsWith("organization.structure:") && p.includes("export"))
+    );
+  }, [isPlatformSuperUser, permissions]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!canEditStructure) return;
+    let cancelled = false;
+    listOrgUnits()
+      .then((units) => {
+        if (!cancelled) setFlatUnits(units);
+      })
+      .catch(() => {
+        if (!cancelled) setFlatUnits(flattenUnits(tree.roots));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canEditStructure, tree]);
+
+  const handleLiveReparent = async (targetUnitId: string) => {
+    if (!dragUnitId || dragUnitId === targetUnitId) return;
+    setReparenting(true);
+    try {
+      await reparentOrgUnitFromChart(dragUnitId, targetUnitId);
+      setDragUnitId(null);
+      onChanged?.();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Could not move unit.";
+      await Swal.fire({ icon: "error", title: "Move failed", text: msg });
+    } finally {
+      setReparenting(false);
+    }
+  };
+
+  const handleLiveReparentToRoot = async () => {
+    if (!dragUnitId) return;
+    setReparenting(true);
+    try {
+      await reparentOrgUnitFromChart(dragUnitId, null);
+      setDragUnitId(null);
+      onChanged?.();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Could not move unit.";
+      await Swal.fire({ icon: "error", title: "Move failed", text: msg });
+    } finally {
+      setReparenting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (debouncedQ.length < 2) {
+      setSearchResult(null);
+      setHighlightPathIds([]);
+      return;
+    }
+    let cancelled = false;
+    setSearchLoading(true);
+    searchOrgChart(debouncedQ)
+      .then((res) => {
+        if (!cancelled) setSearchResult(res);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResult({ units: [], employees: [], paths: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setSearchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQ]);
+
+  const highlightIds = useMemo(() => new Set(highlightPathIds), [highlightPathIds]);
+
+  const selectSearchHit = useCallback((pathIds: string[]) => {
+    setHighlightPathIds(pathIds);
+  }, []);
+
+  const handleExportCsv = async () => {
+    setExporting("csv");
+    try {
+      const blob = await exportOrgComplianceReport("csv");
+      downloadBlob(blob as Blob, `org-structure-${new Date().toISOString().slice(0, 10)}.csv`);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Could not export CSV.";
+      await Swal.fire({ icon: "error", title: "Export failed", text: msg });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const getChartInstance = (): ECharts | undefined => chartRef.current?.getEchartsInstance();
+
+  const handleExportPng = async () => {
+    setExporting("png");
+    try {
+      const inst = getChartInstance();
+      if (!inst) throw new Error("Chart not ready");
+      const url = inst.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `org-chart-${new Date().toISOString().slice(0, 10)}.png`;
+      a.click();
+    } catch {
+      await Swal.fire({ icon: "error", title: "Export failed", text: "Could not capture chart image." });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    setExporting("pdf");
+    try {
+      const inst = getChartInstance();
+      if (!inst) throw new Error("Chart not ready");
+      const url = inst.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      pdf.addImage(url, "PNG", 16, 16, pageW - 32, pageH - 32);
+      pdf.save(`org-chart-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch {
+      await Swal.fire({ icon: "error", title: "Export failed", text: "Could not generate PDF." });
+    } finally {
+      setExporting(null);
+    }
+  };
+
   if (!tree.roots.length) {
     return (
       <OrgEmptyState
@@ -84,9 +302,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     );
   }
 
-  const rootNodes = tree.roots.map(toEChartsNode);
-  // One root (the usual single CEO): use it directly so there's no stray line above it.
-  // Multiple roots: wrap in an invisible parent and hide the connecting edges.
+  const rootNodes = tree.roots.map((r) => toEChartsNode(r, highlightIds));
   const data =
     rootNodes.length === 1
       ? rootNodes
@@ -148,21 +364,146 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     ],
   };
 
-  // Top-down: height grows with depth (levels), width with breadth (leaves).
   const chartHeight = Math.min(Math.max(460, (treeDepth(tree.roots) + 1) * 130), 1600);
   const minChartWidth = Math.max(640, countLeaves(tree.roots) * 90);
 
+  const searchRows = useMemo(() => {
+    if (!searchResult) return [];
+    const rows: {
+      key: string;
+      kind: "unit" | "employee";
+      label: string;
+      sublabel?: string;
+      pathIds: string[];
+      href?: string;
+    }[] = [];
+    for (const u of searchResult.units) {
+      const path = searchResult.paths.find((p) => p.kind === "unit" && p.id === u.id);
+      rows.push({
+        key: `unit-${u.id}`,
+        kind: "unit",
+        label: u.name,
+        sublabel: ORG_UNIT_TYPE_META[u.type]?.label ?? u.type,
+        pathIds: path?.pathIds ?? [],
+      });
+    }
+    for (const e of searchResult.employees) {
+      const path = searchResult.paths.find((p) => p.kind === "employee" && p.id === e.id);
+      rows.push({
+        key: `emp-${e.id}`,
+        kind: "employee",
+        label: e.fullName,
+        sublabel: "Employee",
+        pathIds: path?.pathIds ?? [],
+        href: `/ats/employees/edit?id=${e.id}`,
+      });
+    }
+    return rows;
+  }, [searchResult]);
+
   return (
     <div>
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div className="relative min-w-[14rem] flex-1 max-w-md">
+          <label htmlFor="org-chart-search" className="form-label !text-[0.75rem] mb-1">
+            Search chart
+          </label>
+          <i className="ri-search-line absolute left-3 top-[2.35rem] -translate-y-1/2 text-defaulttextcolor/45" aria-hidden />
+          <input
+            id="org-chart-search"
+            type="search"
+            className="form-control !ps-9 !py-2 !text-[0.8125rem]"
+            placeholder="Find unit or employee…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            aria-describedby="org-chart-search-hint"
+          />
+          <p id="org-chart-search-hint" className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/55">
+            {searchLoading ? "Searching…" : "Type at least 2 characters"}
+          </p>
+        </div>
+        {canExport ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportCsv()}>
+              {exporting === "csv" ? "Exporting…" : "Export CSV"}
+            </OrgSecondaryButton>
+            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportPng()}>
+              {exporting === "png" ? "Exporting…" : "Export PNG"}
+            </OrgSecondaryButton>
+            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportPdf()}>
+              {exporting === "pdf" ? "Exporting…" : "Export PDF"}
+            </OrgSecondaryButton>
+          </div>
+        ) : null}
+      </div>
+
       <OrgChartLegend />
       <div className="overflow-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-bodybg">
         <div style={{ minWidth: minChartWidth }}>
-          <ReactECharts option={option} style={{ height: chartHeight, width: "100%" }} opts={{ renderer: "canvas" }} />
+          <ReactECharts
+            ref={chartRef}
+            option={option}
+            style={{ height: chartHeight, width: "100%" }}
+            opts={{ renderer: "canvas" }}
+          />
         </div>
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
-        CEO at the top, then managers, supervisors, departments, and their members. Click a node to collapse/expand, drag to pan, scroll to zoom.
+        CEO at the top, then managers, supervisors, departments, and their members. Select a search result to highlight its path.
       </p>
+
+      {debouncedQ.length >= 2 ? (
+        <div className="mt-5 overflow-hidden rounded-xl border border-defaultborder/60">
+          <div className="border-b border-defaultborder/60 bg-light/40 px-4 py-3 dark:bg-white/[0.02]">
+            <h6 className="mb-0 text-[0.875rem] font-semibold">Search results (accessible list)</h6>
+            <p className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/60">
+              Keyboard-friendly fallback for the chart. Highlight updates the tree above.
+            </p>
+          </div>
+          {!searchRows.length ? (
+            <p className="mb-0 px-4 py-6 text-[0.8125rem] text-defaulttextcolor/65">No matches for “{debouncedQ}”.</p>
+          ) : (
+            <div className="table-responsive">
+              <table className="table min-w-full mb-0">
+                <thead className="bg-light/60 dark:bg-white/[0.03]">
+                  <tr>
+                    <th scope="col">Name</th>
+                    <th scope="col">Kind</th>
+                    <th scope="col" className="text-end">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {searchRows.map((row) => (
+                    <tr key={row.key} className="border-defaultborder/50">
+                      <td className="font-medium">{row.label}</td>
+                      <td className="text-defaulttextcolor/70">{row.sublabel}</td>
+                      <td className="text-end">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {row.pathIds.length ? (
+                            <OrgSecondaryButton type="button" onClick={() => selectSearchHit(row.pathIds)}>
+                              Highlight
+                            </OrgSecondaryButton>
+                          ) : null}
+                          {row.href ? (
+                            <Link
+                              href={row.href}
+                              className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.75rem] !mb-0 inline-flex items-center gap-1"
+                            >
+                              Open employee
+                            </Link>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {tree.unassigned.length > 0 ? (
         <div className="mt-5 overflow-hidden rounded-xl border border-warning/25 bg-warning/[0.04]">
@@ -182,13 +523,14 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           </div>
           <div className="flex flex-wrap gap-2 p-4">
             {tree.unassigned.map((e) => (
-              <span
+              <Link
                 key={e.id}
-                className="inline-flex items-center rounded-full border border-defaultborder/60 bg-white px-2.5 py-1 text-[0.75rem] font-medium text-defaulttextcolor dark:bg-bodybg"
+                href={`/ats/employees/edit?id=${e.id}`}
+                className="inline-flex items-center rounded-full border border-defaultborder/60 bg-white px-2.5 py-1 text-[0.75rem] font-medium text-defaulttextcolor hover:border-primary/40 dark:bg-bodybg"
               >
                 <i className="ri-user-3-line me-1 text-defaulttextcolor/45" aria-hidden />
                 {e.fullName}
-              </span>
+              </Link>
             ))}
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-warning/15 px-4 py-3">
@@ -211,12 +553,64 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         </div>
       ) : null}
 
-      <AssignToDepartmentModal
-        open={assignOpen}
-        employees={tree.unassigned}
-        onClose={() => setAssignOpen(false)}
-        onAssigned={() => onChanged?.()}
-      />
+      {canEditStructure && flatUnits.length ? (
+        <div className="mt-5 overflow-hidden rounded-xl border border-defaultborder/60">
+          <div className="border-b border-defaultborder/60 bg-light/40 px-4 py-3 dark:bg-white/[0.02]">
+            <h6 className="mb-0 text-[0.875rem] font-semibold">Live hierarchy edits</h6>
+            <p className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/60">
+              Drag a unit row onto another to reparent on the live chart. Changes are audited immediately.
+            </p>
+          </div>
+          <div className="table-responsive">
+            <table className="table min-w-full mb-0">
+              <thead className="bg-light/60 dark:bg-white/[0.03]">
+                <tr>
+                  <th scope="col">Unit</th>
+                  <th scope="col">Type</th>
+                  <th scope="col" className="text-end">
+                    Drop target
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {flatUnits.map((u) => (
+                  <tr
+                    key={u.id}
+                    draggable={!reparenting}
+                    onDragStart={() => setDragUnitId(u.id)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => void handleLiveReparent(u.id)}
+                    className={dragUnitId === u.id ? "bg-primary/5" : undefined}
+                  >
+                    <td className="font-medium">{u.name}</td>
+                    <td className="text-defaulttextcolor/70">{ORG_UNIT_TYPE_META[u.type]?.label ?? u.type}</td>
+                    <td className="text-end text-[0.75rem] text-defaulttextcolor/55">
+                      {dragUnitId && dragUnitId !== u.id ? "Drop to reparent here" : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/60 px-4 py-3">
+            <p className="mb-0 text-[0.75rem] text-defaulttextcolor/60">
+              {dragUnitId ? "Drop on a row to set parent, or move to top level." : "Drag a row to begin."}
+            </p>
+            <OrgSecondaryButton type="button" disabled={!dragUnitId || reparenting} onClick={() => void handleLiveReparentToRoot()}>
+              Move to top level
+            </OrgSecondaryButton>
+          </div>
+        </div>
+      ) : null}
+
+      {assignOpen ? (
+        <AssignToDepartmentModal
+          open
+          employees={tree.unassigned}
+          onClose={() => setAssignOpen(false)}
+          onAssigned={() => onChanged?.()}
+        />
+      ) : null}
     </div>
   );
 }

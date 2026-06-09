@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Swal from "sweetalert2";
 import {
   deactivateDepartment,
@@ -9,11 +10,13 @@ import {
   reactivateDepartment,
   type Department,
 } from "@/shared/lib/api/departments";
-import DepartmentModal from "./DepartmentModal";
-import DepartmentMembersModal from "./DepartmentMembersModal";
+// Lazy-load modals so the page compiles without their dependency graphs upfront.
+const DepartmentModal = dynamic(() => import("./DepartmentModal"), { ssr: false });
+const DepartmentMembersModal = dynamic(() => import("./DepartmentMembersModal"), { ssr: false });
 import {
   OrgEmptyState,
   OrgErrorState,
+  OrgLinkButton,
   OrgLoadingBlock,
   OrgPrimaryButton,
   OrgTableAction,
@@ -184,18 +187,26 @@ export default function DepartmentsPanel() {
             ) : undefined
           }
         />
-        <DepartmentModal
-          open={modalOpen}
-          department={editing}
-          onClose={() => setModalOpen(false)}
-          onSaved={load}
-        />
+        {modalOpen ? (
+          <DepartmentModal open department={editing} onClose={() => setModalOpen(false)} onSaved={load} />
+        ) : null}
       </>
     );
   }
 
   return (
     <>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <OrgLinkButton href="/organization/chart" variant="secondary">
+          <i className="ri-organization-chart text-base" aria-hidden />
+          View chart
+        </OrgLinkButton>
+        <OrgLinkButton href="/organization/structure" variant="secondary">
+          <i className="ri-node-tree text-base" aria-hidden />
+          Manage structure
+        </OrgLinkButton>
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative">
@@ -333,13 +344,18 @@ export default function DepartmentsPanel() {
         </nav>
       ) : null}
 
-      <DepartmentModal open={modalOpen} department={editing} onClose={() => setModalOpen(false)} onSaved={load} />
-      <DepartmentMembersModal
-        open={!!membersDept}
-        departmentId={membersDept?.id ?? null}
-        departmentName={membersDept?.name ?? ""}
-        onClose={() => setMembersDept(null)}
-      />
+      {modalOpen ? (
+        <DepartmentModal open department={editing} onClose={() => setModalOpen(false)} onSaved={load} />
+      ) : null}
+      {membersDept ? (
+        <DepartmentMembersModal
+          open
+          departmentId={membersDept.id}
+          departmentName={membersDept.name}
+          onClose={() => setMembersDept(null)}
+          onChanged={load}
+        />
+      ) : null}
     </>
   );
 }

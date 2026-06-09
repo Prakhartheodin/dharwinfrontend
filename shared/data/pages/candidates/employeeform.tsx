@@ -426,7 +426,7 @@ function getAdminIdString(): string | null {
   }
 }
 
-export const Basicwizard = ({
+export const EmployeeForm = ({
   initialData,
   initialExcelMode,
   returnToCandidatesOnBack,
@@ -968,7 +968,7 @@ export const Basicwizard = ({
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Candidate_Import_Template_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `Employee_Import_Template_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1458,47 +1458,47 @@ export const Basicwizard = ({
 
   const validateExcelCandidate = (candidate: any, index: number): { isValid: boolean; error?: string } => {
     if (!candidate.fullName || typeof candidate.fullName !== 'string') {
-      return { isValid: false, error: `Candidate ${index + 1}: Full Name is required` };
+      return { isValid: false, error: `Employee ${index + 1}: Full Name is required` };
     }
     
     if (!candidate.email || typeof candidate.email !== 'string') {
-      return { isValid: false, error: `Candidate ${index + 1}: Email is required` };
+      return { isValid: false, error: `Employee ${index + 1}: Email is required` };
     }
     
     if (!validateEmail(candidate.email)) {
-      return { isValid: false, error: `Candidate ${index + 1}: Invalid email format` };
+      return { isValid: false, error: `Employee ${index + 1}: Invalid email format` };
     }
     
     if (!candidate.phoneNumber || typeof candidate.phoneNumber !== 'string') {
-      return { isValid: false, error: `Candidate ${index + 1}: Phone Number is required` };
+      return { isValid: false, error: `Employee ${index + 1}: Phone Number is required` };
     }
     
     if (!validatePhone(candidate.phoneNumber)) {
-      return { isValid: false, error: `Candidate ${index + 1}: Invalid phone number format` };
+      return { isValid: false, error: `Employee ${index + 1}: Invalid phone number format` };
     }
     
     if (!candidate.password || typeof candidate.password !== 'string') {
-      return { isValid: false, error: `Candidate ${index + 1}: Password is required` };
+      return { isValid: false, error: `Employee ${index + 1}: Password is required` };
     }
     
     // Validate qualifications
     if (!candidate.qualifications || candidate.qualifications.length === 0) {
-      return { isValid: false, error: `Candidate ${index + 1}: At least one qualification is required` };
+      return { isValid: false, error: `Employee ${index + 1}: At least one qualification is required` };
     }
     
     // Validate experiences
     if (!candidate.experiences || candidate.experiences.length === 0) {
-      return { isValid: false, error: `Candidate ${index + 1}: At least one work experience is required` };
+      return { isValid: false, error: `Employee ${index + 1}: At least one work experience is required` };
     }
     
     // Validate skills
     if (!candidate.skills || candidate.skills.length === 0) {
-      return { isValid: false, error: `Candidate ${index + 1}: At least one skill is required` };
+      return { isValid: false, error: `Employee ${index + 1}: At least one skill is required` };
     }
     
     // Validate social links
     if (!candidate.socialLinks || candidate.socialLinks.length === 0) {
-      return { isValid: false, error: `Candidate ${index + 1}: At least one social link is required` };
+      return { isValid: false, error: `Employee ${index + 1}: At least one social link is required` };
     }
     
     return { isValid: true };
@@ -1557,7 +1557,7 @@ export const Basicwizard = ({
         await Swal.fire({
           icon: 'success',
           title: 'Import Successful',
-          text: `Successfully imported ${result.summary.successful} candidates.`,
+          text: `Successfully imported ${result.summary.successful} employees.`,
           confirmButtonText: 'OK'
         });
         router.push("/ats/employees");
@@ -1565,14 +1565,14 @@ export const Basicwizard = ({
         await Swal.fire({
           icon: 'error',
           title: 'Import Failed',
-          html: `All ${result.summary.failed} candidates failed to import.<br><br>Errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
+          html: `All ${result.summary.failed} employees failed to import.<br><br>Errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
           confirmButtonText: 'OK'
         });
       } else {
         await Swal.fire({
           icon: 'warning',
           title: 'Partial Import',
-          html: `Imported ${result.summary.successful} candidates successfully.<br>${result.summary.failed} candidates failed.<br><br>First few errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
+          html: `Imported ${result.summary.successful} employees successfully.<br>${result.summary.failed} employees failed.<br><br>First few errors:<br>${result.failed.slice(0, 5).map(f => `Row ${f.row}: ${f.error}`).join('<br>')}${result.failed.length > 5 ? '<br>... and more' : ''}`,
           confirmButtonText: 'OK'
         });
         router.push("/ats/employees");
@@ -2058,7 +2058,7 @@ export const Basicwizard = ({
         await Swal.fire({
           icon: 'success',
           title: 'Profile Updated!',
-          text: 'Candidate profile has been successfully updated.',
+          text: 'Employee profile has been successfully updated.',
           confirmButtonText: 'OK',
           timer: 3000,
           timerProgressBar: true
@@ -2069,8 +2069,8 @@ export const Basicwizard = ({
         // Success alert for adding new candidate
         await Swal.fire({
           icon: 'success',
-          title: 'Candidate Added!',
-          text: 'New candidate has been successfully added to the system.',
+          title: 'Employee Added!',
+          text: 'New employee has been successfully added to the system.',
           confirmButtonText: 'OK',
           timer: 3000,
           timerProgressBar: true
@@ -2080,11 +2080,11 @@ export const Basicwizard = ({
       // Redirect after successful operation - candidate persona goes to their profile.
       router.push(isCandidate && !canManageEmployees ? ROUTES.candidateProfile : "/ats/employees");
     } catch (err: any) {
-      setError(isEdit ? "Failed to update candidate" : "Failed to add candidate");
+      setError(initialData ? "Failed to update employee" : "Failed to add employee");
       await Swal.fire({
         icon: 'error',
-        title: isEdit ? 'Update Failed' : 'Creation Failed',
-        text: err?.response?.data?.message || err?.message || (isEdit ? 'An error occurred while updating the profile.' : 'An error occurred while adding candidate.'),
+        title: initialData ? 'Update Failed' : 'Creation Failed',
+        text: err?.response?.data?.message || err?.message || (initialData ? 'An error occurred while updating the profile.' : 'An error occurred while adding employee.'),
         confirmButtonText: 'OK'
       });
     } finally {
@@ -2098,7 +2098,7 @@ export const Basicwizard = ({
       <div className="p-6">
         <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">Excel Import Candidates</h3>
+            <h3 className="text-lg font-semibold">Excel Import Employees</h3>
             <button
               onClick={() =>
                 returnToCandidatesOnBack
@@ -2107,7 +2107,7 @@ export const Basicwizard = ({
               }
               className="ti-btn ti-btn-secondary"
             >
-              {returnToCandidatesOnBack ? "Back to Candidates" : "Back to Manual Entry"}
+              {returnToCandidatesOnBack ? "Back to Employees" : "Back to Manual Entry"}
             </button>
           </div>
           

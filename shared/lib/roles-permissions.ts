@@ -64,6 +64,8 @@ export const PERMISSION_SECTIONS: {
       { id: "chart", label: "Org Chart" },
       { id: "structure", label: "Structure" },
       { id: "departments", label: "Departments" },
+      { id: "directory", label: "Directory" },
+      { id: "scenarios", label: "Scenarios" },
     ],
   },
   {

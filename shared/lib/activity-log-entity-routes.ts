@@ -30,6 +30,16 @@ export function getActivityLogEntityHref(
       return `/training/mentors/edit?id=${encodeURIComponent(id)}`;
     case "Category":
       return `/training/curriculum`;
+    case "OrgUnit":
+      return `/organization/structure?unitId=${encodeURIComponent(id)}`;
+    case "Department":
+      return `/organization/departments?departmentId=${encodeURIComponent(id)}`;
+    case "Employee":
+      return `/ats/employees/edit?id=${encodeURIComponent(id)}`;
+    case "OrgScenario":
+      return `/organization/scenarios?scenarioId=${encodeURIComponent(id)}`;
+    case "OrgSlot":
+      return `/organization/chart`;
     default:
       return null;
   }

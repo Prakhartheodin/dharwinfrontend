@@ -14,9 +14,14 @@ import {
   getActionDisplay,
   getActivityActionDisplayForRow,
   getCandidateActivityEntitySummary,
+  getDepartmentActivityEntitySummary,
+  getEmployeeOrgActivityEntitySummary,
   getEntityTypeDisplay,
   getImpersonationEntitySummary,
   getJobActivityEntitySummary,
+  getOrgMutateDeniedEntitySummary,
+  getOrgStructureActivityEntitySummary,
+  getOrgUnitActivityEntitySummary,
   getRoleActivityEntitySummary,
   getUserActivityEntitySummary,
 } from "@/shared/lib/activity-log-catalog";
@@ -489,6 +494,11 @@ export default function LogsActivityPage() {
                         const actionDisp = getActivityActionDisplayForRow(log);
                         const entityDisp = getEntityTypeDisplay(log.entityType);
                         const entityRich =
+                          getOrgMutateDeniedEntitySummary(log) ??
+                          getOrgUnitActivityEntitySummary(log) ??
+                          getDepartmentActivityEntitySummary(log) ??
+                          getOrgStructureActivityEntitySummary(log) ??
+                          getEmployeeOrgActivityEntitySummary(log) ??
                           getCandidateActivityEntitySummary(log) ??
                           getJobActivityEntitySummary(log) ??
                           getRoleActivityEntitySummary(log) ??

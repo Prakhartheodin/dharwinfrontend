@@ -18,6 +18,8 @@ const OnboardingIcon = <i className="bx bx-log-in-circle side-menu__icon"></i>;
 const AnalyticsIcon = <i className="bx bx-bar-chart-alt-2 side-menu__icon"></i>;
 const OrgChartIcon = <i className="bx bx-sitemap side-menu__icon"></i>;
 const OrgStructureIcon = <i className="bx bx-network-chart side-menu__icon"></i>;
+const OrgDirectoryIcon = <i className="bx bx-id-card side-menu__icon"></i>;
+const OrgScenariosIcon = <i className="bx bx-git-branch side-menu__icon"></i>;
 const DepartmentsIcon = <i className="bx bx-buildings side-menu__icon"></i>;
 
 // Communication Icons
@@ -247,6 +249,24 @@ export const MenuItems: any = [
     title: "Departments",
     type: "link",
     path: "/organization/departments",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+  {
+    icon: OrgDirectoryIcon,
+    title: "Directory",
+    type: "link",
+    path: "/organization/directory",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
+  {
+    icon: OrgScenariosIcon,
+    title: "Scenarios",
+    type: "link",
+    path: "/organization/scenarios",
     active: false,
     selected: false,
     dirchange: false,
