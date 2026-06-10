@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { OrgLinkButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
+import { OrgNavButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
 
 // Lazy-load the panel so the route shell compiles fast (defers Swal + scenario graph).
 const OrgScenariosPanel = dynamic(() => import("../_components/OrgScenariosPanel"), {
@@ -17,14 +17,14 @@ export default function OrganizationScenariosPage() {
       subtitle="Draft reorgs in a sandbox, preview diffs, drag units in the scenario table, then apply with batch audit."
       headerActions={
         <>
-          <OrgLinkButton href="/organization/chart" variant="secondary">
+          <OrgNavButton href="/organization/chart" variant="secondary">
             <i className="ri-organization-chart text-base" aria-hidden />
             Live chart
-          </OrgLinkButton>
-          <OrgLinkButton href="/organization/structure" variant="secondary">
+          </OrgNavButton>
+          <OrgNavButton href="/organization/structure" variant="secondary">
             <i className="ri-node-tree text-base" aria-hidden />
             Structure
-          </OrgLinkButton>
+          </OrgNavButton>
         </>
       }
     >

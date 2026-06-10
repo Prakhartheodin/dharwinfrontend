@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import { OrgErrorState, OrgLinkButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
+import { OrgErrorState, OrgNavButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
 
 // Lazy-load the chart (and its heavy echarts dependency) so this route compiles
 // fast and echarts is built as a separate on-demand chunk.
@@ -60,18 +60,18 @@ export default function OrgChartPage() {
       subtitle="Interactive hierarchy from CEO through managers, supervisors, and departments. Expand nodes to explore reporting lines."
       headerActions={
         <>
-          <OrgLinkButton href="/organization/directory" variant="secondary">
+          <OrgNavButton href="/organization/directory" variant="secondary">
             <i className="ri-contacts-book-2-line text-base" aria-hidden />
             Directory
-          </OrgLinkButton>
-          <OrgLinkButton href="/organization/scenarios" variant="secondary">
+          </OrgNavButton>
+          <OrgNavButton href="/organization/scenarios" variant="secondary">
             <i className="ri-git-branch-line text-base" aria-hidden />
             Scenarios
-          </OrgLinkButton>
-          <OrgLinkButton href="/organization/structure" variant="secondary">
+          </OrgNavButton>
+          <OrgNavButton href="/organization/structure" variant="secondary">
             <i className="ri-node-tree text-base" aria-hidden />
             Manage structure
-          </OrgLinkButton>
+          </OrgNavButton>
         </>
       }
     >

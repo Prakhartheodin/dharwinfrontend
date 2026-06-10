@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { queryEmployeeDirectory } from "@/shared/lib/api/org-structure";
-import { OrgEmptyState, OrgErrorState, OrgLinkButton, OrgLoadingBlock, OrgPageLayout, OrgSecondaryButton } from "../_components/org-ui";
+import { OrgEmptyState, OrgErrorState, OrgNavButton, OrgLoadingBlock, OrgPageLayout, OrgSecondaryButton } from "../_components/org-ui";
 import type { DirectoryEmployee } from "../_components/DirectoryProfileModal";
 
 // Read-only quick view — lazy so opening a profile doesn't compile the heavy ATS editor.
@@ -61,10 +61,10 @@ export default function OrgDirectoryPage() {
       currentpage="Directory"
       subtitle="Read-only employee lookup across departments. Open a profile from the chart or ATS when you need to edit."
       headerActions={
-        <OrgLinkButton href="/organization/chart" variant="secondary">
+        <OrgNavButton href="/organization/chart" variant="secondary">
           <i className="ri-organization-chart text-base" aria-hidden />
           Org chart
-        </OrgLinkButton>
+        </OrgNavButton>
       }
     >
       <div className="mb-4 max-w-md">

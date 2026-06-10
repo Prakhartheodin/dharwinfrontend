@@ -10,7 +10,10 @@ import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMe
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
-import { listRecruiters } from '@/shared/lib/api/users'
+import { listRecruiters, listUsers } from '@/shared/lib/api/users'
+import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
+import MeetingReadOnlyView from '@/shared/components/meeting/MeetingReadOnlyView'
+import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getCandidateFilterAgents, type AgentOption } from '@/shared/lib/api/employees'
 import { getJobApplicationById, type JobApplication } from '@/shared/lib/api/jobApplications'
 import type { User } from '@/shared/lib/types'
@@ -272,6 +275,9 @@ export default function InterviewsClient() {
 
   // Edit interview modal
   const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
+  /** Bumped on every open so reopening the SAME interview still refetches even
+   *  when the previous close came from a backdrop/Esc (which skips closeEditModal). */
+  const [editOpenNonce, setEditOpenNonce] = useState(0)
   const [editMeeting, setEditMeeting] = useState<Meeting | null>(null)
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
@@ -281,7 +287,18 @@ export default function InterviewsClient() {
   const [editJobsLoading, setEditJobsLoading] = useState(false)
   // Controlled selected job id in edit modal
   const [editSelectedJobId, setEditSelectedJobId] = useState<string>('')
+  /** Editable participant/guest invite emails for the Edit Interview overlay. */
+  const [editEmailInvites, setEditEmailInvites] = useState<string[]>([])
+  const [editUsers, setEditUsers] = useState<ParticipantUser[]>([])
+  const [editUsersLoading, setEditUsersLoading] = useState(false)
+  const [editUsersError, setEditUsersError] = useState<string | null>(null)
+  const editUsersLoadedRef = useRef(false)
+  const { confirm, confirmDialog } = useConfirm()
   const editScheduleWall = useMemo(() => editScheduleDefaults(editMeeting), [editMeeting])
+  /** Terminal interviews (completed/ended/cancelled) are view-only — no editing after the cycle ends. */
+  const editStatusRaw = (editMeeting?.status || '').toLowerCase()
+  const editReadOnly = editStatusRaw === 'ended' || editStatusRaw === 'completed' || editStatusRaw === 'cancelled'
+  const editStatusLabel = editStatusRaw === 'cancelled' ? 'cancelled' : 'completed'
   const editTimezoneOptions = useMemo(() => listTimezones(), [])
 
   // View mode: table or week calendar
@@ -335,13 +352,33 @@ export default function InterviewsClient() {
     }
   }, [authUser])
 
+  const loadEditUsers = useCallback(async () => {
+    setEditUsersLoading(true)
+    setEditUsersError(null)
+    try {
+      const res = await listUsers({ limit: 500, status: 'active' })
+      setEditUsers(
+        (res.results || [])
+          .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+          .filter((u) => u.email)
+      )
+      editUsersLoadedRef.current = true
+    } catch {
+      setEditUsersError('Could not load users.')
+    } finally {
+      setEditUsersLoading(false)
+    }
+  }, [])
+
   const openEditModal = useCallback((id: string) => {
     setEditMeetingId(id)
+    setEditOpenNonce((n) => n + 1)
     setEditMeeting(null)
     setEditError(null)
     setEditLoading(true)
+    if (!editUsersLoadedRef.current) void loadEditUsers()
     ;(window as any).HSOverlay?.open(document.querySelector('#edit-interview-modal'))
-  }, [])
+  }, [loadEditUsers])
 
   /** Preline binds overlays/dropdowns during autoInit; client pages that mount toolbars after layout need a refresh. */
   const refreshPrelineDom = useCallback(() => {
@@ -470,6 +507,7 @@ export default function InterviewsClient() {
       .then((m) => {
         if (!cancelled) {
           setEditMeeting(m)
+          setEditEmailInvites(Array.isArray(m?.emailInvites) ? m.emailInvites : [])
           // Load candidate-specific jobs when the meeting is fetched
           const candId = m?.candidate?.id
           if (candId) {
@@ -530,7 +568,7 @@ export default function InterviewsClient() {
       })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editMeetingId])
+  }, [editMeetingId, editOpenNonce])
 
   const handleEditInterviewSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
@@ -569,6 +607,7 @@ export default function InterviewsClient() {
       interviewType: interviewType === 'video' ? 'Video' : interviewType === 'in-person' ? 'In-Person' : 'Phone',
       candidate: candidate ? { id: candidate.id ?? candidate._id, name: candidate.fullName ?? '', email: pickPublicEmail([candidate.email]) ?? '' } : editMeeting.candidate,
       recruiter: editMeeting.recruiter,
+      emailInvites: editEmailInvites.map((em) => em.trim()).filter(Boolean),
       notes: notes || undefined,
       status,
     }
@@ -605,7 +644,7 @@ export default function InterviewsClient() {
     }
 
     await runUpdate()
-  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, fetchMeetings, closeEditModal, buildOverlapMessage])
+  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, editEmailInvites, fetchMeetings, closeEditModal, buildOverlapMessage])
 
   const openResultModal = useCallback((row: InterviewTableRow) => {
     setResultModalInterview(row)
@@ -640,14 +679,21 @@ export default function InterviewsClient() {
 
   const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
-    if (!confirm(`Cancel this interview for ${row.candidate?.name || 'candidate'}? The join link will be disabled.`)) return
+    const ok = await confirm({
+      title: 'Cancel interview?',
+      message: `Cancel this interview for ${row.candidate?.name || 'this candidate'}? The join link will be disabled.`,
+      confirmLabel: 'Cancel interview',
+      cancelLabel: 'Keep interview',
+      tone: 'danger',
+    })
+    if (!ok) return
     try {
       await updateMeeting(row.id, { status: 'cancelled' })
       await fetchMeetings()
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || 'Failed to cancel meeting')
     }
-  }, [fetchMeetings])
+  }, [confirm, fetchMeetings])
 
   useEffect(() => {
     fetchMeetings()
@@ -1789,7 +1835,7 @@ export default function InterviewsClient() {
                             <div className="flex flex-wrap gap-1 mt-2">
                               <button
                                 type="button"
-                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success !py-0.5 !px-1.5 !text-[0.65rem]"
+                                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
                                 title="View recordings"
                                 aria-label="View recordings"
                                 onClick={() => {
@@ -1802,7 +1848,7 @@ export default function InterviewsClient() {
                               {interview.status?.toLowerCase() !== 'cancelled' && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-light"
                                   title="Copy interview link"
                                   aria-label="Copy interview link"
                                   onClick={() => copyInterviewLink(interview)}
@@ -1817,7 +1863,7 @@ export default function InterviewsClient() {
                               {canEdit && (interview.status?.toLowerCase() === 'ended' || interview.interviewResult === 'selected') && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
                                   title={interview.interviewResult === 'selected' ? 'Re-trigger offer & placement' : 'Set interview result'}
                                   aria-label="Set interview result"
                                   onClick={() => openResultModal(interview)}
@@ -1828,7 +1874,7 @@ export default function InterviewsClient() {
                               {canEdit && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
                                   title="Edit interview"
                                   aria-label="Edit interview"
                                   onClick={() => openEditModal(interview.id)}
@@ -1839,7 +1885,7 @@ export default function InterviewsClient() {
                               {canEdit && interview.status?.toLowerCase() !== 'cancelled' && (
                                 <button
                                   type="button"
-                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger !py-0.5 !px-1.5 !text-[0.65rem]"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
                                   title="Cancel interview"
                                   aria-label="Cancel interview"
                                   onClick={() => handleCancelMeeting(interview)}
@@ -2400,7 +2446,30 @@ export default function InterviewsClient() {
               {!editLoading && editError && (
                 <div className="py-4 px-4 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>
               )}
-              {!editLoading && editMeeting && (
+              {!editLoading && editMeeting && editReadOnly && (
+                <div className="space-y-5">
+                  <MeetingReadOnlyView
+                    banner={`This interview is ${editStatusLabel} — view only. ${editStatusLabel === 'cancelled' ? 'Cancelled' : 'Completed'} interviews can't be edited.`}
+                    rows={[
+                      { label: 'Status', value: editStatusLabel === 'cancelled' ? 'Cancelled' : 'Completed' },
+                      { label: 'Title', value: editMeeting.title },
+                      { label: 'When', value: `${editScheduleWall.date} ${editScheduleWall.time} (${editScheduleWall.timezone})` },
+                      { label: 'Duration', value: `${editMeeting.durationMinutes} min` },
+                      { label: 'Interview type', value: editMeeting.interviewType },
+                      { label: 'Job / Position', value: editMeeting.jobPosition },
+                      { label: 'Candidate', value: editMeeting.candidate?.name || editMeeting.candidate?.email },
+                      { label: 'Agent', value: editMeeting.recruiter?.name || editMeeting.recruiter?.email },
+                      { label: 'Description', value: editMeeting.description },
+                    ]}
+                    invites={editEmailInvites}
+                    notes={editMeeting.notes}
+                  />
+                  <div className="flex justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                    <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Close</button>
+                  </div>
+                </div>
+              )}
+              {!editLoading && editMeeting && !editReadOnly && (
                 <form onSubmit={handleEditInterviewSubmit} className="space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
                   {editError && <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>}
                   <div>
@@ -2498,6 +2567,18 @@ export default function InterviewsClient() {
                     </p>
                   </div>
                   <div>
+                    <span className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Participants &amp; invites</span>
+                    <ParticipantInvitesField
+                      idPrefix="edit-interview"
+                      invites={editEmailInvites}
+                      onChange={setEditEmailInvites}
+                      users={editUsers}
+                      usersLoading={editUsersLoading}
+                      usersError={editUsersError}
+                      onReloadUsers={loadEditUsers}
+                    />
+                  </div>
+                  <div>
                     <label htmlFor="edit-notes" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Notes</label>
                     <textarea id="edit-notes" rows={2} defaultValue={editMeeting.notes ?? ''} className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none" placeholder="Optional notes" />
                   </div>
@@ -2521,6 +2602,8 @@ export default function InterviewsClient() {
           </div>
         </div>
       </div>
+
+      {confirmDialog}
 
       {/* Filter Panel Offcanvas */}
       {overlapWarning && (

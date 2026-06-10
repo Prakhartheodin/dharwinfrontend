@@ -75,7 +75,7 @@ export type OfferLetterFormFields = {
   joiningDate: string
   letterDate: string
   jobType: OfferLetterJobType
-  weeklyHours: 25 | 40
+  weeklyHours: number
   workLocation: string
   /** Rich HTML (Tiptap) — same content as linked job description / Position Overview. */
   rolesText: string
@@ -204,6 +204,7 @@ export function OfferLetterGeneratorWorkspace({
   const jobUi = apiJobTypeToUi(letterForm.jobType)
   const isInternship = letterForm.jobType === 'INTERN_UNPAID'
   const isPaid = !isInternship
+  const [weeklyHoursOther, setWeeklyHoursOther] = useState(false)
   const [rolesAiLoading, setRolesAiLoading] = useState(false)
   const [trainingAiLoading, setTrainingAiLoading] = useState(false)
 
@@ -288,7 +289,7 @@ export function OfferLetterGeneratorWorkspace({
     setLetterForm((f) => ({
       ...f,
       jobType: api,
-      weeklyHours: ui === 'parttime' ? 25 : 40,
+      weeklyHours: ui === 'parttime' ? 20 : 40,
       ...(api === 'INTERN_UNPAID' && f.eligibilityPreset === 'none'
         ? { eligibilityPreset: 'opt_stem' as EligibilityPresetKey }
         : {}),
@@ -730,24 +731,52 @@ export function OfferLetterGeneratorWorkspace({
                   onChange={(e) => setJobUi(e.target.value as 'fulltime' | 'parttime' | 'internship')}
                 >
                   <option value="fulltime">Full Time — 40 hours per week</option>
-                  <option value="parttime">Part Time — 25 hours per week</option>
+                  <option value="parttime">Part Time — 20 hours per week</option>
                   <option value="internship">Training / Unpaid Internship (Full Time)</option>
                 </select>
               </div>
               {isInternship ? (
                 <div className={styles.field}>
                   <label htmlFor="olg-weekly">Weekly hours (intern)</label>
-                  <select
-                    id="olg-weekly"
-                    className={styles.select}
-                    value={letterForm.weeklyHours}
-                    onChange={(e) =>
-                      setLetterForm((f) => ({ ...f, weeklyHours: Number(e.target.value) === 25 ? 25 : 40 }))
-                    }
-                  >
-                    <option value={40}>40</option>
-                    <option value={25}>25</option>
-                  </select>
+                  {(() => {
+                    const isPreset = letterForm.weeklyHours === 40 || letterForm.weeklyHours === 20
+                    const showCustom = weeklyHoursOther || !isPreset
+                    return (
+                      <>
+                        <select
+                          id="olg-weekly"
+                          className={styles.select}
+                          value={showCustom ? 'other' : String(letterForm.weeklyHours)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            if (v === 'other') {
+                              setWeeklyHoursOther(true)
+                            } else {
+                              setWeeklyHoursOther(false)
+                              setLetterForm((f) => ({ ...f, weeklyHours: Number(v) }))
+                            }
+                          }}
+                        >
+                          <option value={40}>40</option>
+                          <option value={20}>20</option>
+                          <option value="other">Other</option>
+                        </select>
+                        {showCustom ? (
+                          <input
+                            type="number"
+                            min={1}
+                            max={168}
+                            className={styles.input}
+                            placeholder="Weekly hours"
+                            value={letterForm.weeklyHours || ''}
+                            onChange={(e) =>
+                              setLetterForm((f) => ({ ...f, weeklyHours: Number(e.target.value) || 0 }))
+                            }
+                          />
+                        ) : null}
+                      </>
+                    )
+                  })()}
                 </div>
               ) : null}
               <div className={styles.field}>

@@ -17,8 +17,8 @@ export function buildOfferLetterUpdatePayload(
   const overviewHtml = letterForm.rolesText.trim()
   const employmentEligibilityLines =
     letterForm.eligibilityPreset === "none" ? [] : (buildEligibilityLinesFromForm(letterForm) ?? [])
-  const weeklyHours: 25 | 40 =
-    letterForm.jobType === "PT_25" ? 25 : letterForm.jobType === "FT_40" ? 40 : (letterForm.weeklyHours as 25 | 40)
+  const weeklyHours: number =
+    letterForm.jobType === "PT_25" ? 20 : letterForm.jobType === "FT_40" ? 40 : letterForm.weeklyHours
   const payload: UpdateOfferPayload = {
     letterFullName: letterForm.letterFullName.trim() || undefined,
     letterAddress: letterForm.letterAddress.trim() || undefined,

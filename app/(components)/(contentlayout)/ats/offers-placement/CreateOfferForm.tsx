@@ -39,6 +39,7 @@ export function CreateOfferForm({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [weeklyHoursOther, setWeeklyHoursOther] = useState(false);
   const [form, setForm] = useState({
     jobApplicationId: "",
     base: 0,
@@ -52,7 +53,7 @@ export function CreateOfferForm({
     letterAddress: "",
     positionTitle: "",
     jobType: "FT_40" as OfferLetterJobType,
-    weeklyHours: 40 as 25 | 40,
+    weeklyHours: 40 as number,
     workLocation: "Remote (USA)",
     rolesText: "",
     trainingText: "",
@@ -157,8 +158,8 @@ export function CreateOfferForm({
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    const weeklyHours: 25 | 40 =
-      form.jobType === "PT_25" ? 25 : form.jobType === "FT_40" ? 40 : form.weeklyHours;
+    const weeklyHours: number =
+      form.jobType === "PT_25" ? 20 : form.jobType === "FT_40" ? 40 : form.weeklyHours;
     setSubmitting(true);
     try {
       const created = await createOffer({
@@ -368,7 +369,7 @@ export function CreateOfferForm({
                 setForm((f) => ({
                   ...f,
                   jobType: v,
-                  weeklyHours: v === "PT_25" ? 25 : v === "FT_40" ? 40 : f.weeklyHours,
+                  weeklyHours: v === "PT_25" ? 20 : v === "FT_40" ? 40 : f.weeklyHours,
                 }));
               }}
             >
@@ -388,20 +389,46 @@ export function CreateOfferForm({
           </div>
           <div>
             <label className="form-label">Weekly hours (intern)</label>
-            <select
-              className="form-control"
-              value={form.weeklyHours}
-              disabled={!isUnpaid}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  weeklyHours: Number(e.target.value) === 25 ? 25 : 40,
-                }))
-              }
-            >
-              <option value={40}>40</option>
-              <option value={25}>25</option>
-            </select>
+            {(() => {
+              const isPreset = form.weeklyHours === 40 || form.weeklyHours === 20;
+              const showCustom = weeklyHoursOther || !isPreset;
+              return (
+                <>
+                  <select
+                    className="form-control"
+                    value={showCustom ? "other" : String(form.weeklyHours)}
+                    disabled={!isUnpaid}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "other") {
+                        setWeeklyHoursOther(true);
+                      } else {
+                        setWeeklyHoursOther(false);
+                        setForm((f) => ({ ...f, weeklyHours: Number(v) }));
+                      }
+                    }}
+                  >
+                    <option value={40}>40</option>
+                    <option value={20}>20</option>
+                    <option value="other">Other</option>
+                  </select>
+                  {showCustom ? (
+                    <input
+                      type="number"
+                      min={1}
+                      max={168}
+                      className="form-control mt-2"
+                      placeholder="Weekly hours"
+                      disabled={!isUnpaid}
+                      value={form.weeklyHours || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, weeklyHours: Number(e.target.value) || 0 }))
+                      }
+                    />
+                  ) : null}
+                </>
+              );
+            })()}
           </div>
           <div>
             <label className="form-label">Work location</label>
@@ -467,7 +494,7 @@ export function CreateOfferForm({
                 setForm((f) => ({
                   ...f,
                   jobType: v,
-                  weeklyHours: v === "PT_25" ? 25 : v === "FT_40" ? 40 : f.weeklyHours,
+                  weeklyHours: v === "PT_25" ? 20 : v === "FT_40" ? 40 : f.weeklyHours,
                 }));
               }}
             >
@@ -480,20 +507,46 @@ export function CreateOfferForm({
           </div>
           <div>
             <label className="form-label">Weekly hours (intern)</label>
-            <select
-              className="form-control"
-              value={form.weeklyHours}
-              disabled={!isUnpaid}
-              onChange={(e) =>
-                setForm((f) => ({
-                  ...f,
-                  weeklyHours: Number(e.target.value) === 25 ? 25 : 40,
-                }))
-              }
-            >
-              <option value={40}>40</option>
-              <option value={25}>25</option>
-            </select>
+            {(() => {
+              const isPreset = form.weeklyHours === 40 || form.weeklyHours === 20;
+              const showCustom = weeklyHoursOther || !isPreset;
+              return (
+                <>
+                  <select
+                    className="form-control"
+                    value={showCustom ? "other" : String(form.weeklyHours)}
+                    disabled={!isUnpaid}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "other") {
+                        setWeeklyHoursOther(true);
+                      } else {
+                        setWeeklyHoursOther(false);
+                        setForm((f) => ({ ...f, weeklyHours: Number(v) }));
+                      }
+                    }}
+                  >
+                    <option value={40}>40</option>
+                    <option value={20}>20</option>
+                    <option value="other">Other</option>
+                  </select>
+                  {showCustom ? (
+                    <input
+                      type="number"
+                      min={1}
+                      max={168}
+                      className="form-control mt-2"
+                      placeholder="Weekly hours"
+                      disabled={!isUnpaid}
+                      value={form.weeklyHours || ""}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, weeklyHours: Number(e.target.value) || 0 }))
+                      }
+                    />
+                  ) : null}
+                </>
+              );
+            })()}
           </div>
           <div>
             <label className="form-label">Compensation</label>

@@ -2,11 +2,11 @@
 
 import {
   LiveKitRoom,
-  VideoConference,
   RoomAudioRenderer,
   useRoomContext,
   useParticipants,
 } from "@livekit/components-react";
+import { StableVideoConference } from "@/shared/components/livekit/stable-video-conference";
 import { createPortal } from "react-dom";
 import "@livekit/components-styles";
 import { useState, useEffect, useMemo, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
@@ -43,7 +43,7 @@ function LobbyDevicePreview({
   const audioCtxRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
-  const freqDataRef = useRef<Uint8Array | null>(null);
+  const freqDataRef = useRef<Uint8Array<ArrayBuffer> | null>(null);
 
   const stopAll = useCallback(() => {
     if (rafRef.current) {
@@ -1134,6 +1134,11 @@ function PublicRoomContent({
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isManuallyLeavingRef = useRef(false);
+  // Set when a disconnect must NOT trigger an auto-reconnect: React StrictMode
+  // dev remounts (CLIENT_INITIATED) and identity displacement (DUPLICATE_IDENTITY).
+  // Reconnecting with the same identity in those cases collides with the live
+  // connection and ends stuck on "Disconnected". Cleared after the churn settles.
+  const suppressAutoReconnectRef = useRef(false);
   const connectionStateRef = useRef<ConnectionState>(room.state);
   const appliedInitialMediaRef = useRef(false);
   const initialMediaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1172,14 +1177,41 @@ function PublicRoomContent({
   useEffect(() => {
     const handleDisconnect = (reason?: DisconnectReason) => {
       if (isManuallyLeavingRef.current) return;
-      if (reason === DisconnectReason.CLIENT_INITIATED) {
+      // A genuine user leave goes through handleLeave/handleEndMeetingForAll, which
+      // set isManuallyLeavingRef BEFORE disconnecting (handled by the guard above).
+      // So a CLIENT_INITIATED reaching here was NOT triggered by our Leave button —
+      // it is React StrictMode's mount→cleanup→remount firing a disconnect on the
+      // throwaway connection (dev: "Received leave request while trying to connect").
+      // DUPLICATE_IDENTITY means another connection (the live remount / another tab)
+      // now owns this identity. Bouncing to the lobby or reconnecting with the same
+      // identity is wrong in both cases — the surviving connection is fine. No-op,
+      // and suppress the connection-state / top-level reconnect cascade that follows.
+      if (
+        reason === DisconnectReason.CLIENT_INITIATED ||
+        reason === DisconnectReason.DUPLICATE_IDENTITY
+      ) {
+        suppressAutoReconnectRef.current = true;
+        setReconnecting(false);
+        setTimeout(() => {
+          suppressAutoReconnectRef.current = false;
+        }, 2000);
+        return;
+      }
+      // Server explicitly ended/removed room: do not attempt reconnect loop.
+      if (
+        reason === DisconnectReason.PARTICIPANT_REMOVED ||
+        reason === DisconnectReason.ROOM_DELETED
+      ) {
         isManuallyLeavingRef.current = true;
+        setReconnecting(false);
         setMeetingEndedToast(true);
-        setTimeout(() => onLeave(), 2000);
+        setTimeout(() => onLeave(), 1200);
         return;
       }
       if (hasPermissionError) return;
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        // Prevent stacked reconnect timers when multiple disconnected events fire.
+        if (reconnectTimeoutRef.current) return;
         setReconnecting(true);
         const delay = Math.min(
           INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
@@ -1199,7 +1231,6 @@ function PublicRoomContent({
     };
 
     const handleConnectionStateChange = (state: ConnectionState) => {
-      const previousState = connectionStateRef.current;
       connectionStateRef.current = state;
       if (state === ConnectionState.Connected) {
         setReconnecting(false);
@@ -1208,21 +1239,35 @@ function PublicRoomContent({
           clearTimeout(reconnectTimeoutRef.current);
           reconnectTimeoutRef.current = null;
         }
-      } else if (state === ConnectionState.Disconnected) {
-        if (previousState !== ConnectionState.Disconnected) handleDisconnect();
       } else if (state === ConnectionState.Reconnecting) {
         setReconnecting(true);
+      } else if (state === ConnectionState.Disconnected) {
+        // In some failure paths LiveKit emits only state change without the
+        // `disconnected` event callback. Trigger controlled reconnect here too —
+        // unless the disconnect was a StrictMode remount / identity displacement
+        // (handleDisconnect set suppressAutoReconnectRef), where reconnecting with
+        // the same identity just re-collides and lands stuck on "Disconnected".
+        if (
+          !isManuallyLeavingRef.current &&
+          !hasPermissionError &&
+          !suppressAutoReconnectRef.current &&
+          !reconnectTimeoutRef.current
+        ) {
+          setReconnecting(true);
+          const delay = Math.min(
+            INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts),
+            MAX_RECONNECT_DELAY
+          );
+          reconnectTimeoutRef.current = setTimeout(() => {
+            setReconnectAttempts((prev) => prev + 1);
+            void onReconnect();
+          }, delay);
+        }
       }
     };
 
     room.on("disconnected", handleDisconnect);
     room.on("connectionStateChanged", handleConnectionStateChange);
-    if (
-      room.state === ConnectionState.Disconnected &&
-      !isManuallyLeavingRef.current
-    ) {
-      handleDisconnect();
-    }
     return () => {
       room.off("disconnected", handleDisconnect);
       room.off("connectionStateChanged", handleConnectionStateChange);
@@ -1236,8 +1281,10 @@ function PublicRoomContent({
       appliedInitialMediaRef.current = true;
       const localP = room.localParticipant;
       initialMediaTimeoutRef.current = setTimeout(() => {
-        if (initialAudioEnabled === false) localP.setMicrophoneEnabled(false).catch(() => {});
-        if (initialVideoEnabled === false) localP.setCameraEnabled(false).catch(() => {});
+        // Join room first with media off, then apply intended state.
+        // This avoids early device-init failures causing immediate disconnects.
+        localP.setMicrophoneEnabled(Boolean(initialAudioEnabled)).catch(() => {});
+        localP.setCameraEnabled(Boolean(initialVideoEnabled)).catch(() => {});
         initialMediaTimeoutRef.current = null;
       }, 150);
     };
@@ -1616,6 +1663,20 @@ function PublicRoomContent({
           min-height: 0;
           background: transparent !important;
         }
+        /* Keep media area first and controls pinned to bottom. */
+        .room-meeting-container .lk-video-conference {
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+        }
+        .room-meeting-container .lk-video-conference-inner {
+          flex: 1 1 auto;
+          min-height: 0;
+        }
+        .room-meeting-container .lk-control-bar {
+          order: 999;
+          margin-top: auto;
+        }
         .room-meeting-container .lk-grid-layout {
           min-height: 0;
           padding: 0.75rem;
@@ -1727,7 +1788,7 @@ function PublicRoomContent({
           onHardEnd={onLeave}
         />
         <VideoConferenceBoundary>
-          {(remountKey) => <VideoConference key={remountKey} />}
+          {(remountKey) => <StableVideoConference key={remountKey} />}
         </VideoConferenceBoundary>
         <RoomAudioRenderer />
         {isHost &&
@@ -1822,7 +1883,6 @@ function PublicRoomContent({
           >
             <WaitingParticipantsPanel
               roomName={roomName}
-              hostEmail={participantEmail || undefined}
               onParticipantAdmitted={(identity) => {
                 console.log("Participant admitted:", identity);
                 // Remove from waiting list immediately when admitted
@@ -1907,10 +1967,19 @@ export default function PublicMeetingRoomClient() {
   const [waitingParticipantIdentities, setWaitingParticipantIdentities] = useState<string[]>([]);
   /** Calendar end from token API (scheduledAt + duration) for countdown / auto-leave */
   const [meetingEndAtIso, setMeetingEndAtIso] = useState<string | null>(null);
+  const [roomConnectEpoch, setRoomConnectEpoch] = useState(0);
+  /** Terminal: the browser blocks WebRTC (e.g. Brave Shields / fingerprint protection),
+   *  so LiveKit can never connect. Show a clear message and STOP the reconnect loop
+   *  instead of churning guest identities forever. */
+  const [webrtcUnsupported, setWebrtcUnsupported] = useState(false);
   const admissionPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const participantIdentityRef = useRef<string | null>(null);
+  const guestIdentityRef = useRef<string | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const manualLeaveRef = useRef(false);
+  const topLevelReconnectInFlightRef = useRef(false);
+  const lastTopLevelReconnectAtRef = useRef(0);
 
   // Pre-join form state (when no name in URL)
   const [preJoinName, setPreJoinName] = useState("");
@@ -2126,6 +2195,10 @@ export default function PublicMeetingRoomClient() {
         setPreJoinError("At least one permission (audio or video) is required to join the meeting room.");
         return;
       }
+      // New join attempt: clear leave/reconnect guards from any prior session in this tab.
+      manualLeaveRef.current = false;
+      topLevelReconnectInFlightRef.current = false;
+      lastTopLevelReconnectAtRef.current = 0;
       setPreJoinError("");
       setPreJoinCommitted(true);
     },
@@ -2142,19 +2215,48 @@ export default function PublicMeetingRoomClient() {
    * or not invited), fall back to the public guest endpoint so guests are unaffected.
    */
   const requestToken = useCallback(
-    async (identity?: string) => {
+    async (identity?: string, opts?: { forcePublic?: boolean }) => {
       const roomName = decodeURIComponent(roomId);
       const authedEmail = authChecked ? authUser?.email?.trim() : "";
-      if (authedEmail) {
+      const invitedEmail = participantEmail?.trim();
+      const pinnedIdentity = identity || participantIdentityRef.current || participantIdentity;
+      const hasPinnedIdentity = !!pinnedIdentity;
+      const sameInvitedAsAuthed =
+        !!authedEmail &&
+        !!invitedEmail &&
+        authedEmail.toLowerCase() === invitedEmail.toLowerCase();
+      const shouldUseAuthedEndpoint =
+        !opts?.forcePublic &&
+        !!authedEmail &&
+        // Critical: once a non-host identity is pinned (especially admitted waiters),
+        // keep using the same public identity path to avoid auth/public identity drift.
+        (!hasPinnedIdentity || isHost) &&
+        (!invitedEmail || sameInvitedAsAuthed);
+      const guestIdentity =
+        identity ||
+        participantIdentityRef.current ||
+        guestIdentityRef.current ||
+        `guest-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+      guestIdentityRef.current = guestIdentity;
+      if (shouldUseAuthedEndpoint) {
         try {
           return await livekitApi.getLiveKitToken(roomName, participantName, participantEmail || authedEmail);
-        } catch {
-          // Not authorized on the authenticated path — fall back to the public guest path.
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } } | undefined)?.response?.status;
+          if (status !== 401 && status !== 403) {
+            throw err;
+          }
+          // Authenticated path rejected — fall back to public guest token path.
         }
       }
-      return livekitApi.getPublicLiveKitToken(roomName, participantName, participantEmail || undefined, identity);
+      return livekitApi.getPublicLiveKitToken(
+        roomName,
+        participantName,
+        participantEmail || undefined,
+        guestIdentity
+      );
     },
-    [roomId, authChecked, authUser, participantName, participantEmail]
+    [roomId, authChecked, authUser, participantName, participantEmail, participantIdentity, isHost]
   );
 
   const fetchToken = useCallback(async () => {
@@ -2164,6 +2266,10 @@ export default function PublicMeetingRoomClient() {
       return;
     }
     try {
+      // New token bootstrap: clear leave/reconnect guards from any prior leave path.
+      manualLeaveRef.current = false;
+      topLevelReconnectInFlightRef.current = false;
+      lastTopLevelReconnectAtRef.current = 0;
       setIsLoading(true);
       setError("");
       const data = await requestToken();
@@ -2232,7 +2338,7 @@ export default function PublicMeetingRoomClient() {
       }
 
       try {
-        const data = await requestToken(identity);
+        const data = await requestToken(identity, { forcePublic: true });
 
         if (tokenAllowsRoomJoin(data)) {
           if (admissionPollRef.current) {
@@ -2248,6 +2354,7 @@ export default function PublicMeetingRoomClient() {
           setIsHost(data.isHost === true);
           setWaitingForAdmission(false);
           setShowRoom(true);
+          setRoomConnectEpoch((e) => e + 1);
           setReconnectKey((k) => k + 1);
         }
       } catch (err: unknown) {
@@ -2269,7 +2376,16 @@ export default function PublicMeetingRoomClient() {
     };
   }, [waitingForAdmission, participantName, participantIdentity, livekitUrl, roomId, requestToken]);
 
+  const buildJoinRoomUrl = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set("room", roomId);
+    if (participantName?.trim()) params.set("name", participantName.trim());
+    if (participantEmail?.trim()) params.set("email", participantEmail.trim());
+    return `/join/room?${params.toString()}`;
+  }, [roomId, participantName, participantEmail]);
+
   const handleLeave = useCallback(() => {
+    manualLeaveRef.current = true;
     // Leaving only disconnects this participant locally — it must NOT end the meeting
     // for everyone. The link stays joinable for the scheduled window so anyone can
     // rejoin after a drop. Ending is an explicit host action / scheduled-window auto-end.
@@ -2277,12 +2393,13 @@ export default function PublicMeetingRoomClient() {
     setToken("");
     setParticipantIdentity(null);
     participantIdentityRef.current = null;
+    guestIdentityRef.current = null;
     setShowRoom(false);
     setWaitingForAdmission(false);
     setKnocking(false);
     setKnockRequested(false);
-    router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
-  }, [router, roomId, isHost, participantEmail]);
+    router.push(buildJoinRoomUrl());
+  }, [router, buildJoinRoomUrl]);
 
   const handleReconnect = useCallback(async () => {
     if (!participantName || !roomId) return;
@@ -2293,6 +2410,16 @@ export default function PublicMeetingRoomClient() {
     try {
       setIsLoading(true);
       const data = await requestToken(participantIdentityRef.current ?? participantIdentity ?? undefined);
+
+      // If reconnect gets a waiting token, do not try to mount the room with it.
+      // Move back to admission-wait UI and keep polling until publish access flips on.
+      if (!tokenAllowsRoomJoin(data)) {
+        setShowRoom(false);
+        setWaitingForAdmission(true);
+        setKnocking(false);
+        return;
+      }
+
       reconnectAttemptsRef.current = 0;
       setToken(data.token);
       setMeetingEndAtIso(data.meetingEndAt ?? null);
@@ -2300,6 +2427,7 @@ export default function PublicMeetingRoomClient() {
         setParticipantIdentity(data.participantIdentity);
         participantIdentityRef.current = data.participantIdentity;
       }
+      setRoomConnectEpoch((e) => e + 1);
       setReconnectKey((prev) => prev + 1);
     } catch (err) {
       const status = (err as { response?: { status?: number }; status?: number } | undefined)?.response?.status
@@ -2362,6 +2490,25 @@ export default function PublicMeetingRoomClient() {
 
   const handleError = useCallback((error: Error) => {
     const errorMessage = error.message.toLowerCase();
+    // Fatal, non-recoverable: the browser has WebRTC disabled (Brave Shields /
+    // fingerprint protection, an extension, or an outdated browser). LiveKit throws
+    // "...doesn't seem to be supported on this browser..." from Room.connect(). Retrying
+    // just remounts and re-throws forever, churning a new guest identity each cycle and
+    // orphaning the host's admit. Stop the loop and tell the user how to fix it.
+    if (
+      errorMessage.includes("supported on this browser") ||
+      errorMessage.includes("webrtc")
+    ) {
+      manualLeaveRef.current = true; // halts inner + top-level reconnect handlers
+      if (admissionPollRef.current) {
+        clearInterval(admissionPollRef.current);
+        admissionPollRef.current = null;
+      }
+      setWebrtcUnsupported(true);
+      setWaitingForAdmission(false);
+      setHasPermissionError(true);
+      return;
+    }
     if (
       errorMessage.includes("permission") ||
       errorMessage.includes("notallowed") ||
@@ -2375,6 +2522,32 @@ export default function PublicMeetingRoomClient() {
       );
     }
   }, []);
+
+  if (webrtcUnsupported) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 p-4">
+        <div className="max-w-md text-center text-gray-200">
+          <h2 className="text-lg font-semibold mb-2">Your browser is blocking video calls</h2>
+          <p className="text-sm text-gray-400 mb-4">
+            This browser has WebRTC disabled, so the call can&apos;t connect. To join:
+          </p>
+          <ul className="text-sm text-gray-300 text-left inline-block space-y-1 mb-5">
+            <li>• <strong>Brave:</strong> click the Shields (lion) icon in the address bar and turn Shields <strong>down for this site</strong>, then reload.</li>
+            <li>• Or open this meeting link in <strong>Chrome / Edge</strong>.</li>
+            <li>• Make sure no extension is blocking WebRTC.</li>
+          </ul>
+          <div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded bg-primary text-white text-sm"
+            >
+              Reload and try again
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!nameFromQuery && !authChecked) {
     return (
@@ -2586,8 +2759,9 @@ export default function PublicMeetingRoomClient() {
                 setToken("");
                 setParticipantIdentity(null);
                 participantIdentityRef.current = null;
+                guestIdentityRef.current = null;
                 setPreJoinCommitted(false);
-                router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
+                router.push(buildJoinRoomUrl());
               }}
               className="obs-btn obs-btn--ghost obs-wait__cancel"
             >
@@ -2599,80 +2773,67 @@ export default function PublicMeetingRoomClient() {
     );
   }
 
-  // Waiting for host to admit - connect to LiveKit with restricted permissions so host can see them
+  // Waiting for host to admit (poll-only). Do not connect to LiveKit here:
+  // host waiting panel is driven by backend registry, and avoiding a second
+  // LiveKit connection prevents identity/race disconnect loops.
   if (waitingForAdmission && participantName && token) {
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-[#0B0D0E]">
         <ObsidianStudioStyles />
-        <LiveKitRoom
-          key={reconnectKey}
-          video={false}
-          audio={false}
-          token={token}
-          serverUrl={livekitUrl}
-          onDisconnected={() => {}}
-          onError={handleError}
-          options={{
-            adaptiveStream: true,
-            dynacast: true,
-          }}
-          data-lk-theme="default"
-          className="room-page flex flex-col flex-1 min-h-0 w-full"
-        >
-          <div className="obs-wait">
-            <div className="obs-wait__bg" aria-hidden />
-            <div className="obs-wait__grain" aria-hidden />
-            <div className="obs-wait__card">
-              <div className="obs-wait__pill obs-mono">
-                <span className="obs-wait__pill-dot" />
-                AWAITING ADMISSION
-              </div>
-              <h1 className="obs-display obs-wait__title">
-                Knock <em className="obs-display-italic">knock.</em>
-              </h1>
-              <p className="obs-wait__sub">
-                The host has been notified. The room will open the moment they admit you.
-              </p>
-
-              <div className="obs-wait__bars" aria-hidden>
-                <span style={{ animationDelay: "0ms" }} />
-                <span style={{ animationDelay: "120ms" }} />
-                <span style={{ animationDelay: "240ms" }} />
-                <span style={{ animationDelay: "360ms" }} />
-                <span style={{ animationDelay: "480ms" }} />
-              </div>
-
-              {(participantName || participantEmail) && (
-                <div className="obs-wait__identity">
-                  <span className="obs-mono obs-wait__identity-label">JOINING AS</span>
-                  <span className="obs-wait__identity-name">{participantName || "Guest"}</span>
-                  {participantEmail && (
-                    <span className="obs-mono obs-wait__identity-email">{participantEmail}</span>
-                  )}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (admissionPollRef.current) {
-                    clearInterval(admissionPollRef.current);
-                    admissionPollRef.current = null;
-                  }
-                  setWaitingForAdmission(false);
-                  setToken("");
-                  setParticipantIdentity(null);
-                  participantIdentityRef.current = null;
-                  setPreJoinCommitted(false);
-                  router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
-                }}
-                className="obs-btn obs-btn--ghost obs-wait__cancel"
-              >
-                Cancel
-              </button>
+        <div className="obs-wait">
+          <div className="obs-wait__bg" aria-hidden />
+          <div className="obs-wait__grain" aria-hidden />
+          <div className="obs-wait__card">
+            <div className="obs-wait__pill obs-mono">
+              <span className="obs-wait__pill-dot" />
+              AWAITING ADMISSION
             </div>
+            <h1 className="obs-display obs-wait__title">
+              Knock <em className="obs-display-italic">knock.</em>
+            </h1>
+            <p className="obs-wait__sub">
+              The host has been notified. The room will open the moment they admit you.
+            </p>
+
+            <div className="obs-wait__bars" aria-hidden>
+              <span style={{ animationDelay: "0ms" }} />
+              <span style={{ animationDelay: "120ms" }} />
+              <span style={{ animationDelay: "240ms" }} />
+              <span style={{ animationDelay: "360ms" }} />
+              <span style={{ animationDelay: "480ms" }} />
+            </div>
+
+            {(participantName || participantEmail) && (
+              <div className="obs-wait__identity">
+                <span className="obs-mono obs-wait__identity-label">JOINING AS</span>
+                <span className="obs-wait__identity-name">{participantName || "Guest"}</span>
+                {participantEmail && (
+                  <span className="obs-mono obs-wait__identity-email">{participantEmail}</span>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                if (admissionPollRef.current) {
+                  clearInterval(admissionPollRef.current);
+                  admissionPollRef.current = null;
+                }
+                setWaitingForAdmission(false);
+                setToken("");
+                setParticipantIdentity(null);
+                participantIdentityRef.current = null;
+                guestIdentityRef.current = null;
+                setPreJoinCommitted(false);
+                router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
+              }}
+              className="obs-btn obs-btn--ghost obs-wait__cancel"
+            >
+              Cancel
+            </button>
           </div>
-        </LiveKitRoom>
+        </div>
       </div>
     );
   }
@@ -2729,12 +2890,35 @@ export default function PublicMeetingRoomClient() {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#202124]">
       <LiveKitRoom
-        key={reconnectKey}
+        key={`${reconnectKey}-${roomConnectEpoch}`}
+        connect={true}
         video={videoEnabled}
         audio={audioEnabled}
         token={token}
         serverUrl={livekitUrl}
-        onDisconnected={() => {}}
+        onConnected={() => {
+          setError("");
+        }}
+        onDisconnected={(reason) => {
+          if (manualLeaveRef.current || meetingEnded) return;
+          // StrictMode cleanup (CLIENT_INITIATED) and identity displacement
+          // (DUPLICATE_IDENTITY) must NOT trigger a same-identity reconnect — it
+          // collides with the live connection and ends stuck on "Disconnected".
+          if (
+            reason === DisconnectReason.CLIENT_INITIATED ||
+            reason === DisconnectReason.DUPLICATE_IDENTITY
+          ) {
+            return;
+          }
+          const now = Date.now();
+          if (topLevelReconnectInFlightRef.current) return;
+          if (now - lastTopLevelReconnectAtRef.current < 1500) return;
+          lastTopLevelReconnectAtRef.current = now;
+          topLevelReconnectInFlightRef.current = true;
+          void handleReconnect().finally(() => {
+            topLevelReconnectInFlightRef.current = false;
+          });
+        }}
         onError={handleError}
         onMediaDeviceFailure={(failure, kind) => {
           if (failure) {

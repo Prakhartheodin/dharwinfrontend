@@ -1,12 +1,14 @@
 "use client"
 
-import React, { useCallback, useMemo } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { format } from "date-fns"
 import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl } from "@/shared/lib/join-room-url"
 import type { InternalMeeting } from "@/shared/lib/api/internal-meetings"
 import MeetingCreatedSuccess from "@/shared/components/meeting/MeetingCreatedSuccess"
+import { listUsers } from "@/shared/lib/api/users"
+import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 
 const DatePicker = dynamic(() => import("react-datepicker").then((m) => m.default), { ssr: false })
 
@@ -66,6 +68,26 @@ export default function CreateInternalMeetingModal({
   onScheduledInternalMeetingAtChange,
 }: CreateInternalMeetingModalProps) {
   const { user } = useAuth()
+  const [participantUsers, setParticipantUsers] = useState<ParticipantUser[]>([])
+  const [participantUsersLoading, setParticipantUsersLoading] = useState(false)
+  const [participantUsersError, setParticipantUsersError] = useState<string | null>(null)
+  const loadParticipantUsers = useCallback(async () => {
+    setParticipantUsersLoading(true)
+    setParticipantUsersError(null)
+    try {
+      const res = await listUsers({ limit: 500, status: "active" })
+      setParticipantUsers(
+        (res.results || []).map((u) => ({ id: u.id, name: u.name, email: u.email })).filter((u) => u.email)
+      )
+    } catch {
+      setParticipantUsersError("Could not load users.")
+    } finally {
+      setParticipantUsersLoading(false)
+    }
+  }, [])
+  useEffect(() => {
+    void loadParticipantUsers()
+  }, [loadParticipantUsers])
   const shareMeetingUrl = useMemo(() => (createdMeeting?.publicMeetingUrl || "").trim(), [createdMeeting?.publicMeetingUrl])
 
   const personalMeetingUrl = useMemo(() => {
@@ -366,41 +388,15 @@ export default function CreateInternalMeetingModal({
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="form-label block text-sm font-medium mb-2">Email invites</label>
-                  <div className="space-y-2">
-                    {emailInvites.map((email, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input
-                          type="email"
-                          placeholder="email@example.com"
-                          value={email}
-                          onChange={(e) => {
-                            const next = [...emailInvites]
-                            next[i] = e.target.value
-                            setEmailInvites(next)
-                          }}
-                          className="form-control !py-2 !text-sm flex-1 rounded-lg"
-                        />
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-light !py-2 !px-2"
-                          onClick={() => setEmailInvites((prev) => prev.filter((_, j) => j !== i))}
-                          aria-label="Remove"
-                        >
-                          <i className="ri-close-line"></i>
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-outline-light !py-2 !px-3 !text-sm"
-                      onClick={() => setEmailInvites((prev) => [...prev, ""])}
-                    >
-                      <i className="ri-add-line me-0.5"></i>Add email
-                    </button>
-                  </div>
-                </div>
+                <ParticipantInvitesField
+                  idPrefix="schedule-meeting"
+                  invites={emailInvites}
+                  onChange={setEmailInvites}
+                  users={participantUsers}
+                  usersLoading={participantUsersLoading}
+                  usersError={participantUsersError}
+                  onReloadUsers={loadParticipantUsers}
+                />
                 <div>
                   <label className="form-label block text-sm font-medium mb-2">Meeting type</label>
                   <div className="flex flex-wrap gap-2 sm:gap-3">

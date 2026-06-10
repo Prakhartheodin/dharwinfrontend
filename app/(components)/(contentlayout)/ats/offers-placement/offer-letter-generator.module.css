@@ -709,6 +709,22 @@
   margin-top: 12px;
 }
 
+/* The shared job-description prose class adds Tailwind `text-gray-700`, which
+   tints Position Overview / Roles content gray and breaks color uniformity with
+   the rest of the letter (#111). Force the letter body color (and font) back,
+   beating the single-class Tailwind utility on the same element via higher
+   specificity and also overriding the Tailwind Typography body vars. */
+.letterSheetsRoot .letterRichContent,
+.letterSheetsRoot .letterRichContent :global(p),
+.letterSheetsRoot .letterRichContent :global(li),
+.letterSheetsRoot .letterRichContent :global(span),
+.letterSheetsRoot .letterRichContent :global(strong) {
+  color: #111;
+  font-family: inherit;
+  --tw-prose-body: #111;
+  --tw-prose-bold: #111;
+}
+
 .sectionTitleHl {
   background: transparent;
   color: #111;

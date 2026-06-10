@@ -403,7 +403,7 @@ export function fmtCurrencyParts(val: string, cur: string): { annual: string; mo
 }
 
 export function getJobHoursLabel(jobTypeUi: 'fulltime' | 'parttime' | 'internship'): string {
-  if (jobTypeUi === 'parttime') return '25 hours per week'
+  if (jobTypeUi === 'parttime') return '20 hours per week'
   return '40 hours per week'
 }
 

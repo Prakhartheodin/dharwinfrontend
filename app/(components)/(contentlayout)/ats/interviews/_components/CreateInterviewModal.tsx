@@ -15,6 +15,8 @@ import InterviewDateTimeOverlay from './InterviewDateTimeOverlay'
 import { to12Hour } from './interviewSlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
+import { listUsers } from '@/shared/lib/api/users'
+import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
   if (!job || typeof job === 'string') return null
@@ -166,6 +168,26 @@ export default function CreateInterviewModal({
   const [jobsForCandidate, setJobsForCandidate] = useState<Job[]>([])
   const [applicationJobsLoading, setApplicationJobsLoading] = useState(false)
   const [applicationJobsError, setApplicationJobsError] = useState<string | null>(null)
+  const [participantUsers, setParticipantUsers] = useState<ParticipantUser[]>([])
+  const [participantUsersLoading, setParticipantUsersLoading] = useState(false)
+  const [participantUsersError, setParticipantUsersError] = useState<string | null>(null)
+  const loadParticipantUsers = useCallback(async () => {
+    setParticipantUsersLoading(true)
+    setParticipantUsersError(null)
+    try {
+      const res = await listUsers({ limit: 500, status: 'active' })
+      setParticipantUsers(
+        (res.results || []).map((u) => ({ id: u.id, name: u.name, email: u.email })).filter((u) => u.email)
+      )
+    } catch {
+      setParticipantUsersError('Could not load users.')
+    } finally {
+      setParticipantUsersLoading(false)
+    }
+  }, [])
+  useEffect(() => {
+    void loadParticipantUsers()
+  }, [loadParticipantUsers])
 
   const loadApplicationJobs = useCallback(async (candidateId: string, preselectJobId?: string) => {
     if (!candidateId) {
@@ -807,43 +829,15 @@ export default function CreateInterviewModal({
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
-                    Email invites
-                  </label>
-                  <div className="space-y-2">
-                    {emailInvites.map((email, i) => (
-                      <div key={i} className="flex gap-2">
-                        <input
-                          type="email"
-                          placeholder="email@example.com"
-                          value={email}
-                          onChange={(e) => {
-                            const next = [...emailInvites]
-                            next[i] = e.target.value
-                            setEmailInvites(next)
-                          }}
-                          className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg"
-                        />
-                        <button
-                          type="button"
-                          className="ti-btn ti-btn-light !py-2 !px-2"
-                          onClick={() => setEmailInvites((prev) => prev.filter((_, j) => j !== i))}
-                          aria-label="Remove"
-                        >
-                          <i className="ri-close-line"></i>
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="ti-btn ti-btn-outline-light inline-flex w-full items-center justify-center gap-1.5 !py-2 !px-3 !text-sm sm:w-auto sm:justify-start transition-[transform,box-shadow] duration-200 motion-reduce:transition-none hover:border-primary/40 hover:bg-primary/[0.04] active:scale-[0.99] motion-reduce:active:scale-100"
-                      onClick={() => setEmailInvites((prev) => [...prev, ''])}
-                    >
-                      <i className="ri-add-line me-0.5"></i>Add email
-                    </button>
-                  </div>
-                </div>
+                <ParticipantInvitesField
+                  idPrefix="schedule-interview"
+                  invites={emailInvites}
+                  onChange={setEmailInvites}
+                  users={participantUsers}
+                  usersLoading={participantUsersLoading}
+                  usersError={participantUsersError}
+                  onReloadUsers={loadParticipantUsers}
+                />
 
                 <p className="flex items-center gap-2 border-b border-defaultborder/50 pb-2.5 pt-1 text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-primary dark:text-primary/90 dark:border-white/10">
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden />

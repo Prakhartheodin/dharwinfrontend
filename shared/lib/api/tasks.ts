@@ -11,6 +11,9 @@ export interface TaskUser {
   id?: string;
   name?: string;
   email?: string;
+  phoneNumber?: string;
+  location?: string;
+  profilePicture?: { url?: string };
 }
 
 export interface TaskComment {

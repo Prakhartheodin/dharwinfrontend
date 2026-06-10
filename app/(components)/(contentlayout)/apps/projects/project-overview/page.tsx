@@ -340,6 +340,106 @@ function DueDateCell({
   return <InlineDate value={task.dueDate} onSave={save} placeholder="Set due date" overdue={overdue} />;
 }
 
+/** Stacked assignee avatars. Clicking a bubble opens an overview card for that assignee. */
+function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
+  const [openIdx, setOpenIdx] = useState<number | null>(null);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (openIdx === null) return;
+    const onDocClick = (e: MouseEvent): void => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpenIdx(null);
+    };
+    const onEsc = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") setOpenIdx(null);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [openIdx]);
+
+  if (users.length === 0) {
+    return <span className="text-[#8c9097] dark:text-white/50">—</span>;
+  }
+
+  const active = openIdx !== null ? users[openIdx] : null;
+
+  return (
+    <div ref={wrapRef} className="relative inline-flex">
+      <div className="avatar-list-stacked">
+        {users.map((u, i) => {
+          const label = u.name || u.email || "User";
+          const pic = u.profilePicture?.url;
+          return (
+            <button
+              key={u._id || u.id || u.email || `t-assignee-${i}`}
+              type="button"
+              onClick={() => setOpenIdx((prev) => (prev === i ? null : i))}
+              className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold overflow-hidden cursor-pointer ring-0 hover:ring-2 hover:ring-primary/40 transition-shadow"
+              title={label}
+              aria-label={`View ${label}`}
+            >
+              {pic ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pic} alt={label} className="w-full h-full object-cover !rounded-full" />
+              ) : (
+                initials(u.name || u.email)
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {active && (
+        <div
+          className="absolute z-50 top-full mt-2 left-0 w-64 rounded-md border border-defaultborder bg-white dark:bg-bodybg shadow-lg p-3"
+          role="dialog"
+        >
+          <div className="flex items-center gap-3">
+            <span className="avatar avatar-md !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.875rem] font-semibold overflow-hidden shrink-0">
+              {active.profilePicture?.url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={active.profilePicture.url}
+                  alt={active.name || "User"}
+                  className="w-full h-full object-cover !rounded-full"
+                />
+              ) : (
+                initials(active.name || active.email)
+              )}
+            </span>
+            <div className="min-w-0">
+              <div className="font-semibold truncate">{active.name || "Unnamed user"}</div>
+              {active.email && (
+                <div className="text-[0.75rem] text-[#8c9097] dark:text-white/50 truncate">{active.email}</div>
+              )}
+            </div>
+          </div>
+          {(active.phoneNumber || active.location) && (
+            <div className="mt-3 pt-3 border-t border-defaultborder space-y-1.5">
+              {active.phoneNumber && (
+                <div className="flex items-center gap-2 text-[0.75rem]">
+                  <i className="ri-phone-line text-[#8c9097] dark:text-white/50" />
+                  <span className="truncate">{active.phoneNumber}</span>
+                </div>
+              )}
+              {active.location && (
+                <div className="flex items-center gap-2 text-[0.75rem]">
+                  <i className="ri-map-pin-line text-[#8c9097] dark:text-white/50" />
+                  <span className="truncate">{active.location}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const Projectoverview = (): JSX.Element => {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
@@ -749,21 +849,7 @@ const Projectoverview = (): JSX.Element => {
                               )}
                             </td>
                             <td>
-                              {(t.assignedTo ?? []).length > 0 ? (
-                                <div className="avatar-list-stacked">
-                                  {(t.assignedTo ?? []).map((u, i) => (
-                                    <span
-                                      key={u._id || u.id || u.email || `t-assignee-${i}`}
-                                      className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold"
-                                      title={u.name || u.email || "User"}
-                                    >
-                                      {initials(u.name || u.email)}
-                                    </span>
-                                  ))}
-                                </div>
-                              ) : (
-                                <span className="text-[#8c9097] dark:text-white/50">—</span>
-                              )}
+                              <AssigneeBubbles users={t.assignedTo ?? []} />
                             </td>
                             <td>
                               <DueDateCell task={t} onSaved={handleDueDateSaved} />
@@ -839,13 +925,13 @@ const Projectoverview = (): JSX.Element => {
               <div className="box-body !p-0">
                 {assignees.length > 0 ? (
                   <div className="table-responsive">
-                    <table className="table whitespace-nowrap min-w-full">
+                    <table className="table w-full table-fixed">
                       <thead>
                         <tr>
-                          <th scope="col" className="text-start">
+                          <th scope="col" className="text-start w-1/2">
                             Name
                           </th>
-                          <th scope="col" className="text-start">
+                          <th scope="col" className="text-start w-1/2">
                             Email
                           </th>
                         </tr>
@@ -853,18 +939,16 @@ const Projectoverview = (): JSX.Element => {
                       <tbody>
                         {assignees.map((u, i) => (
                           <tr key={u._id || u.id || u.email || `team-${i}`} className="border border-defaultborder">
-                            <td>
-                              <div className="flex items-center">
-                                <div className="me-2 leading-none">
-                                  <span className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold">
-                                    {initials(u.name || u.email)}
-                                  </span>
-                                </div>
-                                <div className="font-semibold">{u.name?.trim() || "—"}</div>
+                            <td className="align-middle">
+                              <div className="flex items-center gap-2">
+                                <span className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold shrink-0">
+                                  {initials(u.name || u.email)}
+                                </span>
+                                <span className="font-semibold break-words min-w-0">{u.name?.trim() || "—"}</span>
                               </div>
                             </td>
-                            <td>
-                              <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem]">
+                            <td className="align-middle">
+                              <span className="text-[#8c9097] dark:text-white/50 text-[0.8125rem] break-all">
                                 {u.email?.trim() || "—"}
                               </span>
                             </td>

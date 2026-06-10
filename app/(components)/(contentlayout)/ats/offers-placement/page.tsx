@@ -312,7 +312,7 @@ const OffersPlacement = () => {
       joiningDate: o.joiningDate ? String(o.joiningDate).slice(0, 10) : '',
       letterDate: o.letterDate ? String(o.letterDate).slice(0, 10) : letterDateStampYmd(),
       jobType: jt,
-      weeklyHours: (o.weeklyHours === 25 ? 25 : 40) as 25 | 40,
+      weeklyHours: typeof o.weeklyHours === 'number' ? o.weeklyHours : 40,
       workLocation: o.workLocation || 'Remote (USA)',
       rolesText: resolveOfferLetterRolesHtml(o),
       trainingText: resolveOfferLetterTrainingHtml(o),

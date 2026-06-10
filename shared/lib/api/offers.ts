@@ -13,7 +13,7 @@ export type OfferLetterJobType = "FT_40" | "PT_25" | "INTERN_UNPAID";
 
 export const JOB_TYPES: { value: OfferLetterJobType; label: string; compensationType: "paid" | "unpaid" }[] = [
   { value: "FT_40", label: "Full time – 40 hours/week", compensationType: "paid" },
-  { value: "PT_25", label: "Part time – 25 hours/week", compensationType: "paid" },
+  { value: "PT_25", label: "Part time – 20 hours/week", compensationType: "paid" },
   { value: "INTERN_UNPAID", label: "Training / Unpaid Internship (Full Time)", compensationType: "unpaid" },
 ];
 
@@ -77,7 +77,7 @@ export interface Offer {
   letterAddress?: string | null;
   positionTitle?: string | null;
   jobType?: OfferLetterJobType | null;
-  weeklyHours?: 25 | 40;
+  weeklyHours?: number;
   workLocation?: string | null;
   roleResponsibilities?: string[];
   positionOverviewHtml?: string | null;
@@ -153,7 +153,7 @@ export interface CreateOfferPayload {
   letterAddress?: string;
   positionTitle?: string;
   jobType?: OfferLetterJobType;
-  weeklyHours?: 25 | 40;
+  weeklyHours?: number;
   workLocation?: string;
   roleResponsibilities?: string[];
   positionOverviewHtml?: string;
@@ -182,7 +182,7 @@ export interface UpdateOfferPayload {
   letterAddress?: string;
   positionTitle?: string;
   jobType?: OfferLetterJobType;
-  weeklyHours?: 25 | 40;
+  weeklyHours?: number;
   workLocation?: string;
   roleResponsibilities?: string[];
   positionOverviewHtml?: string;

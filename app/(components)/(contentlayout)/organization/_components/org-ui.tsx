@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import Seo from "@/shared/layout-components/seo/seo";
 import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
+import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import type { OrgUnitType } from "@/shared/lib/api/org-structure";
 
 export const ORG_UNIT_TYPE_META: Record<
@@ -84,6 +85,28 @@ export function OrgLinkButton({ href, children, className = "", variant = "prima
       {children}
     </Link>
   );
+}
+
+/** Maps an org route to its feature-permission prefix (view-gated cross-nav). */
+const ORG_ROUTE_PERMISSION: Record<string, string> = {
+  "/organization/chart": "organization.chart",
+  "/organization/structure": "organization.structure",
+  "/organization/departments": "organization.departments",
+  "/organization/directory": "organization.directory",
+  "/organization/scenarios": "organization.scenarios",
+};
+
+/**
+ * Cross-navigation link for the org page headers. Renders nothing when the
+ * current user lacks view access to the target page (or while permissions are
+ * still loading, to avoid a show-then-hide flash). Unknown routes render as a
+ * plain OrgLinkButton.
+ */
+export function OrgNavButton(props: OrgLinkButtonProps) {
+  const prefix = ORG_ROUTE_PERMISSION[props.href] ?? "";
+  const { canView, isLoading } = useFeaturePermissions(prefix);
+  if (prefix && (isLoading || !canView)) return null;
+  return <OrgLinkButton {...props} />;
 }
 
 type TableActionProps = {

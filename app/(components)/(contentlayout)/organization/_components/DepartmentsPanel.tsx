@@ -16,7 +16,7 @@ const DepartmentMembersModal = dynamic(() => import("./DepartmentMembersModal"),
 import {
   OrgEmptyState,
   OrgErrorState,
-  OrgLinkButton,
+  OrgNavButton,
   OrgLoadingBlock,
   OrgPrimaryButton,
   OrgTableAction,
@@ -197,14 +197,14 @@ export default function DepartmentsPanel() {
   return (
     <>
       <div className="mb-4 flex flex-wrap gap-2">
-        <OrgLinkButton href="/organization/chart" variant="secondary">
+        <OrgNavButton href="/organization/chart" variant="secondary">
           <i className="ri-organization-chart text-base" aria-hidden />
           View chart
-        </OrgLinkButton>
-        <OrgLinkButton href="/organization/structure" variant="secondary">
+        </OrgNavButton>
+        <OrgNavButton href="/organization/structure" variant="secondary">
           <i className="ri-node-tree text-base" aria-hidden />
           Manage structure
-        </OrgLinkButton>
+        </OrgNavButton>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

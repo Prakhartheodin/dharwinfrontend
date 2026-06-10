@@ -1,7 +1,7 @@
 "use client"
 
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useMemo, useState, useEffect, useCallback } from "react"
+import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { useAuth } from "@/shared/contexts/auth-context"
 import { appendJoinIdentityToUrl } from "@/shared/lib/join-room-url"
 import { wallClockToUtc, utcInstantToWallClock, getViewerTimezone } from "@/shared/lib/timezone"
@@ -18,6 +18,10 @@ import {
 } from "@/shared/lib/api/internal-meetings"
 import CreateInternalMeetingModal from "./CreateInternalMeetingModal"
 import RecordingsModal, { type RecordingListItem } from "../../../ats/interviews/_components/RecordingsModal"
+import { listUsers } from "@/shared/lib/api/users"
+import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
+import MeetingReadOnlyView from "@/shared/components/meeting/MeetingReadOnlyView"
+import { useConfirm } from "@/shared/components/ui/useConfirm"
 
 interface InternalMeetingRow {
   id: string
@@ -108,7 +112,21 @@ export default function InternalMeetingsClient() {
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
 
   const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
+  /** Bumped on every open so reopening the SAME meeting still refetches even
+   *  when the previous close came from a backdrop/Esc (which skips closeEditModal). */
+  const [editOpenNonce, setEditOpenNonce] = useState(0)
   const [editMeeting, setEditMeeting] = useState<InternalMeeting | null>(null)
+  /** Editable participant/guest invite emails for the Edit Meeting overlay. */
+  const [editEmailInvites, setEditEmailInvites] = useState<string[]>([])
+  const [editUsers, setEditUsers] = useState<ParticipantUser[]>([])
+  const [editUsersLoading, setEditUsersLoading] = useState(false)
+  const [editUsersError, setEditUsersError] = useState<string | null>(null)
+  const editUsersLoadedRef = useRef(false)
+  const { confirm, confirmDialog } = useConfirm()
+  /** Terminal meetings (ended/completed/cancelled) are view-only after the cycle ends. */
+  const editStatusRaw = (editMeeting?.status || "").toLowerCase()
+  const editReadOnly = editStatusRaw === "ended" || editStatusRaw === "completed" || editStatusRaw === "cancelled"
+  const editStatusLabel = editStatusRaw === "cancelled" ? "cancelled" : "completed"
   const [editLoading, setEditLoading] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
@@ -327,13 +345,33 @@ export default function InternalMeetingsClient() {
     [hosts, emailInvites, fetchMeetings]
   )
 
+  const loadEditUsers = useCallback(async () => {
+    setEditUsersLoading(true)
+    setEditUsersError(null)
+    try {
+      const res = await listUsers({ limit: 500, status: "active" })
+      setEditUsers(
+        (res.results || [])
+          .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+          .filter((u) => u.email)
+      )
+      editUsersLoadedRef.current = true
+    } catch {
+      setEditUsersError("Could not load users.")
+    } finally {
+      setEditUsersLoading(false)
+    }
+  }, [])
+
   const openEditModal = useCallback((id: string) => {
     setEditMeetingId(id)
+    setEditOpenNonce((n) => n + 1)
     setEditMeeting(null)
     setEditError(null)
     setEditLoading(true)
+    if (!editUsersLoadedRef.current) void loadEditUsers()
     ;(window as any).HSOverlay?.open(document.querySelector("#edit-internal-meeting-modal"))
-  }, [])
+  }, [loadEditUsers])
 
   const closeEditModal = useCallback(() => {
     setEditMeetingId(null)
@@ -347,7 +385,10 @@ export default function InternalMeetingsClient() {
     let cancelled = false
     getInternalMeeting(editMeetingId)
       .then((m) => {
-        if (!cancelled) setEditMeeting(m)
+        if (!cancelled) {
+          setEditMeeting(m)
+          setEditEmailInvites(Array.isArray(m?.emailInvites) ? m.emailInvites : [])
+        }
       })
       .catch((err: any) => {
         if (!cancelled) setEditError(err?.response?.data?.message || err?.message || "Failed to load meeting")
@@ -358,7 +399,8 @@ export default function InternalMeetingsClient() {
     return () => {
       cancelled = true
     }
-  }, [editMeetingId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editMeetingId, editOpenNonce])
 
   const handleEditSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -390,6 +432,7 @@ export default function InternalMeetingsClient() {
         scheduledAt,
         durationMinutes,
         meetingType,
+        emailInvites: editEmailInvites.map((em) => em.trim()).filter(Boolean),
         notes: notes || undefined,
         status,
       }
@@ -404,13 +447,20 @@ export default function InternalMeetingsClient() {
         setEditSaving(false)
       }
     },
-    [editMeetingId, editMeeting, fetchMeetings, closeEditModal]
+    [editMeetingId, editMeeting, editEmailInvites, fetchMeetings, closeEditModal]
   )
 
   const handleCancelMeeting = useCallback(
     async (row: InternalMeetingRow) => {
       if (!row.id) return
-      if (!confirm(`Cancel "${row.title}"? The join link will be disabled.`)) return
+      const ok = await confirm({
+        title: "Cancel meeting?",
+        message: `Cancel "${row.title}"? The join link will be disabled.`,
+        confirmLabel: "Cancel meeting",
+        cancelLabel: "Keep meeting",
+        tone: "danger",
+      })
+      if (!ok) return
       try {
         await updateInternalMeeting(row.id, { status: "cancelled" })
         await fetchMeetings()
@@ -418,7 +468,7 @@ export default function InternalMeetingsClient() {
         alert(err?.response?.data?.message || err?.message || "Failed to cancel")
       }
     },
-    [fetchMeetings]
+    [confirm, fetchMeetings]
   )
 
   const handleRowSelect = (id: string) => {
@@ -930,6 +980,8 @@ export default function InternalMeetingsClient() {
         onClose={() => setRecordingsModalMeetingId(null)}
       />
 
+      {confirmDialog}
+
       <div
         id="edit-internal-meeting-modal"
         className="hs-overlay hidden ti-modal size-lg !z-[105]"
@@ -962,7 +1014,35 @@ export default function InternalMeetingsClient() {
               {!editLoading && editError && !editMeeting && (
                 <div className="py-4 px-4 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>
               )}
-              {!editLoading && editMeeting && (
+              {!editLoading && editMeeting && editReadOnly && (
+                <div className="space-y-5">
+                  <MeetingReadOnlyView
+                    banner={`This meeting is ${editStatusLabel} — view only. ${editStatusLabel === "cancelled" ? "Cancelled" : "Completed"} meetings can't be edited.`}
+                    rows={[
+                      { label: "Status", value: editStatusLabel === "cancelled" ? "Cancelled" : "Completed" },
+                      { label: "Title", value: editMeeting.title },
+                      {
+                        label: "When",
+                        value: editMeeting.scheduledAt
+                          ? (() => {
+                              const w = utcInstantToWallClock(editMeeting.scheduledAt, editMeeting.timezone || getViewerTimezone())
+                              return `${w.date} ${w.time} (${editMeeting.timezone || getViewerTimezone()})`
+                            })()
+                          : "",
+                      },
+                      { label: "Duration", value: `${editMeeting.durationMinutes} min` },
+                      { label: "Meeting type", value: editMeeting.meetingType },
+                      { label: "Description", value: editMeeting.description },
+                    ]}
+                    invites={editEmailInvites}
+                    notes={editMeeting.notes}
+                  />
+                  <div className="flex justify-end pt-4 border-t border-defaultborder dark:border-defaultborder/10">
+                    <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm font-medium" onClick={closeEditModal}>Close</button>
+                  </div>
+                </div>
+              )}
+              {!editLoading && editMeeting && !editReadOnly && (
                 <form onSubmit={handleEditSubmit} className="space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
                   {editError && <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>}
                   <div>
@@ -1047,6 +1127,18 @@ export default function InternalMeetingsClient() {
                         </label>
                       ))}
                     </div>
+                  </div>
+                  <div>
+                    <span className="form-label block text-sm font-medium mb-1.5">Participants &amp; invites</span>
+                    <ParticipantInvitesField
+                      idPrefix="edit-internal"
+                      invites={editEmailInvites}
+                      onChange={setEditEmailInvites}
+                      users={editUsers}
+                      usersLoading={editUsersLoading}
+                      usersError={editUsersError}
+                      onReloadUsers={loadEditUsers}
+                    />
                   </div>
                   <div>
                     <label htmlFor="edit-internal-notes" className="form-label block text-sm font-medium mb-1.5">

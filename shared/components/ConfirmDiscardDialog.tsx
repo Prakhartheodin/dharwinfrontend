@@ -9,7 +9,7 @@ interface ConfirmDiscardDialogProps {
 export default function ConfirmDiscardDialog({ open, onConfirm, onCancel }: ConfirmDiscardDialogProps) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+    <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl dark:bg-bodybg">
         <h4 className="mb-1 text-sm font-semibold text-defaulttextcolor dark:text-white">
           Discard unsaved changes?
