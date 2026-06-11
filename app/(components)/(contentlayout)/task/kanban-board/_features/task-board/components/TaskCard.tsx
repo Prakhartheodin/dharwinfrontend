@@ -24,7 +24,10 @@ export interface TaskCardProps {
   task: Task;
   selected?: boolean;
   isDragging?: boolean;
+  readOnly?: boolean;
+  canDelete?: boolean;
   onOpen?: (taskId: string) => void;
+  onDelete?: (taskId: string) => void;
   onToggleSelect?: (taskId: string) => void;
   dragAttributes?: DraggableAttributes;
   dragListeners?: Record<string, unknown> | undefined;
@@ -35,7 +38,10 @@ export const TaskCard = memo(function TaskCard({
   task,
   selected,
   isDragging,
+  readOnly,
+  canDelete,
   onOpen,
+  onDelete,
   onToggleSelect,
   dragAttributes,
   dragListeners,
@@ -55,9 +61,10 @@ export const TaskCard = memo(function TaskCard({
   const { users } = useTaskData();
 
   const onActivate = useCallback(() => {
+    if (readOnly || !onOpen) return;
     const id = task._id ?? task.id ?? "";
-    if (id) onOpen?.(id);
-  }, [onOpen, task._id, task.id]);
+    if (id) onOpen(id);
+  }, [onOpen, readOnly, task._id, task.id]);
 
   const { onKeyDown } = useTaskKeyboard({ onActivate });
 
@@ -74,13 +81,17 @@ export const TaskCard = memo(function TaskCard({
       id={taskId ? `task-card-${taskId}` : undefined}
       data-task-id={taskId || undefined}
       role="article"
-      tabIndex={0}
-      aria-describedby="dnd-instructions"
+      tabIndex={readOnly ? -1 : 0}
+      aria-describedby={readOnly ? undefined : "dnd-instructions"}
       aria-grabbed={isDragging}
       data-priority={priority}
-      className={`${styles.kbTaskCard} ${isDragging ? styles.kbTaskCardDragging : ""} ${selected ? styles.kbTaskCardSelected : ""}`}
-      onKeyDown={onKeyDown}
-      onClick={() => taskId && onOpen?.(taskId)}
+      data-readonly={readOnly ? "true" : undefined}
+      className={`${styles.kbTaskCard} ${isDragging ? styles.kbTaskCardDragging : ""} ${selected ? styles.kbTaskCardSelected : ""} ${readOnly ? styles.kbTaskCardReadOnly : ""}`}
+      onKeyDown={readOnly ? undefined : onKeyDown}
+      onClick={() => {
+        if (readOnly || !onOpen || !taskId) return;
+        onOpen(taskId);
+      }}
       {...dragAttributes}
       {...dragListeners}
     >
@@ -109,7 +120,21 @@ export const TaskCard = memo(function TaskCard({
               </span>
             ) : null}
           </div>
-          {onToggleSelect ? (
+          <div className="flex shrink-0 items-center gap-1">
+            {canDelete && onDelete && taskId ? (
+              <button
+                type="button"
+                className={styles.kbTaskDeleteBtn}
+                aria-label="Delete task"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(taskId);
+                }}
+              >
+                <i className="ri-delete-bin-line" aria-hidden />
+              </button>
+            ) : null}
+            {onToggleSelect ? (
             <label className="flex shrink-0 cursor-pointer items-center" onClick={(e) => e.stopPropagation()}>
               <span className="sr-only">Select task</span>
               <input
@@ -123,6 +148,7 @@ export const TaskCard = memo(function TaskCard({
               />
             </label>
           ) : null}
+          </div>
         </div>
       ) : null}
 

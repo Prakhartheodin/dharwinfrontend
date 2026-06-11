@@ -380,6 +380,38 @@
   outline-offset: 1px;
 }
 
+.kbTaskCardReadOnly {
+  cursor: default;
+}
+
+.kbTaskCardReadOnly:hover {
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+}
+
+.kbTaskDeleteBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.375rem;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.kbTaskDeleteBtn:hover {
+  color: #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+:global(.dark) .kbTaskDeleteBtn:hover {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .kbTaskCardGhost {
   border-radius: 0.5rem;
   border: 1px dashed #94a3b8;

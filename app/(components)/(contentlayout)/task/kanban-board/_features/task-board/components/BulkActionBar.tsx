@@ -14,14 +14,22 @@ const actionBtn =
 /** Sentinel select value for the "Clear / Unassigned" assign option. */
 const UNASSIGN_VALUE = "__unassign__";
 
-export function BulkActionBar(): React.JSX.Element | null {
+export interface BulkActionBarProps {
+  canEdit?: boolean;
+  canDelete?: boolean;
+}
+
+export function BulkActionBar({
+  canEdit = false,
+  canDelete = false,
+}: BulkActionBarProps): React.JSX.Element | null {
   const { selectedIds, clearSelection } = useTaskSelection();
   const { users } = useTaskData();
   const { busy, bulkMoveToStatus, bulkAssign, bulkDelete } = useBulkTaskActions();
   const [panel, setPanel] = useState<"move" | "assign" | null>(null);
   const count = selectedIds.size;
 
-  if (count <= 0) return null;
+  if (count <= 0 || !canEdit) return null;
 
   const closePanel = () => setPanel(null);
 
@@ -92,14 +100,16 @@ export function BulkActionBar(): React.JSX.Element | null {
           </label>
         ) : null}
 
-        <button
-          type="button"
-          className={`${actionBtn} !border-red-300 !text-red-800 hover:!border-red-500 hover:!bg-red-50 dark:!text-red-200`}
-          disabled={busy}
-          onClick={() => void bulkDelete()}
-        >
-          Delete
-        </button>
+        {canDelete ? (
+          <button
+            type="button"
+            className={`${actionBtn} !border-red-300 !text-red-800 hover:!border-red-500 hover:!bg-red-50 dark:!text-red-200`}
+            disabled={busy}
+            onClick={() => void bulkDelete()}
+          >
+            Delete
+          </button>
+        ) : null}
 
         <button
           type="button"

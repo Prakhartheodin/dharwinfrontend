@@ -17,8 +17,6 @@ import {
   getTaskId,
   listTasks,
 } from "@/shared/lib/api/tasks";
-import { listProjects } from "@/shared/lib/api/projects";
-import { listUsers } from "@/shared/lib/api/users";
 import {
   PM_DATA_MUTATED_EVENT,
   usePmRefetchOnFocus,
@@ -29,6 +27,7 @@ import {
   STATUS_COLUMNS,
   TASK_LIMIT,
 } from "../lib/constants";
+import { fetchBoardMetadata, type ProjectRow, type UserRow } from "../lib/fetch-board-metadata";
 import { getErrorMessage } from "../lib/errors";
 import { isEqual, parsePage, serializePage } from "../lib/url-state";
 import type {
@@ -39,8 +38,7 @@ import type {
 import { useTaskFilters } from "./TaskFiltersProvider";
 import { trackTaskBoard } from "../lib/telemetry";
 
-export type ProjectRow = { id: string; name: string };
-export type UserRow = { id: string; name: string; email: string };
+export type { ProjectRow, UserRow };
 
 type TaskDataState = {
   tasks: TaskViewModel[];
@@ -369,7 +367,7 @@ export function TaskDataProvider({
     setIsFetchingPage(true);
     setError(null);
     try {
-      const [taskRes, projRes, userRes] = await Promise.all([
+      const [taskRes, metadata] = await Promise.all([
         listTasks({
           page,
           limit: PAGE_LIMIT,
@@ -379,8 +377,7 @@ export function TaskDataProvider({
           ...(sprintIdParam && { sprintId: sprintIdParam }),
           ...(filters.assignedToMe && { assignedToMe: true }),
         }),
-        listProjects({ limit: TASK_LIMIT }),
-        listUsers({ limit: TASK_LIMIT }),
+        fetchBoardMetadata(TASK_LIMIT),
       ]);
       const totalPages = taskRes.totalPages ?? 0;
       const totalResults = taskRes.totalResults ?? 0;
@@ -402,15 +399,8 @@ export function TaskDataProvider({
       dispatch({
         type: "SET_PROJECTS_USERS",
         payload: {
-          projects: (projRes.results ?? []).map((p) => ({
-            id: (p as { id?: string }).id ?? p._id,
-            name: p.name ?? "",
-          })),
-          users: (userRes.results ?? []).map((u) => ({
-            id: u.id ?? u._id ?? "",
-            name: u.name ?? "",
-            email: u.email ?? "",
-          })),
+          projects: metadata.projects,
+          users: metadata.users,
         },
       });
     } catch (e) {

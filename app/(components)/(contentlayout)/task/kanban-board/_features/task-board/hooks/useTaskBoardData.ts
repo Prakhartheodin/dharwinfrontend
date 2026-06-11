@@ -7,18 +7,16 @@ import {
   listTasks,
   updateTaskStatus,
 } from "@/shared/lib/api/tasks";
-import { listProjects } from "@/shared/lib/api/projects";
-import { listUsers } from "@/shared/lib/api/users";
 import {
   PM_DATA_MUTATED_EVENT,
   usePmRefetchOnFocus,
 } from "@/shared/hooks/usePmRefetchOnFocus";
 import { getErrorMessage } from "../lib/errors";
 import { TASK_LIMIT } from "../lib/constants";
+import { fetchBoardMetadata, type ProjectRow, type UserRow } from "../lib/fetch-board-metadata";
 import type { TaskFilters } from "../types";
 
-export type ProjectRow = { id: string; name: string };
-export type UserRow = { id: string; name: string; email: string };
+export type { ProjectRow, UserRow };
 
 export function useTaskBoardData(filters: TaskFilters) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -46,7 +44,7 @@ export function useTaskBoardData(filters: TaskFilters) {
     setLoading(true);
     setError(null);
     try {
-      const [taskRes, projRes, userRes] = await Promise.all([
+      const [taskRes, metadata] = await Promise.all([
         listTasks({
           limit: TASK_LIMIT,
           ...(filters.q.trim() && { search: filters.q.trim() }),
@@ -55,23 +53,11 @@ export function useTaskBoardData(filters: TaskFilters) {
           ...(sprintIdParam && { sprintId: sprintIdParam }),
           ...(filters.assignedToMe && { assignedToMe: true }),
         }),
-        listProjects({ limit: 200 }),
-        listUsers({ limit: 200 }),
+        fetchBoardMetadata(TASK_LIMIT),
       ]);
       setTasks(taskRes.results ?? []);
-      setProjects(
-        (projRes.results ?? []).map((p) => ({
-          id: (p as { id?: string }).id ?? p._id,
-          name: p.name ?? "",
-        }))
-      );
-      setUsers(
-        (userRes.results ?? []).map((u) => ({
-          id: u.id ?? u._id ?? "",
-          name: u.name ?? "",
-          email: u.email ?? "",
-        }))
-      );
+      setProjects(metadata.projects);
+      setUsers(metadata.users);
     } catch (e) {
       setError(getErrorMessage(e));
       setTasks([]);

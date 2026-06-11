@@ -25,6 +25,8 @@ import {
   type Task,
   type TaskStatus,
 } from "@/shared/lib/api/tasks";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { projectCanEdit } from "@/shared/lib/project-capabilities";
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
   Inprogress: "In Progress",
@@ -441,6 +443,8 @@ function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
 }
 
 const Projectoverview = (): JSX.Element => {
+  const auth = useAuth();
+  const canEditProject = projectCanEdit(auth);
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
 
@@ -628,14 +632,16 @@ const Projectoverview = (): JSX.Element => {
             <div className="box custom-box">
               <div className="box-header justify-between flex">
                 <div className="box-title">Project Details</div>
-                <div>
-                  <Link
-                    href={`/apps/projects/edit/${encodeURIComponent(id)}`}
-                    className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-secondary-full btn-wave"
-                  >
-                    <i className="ri-edit-line align-middle me-1 font-semibold"></i>Edit Project
-                  </Link>
-                </div>
+                {canEditProject ? (
+                  <div>
+                    <Link
+                      href={`/apps/projects/edit/${encodeURIComponent(id)}`}
+                      className="ti-btn !py-1 !px-2 !text-[0.75rem] ti-btn-secondary-full btn-wave"
+                    >
+                      <i className="ri-edit-line align-middle me-1 font-semibold"></i>Edit Project
+                    </Link>
+                  </div>
+                ) : null}
               </div>
               <div className="box-body">
                 <h5 className="font-semibold mb-4 task-title">{project.name}</h5>

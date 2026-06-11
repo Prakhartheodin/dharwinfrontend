@@ -11,6 +11,8 @@ import {
   type ProjectStatus,
   type ProjectPriority,
 } from "@/shared/lib/api/projects";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { projectCanEdit } from "@/shared/lib/project-capabilities";
 
 const PAGE_SIZE = 12;
 
@@ -71,6 +73,8 @@ function progressPct(p: Project): number {
 }
 
 export default function MyProjectsPage(): JSX.Element {
+  const auth = useAuth();
+  const canEditProject = projectCanEdit(auth);
   const [projects, setProjects] = useState<Project[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -335,7 +339,7 @@ export default function MyProjectsPage(): JSX.Element {
                       </p>
                     </div>
 
-                    {id && (
+                    {id && canEditProject && (
                       <div className="relative">
                         <button
                           type="button"

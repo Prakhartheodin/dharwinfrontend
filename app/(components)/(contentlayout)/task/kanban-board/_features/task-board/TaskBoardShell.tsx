@@ -2,10 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { hasPermission } from "@/shared/lib/permissions";
-import { getTaskId } from "@/shared/lib/api/tasks";
+import { deleteTask, getTaskId } from "@/shared/lib/api/tasks";
 import type { TaskStatus } from "@/shared/lib/api/tasks";
 import { compilePredicate } from "./lib/filter-predicates";
+import { getTaskBoardCapabilities } from "./lib/task-board-capabilities";
+import { toast } from "./lib/toast";
 import { trackTaskBoard } from "./lib/telemetry";
 import { useTaskFilters } from "./hooks/useTaskFilters";
 import { useTaskUI } from "./hooks/useTaskUI";
@@ -20,8 +21,8 @@ import { TaskDrawer } from "./components/TaskDrawer";
 export function TaskBoardShell(): React.JSX.Element {
   const auth = useAuth();
   const userId = auth?.user?.id ?? "anon";
-  const canCreateTask = hasPermission(auth, "create_task");
-  const canEditTask = hasPermission(auth, "update_task");
+  const { canCreate: canCreateTask, canEdit: canEditTask, canDelete: canDeleteTask } =
+    getTaskBoardCapabilities(auth);
   const viewed = useRef(false);
 
   const { filters } = useTaskFilters();
@@ -97,6 +98,26 @@ export function TaskBoardShell(): React.JSX.Element {
     [canEditTask, openDrawer]
   );
 
+  const handleDeleteTask = useCallback(
+    async (taskId: string) => {
+      if (!canDeleteTask || !taskId) return;
+      const r = await toast.confirm("Delete this task permanently?", {
+        title: "Delete task?",
+      });
+      if (!r.isConfirmed) return;
+      try {
+        await deleteTask(taskId);
+        if (drawerTaskId === taskId) closeDrawer();
+        trackTaskBoard("taskboard.task_deleted", { taskId });
+        await refetch();
+        toast.success("Task deleted.");
+      } catch {
+        toast.error("Could not delete task.");
+      }
+    },
+    [canDeleteTask, closeDrawer, drawerTaskId, refetch]
+  );
+
   const createButton = canCreateTask ? (
     <button
       type="button"
@@ -116,14 +137,22 @@ export function TaskBoardShell(): React.JSX.Element {
         taskCount={visibleCount}
         extraActions={createButton}
       />
-      <BulkActionBar />
+      <BulkActionBar canEdit={canEditTask} canDelete={canDeleteTask} />
       {viewMode === "list" ? (
-        <TaskListView onOpenTask={handleOpenTask} />
+        <TaskListView
+          canEdit={canEditTask}
+          canDelete={canDeleteTask}
+          onOpenTask={canEditTask ? handleOpenTask : undefined}
+          onDeleteTask={canDeleteTask ? handleDeleteTask : undefined}
+        />
       ) : (
         <TaskBoard
           canCreate={canCreateTask}
+          canEdit={canEditTask}
+          canDelete={canDeleteTask}
           onQuickAdd={handleQuickAdd}
-          onOpenTask={handleOpenTask}
+          onOpenTask={canEditTask ? handleOpenTask : undefined}
+          onDeleteTask={canDeleteTask ? handleDeleteTask : undefined}
         />
       )}
       <TaskDrawer
@@ -133,6 +162,12 @@ export function TaskBoardShell(): React.JSX.Element {
         createStatus={drawerCreateStatus}
         projects={projects}
         users={users}
+        canDelete={canDeleteTask}
+        onDelete={
+          drawerMode === "edit" && drawerTask && canDeleteTask
+            ? () => void handleDeleteTask(getTaskId(drawerTask))
+            : undefined
+        }
         onClose={closeDrawer}
         onSaved={() => void refetch()}
       />

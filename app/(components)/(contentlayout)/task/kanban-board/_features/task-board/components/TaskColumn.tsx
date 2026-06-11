@@ -17,8 +17,11 @@ export interface TaskColumnProps {
   tasks: Task[];
   isDragging?: boolean;
   canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onQuickAdd?: (status: TaskStatus) => void;
   onOpenTask?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
   selectedIds?: string[];
   onToggleSelect?: (taskId: string) => void;
   emptyTitle?: string;
@@ -31,8 +34,11 @@ export function TaskColumn({
   tasks,
   isDragging,
   canCreate,
+  canEdit,
+  canDelete,
   onQuickAdd,
   onOpenTask,
+  onDeleteTask,
   selectedIds = [],
   onToggleSelect,
   emptyTitle,
@@ -142,7 +148,10 @@ export function TaskColumn({
                     <SortableCardRow
                       task={task}
                       selected={selectedSet.has(tid)}
+                      canEdit={canEdit}
+                      canDelete={canDelete}
                       onOpen={onOpenTask}
+                      onDelete={onDeleteTask}
                       onToggleSelect={onToggleSelect}
                     />
                   </div>
@@ -157,7 +166,10 @@ export function TaskColumn({
                   key={tid}
                   task={task}
                   selected={selectedSet.has(tid)}
+                  canEdit={canEdit}
+                  canDelete={canDelete}
                   onOpen={onOpenTask}
+                  onDelete={onDeleteTask}
                   onToggleSelect={onToggleSelect}
                 />
               );

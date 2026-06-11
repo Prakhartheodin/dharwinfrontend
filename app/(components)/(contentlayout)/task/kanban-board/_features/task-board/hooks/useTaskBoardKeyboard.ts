@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useTaskUI } from "./useTaskUI";
-import { hasPermission } from "@/shared/lib/permissions";
+import { getTaskBoardCapabilities } from "../lib/task-board-capabilities";
 import { useAuth } from "@/shared/contexts/auth-context";
 import type { TaskStatus } from "@/shared/lib/api/tasks";
 
@@ -13,7 +13,7 @@ export interface UseTaskBoardKeyboardOptions {
 export function useTaskBoardKeyboard(opts: UseTaskBoardKeyboardOptions = {}): void {
   const { openDrawer, drawerMode, closeDrawer } = useTaskUI();
   const auth = useAuth();
-  const canCreate = opts.canCreate ?? hasPermission(auth, "create_task");
+  const canCreate = opts.canCreate ?? getTaskBoardCapabilities(auth).canCreate;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

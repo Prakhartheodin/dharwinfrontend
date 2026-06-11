@@ -2,11 +2,11 @@
 
 import {
   LiveKitRoom,
-  VideoConference,
   RoomAudioRenderer,
   useRoomContext,
   useParticipants,
 } from "@livekit/components-react";
+import { StableVideoConference } from "@/shared/components/livekit/stable-video-conference";
 import { createPortal } from "react-dom";
 import "@livekit/components-styles";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
@@ -667,7 +667,7 @@ function RoomContent({
           </div>
         </div>
 
-        <VideoConference />
+        <StableVideoConference />
         <RoomAudioRenderer />
         {recordingSlot && !isChatCall &&
           createPortal(

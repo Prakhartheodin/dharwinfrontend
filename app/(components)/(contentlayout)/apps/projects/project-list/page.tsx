@@ -7,7 +7,11 @@ import Link from "next/link";
 import Swal from "sweetalert2";
 import { usePmRefetchOnFocus, emitPmDataMutated } from "@/shared/hooks/usePmRefetchOnFocus";
 import { isPmAssistantUiEnabled } from "@/shared/lib/pm/featureFlags";
-import { hasPermission } from "@/shared/lib/permissions";
+import {
+  projectCanCreate,
+  projectCanDelete,
+  projectCanEdit,
+} from "@/shared/lib/project-capabilities";
 import { AiTaskBreakdownModal } from "@/shared/components/pm/AiTaskBreakdownModal";
 import { runAssignmentGenerationWithUi } from "@/shared/lib/pm/runAssignmentGenerationWithUi";
 import {
@@ -305,9 +309,9 @@ const Projectlist = (): JSX.Element => {
   const searchParams = useSearchParams();
   const auth = useAuth();
   const { roleNames, isAdministrator, permissionsLoaded } = auth;
-  const canCreateProject = hasPermission(auth, "create_project");
-  const canEditProject = hasPermission(auth, "update_project");
-  const canDeleteProject = hasPermission(auth, "delete_project");
+  const canCreateProject = projectCanCreate(auth);
+  const canEditProject = projectCanEdit(auth);
+  const canDeleteProject = projectCanDelete(auth);
   const canUseProjectAi = canCreateProject && canEditProject;
   const isCandidateSpecialistListViewer =
     permissionsLoaded &&
@@ -730,7 +734,7 @@ const Projectlist = (): JSX.Element => {
                       </p>
                     </div>
 
-                    {id && (
+                    {id && canEditProject && (
                       <div className="relative">
                         <button
                           type="button"

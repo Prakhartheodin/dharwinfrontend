@@ -15,7 +15,10 @@ import { PaginationBar } from "./PaginationBar";
 import styles from "../../../kanban-board.module.css";
 
 export interface TaskListViewProps {
+  canEdit?: boolean;
+  canDelete?: boolean;
   onOpenTask?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 /**
@@ -26,7 +29,10 @@ export interface TaskListViewProps {
  * order as the kanban columns.
  */
 export function TaskListView({
+  canEdit = false,
+  canDelete,
   onOpenTask,
+  onDeleteTask,
 }: TaskListViewProps): React.JSX.Element {
   const { filters } = useTaskFilters();
   const { density } = useTaskUI();
@@ -104,8 +110,11 @@ export function TaskListView({
                     <TaskCard
                       task={task}
                       selected={isSelected(id)}
-                      onToggleSelect={toggle}
+                      readOnly={!canEdit}
+                      canDelete={canDelete}
+                      onToggleSelect={canEdit ? toggle : undefined}
                       onOpen={onOpenTask}
+                      onDelete={onDeleteTask}
                     />
                   </li>
                 );

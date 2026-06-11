@@ -25,11 +25,11 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
 
   // Tasks
   view_tasks: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["view", "create", "edit", "delete"] },
-  create_task: { prefixes: ["project.tasks"], anyOf: ["create"] },
-  update_task: { prefixes: ["project.tasks"], anyOf: ["edit"] },
-  delete_task: { prefixes: ["project.tasks"], anyOf: ["delete"] },
-  assign_task: { prefixes: ["project.tasks"], anyOf: ["create", "edit"] },
-  comment_on_task: { prefixes: ["project.tasks"], anyOf: ["view", "create", "edit", "delete"] },
+  create_task: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["create"] },
+  update_task: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["edit"] },
+  delete_task: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["delete"] },
+  assign_task: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["create", "edit"] },
+  comment_on_task: { prefixes: ["project.tasks", "project.kanban"], anyOf: ["view", "create", "edit", "delete"] },
 
   // Teams
   view_teams: { prefixes: ["project.teams"], anyOf: ["view", "create", "edit", "delete"] },

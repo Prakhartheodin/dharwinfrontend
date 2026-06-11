@@ -31,15 +31,21 @@ import styles from "../../../kanban-board.module.css";
 
 export interface TaskBoardProps {
   canCreate?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
   onQuickAdd?: (status: TaskStatus) => void;
   onOpenTask?: (taskId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
   onTelemetry?: (event: "drag_start" | "drag_end", detail: Record<string, unknown>) => void;
 }
 
 export function TaskBoard({
   canCreate,
+  canEdit = false,
+  canDelete,
   onQuickAdd,
   onOpenTask,
+  onDeleteTask,
   onTelemetry,
 }: TaskBoardProps): React.JSX.Element {
   const { filters } = useTaskFilters();
@@ -115,6 +121,7 @@ export function TaskBoard({
 
   const onDragEnd = useCallback(
     async (event: DragEndEvent) => {
+      if (!canEdit) return;
       const { active, over } = event;
       lastOverIdRef.current = null;
 
@@ -202,7 +209,7 @@ export function TaskBoard({
         clearSelection();
       }
     },
-    [moveTask, mutate, refetch, taskMap, telemetry, visibleTasks, selectedIds, clearSelection]
+    [canEdit, moveTask, mutate, refetch, taskMap, telemetry, visibleTasks, selectedIds, clearSelection]
   );
 
   useEffect(() => {
@@ -225,6 +232,7 @@ export function TaskBoard({
 
   const onDragStart = useCallback(
     (e: DragStartEvent) => {
+      if (!canEdit) return;
       lastOverIdRef.current = null;
       const task = taskMap.get(String(e.active.id));
       originalStatusRef.current = task?.status ?? null;
@@ -234,13 +242,14 @@ export function TaskBoard({
         performance.mark("taskboard.first_drag");
       }
     },
-    [dnd, taskMap, telemetry]
+    [canEdit, dnd, taskMap, telemetry]
   );
 
   // onDragOver: live reorder within the same column so cards animate to show the
   // insertion point. Cross-column moves are handled only in onDragEnd.
   const onDragOver = useCallback(
     (event: DragOverEvent) => {
+      if (!canEdit) return;
       const { active, over } = event;
       if (!over) return;
 
@@ -265,7 +274,7 @@ export function TaskBoard({
         mutate.reorderInColumn(taskId, overId);
       }
     },
-    [mutate, taskMap, visibleTasks]
+    [canEdit, mutate, taskMap, visibleTasks]
   );
 
   const titleOf = useCallback(
@@ -339,12 +348,12 @@ export function TaskBoard({
 
       <DndContext
         accessibility={{ announcements: dragAnnouncements }}
-        sensors={dnd.sensors}
+        sensors={canEdit ? dnd.sensors : []}
         collisionDetection={dnd.collisionDetection}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
-        onDragEnd={dnd.onDragEnd}
-        onDragCancel={dnd.onDragCancel}
+        onDragEnd={canEdit ? dnd.onDragEnd : () => {}}
+        onDragCancel={canEdit ? dnd.onDragCancel : () => {}}
       >
         <div className="grid gap-3 px-2 pb-6 pt-2 md:grid-cols-2 xl:grid-cols-5">
           {STATUS_COLUMNS.map((col) => (
@@ -353,12 +362,15 @@ export function TaskBoard({
               status={col.status}
               label={col.label}
               tasks={tasksByStatus[col.status] ?? []}
-              isDragging={!!dnd.activeId}
+              isDragging={canEdit && !!dnd.activeId}
               canCreate={canCreate}
+              canEdit={canEdit}
+              canDelete={canDelete}
               onQuickAdd={onQuickAdd}
               onOpenTask={onOpenTask}
-              selectedIds={[...selectedIds]}
-              onToggleSelect={toggle}
+              onDeleteTask={onDeleteTask}
+              selectedIds={canEdit ? [...selectedIds] : []}
+              onToggleSelect={canEdit ? toggle : undefined}
             />
           ))}
         </div>

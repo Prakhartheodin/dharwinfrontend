@@ -168,16 +168,28 @@ export function StableVideoConference() {
   // Debounced active speaker so the main tile doesn't flicker between people.
   const [activeIdentity, setActiveIdentity] = useState<string | null>(null);
 
+  // Hide bots from the grid. Dispatched agents (the meeting-summary / assistant
+  // agents) join the room as audio-only participants with kind=AGENT. useTracks'
+  // `withPlaceholder` mints a camera placeholder for every participant that has
+  // no camera track — including the agent — so without this filter the agent
+  // surfaces as an empty tile the moment recording starts. `participant.isAgent`
+  // reflects LiveKit's server-assigned AGENT kind.
   const screenShareTracks = useMemo(
     () =>
       tracks.filter(
-        (t) => t.source === Track.Source.ScreenShare && isTrackReference(t)
+        (t) =>
+          t.source === Track.Source.ScreenShare &&
+          isTrackReference(t) &&
+          !t.participant.isAgent
       ),
     [tracks]
   );
 
   const cameraTracks = useMemo(
-    () => tracks.filter((t) => t.source === Track.Source.Camera),
+    () =>
+      tracks.filter(
+        (t) => t.source === Track.Source.Camera && !t.participant.isAgent
+      ),
     [tracks]
   );
 
