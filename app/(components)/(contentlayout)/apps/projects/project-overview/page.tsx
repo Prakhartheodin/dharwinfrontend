@@ -129,6 +129,17 @@ const DateTrigger = React.forwardRef<
 });
 DateTrigger.displayName = "DateTrigger";
 
+/** Read-only display without edit affordances (view-only permission). */
+function ReadOnlyValue({ display, muted = false }: { display: string; muted?: boolean }): JSX.Element {
+  return (
+    <span
+      className={`text-[.875rem] font-semibold ${muted ? "text-[#8c9097] dark:text-white/50" : ""}`}
+    >
+      {display}
+    </span>
+  );
+}
+
 /** Read-only locked display for a footer field that is set-once from this page. */
 function LockedValue({ display }: { display: string }): JSX.Element {
   return (
@@ -150,6 +161,7 @@ function InlineDate({
   variant = "muted",
   overdue = false,
   locked = false,
+  readOnly = false,
   minDate,
   maxDate,
 }: {
@@ -159,12 +171,22 @@ function InlineDate({
   variant?: "muted" | "value";
   overdue?: boolean;
   locked?: boolean;
+  readOnly?: boolean;
   minDate?: Date;
   maxDate?: Date;
 }): JSX.Element {
   const [saving, setSaving] = useState(false);
   const parsed = value ? new Date(value) : null;
   const valid = parsed != null && !isNaN(parsed.getTime());
+
+  if (readOnly) {
+    return (
+      <ReadOnlyValue
+        display={valid ? fmtDate(value ?? undefined) : "—"}
+        muted={!valid}
+      />
+    );
+  }
 
   if (locked) return <LockedValue display={valid ? fmtDate(value ?? undefined) : "—"} />;
 
@@ -224,16 +246,27 @@ function InlineText({
   placeholder,
   onSave,
   locked = false,
+  readOnly = false,
 }: {
   value: string | undefined;
   placeholder: string;
   onSave: (next: string) => Promise<void>;
   locked?: boolean;
+  readOnly?: boolean;
 }): JSX.Element {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const cancelRef = React.useRef(false);
+
+  if (readOnly) {
+    return (
+      <ReadOnlyValue
+        display={value?.trim() || "—"}
+        muted={!value?.trim()}
+      />
+    );
+  }
 
   if (locked) return <LockedValue display={value?.trim() || "—"} />;
 
@@ -311,9 +344,11 @@ function InlineText({
 function DueDateCell({
   task,
   onSaved,
+  readOnly = false,
 }: {
   task: Task;
   onSaved: (taskId: string, dueDate: string | null) => void;
+  readOnly?: boolean;
 }): JSX.Element {
   const parsed = task.dueDate ? new Date(task.dueDate) : null;
   const valid = parsed != null && !isNaN(parsed.getTime());
@@ -339,7 +374,15 @@ function DueDateCell({
     }
   };
 
-  return <InlineDate value={task.dueDate} onSave={save} placeholder="Set due date" overdue={overdue} />;
+  return (
+    <InlineDate
+      value={task.dueDate}
+      onSave={save}
+      placeholder="Set due date"
+      overdue={overdue}
+      readOnly={readOnly}
+    />
+  );
 }
 
 /** Stacked assignee avatars. Clicking a bubble opens an overview card for that assignee. */
@@ -706,6 +749,7 @@ const Projectoverview = (): JSX.Element => {
                     <InlineText
                       value={project.projectManager}
                       placeholder="Set project manager"
+                      readOnly={!canEditProject}
                       locked={!!project.projectManager?.trim()}
                       onSave={(next) => handleProjectPatch({ projectManager: next })}
                     />
@@ -717,6 +761,7 @@ const Projectoverview = (): JSX.Element => {
                     <InlineText
                       value={project.clientStakeholder}
                       placeholder="Set client / stakeholder"
+                      readOnly={!canEditProject}
                       locked={!!project.clientStakeholder?.trim()}
                       onSave={(next) => handleProjectPatch({ clientStakeholder: next })}
                     />
@@ -729,6 +774,7 @@ const Projectoverview = (): JSX.Element => {
                       value={project.startDate}
                       variant="value"
                       placeholder="Set start date"
+                      readOnly={!canEditProject}
                       locked={!!project.startDate}
                       maxDate={project.endDate ? new Date(project.endDate) : undefined}
                       onSave={(iso) => handleProjectPatch({ startDate: iso })}
@@ -742,6 +788,7 @@ const Projectoverview = (): JSX.Element => {
                       value={project.endDate}
                       variant="value"
                       placeholder="Set end date"
+                      readOnly={!canEditProject}
                       locked={!!project.endDate}
                       minDate={project.startDate ? new Date(project.startDate) : undefined}
                       onSave={(iso) => handleProjectPatch({ endDate: iso })}
@@ -858,7 +905,11 @@ const Projectoverview = (): JSX.Element => {
                               <AssigneeBubbles users={t.assignedTo ?? []} />
                             </td>
                             <td>
-                              <DueDateCell task={t} onSaved={handleDueDateSaved} />
+                              <DueDateCell
+                                task={t}
+                                readOnly={!canEditProject}
+                                onSaved={handleDueDateSaved}
+                              />
                             </td>
                           </tr>
                         ))}
