@@ -26,6 +26,199 @@ const CHART_COLORS = [
   "#8b5cf6",
 ];
 
+const PM_SECTION_GAP = "mt-5";
+const PM_TWIN_PANEL_CLASS =
+  "box custom-box flex h-full w-full flex-col rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10";
+const PM_CHART_PANEL_CLASS =
+  "box custom-box flex h-full w-full flex-col rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10";
+const PM_TWIN_BODY_CLASS = "box-body !p-0";
+const PM_CHART_BODY_CLASS = "box-body px-4 pb-4 pt-2";
+const PM_CHART_CONTENT_CLASS = "flex min-h-[280px] flex-col";
+const PM_TABLE_CONTENT_CLASS = "px-4 pb-4 pt-3";
+const PM_TABLE_SURFACE_CLASS =
+  "overflow-hidden rounded-lg border border-defaultborder/70 bg-white dark:border-white/10 dark:bg-bodybg";
+
+const TASK_CHART_LABELS: Record<TaskStatus, string> = {
+  new: "New",
+  todo: "To do",
+  on_going: "On going",
+  in_review: "In review",
+  completed: "Completed",
+};
+
+function buildDonutChartOptions({
+  labels,
+  colors,
+  centerTotal,
+  centerLabel,
+}: {
+  labels: string[];
+  colors: string[];
+  centerTotal: number;
+  centerLabel: string;
+}) {
+  return {
+    chart: {
+      type: "donut" as const,
+      fontFamily: "inherit",
+      toolbar: { show: false },
+      animations: { enabled: true, speed: 280, animateGradually: { enabled: true, delay: 80 } },
+    },
+    labels,
+    colors,
+    legend: {
+      position: "bottom" as const,
+      horizontalAlign: "center" as const,
+      fontSize: "12px",
+      fontWeight: 500,
+      markers: { size: 6, strokeWidth: 0, offsetX: -2 },
+      itemMargin: { horizontal: 10, vertical: 6 },
+      formatter: (seriesName: string) => seriesName,
+    },
+    dataLabels: {
+      enabled: true,
+      formatter: (val: number) => (val >= 4 ? `${Math.round(val)}%` : ""),
+      dropShadow: { enabled: false },
+      style: { fontSize: "11px", fontWeight: 600 },
+    },
+    stroke: { width: 3, colors: ["var(--custom-white)"] },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: "68%",
+          labels: {
+            show: true,
+            name: {
+              show: true,
+              fontSize: "11px",
+              fontWeight: 500,
+              offsetY: -6,
+              color: "#64748b",
+            },
+            value: {
+              show: true,
+              fontSize: "22px",
+              fontWeight: 700,
+              offsetY: 4,
+              formatter: (val: string) => val,
+            },
+            total: {
+              show: true,
+              showAlways: true,
+              label: centerLabel,
+              fontSize: "11px",
+              fontWeight: 500,
+              color: "#64748b",
+              formatter: () => String(centerTotal),
+            },
+          },
+        },
+      },
+    },
+    tooltip: {
+      y: {
+        formatter: (val: number) => `${val} item${val === 1 ? "" : "s"}`,
+      },
+    },
+    states: {
+      hover: { filter: { type: "lighten" as const, value: 0.06 } },
+      active: { filter: { type: "none" as const } },
+    },
+    responsive: [
+      {
+        breakpoint: 480,
+        options: {
+          chart: { height: 260 },
+          legend: { fontSize: "11px", itemMargin: { horizontal: 6, vertical: 4 } },
+        },
+      },
+    ],
+  };
+}
+
+function DonutStatusChart({
+  labels,
+  series,
+  colors,
+  centerTotal,
+  centerLabel,
+  emptyMessage,
+  ariaLabel,
+}: {
+  labels: string[];
+  series: number[];
+  colors: string[];
+  centerTotal: number;
+  centerLabel: string;
+  emptyMessage: string;
+  ariaLabel: string;
+}) {
+  const options = useMemo(
+    () => buildDonutChartOptions({ labels, colors, centerTotal, centerLabel }),
+    [labels, colors, centerTotal, centerLabel]
+  );
+
+  if (centerTotal === 0) {
+    return (
+      <div className="flex h-full min-h-[14rem] flex-1 items-center justify-center px-4 text-center text-[0.8125rem] text-defaulttextcolor/55">
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex h-full min-h-[280px] w-full flex-1 flex-col items-center justify-center"
+      role="img"
+      aria-label={ariaLabel}
+    >
+      <ReactApexChart type="donut" height={280} width="100%" options={options} series={series} />
+    </div>
+  );
+}
+
+function PmCompactTable({
+  columns,
+  children,
+  emptyMessage,
+  isEmpty,
+}: {
+  columns: string[];
+  children: React.ReactNode;
+  emptyMessage: string;
+  isEmpty: boolean;
+}) {
+  if (isEmpty) {
+    return (
+      <div className="py-10 text-center text-[0.8125rem] text-defaulttextcolor/55">
+        {emptyMessage}
+      </div>
+    );
+  }
+
+  return (
+    <div className={PM_TABLE_SURFACE_CLASS}>
+      <div className="table-responsive max-h-[20rem] overflow-x-auto overflow-y-auto overscroll-contain [scrollbar-width:thin] [scrollbar-color:rgb(203_213_225)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300/80 dark:[scrollbar-color:rgb(100_116_139)_transparent] dark:[&::-webkit-scrollbar-thumb]:bg-slate-600/80">
+        <table className="mb-0 min-w-full">
+          <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-bodybg/95">
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={col}
+                  className="border-b border-defaultborder/70 px-3 py-2.5 text-start text-[0.6875rem] font-semibold uppercase tracking-[0.04em] text-defaulttextcolor/50 dark:border-white/10"
+                >
+                  {col}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-defaultborder/50 dark:divide-white/10">{children}</tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 const csvSafe = (v: string | number | null | undefined): string => {
   const raw = String(v ?? "");
   return `"${raw.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
@@ -148,7 +341,7 @@ const AnalyticsPage = () => {
     ];
     const counts = statuses.map((s) => ({
       status: s,
-      label: TASK_STATUS_LABELS[s],
+      label: TASK_CHART_LABELS[s],
       count: tasks.filter((t) => t.status === s).length,
     }));
     return counts;
@@ -164,43 +357,12 @@ const AnalyticsPage = () => {
     return counts;
   }, [projects]);
 
-  const tasksChartOptions = useMemo(
-    () => ({
-      chart: { type: "donut" as const },
-      labels: tasksByStatus.map((s) => s.label),
-      colors: CHART_COLORS,
-      legend: { position: "bottom" },
-      dataLabels: { enabled: true },
-      plotOptions: {
-        pie: {
-          donut: { size: "65%" },
-        },
-      },
-    }),
-    [tasksByStatus]
-  );
-
-  const tasksChartSeries = useMemo(
-    () => tasksByStatus.map((s) => s.count),
-    [tasksByStatus]
-  );
-
-  const projectsChartOptions = useMemo(
-    () => ({
-      chart: { type: "donut" as const },
-      labels: projectsByStatus.map((s) => s.label),
-      colors: CHART_COLORS,
-      legend: { position: "bottom" },
-      dataLabels: { enabled: true },
-      plotOptions: {
-        pie: {
-          donut: { size: "65%" },
-        },
-      },
-    }),
+  const tasksChartLabels = useMemo(() => tasksByStatus.map((s) => s.label), [tasksByStatus]);
+  const tasksChartSeries = useMemo(() => tasksByStatus.map((s) => s.count), [tasksByStatus]);
+  const projectsChartLabels = useMemo(
+    () => projectsByStatus.map((s) => s.label),
     [projectsByStatus]
   );
-
   const projectsChartSeries = useMemo(
     () => projectsByStatus.map((s) => s.count),
     [projectsByStatus]
@@ -232,6 +394,7 @@ const AnalyticsPage = () => {
     return (
       <Fragment>
         <Seo title="Analytics" />
+        <div className="pb-10 sm:pb-12">
         <div className="mt-5 mb-6 sm:mt-6">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -273,6 +436,7 @@ const AnalyticsPage = () => {
             </div>
           </div>
         </div>
+        </div>
       </Fragment>
     );
   }
@@ -280,6 +444,7 @@ const AnalyticsPage = () => {
   return (
     <Fragment>
       <Seo title="Analytics" />
+      <div className="pb-10 sm:pb-12">
       <div className="mt-5 mb-6 sm:mt-6">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b border-slate-200 pb-4 dark:border-white/10">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -398,52 +563,56 @@ const AnalyticsPage = () => {
         />
       </div>
 
-      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
-        <div className="xl:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
-              <h5 className="box-title">Tasks by status</h5>
+      <div className={`${PM_SECTION_GAP} grid grid-cols-12 items-stretch gap-x-3 gap-y-4`}>
+        <div className="col-span-12 xl:col-span-6">
+          <div className={PM_CHART_PANEL_CLASS}>
+            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+              <h5 className="box-title mb-0">Tasks by status</h5>
+              <span className="text-[0.6875rem] font-medium tabular-nums text-defaulttextcolor/45">
+                {kpis.totalTasks} total
+              </span>
             </div>
-            <div className="box-body">
-              {tasks.length === 0 ? (
-                <p className="text-[#8c9097] dark:text-white/50 text-center py-8">
-                  No tasks yet.
-                </p>
-              ) : (
-                <ReactApexChart
-                  type="donut"
-                  height={320}
-                  options={tasksChartOptions}
+            <div className={PM_CHART_BODY_CLASS}>
+              <div className={PM_CHART_CONTENT_CLASS}>
+                <DonutStatusChart
+                  labels={tasksChartLabels}
                   series={tasksChartSeries}
+                  colors={CHART_COLORS}
+                  centerTotal={kpis.totalTasks}
+                  centerLabel="Tasks"
+                  emptyMessage="No tasks yet."
+                  ariaLabel={`Tasks by status. ${kpis.totalTasks} tasks total.`}
                 />
-              )}
+              </div>
             </div>
           </div>
         </div>
-        <div className="xl:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
-              <h5 className="box-title">Projects by status</h5>
+        <div className="col-span-12 xl:col-span-6">
+          <div className={PM_CHART_PANEL_CLASS}>
+            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+              <h5 className="box-title mb-0">Projects by status</h5>
+              <span className="text-[0.6875rem] font-medium tabular-nums text-defaulttextcolor/45">
+                {kpis.totalProjects} total
+              </span>
             </div>
-            <div className="box-body">
-              {projects.length === 0 ? (
-                <p className="text-[#8c9097] dark:text-white/50 text-center py-8">
-                  No projects yet.
-                </p>
-              ) : (
-                <ReactApexChart
-                  type="donut"
-                  height={320}
-                  options={projectsChartOptions}
+            <div className={PM_CHART_BODY_CLASS}>
+              <div className={PM_CHART_CONTENT_CLASS}>
+                <DonutStatusChart
+                  labels={projectsChartLabels}
                   series={projectsChartSeries}
+                  colors={CHART_COLORS}
+                  centerTotal={kpis.totalProjects}
+                  centerLabel="Projects"
+                  emptyMessage="No projects yet."
+                  ariaLabel={`Projects by status. ${kpis.totalProjects} projects total.`}
                 />
-              )}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
+      <div className={`${PM_SECTION_GAP} grid grid-cols-12 gap-x-3 gap-y-4`}>
         <div className="col-span-12">
           <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
             <div className="box-header !py-2.5 sm:!py-3 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
@@ -542,11 +711,11 @@ const AnalyticsPage = () => {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-12 gap-x-2 gap-y-6">
-        <div className="xl:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
-              <h5 className="box-title">Overdue tasks</h5>
+      <div className={`${PM_SECTION_GAP} mb-2 grid grid-cols-12 items-stretch gap-x-3 gap-y-4`}>
+        <div className="col-span-12 xl:col-span-6">
+          <div className={PM_TWIN_PANEL_CLASS}>
+            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+              <h5 className="box-title mb-0">Overdue tasks</h5>
               <Link
                 href="/task/kanban-board"
                 className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
@@ -554,61 +723,51 @@ const AnalyticsPage = () => {
                 View board
               </Link>
             </div>
-            <div className="box-body overflow-x-auto">
-              {overdueTasks.length === 0 ? (
-                <p className="text-[#8c9097] dark:text-white/50 text-center py-6">
-                  No overdue tasks.
-                </p>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table whitespace-nowrap mb-0">
-                    <thead>
-                      <tr>
-                        <th>Task</th>
-                        <th>Due date</th>
-                        <th>Status</th>
-                        <th>Project</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {overdueTasks.slice(0, 10).map((t) => (
-                        <tr key={getTaskId(t)}>
-                          <td>
-                            <Link
-                              href={`/task/task-details?taskId=${getTaskId(t)}`}
-                              className="text-primary hover:underline font-medium"
-                            >
-                              {t.title}
-                            </Link>
-                          </td>
-                          <td>
-                            {t.dueDate
-                              ? new Date(t.dueDate).toLocaleDateString()
-                              : "—"}
-                          </td>
-                          <td>
-                            <span className="badge bg-danger/10 text-danger">
-                              {TASK_STATUS_LABELS[t.status]}
-                            </span>
-                          </td>
-                          <td>
-                            {typeof t.projectId === "object" && t.projectId?.name
-                              ? t.projectId.name
-                              : "—"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className={PM_TWIN_BODY_CLASS}>
+              <div className={PM_TABLE_CONTENT_CLASS}>
+                <PmCompactTable
+                  columns={["Task", "Due date", "Status", "Project"]}
+                  emptyMessage="No overdue tasks."
+                  isEmpty={overdueTasks.length === 0}
+                >
+                  {overdueTasks.slice(0, 10).map((t, idx) => (
+                    <tr
+                      key={getTaskId(t)}
+                      className={idx % 2 === 1 ? "bg-slate-50/40 dark:bg-white/[0.02]" : undefined}
+                    >
+                      <td className="max-w-[12rem] px-3 py-2 align-middle">
+                        <Link
+                          href={`/task/task-details?taskId=${getTaskId(t)}`}
+                          className="block truncate font-medium text-primary hover:underline"
+                          title={t.title}
+                        >
+                          {t.title}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 align-middle text-[0.8125rem] tabular-nums text-defaulttextcolor/75">
+                        {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <span className="inline-flex rounded-full border border-danger/20 bg-danger/10 px-2 py-0.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-danger">
+                          {TASK_STATUS_LABELS[t.status]}
+                        </span>
+                      </td>
+                      <td className="max-w-[10rem] px-3 py-2 align-middle text-[0.8125rem] text-defaulttextcolor/70">
+                        <span className="block truncate" title={typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name : undefined}>
+                          {typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name : "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </PmCompactTable>
+              </div>
             </div>
           </div>
         </div>
-        <div className="xl:col-span-6 col-span-12">
-          <div className="box custom-box overflow-hidden rounded-xl border border-defaultborder/80 shadow-sm dark:border-white/10">
-            <div className="box-header border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/80 to-transparent dark:border-white/10 dark:from-white/[0.04]">
-              <h5 className="box-title">At-risk projects</h5>
+        <div className="col-span-12 xl:col-span-6">
+          <div className={PM_TWIN_PANEL_CLASS}>
+            <div className="box-header border-b border-defaultborder/60 bg-slate-50/80 dark:border-white/10 dark:bg-white/[0.03]">
+              <h5 className="box-title mb-0">At-risk projects</h5>
               <Link
                 href="/apps/projects/project-list"
                 className="ti-btn ti-btn-outline-secondary !mb-0 whitespace-nowrap !px-3 !py-1.5"
@@ -616,59 +775,51 @@ const AnalyticsPage = () => {
                 View all
               </Link>
             </div>
-            <div className="box-body overflow-x-auto">
-              {atRiskProjects.length === 0 ? (
-                <p className="text-[#8c9097] dark:text-white/50 text-center py-6">
-                  No at-risk projects.
-                </p>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table whitespace-nowrap mb-0">
-                    <thead>
-                      <tr>
-                        <th>Project</th>
-                        <th>End date</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {atRiskProjects.slice(0, 10).map((p) => (
-                        <tr key={getProjectId(p)}>
-                          <td>
-                            <Link
-                              href={`/apps/projects/edit/${getProjectId(p)}`}
-                              className="text-primary hover:underline font-medium"
-                            >
-                              {p.name}
-                            </Link>
-                          </td>
-                          <td>
-                            {p.endDate
-                              ? new Date(p.endDate).toLocaleDateString()
-                              : "—"}
-                          </td>
-                          <td>
-                            <span
-                              className={`badge ${
-                                p.status === "completed"
-                                  ? "bg-success/10 text-success"
-                                  : p.status === "On hold"
-                                    ? "bg-warning/10 text-warning"
-                                    : "bg-danger/10 text-danger"
-                              }`}
-                            >
-                              {PROJECT_STATUS_LABELS[p.status]}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+            <div className={PM_TWIN_BODY_CLASS}>
+              <div className={PM_TABLE_CONTENT_CLASS}>
+                <PmCompactTable
+                  columns={["Project", "End date", "Status"]}
+                  emptyMessage="No at-risk projects."
+                  isEmpty={atRiskProjects.length === 0}
+                >
+                  {atRiskProjects.slice(0, 10).map((p, idx) => (
+                    <tr
+                      key={getProjectId(p)}
+                      className={idx % 2 === 1 ? "bg-slate-50/40 dark:bg-white/[0.02]" : undefined}
+                    >
+                      <td className="max-w-[12rem] px-3 py-2 align-middle">
+                        <Link
+                          href={`/apps/projects/edit/${getProjectId(p)}`}
+                          className="block truncate font-medium text-primary hover:underline"
+                          title={p.name}
+                        >
+                          {p.name}
+                        </Link>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 align-middle text-[0.8125rem] tabular-nums text-defaulttextcolor/75">
+                        {p.endDate ? new Date(p.endDate).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 align-middle">
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-[0.6875rem] font-semibold ${
+                            p.status === "completed"
+                              ? "border-success/20 bg-success/10 text-success"
+                              : p.status === "On hold"
+                                ? "border-warning/20 bg-warning/10 text-warning"
+                                : "border-danger/20 bg-danger/10 text-danger"
+                          }`}
+                        >
+                          {PROJECT_STATUS_LABELS[p.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </PmCompactTable>
+              </div>
             </div>
           </div>
         </div>
+      </div>
       </div>
     </Fragment>
   );

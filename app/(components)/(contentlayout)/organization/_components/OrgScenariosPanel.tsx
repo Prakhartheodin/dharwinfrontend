@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Swal from "sweetalert2";
 import {
   applyOrgScenario,
   cloneOrgScenario,
   createOrgScenario,
+  deleteOrgScenario,
   diffOrgScenario,
   getOrgScenarioTree,
   listOrgScenarios,
@@ -14,7 +15,8 @@ import {
   type OrgScenarioDiff,
 } from "@/shared/lib/api/org-scenario";
 import type { OrgTree, OrgUnitNode } from "@/shared/lib/api/org-structure";
-import { OrgEmptyState, OrgErrorState, OrgLoadingBlock, OrgPrimaryButton } from "./org-ui";
+import { canReparentOrgUnit, type OrgUnitPlacement } from "@/shared/lib/org-tree.pure";
+import { OrgEmptyState, OrgErrorState, OrgLoadingBlock, OrgPrimaryButton, OrgSecondaryButton } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 
 function flattenUnits(nodes: OrgUnitNode[], out: OrgUnitNode[] = []) {
@@ -26,7 +28,7 @@ function flattenUnits(nodes: OrgUnitNode[], out: OrgUnitNode[] = []) {
 }
 
 export default function OrgScenariosPanel() {
-  const { canCreate, canEdit } = useFeaturePermissions("organization.scenarios");
+  const { canCreate, canEdit, canDelete } = useFeaturePermissions("organization.scenarios");
   const [scenarios, setScenarios] = useState<OrgScenario[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tree, setTree] = useState<OrgTree | null>(null);
@@ -34,6 +36,7 @@ export default function OrgScenariosPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [dragUnitId, setDragUnitId] = useState<string | null>(null);
+  const [reparenting, setReparenting] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -51,6 +54,43 @@ export default function OrgScenariosPanel() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const flat = useMemo(() => (tree ? flattenUnits(tree.roots) : []), [tree]);
+
+  // Same shape + rules the backend validates against, so invalid drops never hit the API.
+  const placementUnits = useMemo<OrgUnitPlacement[]>(
+    () =>
+      flat.map((u) => ({
+        id: u.id,
+        type: u.type,
+        parentId: u.parentId ?? null,
+        departmentId: u.departmentId ?? null,
+        directToCeo: u.directToCeo,
+      })),
+    [flat]
+  );
+
+  const selectedStatus = scenarios.find((s) => s.id === selectedId)?.status;
+  const editable = canEdit && selectedStatus === "draft";
+
+  const canDropOn = useCallback(
+    (targetId: string | null) => {
+      if (!dragUnitId || targetId === dragUnitId) return false;
+      const dragged = placementUnits.find((u) => u.id === dragUnitId);
+      // Hide the node's current parent — reparenting to it is a no-op.
+      if (dragged && (dragged.parentId ?? null) === (targetId ?? null)) return false;
+      return canReparentOrgUnit(placementUnits, dragUnitId, targetId).ok;
+    },
+    [dragUnitId, placementUnits]
+  );
+
+  const canMoveToRoot = useMemo(() => {
+    if (!dragUnitId) return false;
+    const dragged = placementUnits.find((u) => u.id === dragUnitId);
+    // Already at top level → nothing to do.
+    if (dragged && (dragged.parentId ?? null) === null) return false;
+    return canReparentOrgUnit(placementUnits, dragUnitId, null).ok;
+  }, [dragUnitId, placementUnits]);
 
   const loadScenarioDetail = async (id: string) => {
     setSelectedId(id);
@@ -73,42 +113,98 @@ export default function OrgScenariosPanel() {
     await Swal.fire({ icon: "success", title: "Scenario created", timer: 1800, showConfirmButton: false });
   };
 
+  const handleDelete = async (s: OrgScenario) => {
+    const confirm = await Swal.fire({
+      title: `Delete “${s.name}”?`,
+      text: "Removes the scenario and its sandbox units. This cannot be undone.",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonText: "Delete",
+      confirmButtonColor: "#dc2626",
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+      await deleteOrgScenario(s.id);
+      if (selectedId === s.id) {
+        setSelectedId(null);
+        setTree(null);
+        setDiff(null);
+      }
+      await load();
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Could not delete scenario.";
+      await Swal.fire({ icon: "error", title: "Delete failed", text: msg });
+    }
+  };
+
   const handleApply = async (id: string) => {
+    const applicable = diff?.applicableCount ?? 0;
+    if (applicable === 0) {
+      await Swal.fire({
+        icon: "info",
+        title: "Nothing to apply",
+        text: "This scenario has no reparent changes to commit to the live org.",
+      });
+      return;
+    }
     const confirm = await Swal.fire({
       title: "Apply scenario to live org?",
-      text: "Changes will be written to production structure with batch audit.",
+      text: `${applicable} reparent change(s) will be written to production with a batch audit id.`,
       icon: "warning",
       showCancelButton: true,
     });
     if (!confirm.isConfirmed) return;
-    await applyOrgScenario(id);
-    await loadScenarioDetail(id);
-    await Swal.fire({ icon: "success", title: "Scenario applied" });
+    try {
+      await applyOrgScenario(id);
+      await loadScenarioDetail(id);
+      await load();
+      await Swal.fire({ icon: "success", title: "Scenario applied" });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Could not apply scenario.";
+      await Swal.fire({ icon: "error", title: "Apply failed", text: msg });
+    }
   };
 
-  const handleDropOn = async (targetId: string | null) => {
-    if (!selectedId || !dragUnitId || dragUnitId === targetId) {
-      setDragUnitId(null);
+  // Single reparent path used by both row-drop and the "Move to top level" button.
+  const reparentTo = async (unitId: string, parentId: string | null) => {
+    if (!selectedId || unitId === parentId) return;
+    const verdict = canReparentOrgUnit(placementUnits, unitId, parentId);
+    if (!verdict.ok) {
+      await Swal.fire({ icon: "error", title: "Move failed", text: verdict.reason });
       return;
     }
+    setReparenting(true);
     try {
-      const updated = await reparentScenarioUnit(selectedId, dragUnitId, targetId);
+      const updated = await reparentScenarioUnit(selectedId, unitId, parentId);
       setTree(updated);
       setDiff(await diffOrgScenario(selectedId));
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
         "That move isn't allowed in the hierarchy.";
-      await Swal.fire({ icon: "error", title: "Cannot move unit", text: msg });
+      await Swal.fire({ icon: "error", title: "Move failed", text: msg });
     } finally {
-      setDragUnitId(null);
+      setReparenting(false);
     }
+  };
+
+  const handleDropOn = async (targetId: string | null) => {
+    if (!dragUnitId) return;
+    const unitId = dragUnitId;
+    setDragUnitId(null);
+    await reparentTo(unitId, targetId);
   };
 
   if (loading) return <OrgLoadingBlock label="Loading scenarios…" />;
   if (error) return <OrgErrorState onRetry={() => void load()} />;
 
-  const flat = tree ? flattenUnits(tree.roots) : [];
+  const changeCount = diff?.changeCount ?? 0;
+  const applicableCount = diff?.applicableCount ?? 0;
+  const driftCount = Math.max(0, changeCount - applicableCount);
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(14rem,22rem)_1fr]">
@@ -126,10 +222,10 @@ export default function OrgScenariosPanel() {
         ) : (
           <ul className="mb-0 space-y-1">
             {scenarios.map((s) => (
-              <li key={s.id}>
+              <li key={s.id} className="group flex items-center gap-1">
                 <button
                   type="button"
-                  className={`w-full rounded-lg px-3 py-2 text-left text-[0.8125rem] ${
+                  className={`flex-1 rounded-lg px-3 py-2 text-left text-[0.8125rem] ${
                     selectedId === s.id ? "bg-primary/10 text-primary" : "hover:bg-light/60"
                   }`}
                   onClick={() => void loadScenarioDetail(s.id)}
@@ -137,6 +233,17 @@ export default function OrgScenariosPanel() {
                   <span className="font-medium">{s.name}</span>
                   <span className="ml-2 text-[0.6875rem] uppercase text-defaulttextcolor/50">{s.status}</span>
                 </button>
+                {canDelete && s.status !== "applied" ? (
+                  <button
+                    type="button"
+                    aria-label={`Delete scenario ${s.name}`}
+                    title="Delete scenario"
+                    className="rounded-lg p-2 text-defaulttextcolor/45 hover:bg-danger/10 hover:text-danger"
+                    onClick={() => void handleDelete(s)}
+                  >
+                    <i className="ri-delete-bin-line" aria-hidden />
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -154,49 +261,93 @@ export default function OrgScenariosPanel() {
           <>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <p className="mb-0 text-[0.8125rem] text-defaulttextcolor/70">
-                {diff?.changeCount ?? 0} change(s) vs live
+                {applicableCount} reparent change(s) will apply
+                {driftCount > 0 ? (
+                  <span className="ml-1 text-defaulttextcolor/45">
+                    ({driftCount} live-drift change(s) shown for reference, not applied)
+                  </span>
+                ) : null}
               </p>
               {canEdit ? (
                 <OrgPrimaryButton onClick={() => void handleApply(selectedId)}>Apply to live</OrgPrimaryButton>
               ) : null}
             </div>
-            <p className="mb-2 text-[0.75rem] text-defaulttextcolor/55">
-              Sandbox drag-drop: drag a unit row onto a new parent (keyboard: use Structure reparent for WCAG).
-            </p>
-            <div className="max-h-[28rem] overflow-auto rounded-lg border border-defaultborder/50">
-              <table className="table mb-0 whitespace-nowrap text-[0.8125rem]">
-                <thead>
-                  <tr>
-                    <th>Unit</th>
-                    <th>Type</th>
-                    <th>Drop target</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flat.map((u) => (
-                    <tr
-                      key={u.id}
-                      draggable={canEdit && scenarios.find((s) => s.id === selectedId)?.status === "draft"}
-                      onDragStart={() => setDragUnitId(u.id)}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => void handleDropOn(u.id)}
-                    >
-                      <td>{u.name}</td>
-                      <td>{u.type}</td>
-                      <td>
-                        <button
-                          type="button"
-                          className="text-primary text-[0.75rem] hover:underline"
-                          onClick={() => void handleDropOn(u.id)}
-                          disabled={!canEdit}
-                        >
-                          Reparent here
-                        </button>
-                      </td>
+
+            {editable ? (
+              <p className="mb-2 text-[0.75rem] text-defaulttextcolor/60">
+                Drag a unit onto a valid parent: CEO → Manager → Supervisor → Department. Invalid targets are
+                disabled while dragging. Drops only change the sandbox until you apply.
+              </p>
+            ) : (
+              <p className="mb-2 text-[0.75rem] text-defaulttextcolor/55">
+                This scenario is read-only (only draft scenarios can be edited).
+              </p>
+            )}
+
+            <div className="overflow-hidden rounded-lg border border-defaultborder/50">
+              <div className="table-responsive max-h-[28rem] overflow-auto">
+                <table className="table min-w-full mb-0 whitespace-nowrap text-[0.8125rem]">
+                  <thead className="bg-light/60 dark:bg-white/[0.03]">
+                    <tr>
+                      <th scope="col">Unit</th>
+                      <th scope="col">Type</th>
+                      <th scope="col" className="text-end">
+                        Drop target
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {flat.map((u) => {
+                      const dropAllowed = canDropOn(u.id);
+                      return (
+                        <tr
+                          key={u.id}
+                          draggable={editable && !reparenting}
+                          onDragStart={() => editable && setDragUnitId(u.id)}
+                          onDragEnd={() => setDragUnitId(null)}
+                          onDragOver={(e) => {
+                            if (dropAllowed) e.preventDefault();
+                          }}
+                          onDrop={() => {
+                            if (dropAllowed) void handleDropOn(u.id);
+                          }}
+                          className={
+                            dragUnitId === u.id
+                              ? "bg-primary/5"
+                              : dropAllowed
+                                ? "bg-success/5"
+                                : undefined
+                          }
+                        >
+                          <td className="font-medium">{u.name}</td>
+                          <td className="text-defaulttextcolor/70">{u.type}</td>
+                          <td className="text-end text-[0.75rem] text-defaulttextcolor/55">
+                            {dropAllowed ? "Drop to reparent here" : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {editable ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/60 px-4 py-3">
+                  <p className="mb-0 text-[0.75rem] text-defaulttextcolor/60">
+                    {dragUnitId
+                      ? canMoveToRoot
+                        ? "Drop on a highlighted row to set parent, or move to top level."
+                        : "Drop on a highlighted row to set parent (only CEO can sit at top level)."
+                      : "Drag a row to begin."}
+                  </p>
+                  <OrgSecondaryButton
+                    type="button"
+                    disabled={!canMoveToRoot || reparenting}
+                    onClick={() => void handleDropOn(null)}
+                  >
+                    Move to top level
+                  </OrgSecondaryButton>
+                </div>
+              ) : null}
             </div>
           </>
         )}

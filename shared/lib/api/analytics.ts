@@ -21,7 +21,7 @@ export interface RecentCompletion {
 }
 
 export interface StatusBreakdown {
-  enrolled: number;
+  notStarted: number;
   inProgress: number;
   completed: number;
 }

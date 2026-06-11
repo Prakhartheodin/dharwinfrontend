@@ -17,6 +17,8 @@ export interface OrgScenario {
 export interface OrgScenarioDiff {
   scenarioId: string;
   changeCount: number;
+  /** Reparent changes that "Apply to live" will actually commit (vs total changeCount). */
+  applicableCount?: number;
   changes: Array<Record<string, unknown>>;
 }
 
@@ -51,3 +53,5 @@ export const reparentScenarioUnit = async (
 export const approveOrgScenario = async (id: string) => (await apiClient.patch(`/org-scenarios/${id}/approve`)).data;
 
 export const applyOrgScenario = async (id: string) => (await apiClient.post(`/org-scenarios/${id}/apply`)).data;
+
+export const deleteOrgScenario = async (id: string) => (await apiClient.delete(`/org-scenarios/${id}`)).data;

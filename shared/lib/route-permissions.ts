@@ -4,6 +4,8 @@
  * Paths not listed are allowed for any authenticated user (e.g. /dashboard, /settings).
  */
 
+import { ORGANIZATION_ROUTE_PREFIX_ALIASES } from "./organization-permission-aliases";
+
 type CrudAction = "view" | "create" | "edit" | "delete";
 
 interface PathAccessRule {
@@ -129,6 +131,7 @@ const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
   "ats.employees:": ["ats.candidates:"],
   /** Kanban board: backend grants tasks.read → kanban.read, so any role with project.tasks:* can render the page. */
   "project.kanban:": ["project.tasks:"],
+  ...ORGANIZATION_ROUTE_PREFIX_ALIASES,
 };
 
 /** Path prefixes that require permission, sorted by length descending for longest-match. */

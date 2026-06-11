@@ -25,6 +25,7 @@ import {
   OrgSecondaryButton,
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
+import { canReparentOrgUnit, type OrgUnitPlacement } from "@/shared/lib/org-tree.pure";
 const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
 
 const truncate = (s: string, max = 28) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
@@ -122,8 +123,9 @@ function downloadBlob(blob: Blob, filename: string) {
 
 export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged?: () => void }) {
   const { canEdit: canAssignEmployees } = useFeaturePermissions("ats.employees");
-  const { canEdit: canEditStructure } = useFeaturePermissions("organization.structure");
-  const { permissions, isPlatformSuperUser } = useAuth();
+  const { canEdit: canEditStructure, canCreate: canCreateStructure, canDelete: canDeleteStructure } =
+    useFeaturePermissions("organization.structure");
+  const { isPlatformSuperUser } = useAuth();
   const chartRef = useRef<ReactECharts>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -138,11 +140,9 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
-    if (permissions.includes("structure.export")) return true;
-    return permissions.some(
-      (p) => p === "organization.structure:export" || (p.startsWith("organization.structure:") && p.includes("export"))
-    );
-  }, [isPlatformSuperUser, permissions]);
+    // Backend structure.export alias includes structure.manage; matrix uses create/edit/delete on structure.
+    return canEditStructure || canCreateStructure || canDeleteStructure;
+  }, [isPlatformSuperUser, canEditStructure, canCreateStructure, canDeleteStructure]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchInput.trim()), 300);
@@ -164,8 +164,43 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     };
   }, [canEditStructure, tree]);
 
+  const placementUnits = useMemo<OrgUnitPlacement[]>(
+    () =>
+      flatUnits.map((u) => ({
+        id: u.id,
+        type: u.type,
+        parentId: u.parentId ?? null,
+        departmentId: u.departmentId ?? null,
+        directToCeo: u.directToCeo,
+      })),
+    [flatUnits]
+  );
+
+  const canDropOn = useCallback(
+    (targetUnitId: string | null) => {
+      if (!dragUnitId) return false;
+      if (targetUnitId === dragUnitId) return false;
+      return canReparentOrgUnit(placementUnits, dragUnitId, targetUnitId).ok;
+    },
+    [dragUnitId, placementUnits]
+  );
+
+  const canMoveDraggedToRoot = useMemo(
+    () => (dragUnitId ? canReparentOrgUnit(placementUnits, dragUnitId, null).ok : false),
+    [dragUnitId, placementUnits]
+  );
+
+  const showReparentError = async (reason: string) => {
+    await Swal.fire({ icon: "error", title: "Move failed", text: reason });
+  };
+
   const handleLiveReparent = async (targetUnitId: string) => {
     if (!dragUnitId || dragUnitId === targetUnitId) return;
+    const verdict = canReparentOrgUnit(placementUnits, dragUnitId, targetUnitId);
+    if (!verdict.ok) {
+      await showReparentError(verdict.reason);
+      return;
+    }
     setReparenting(true);
     try {
       await reparentOrgUnitFromChart(dragUnitId, targetUnitId);
@@ -183,6 +218,11 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
 
   const handleLiveReparentToRoot = async () => {
     if (!dragUnitId) return;
+    const verdict = canReparentOrgUnit(placementUnits, dragUnitId, null);
+    if (!verdict.ok) {
+      await showReparentError(verdict.reason);
+      return;
+    }
     setReparenting(true);
     try {
       await reparentOrgUnitFromChart(dragUnitId, null);
@@ -558,7 +598,8 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           <div className="border-b border-defaultborder/60 bg-light/40 px-4 py-3 dark:bg-white/[0.02]">
             <h6 className="mb-0 text-[0.875rem] font-semibold">Live hierarchy edits</h6>
             <p className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/60">
-              Drag a unit row onto another to reparent on the live chart. Changes are audited immediately.
+              Drag a unit onto a valid parent: CEO → Manager → Supervisor → Department. Invalid targets are
+              disabled while dragging. Changes are audited immediately.
             </p>
           </div>
           <div className="table-responsive">
@@ -573,30 +614,52 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
                 </tr>
               </thead>
               <tbody>
-                {flatUnits.map((u) => (
-                  <tr
-                    key={u.id}
-                    draggable={!reparenting}
-                    onDragStart={() => setDragUnitId(u.id)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => void handleLiveReparent(u.id)}
-                    className={dragUnitId === u.id ? "bg-primary/5" : undefined}
-                  >
-                    <td className="font-medium">{u.name}</td>
-                    <td className="text-defaulttextcolor/70">{ORG_UNIT_TYPE_META[u.type]?.label ?? u.type}</td>
-                    <td className="text-end text-[0.75rem] text-defaulttextcolor/55">
-                      {dragUnitId && dragUnitId !== u.id ? "Drop to reparent here" : "—"}
-                    </td>
-                  </tr>
-                ))}
+                {flatUnits.map((u) => {
+                  const dropAllowed = canDropOn(u.id);
+                  return (
+                    <tr
+                      key={u.id}
+                      draggable={!reparenting}
+                      onDragStart={() => setDragUnitId(u.id)}
+                      onDragEnd={() => setDragUnitId(null)}
+                      onDragOver={(e) => {
+                        if (dropAllowed) e.preventDefault();
+                      }}
+                      onDrop={() => {
+                        if (dropAllowed) void handleLiveReparent(u.id);
+                      }}
+                      className={
+                        dragUnitId === u.id
+                          ? "bg-primary/5"
+                          : dropAllowed
+                            ? "bg-success/5"
+                            : undefined
+                      }
+                    >
+                      <td className="font-medium">{u.name}</td>
+                      <td className="text-defaulttextcolor/70">{ORG_UNIT_TYPE_META[u.type]?.label ?? u.type}</td>
+                      <td className="text-end text-[0.75rem] text-defaulttextcolor/55">
+                        {dropAllowed ? "Drop to reparent here" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-defaultborder/60 px-4 py-3">
             <p className="mb-0 text-[0.75rem] text-defaulttextcolor/60">
-              {dragUnitId ? "Drop on a row to set parent, or move to top level." : "Drag a row to begin."}
+              {dragUnitId
+                ? canMoveDraggedToRoot
+                  ? "Drop on a highlighted row to set parent, or move to top level."
+                  : "Drop on a highlighted row to set parent (only CEO can sit at top level)."
+                : "Drag a row to begin."}
             </p>
-            <OrgSecondaryButton type="button" disabled={!dragUnitId || reparenting} onClick={() => void handleLiveReparentToRoot()}>
+            <OrgSecondaryButton
+              type="button"
+              disabled={!canMoveDraggedToRoot || reparenting}
+              onClick={() => void handleLiveReparentToRoot()}
+            >
               Move to top level
             </OrgSecondaryButton>
           </div>

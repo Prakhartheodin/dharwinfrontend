@@ -32,6 +32,7 @@ import {
   OrgTableAction,
   OrgTableActions,
   OrgTypeBadge,
+  ORG_UNIT_TYPE_META,
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 
@@ -307,9 +308,12 @@ export default function StructurePanel() {
     return pos;
   }, [allUnits]);
 
-  const parentLabel = (parentId: string | null) => {
-    if (!parentId) return "—";
-    return unitsById.get(parentId)?.name ?? "— (inactive)";
+  const parentLabelForUnit = (unit: OrgUnitNode) => {
+    if (!unit.parentId) {
+      if (unit.type === "ceo") return ORG_UNIT_TYPE_META.ceo.label;
+      return "—";
+    }
+    return unitsById.get(unit.parentId)?.name ?? "— (inactive)";
   };
 
   // All descendant ids of a unit, so reparent can't offer an illegal (cycle) target.
@@ -719,8 +723,8 @@ export default function StructurePanel() {
                     <td>
                       <OrgTypeBadge type={row.type} />
                     </td>
-                    <td className="max-w-[10rem] truncate text-defaulttextcolor/75" title={parentLabel(row.parentId)}>
-                      {parentLabel(row.parentId)}
+                    <td className="max-w-[10rem] truncate text-defaulttextcolor/75" title={parentLabelForUnit(row)}>
+                      {parentLabelForUnit(row)}
                     </td>
                     <td className="max-w-[10rem] truncate text-defaulttextcolor/75" title={headLabel(row)}>
                       {headLabel(row)}
