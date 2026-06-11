@@ -11,6 +11,8 @@ import {
   PM_DATA_MUTATED_EVENT,
   usePmRefetchOnFocus,
 } from "@/shared/hooks/usePmRefetchOnFocus";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { taskBoardScopeToAssignedOnly } from "../lib/task-board-capabilities";
 import { getErrorMessage } from "../lib/errors";
 import { TASK_LIMIT } from "../lib/constants";
 import { fetchBoardMetadata, type ProjectRow, type UserRow } from "../lib/fetch-board-metadata";
@@ -19,6 +21,8 @@ import type { TaskFilters } from "../types";
 export type { ProjectRow, UserRow };
 
 export function useTaskBoardData(filters: TaskFilters) {
+  const auth = useAuth();
+  const scopeToAssignedOnly = useMemo(() => taskBoardScopeToAssignedOnly(auth), [auth]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -51,9 +55,9 @@ export function useTaskBoardData(filters: TaskFilters) {
           ...(projectIdParam && { projectId: projectIdParam }),
           ...(priorityParam && { priority: priorityParam }),
           ...(sprintIdParam && { sprintId: sprintIdParam }),
-          ...(filters.assignedToMe && { assignedToMe: true }),
+          ...(scopeToAssignedOnly || filters.assignedToMe ? { assignedToMe: true } : {}),
         }),
-        fetchBoardMetadata(TASK_LIMIT),
+        fetchBoardMetadata(TASK_LIMIT, { scopeToAssignedOnly }),
       ]);
       setTasks(taskRes.results ?? []);
       setProjects(metadata.projects);
@@ -64,7 +68,7 @@ export function useTaskBoardData(filters: TaskFilters) {
     } finally {
       setLoading(false);
     }
-  }, [filters.q, filters.assignedToMe, projectIdParam, priorityParam, sprintIdParam]);
+  }, [filters.q, filters.assignedToMe, scopeToAssignedOnly, projectIdParam, priorityParam, sprintIdParam]);
 
   useEffect(() => {
     void load();

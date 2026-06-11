@@ -28,6 +28,8 @@ import {
   TASK_LIMIT,
 } from "../lib/constants";
 import { fetchBoardMetadata, type ProjectRow, type UserRow } from "../lib/fetch-board-metadata";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { taskBoardScopeToAssignedOnly } from "../lib/task-board-capabilities";
 import { getErrorMessage } from "../lib/errors";
 import { isEqual, parsePage, serializePage } from "../lib/url-state";
 import type {
@@ -282,6 +284,8 @@ export function TaskDataProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const { filters } = useTaskFilters();
+  const auth = useAuth();
+  const scopeToAssignedOnly = useMemo(() => taskBoardScopeToAssignedOnly(auth), [auth]);
   const [state, dispatch] = useReducer(taskDataReducer, undefined, initialState);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -375,9 +379,9 @@ export function TaskDataProvider({
           ...(projectIdParam && { projectId: projectIdParam }),
           ...(priorityParam && { priority: priorityParam }),
           ...(sprintIdParam && { sprintId: sprintIdParam }),
-          ...(filters.assignedToMe && { assignedToMe: true }),
+          ...(scopeToAssignedOnly || filters.assignedToMe ? { assignedToMe: true } : {}),
         }),
-        fetchBoardMetadata(TASK_LIMIT),
+        fetchBoardMetadata(TASK_LIMIT, { scopeToAssignedOnly }),
       ]);
       const totalPages = taskRes.totalPages ?? 0;
       const totalResults = taskRes.totalResults ?? 0;
@@ -415,6 +419,7 @@ export function TaskDataProvider({
     page,
     filters.q,
     filters.assignedToMe,
+    scopeToAssignedOnly,
     projectIdParam,
     priorityParam,
     sprintIdParam,

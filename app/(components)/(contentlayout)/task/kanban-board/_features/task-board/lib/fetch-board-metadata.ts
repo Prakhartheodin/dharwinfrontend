@@ -24,19 +24,25 @@ function mapUsers(
 }
 
 /** Projects/users for kanban filters; tasks fetch is separate and must succeed. */
-export async function fetchBoardMetadata(limit: number): Promise<{
+export async function fetchBoardMetadata(
+  limit: number,
+  options?: { scopeToAssignedOnly?: boolean }
+): Promise<{
   projects: ProjectRow[];
   users: UserRow[];
 }> {
+  const scopeToAssignedOnly = options?.scopeToAssignedOnly === true;
   const [projSettled, userSettled] = await Promise.allSettled([
-    listProjects({ limit }),
+    scopeToAssignedOnly
+      ? listProjects({ limit, mine: true })
+      : listProjects({ limit }),
     listUsers({ limit }),
   ]);
 
   let projects: ProjectRow[] = [];
   if (projSettled.status === "fulfilled") {
     projects = mapProjects(projSettled.value.results);
-  } else {
+  } else if (!scopeToAssignedOnly) {
     try {
       const mineRes = await listProjects({ limit, mine: true });
       projects = mapProjects(mineRes.results);
