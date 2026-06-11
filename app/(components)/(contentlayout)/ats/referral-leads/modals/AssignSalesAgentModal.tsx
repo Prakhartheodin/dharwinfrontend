@@ -75,7 +75,12 @@ export function AssignSalesAgentModal({ lead, isOpen, onClose, onSaved }: Assign
       salesAgentUserId: agentUserId,
       jobId: scope === "job" && lead.job?.id ? lead.job.id : null,
       notes: notes.trim() || undefined,
-      assignedAt: assignedDate ? new Date(`${assignedDate}T12:00:00`).toISOString() : undefined,
+      // Stamp at local noon to avoid a UTC date-shift, but never emit a future
+      // instant: on today's date before local noon, noon is still ahead of "now",
+      // which the backend rejects (.max('now')). Clamp to now — same calendar day.
+      assignedAt: assignedDate
+        ? new Date(Math.min(new Date(`${assignedDate}T12:00:00`).getTime(), Date.now())).toISOString()
+        : undefined,
     };
     try {
       const res = await assign(lead.id, body);

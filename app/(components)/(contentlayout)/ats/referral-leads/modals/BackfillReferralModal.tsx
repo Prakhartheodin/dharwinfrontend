@@ -204,7 +204,9 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
         referredByUserId: referrerId,
         salesAgentUserId: agentId,
         referralJobId: jobId || null,
-        referredAt: new Date(`${referredAt}T12:00:00`).toISOString(),
+        // Local noon avoids a UTC date-shift; clamp to now so today-before-noon
+        // never sends a future instant the backend rejects (.max('now')).
+        referredAt: new Date(Math.min(new Date(`${referredAt}T12:00:00`).getTime(), Date.now())).toISOString(),
         notes: notes.trim() || undefined,
       });
       onClose();

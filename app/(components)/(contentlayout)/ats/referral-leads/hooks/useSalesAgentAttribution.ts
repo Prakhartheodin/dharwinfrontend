@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import * as api from "../api/salesAgentAttribution";
 
 export interface StaleConflict {
@@ -32,7 +32,10 @@ export function useSalesAgentAttribution() {
   const [error, setError] = useState<string | null>(null);
   const [staleConflict, setStaleConflict] = useState<StaleConflict | null>(null);
 
-  const clearStaleConflict = () => setStaleConflict(null);
+  // Stable identity: modals list this in effect deps (their open/reset effect).
+  // A fresh function each render makes that effect re-run on every render and wipe
+  // local form state (e.g. the just-clicked sales agent), so memoize it.
+  const clearStaleConflict = useCallback(() => setStaleConflict(null), []);
 
   async function run<T>(fn: () => Promise<T>, originalForm: unknown): Promise<T> {
     setIsMutating(true);

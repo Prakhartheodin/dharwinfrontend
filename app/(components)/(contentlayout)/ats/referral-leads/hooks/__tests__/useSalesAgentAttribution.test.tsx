@@ -36,4 +36,15 @@ describe("useSalesAgentAttribution", () => {
     expect(result.current.staleConflict?.code).toBe("STALE_PRECONDITION");
     expect(result.current.error).toMatch(/Reassigned by another admin/i);
   });
+
+  // Regression: modals put clearStaleConflict in their open/reset effect deps. If it
+  // gets a fresh identity every render, that effect re-runs on every render and wipes
+  // local form state — e.g. the sales agent you just clicked never stays selected.
+  it("keeps clearStaleConflict referentially stable across renders", () => {
+    const { result, rerender } = renderHook(() => useSalesAgentAttribution());
+    const first = result.current.clearStaleConflict;
+    rerender();
+    rerender();
+    expect(result.current.clearStaleConflict).toBe(first);
+  });
 });
