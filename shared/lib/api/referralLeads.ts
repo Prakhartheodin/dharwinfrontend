@@ -85,12 +85,28 @@ export interface ReferralLeadsTopSalesAgent {
   leaderboardSize?: number;
 }
 
+export interface ReferralHireLite {
+  id: string;
+  name: string;
+  email: string;
+  jobTitle: string | null;
+}
+
 export interface ReferralLeadsStatsResponse {
   totalReferrals: number;
   converted: number;
   conversionRate: number;
   pending: number;
   hired: number;
+  /** Hired into a Full-time job. */
+  paidHires?: number;
+  /** Hired into an Internship. */
+  unpaidHires?: number;
+  /** Hired into another job type or no linked job. */
+  otherHires?: number;
+  paidHiresList?: ReferralHireLite[];
+  unpaidHiresList?: ReferralHireLite[];
+  otherHiresList?: ReferralHireLite[];
   topReferrer: ReferralLeadsTopReferrer | null;
   leaderboard: { userId: string; name: string; count: number }[];
   unassignedCount?: number;

@@ -102,6 +102,7 @@ export default function SalesAgentDashboard(): JSX.Element {
   const [busyJobLink, setBusyJobLink] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<ReferralLeadRow | null>(null);
+  const [hiresView, setHiresView] = useState<"paid" | "unpaid" | null>(null);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -291,7 +292,7 @@ export default function SalesAgentDashboard(): JSX.Element {
 
           {/* ── KPI GRID ── */}
           <div className="px-6 py-6 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <KpiCard
                 icon="ri-share-forward-line"
                 label="Total referrals"
@@ -323,6 +324,24 @@ export default function SalesAgentDashboard(): JSX.Element {
                 sub="Closed wins"
                 tone="info"
                 loading={loading && !stats}
+              />
+              <KpiCard
+                icon="ri-money-dollar-circle-line"
+                label="Paid (full-time)"
+                value={stats?.paidHires ?? 0}
+                sub="Hired into full-time · tap for list"
+                tone="success"
+                loading={loading && !stats}
+                onClick={() => setHiresView("paid")}
+              />
+              <KpiCard
+                icon="ri-graduation-cap-line"
+                label="Unpaid (internship)"
+                value={stats?.unpaidHires ?? 0}
+                sub="Hired into internship · tap for list"
+                tone="warning"
+                loading={loading && !stats}
+                onClick={() => setHiresView("unpaid")}
               />
             </div>
           </div>
@@ -817,6 +836,89 @@ export default function SalesAgentDashboard(): JSX.Element {
             </aside>
           </div>
         )}
+
+        {/* ===================== PAID / UNPAID HIRES DRAWER ===================== */}
+        {hiresView &&
+          (() => {
+            const isPaid = hiresView === "paid";
+            const items = (isPaid ? stats?.paidHiresList : stats?.unpaidHiresList) ?? [];
+            const count = (isPaid ? stats?.paidHires : stats?.unpaidHires) ?? 0;
+            return (
+              <div
+                className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Hired candidates by job type"
+              >
+                <div
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setHiresView(null)}
+                />
+                <div className="relative flex w-full max-w-lg max-h-[85vh] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-bodybg border border-defaultborder/70">
+                  <div className="flex items-start justify-between gap-3 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+                    <div className="flex items-start gap-3 min-w-0">
+                      <span
+                        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1 ${
+                          isPaid
+                            ? "bg-success/10 text-success ring-success/10"
+                            : "bg-warning/10 text-warning ring-warning/10"
+                        }`}
+                        aria-hidden
+                      >
+                        <i
+                          className={`${
+                            isPaid ? "ri-money-dollar-circle-line" : "ri-graduation-cap-line"
+                          } text-2xl`}
+                        />
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[0.6875rem] font-semibold uppercase tracking-wider text-primary/80">
+                          {isPaid ? "Paid hires" : "Unpaid hires"}
+                        </p>
+                        <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight mt-0.5">
+                          {count} {isPaid ? "full-time" : "internship"} {count === 1 ? "hire" : "hires"}
+                        </h2>
+                        <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                          Referred candidates hired into {isPaid ? "full-time roles" : "internships"}.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 text-defaulttextcolor/70 hover:bg-slate-50 dark:hover:bg-white/10 transition-colors"
+                      onClick={() => setHiresView(null)}
+                      aria-label="Close"
+                    >
+                      <i className="ri-close-line text-lg" />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto px-6 py-6">
+                    {items.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-defaultborder/70 px-4 py-10 text-center text-sm text-defaulttextcolor/60 dark:text-white/50">
+                        No {isPaid ? "full-time" : "internship"} hires yet.
+                      </div>
+                    ) : (
+                      <ul className="space-y-2">
+                        {items.map((it) => (
+                          <li key={it.id}>
+                            <div className="rounded-xl border border-defaultborder/70 px-4 py-3">
+                              <span className="block truncate text-sm font-medium text-defaulttextcolor dark:text-white">
+                                {it.name}
+                              </span>
+                              <span className="block truncate text-xs text-defaulttextcolor/55 dark:text-white/45">
+                                {it.jobTitle || it.email}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
       </div>
     </Fragment>
   );
@@ -842,36 +944,46 @@ function KpiCard(props: {
   sub?: string;
   tone: KpiTone;
   loading?: boolean;
+  onClick?: () => void;
 }): JSX.Element {
   const tone = TONE_CLASSES[props.tone];
-  return (
-    <div className="rounded-xl border border-defaultborder/70 bg-white dark:bg-white/[0.03] p-5 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none transition-shadow duration-300">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">
-            {props.label}
+  const clickable = typeof props.onClick === "function";
+  const className = `rounded-xl border border-defaultborder/70 bg-white dark:bg-white/[0.03] p-5 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none transition-shadow duration-300 ${
+    clickable ? "w-full text-left cursor-pointer hover:border-primary/40" : ""
+  }`;
+  const inner = (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <p className="text-[0.6875rem] font-semibold uppercase tracking-wider text-defaulttextcolor/60 dark:text-white/50">
+          {props.label}
+        </p>
+        {props.loading ? (
+          <div className="mt-2 h-8 w-20 animate-pulse rounded-lg bg-slate-100 dark:bg-white/10" />
+        ) : (
+          <p className={`mt-1 text-3xl font-bold tabular-nums ${tone.text}`}>
+            {props.value}
           </p>
-          {props.loading ? (
-            <div className="mt-2 h-8 w-20 animate-pulse rounded-lg bg-slate-100 dark:bg-white/10" />
-          ) : (
-            <p className={`mt-1 text-3xl font-bold tabular-nums ${tone.text}`}>
-              {props.value}
-            </p>
-          )}
-          {props.sub && (
-            <p className="mt-1 text-xs text-defaulttextcolor/60 dark:text-white/50 truncate">
-              {props.sub}
-            </p>
-          )}
-        </div>
-        <span
-          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone.bg} ${tone.text} ring-1 ${tone.ring}`}
-          aria-hidden
-        >
-          <i className={`${props.icon} text-xl`} />
-        </span>
+        )}
+        {props.sub && (
+          <p className="mt-1 text-xs text-defaulttextcolor/60 dark:text-white/50 truncate">
+            {props.sub}
+          </p>
+        )}
       </div>
+      <span
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${tone.bg} ${tone.text} ring-1 ${tone.ring}`}
+        aria-hidden
+      >
+        <i className={`${props.icon} text-xl`} />
+      </span>
     </div>
+  );
+  return clickable ? (
+    <button type="button" onClick={props.onClick} className={className}>
+      {inner}
+    </button>
+  ) : (
+    <div className={className}>{inner}</div>
   );
 }
 
