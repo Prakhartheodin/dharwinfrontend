@@ -1107,6 +1107,7 @@ class VideoConferenceBoundary extends Component<
 
 function PublicRoomContent({
   onLeave,
+  onMeetingEnded,
   onReconnect,
   initialAudioEnabled,
   initialVideoEnabled,
@@ -1118,6 +1119,7 @@ function PublicRoomContent({
   meetingEndAtIso,
 }: {
   onLeave: () => void;
+  onMeetingEnded: () => void;
   onReconnect: () => void | Promise<void>;
   initialAudioEnabled: boolean;
   initialVideoEnabled: boolean;
@@ -1144,6 +1146,7 @@ function PublicRoomContent({
   const initialMediaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const participants = useParticipants();
   const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
+  const [endMeetingSlot, setEndMeetingSlot] = useState<HTMLElement | null>(null);
   const [recordingToast, setRecordingToast] = useState(false);
   // Reason-specific leave/disconnect toast text (null = hidden). Avoids telling a
   // removed/disconnected participant the whole "Meeting ended".
@@ -1173,8 +1176,8 @@ function PublicRoomContent({
       // already disconnected
     }
     setMeetingEndedToast("Meeting ended for everyone");
-    setTimeout(() => onLeave(), 1200);
-  }, [isHost, endingMeeting, participantEmail, roomName, room, onLeave]);
+    setTimeout(() => onMeetingEnded(), 1200);
+  }, [isHost, endingMeeting, participantEmail, roomName, room, onMeetingEnded]);
 
   useEffect(() => {
     const handleDisconnect = (reason?: DisconnectReason) => {
@@ -1206,12 +1209,15 @@ function PublicRoomContent({
       ) {
         isManuallyLeavingRef.current = true;
         setReconnecting(false);
-        setMeetingEndedToast(
-          reason === DisconnectReason.PARTICIPANT_REMOVED
-            ? "You were removed from the meeting"
-            : "The meeting has ended"
-        );
-        setTimeout(() => onLeave(), 1200);
+        if (reason === DisconnectReason.ROOM_DELETED) {
+          // Host ended the meeting for everyone -> terminal "meeting ended" screen.
+          setMeetingEndedToast("The meeting has ended");
+          setTimeout(() => onMeetingEnded(), 1200);
+        } else {
+          // This participant was individually removed -> back to the join page.
+          setMeetingEndedToast("You were removed from the meeting");
+          setTimeout(() => onLeave(), 1200);
+        }
         return;
       }
       if (hasPermissionError) return;
@@ -1319,6 +1325,33 @@ function PublicRoomContent({
         }
       }
       setRecordingSlot(slot);
+      return true;
+    };
+    if (tryInject()) return;
+    const timer = setInterval(() => {
+      if (tryInject()) clearInterval(timer);
+    }, 300);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Inject "End meeting" button slot into the control bar, after the Leave button.
+  useEffect(() => {
+    const tryInject = () => {
+      const bar = document.querySelector(".lk-control-bar");
+      if (!bar) return false;
+      let slot = document.getElementById("end-meeting-button-slot");
+      if (!slot) {
+        slot = document.createElement("div");
+        slot.id = "end-meeting-button-slot";
+        slot.style.cssText = "display:flex;align-items:center;order:1000;";
+        const leaveBtn = bar.querySelector(".lk-disconnect-button, [data-lk-disconnect], button[aria-label*='Leave'], button[aria-label*='Disconnect']");
+        if (leaveBtn && leaveBtn.parentElement === bar) {
+          bar.insertBefore(slot, leaveBtn.nextSibling);
+        } else {
+          bar.appendChild(slot);
+        }
+      }
+      setEndMeetingSlot(slot);
       return true;
     };
     if (tryInject()) return;
@@ -1808,29 +1841,31 @@ function PublicRoomContent({
             />,
             recordingSlot
           )}
-        {isHost && (
-          <button
-            type="button"
-            onClick={handleEndMeetingForAll}
-            disabled={endingMeeting}
-            className="fixed top-4 right-4 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full disabled:opacity-60 disabled:cursor-not-allowed"
-            style={{
-              background: "rgba(255,82,82,0.92)",
-              border: "1px solid rgba(255,82,82,0.55)",
-              boxShadow: "0 12px 32px -8px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,82,82,0.2)",
-              color: "#fff",
-              fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
-              fontSize: "11px",
-              letterSpacing: "0.14em",
-              textTransform: "uppercase",
-              cursor: endingMeeting ? "not-allowed" : "pointer",
-            }}
-            title="End the meeting for all participants"
-          >
-            <i className="ri-phone-fill text-base" style={{ transform: "rotate(135deg)" }} />
-            {endingMeeting ? "Ending…" : "End meeting"}
-          </button>
-        )}
+        {isHost &&
+          endMeetingSlot &&
+          createPortal(
+            <button
+              type="button"
+              onClick={handleEndMeetingForAll}
+              disabled={endingMeeting}
+              className="lk-button flex items-center gap-2 rounded-md px-3 py-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              style={{
+                background: "rgba(255,82,82,0.92)",
+                border: "1px solid rgba(255,82,82,0.55)",
+                color: "#fff",
+                fontFamily: "var(--obs-font-mono, ui-monospace, monospace)",
+                fontSize: "11px",
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                cursor: endingMeeting ? "not-allowed" : "pointer",
+              }}
+              title="End the meeting for all participants"
+            >
+              <i className="ri-phone-fill text-base" style={{ transform: "rotate(135deg)" }} />
+              {endingMeeting ? "Ending…" : "End meeting"}
+            </button>,
+            endMeetingSlot
+          )}
         {recordingToast && isHost && (
           <div
             className="fixed top-4 left-1/2 -translate-x-1/2 z-[2000] flex items-center gap-2 px-4 py-2.5 rounded-full"
@@ -2426,6 +2461,20 @@ export default function PublicMeetingRoomClient() {
     router.push(buildJoinRoomUrl());
   }, [router, buildJoinRoomUrl]);
 
+  // Meeting ended for everyone (host pressed "End meeting" or server deleted the
+  // room). Halt all reconnect paths and show the terminal "meeting ended" screen
+  // in place — no navigation. The LiveKitRoom unmounts with the terminal render,
+  // which disconnects this client cleanly.
+  const handleMeetingEnded = useCallback(() => {
+    manualLeaveRef.current = true;
+    topLevelReconnectInFlightRef.current = false;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    setMeetingEnded(true);
+  }, []);
+
   const handleReconnect = useCallback(async () => {
     if (!participantName || !roomId) return;
     if (reconnectTimerRef.current) {
@@ -2461,19 +2510,7 @@ export default function PublicMeetingRoomClient() {
       // Terminal: meeting ended/cancelled. Stop retrying, notify, leave room.
       if (status === 410) {
         reconnectAttemptsRef.current = 0;
-        setMeetingEnded(true);
-        void Swal.fire({
-          toast: true,
-          position: "top-end",
-          icon: "info",
-          title: "Meeting has ended",
-          showConfirmButton: false,
-          timer: 3500,
-          timerProgressBar: true,
-          background: "#1f2937",
-          color: "#f9fafb",
-        });
-        handleLeave();
+        handleMeetingEnded();
         return;
       }
 
@@ -2547,6 +2584,31 @@ export default function PublicMeetingRoomClient() {
       );
     }
   }, []);
+
+  // Terminal: the meeting has ended for everyone. Wins over every other screen so
+  // host and participants all land here, disconnected, with no auto-navigation.
+  if (meetingEnded) {
+    return (
+      <div className="obs-error">
+        <ObsidianStudioStyles />
+        <div className="obs-error__grain" aria-hidden />
+        <div className="obs-error__card">
+          <span className="obs-mono obs-eyebrow obs-error__eyebrow">— SESSION CLOSED</span>
+          <h2 className="obs-display obs-error__title">
+            The meeting has <em className="obs-display-italic">ended.</em>
+          </h2>
+          <p className="obs-error__msg">
+            The host ended this meeting for everyone. You&apos;ve been disconnected.
+          </p>
+          <div className="obs-actions">
+            <button onClick={() => router.push("/")} className="obs-btn obs-btn--primary">
+              Back to home <i className="ri-home-5-line" aria-hidden />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (webrtcUnsupported) {
     return (
@@ -2986,6 +3048,12 @@ export default function PublicMeetingRoomClient() {
           ) {
             return;
           }
+          // Host ended the meeting for everyone (server deleted the room): stop all
+          // reconnect attempts and show the terminal "meeting ended" screen.
+          if (reason === DisconnectReason.ROOM_DELETED) {
+            handleMeetingEnded();
+            return;
+          }
           const now = Date.now();
           if (topLevelReconnectInFlightRef.current) return;
           if (now - lastTopLevelReconnectAtRef.current < 1500) return;
@@ -3013,6 +3081,7 @@ export default function PublicMeetingRoomClient() {
       >
         <PublicRoomContent
           onLeave={handleLeave}
+          onMeetingEnded={handleMeetingEnded}
           onReconnect={handleReconnect}
           initialAudioEnabled={audioEnabled}
           initialVideoEnabled={videoEnabled}
