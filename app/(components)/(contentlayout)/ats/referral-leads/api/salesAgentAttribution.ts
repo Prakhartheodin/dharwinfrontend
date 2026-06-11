@@ -15,7 +15,7 @@ export interface AttributionRow {
   assignedBy: { id: string; name: string; email: string } | null;
   assignedAt: string;
   notes: string | null;
-  source: "manual_assign" | "manual_change" | "manual_revoke";
+  source: "manual_assign" | "manual_change" | "manual_revoke" | "auto_referral_sales_agent";
   isCurrent: boolean;
   isRevoked: boolean;
   revokeReason: string | null;
