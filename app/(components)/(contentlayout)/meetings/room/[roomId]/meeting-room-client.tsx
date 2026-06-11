@@ -91,16 +91,23 @@ function RoomContent({
       }
 
       if (reason === DisconnectReason.CLIENT_INITIATED) {
+        // The user chose to leave — the meeting itself keeps running for others.
         isManuallyLeavingRef.current = true;
-        setMeetingEndedToast(true);
+        setMeetingEndedToast("You left the meeting");
         setTimeout(() => onLeave(), 800);
         return;
       }
 
-      // Call ended by server (e.g. other person left in 1-on-1) – don't reconnect
-      if (reason === DisconnectReason.PARTICIPANT_REMOVED || reason === DisconnectReason.ROOM_DELETED) {
+      // Ended by server – don't reconnect. Removed by host vs room closed read differently.
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED) {
         isManuallyLeavingRef.current = true;
-        setMeetingEndedToast(true);
+        setMeetingEndedToast("You were removed from the meeting");
+        setTimeout(() => onLeave(), 800);
+        return;
+      }
+      if (reason === DisconnectReason.ROOM_DELETED) {
+        isManuallyLeavingRef.current = true;
+        setMeetingEndedToast("The meeting has ended");
         setTimeout(() => onLeave(), 800);
         return;
       }
@@ -130,7 +137,7 @@ function RoomContent({
       } else {
         console.error("Max reconnection attempts reached");
         setReconnecting(false);
-        setMeetingEndedToast(true);
+        setMeetingEndedToast("Connection lost — you've left the meeting");
         setTimeout(() => {
           if (!isManuallyLeavingRef.current) {
             onLeave();
@@ -194,7 +201,9 @@ function RoomContent({
   const participants = useParticipants();
   const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
   const [recordingToast, setRecordingToast] = useState(false);
-  const [meetingEndedToast, setMeetingEndedToast] = useState(false);
+  // Message shown in the leave/disconnect toast. null = hidden. Text varies by reason
+  // so a participant who simply left is not told the whole "Meeting ended".
+  const [meetingEndedToast, setMeetingEndedToast] = useState<string | null>(null);
   const [meetingStartTime, setMeetingStartTime] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const participantCount = participants.length;
@@ -687,7 +696,7 @@ function RoomContent({
             role="alert"
           >
             <i className="ti ti-circle-check text-lg text-emerald-400" />
-            <span>Meeting ended</span>
+            <span>{meetingEndedToast}</span>
           </div>
         )}
       {isHost && !isChatCall && (

@@ -1145,7 +1145,9 @@ function PublicRoomContent({
   const participants = useParticipants();
   const [recordingSlot, setRecordingSlot] = useState<HTMLElement | null>(null);
   const [recordingToast, setRecordingToast] = useState(false);
-  const [meetingEndedToast, setMeetingEndedToast] = useState(false);
+  // Reason-specific leave/disconnect toast text (null = hidden). Avoids telling a
+  // removed/disconnected participant the whole "Meeting ended".
+  const [meetingEndedToast, setMeetingEndedToast] = useState<string | null>(null);
   const [endingMeeting, setEndingMeeting] = useState(false);
 
   // Host-only "End meeting for all". Leaving (handleLeave) intentionally only
@@ -1170,7 +1172,7 @@ function PublicRoomContent({
     } catch {
       // already disconnected
     }
-    setMeetingEndedToast(true);
+    setMeetingEndedToast("Meeting ended for everyone");
     setTimeout(() => onLeave(), 1200);
   }, [isHost, endingMeeting, participantEmail, roomName, room, onLeave]);
 
@@ -1204,7 +1206,11 @@ function PublicRoomContent({
       ) {
         isManuallyLeavingRef.current = true;
         setReconnecting(false);
-        setMeetingEndedToast(true);
+        setMeetingEndedToast(
+          reason === DisconnectReason.PARTICIPANT_REMOVED
+            ? "You were removed from the meeting"
+            : "The meeting has ended"
+        );
         setTimeout(() => onLeave(), 1200);
         return;
       }
@@ -1223,7 +1229,7 @@ function PublicRoomContent({
         }, delay);
       } else {
         setReconnecting(false);
-        setMeetingEndedToast(true);
+        setMeetingEndedToast("Connection lost — you've left the meeting");
         setTimeout(() => {
           if (!isManuallyLeavingRef.current) onLeave();
         }, 2000);
@@ -1871,7 +1877,7 @@ function PublicRoomContent({
             role="alert"
           >
             <i className="ri-checkbox-circle-line text-base" style={{ color: "var(--obs-accent, #00E6C3)" }} />
-            Meeting ended
+            {meetingEndedToast}
           </div>
         )}
         {isHost && (
@@ -1958,6 +1964,8 @@ export default function PublicMeetingRoomClient() {
   const [hasPermissionError, setHasPermissionError] = useState(false);
   /** Normal participant waiting for host to admit; same page with message + loader */
   const [waitingForAdmission, setWaitingForAdmission] = useState(false);
+  /** Host explicitly denied this waiter — terminal state, polling stops. */
+  const [admissionDenied, setAdmissionDenied] = useState(false);
   const [participantIdentity, setParticipantIdentity] = useState<string | null>(null);
   const [isHost, setIsHost] = useState(false);
   /** Uninvited guest on an invite-only meeting: holds a blind lobby token but does not
@@ -2279,7 +2287,13 @@ export default function PublicMeetingRoomClient() {
       setParticipantIdentity(pid);
       participantIdentityRef.current = pid;
       setIsHost(data.isHost === true);
-      if (tokenAllowsRoomJoin(data)) {
+      if (data.rejected) {
+        // Host denied this waiter — terminal, do not enter the waiting/poll flow.
+        setKnocking(false);
+        setWaitingForAdmission(false);
+        setShowRoom(false);
+        setAdmissionDenied(true);
+      } else if (tokenAllowsRoomJoin(data)) {
         setKnocking(false);
         setWaitingForAdmission(false);
         setShowRoom(true);
@@ -2339,6 +2353,17 @@ export default function PublicMeetingRoomClient() {
 
       try {
         const data = await requestToken(identity, { forcePublic: true });
+
+        if (data.rejected) {
+          // Host denied the request while waiting — stop polling, show terminal screen.
+          if (admissionPollRef.current) {
+            clearInterval(admissionPollRef.current);
+            admissionPollRef.current = null;
+          }
+          setWaitingForAdmission(false);
+          setAdmissionDenied(true);
+          return;
+        }
 
         if (tokenAllowsRoomJoin(data)) {
           if (admissionPollRef.current) {
@@ -2766,6 +2791,57 @@ export default function PublicMeetingRoomClient() {
               className="obs-btn obs-btn--ghost obs-wait__cancel"
             >
               Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Terminal: host declined this waiter. No polling, no LiveKit connection.
+  if (admissionDenied) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-[#0B0D0E]">
+        <ObsidianStudioStyles />
+        <div className="obs-wait">
+          <div className="obs-wait__bg" aria-hidden />
+          <div className="obs-wait__grain" aria-hidden />
+          <div className="obs-wait__card">
+            <div className="obs-wait__pill obs-mono">
+              <span className="obs-wait__pill-dot" style={{ background: "#ff5a5a" }} />
+              NOT ADMITTED
+            </div>
+            <h1 className="obs-display obs-wait__title">
+              Request <em className="obs-display-italic">declined.</em>
+            </h1>
+            <p className="obs-wait__sub">
+              The host declined your request to join this meeting.
+            </p>
+
+            {(participantName || participantEmail) && (
+              <div className="obs-wait__identity">
+                <span className="obs-mono obs-wait__identity-label">REQUESTED AS</span>
+                <span className="obs-wait__identity-name">{participantName || "Guest"}</span>
+                {participantEmail && (
+                  <span className="obs-mono obs-wait__identity-email">{participantEmail}</span>
+                )}
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => {
+                setAdmissionDenied(false);
+                setToken("");
+                setParticipantIdentity(null);
+                participantIdentityRef.current = null;
+                guestIdentityRef.current = null;
+                setPreJoinCommitted(false);
+                router.push(`/join/room?room=${encodeURIComponent(roomId)}`);
+              }}
+              className="obs-btn obs-btn--ghost obs-wait__cancel"
+            >
+              Back
             </button>
           </div>
         </div>

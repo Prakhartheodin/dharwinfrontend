@@ -27,6 +27,7 @@ export function WaitingRoom({
   const router = useRouter();
   const room = useRoomContext();
   const [isChecking, setIsChecking] = useState(false);
+  const [isRejected, setIsRejected] = useState(false);
   const checkingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [audioEnabled, setAudioEnabled] = useState(true);
@@ -34,7 +35,7 @@ export function WaitingRoom({
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (!participantIdentity || !onAdmitted) return;
+    if (!participantIdentity || !onAdmitted || isRejected) return;
 
     const checkAdmissionStatus = async () => {
       if (isChecking) return;
@@ -43,6 +44,12 @@ export function WaitingRoom({
         const tokenResponse = await livekitApi.getLiveKitToken(roomName, participantName);
         if (tokenResponse.isHost) {
           onAdmitted(tokenResponse.token);
+          return;
+        }
+        // Host denied this waiter — stop polling and show the terminal screen.
+        if (tokenResponse.rejected) {
+          if (checkingIntervalRef.current) clearInterval(checkingIntervalRef.current);
+          setIsRejected(true);
           return;
         }
       } catch {
@@ -57,7 +64,7 @@ export function WaitingRoom({
     return () => {
       if (checkingIntervalRef.current) clearInterval(checkingIntervalRef.current);
     };
-  }, [roomName, participantIdentity, participantName, onAdmitted, isChecking]);
+  }, [roomName, participantIdentity, participantName, onAdmitted, isChecking, isRejected]);
 
   // Local preview stream for waiting room
   useEffect(() => {
@@ -107,8 +114,49 @@ export function WaitingRoom({
     router.push("/meetings/pre-join/");
   };
 
+  // Release the camera/mic once denied — no reason to keep the preview live.
+  useEffect(() => {
+    if (isRejected) previewStream?.getTracks().forEach((t) => t.stop());
+  }, [isRejected, previewStream]);
+
   const displayTitle = meetingTitle || roomName;
   const displaySubtitle = hostName ? `Host: ${hostName}` : "The host will admit you shortly.";
+
+  // Terminal state: host declined the request to join. Stop everything, no polling.
+  if (isRejected) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0f0f12] dark:bg-[#0a0a0c] p-4">
+        <div className="w-full max-w-md bg-[#1a1a1f] dark:bg-[#141418] rounded-2xl shadow-2xl border border-white/5 overflow-hidden">
+          <div className="flex justify-center pt-10 pb-2">
+            <div className="flex items-center justify-center w-20 h-20 rounded-full bg-red-500/15 border-2 border-red-500/40">
+              <i className="ti ti-user-x text-3xl text-red-400" />
+            </div>
+          </div>
+          <div className="text-center px-8 pt-2 pb-1">
+            <h2 className="text-xl font-bold text-white">Not admitted</h2>
+            <p className="text-sm text-gray-400 mt-2">
+              The host declined your request to join{hostName ? ` (Host: ${hostName})` : ""}.
+            </p>
+          </div>
+          <div className="mx-6 mt-5 p-4 rounded-xl bg-white/5 border border-white/10 text-center">
+            <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Meeting</p>
+            <p className="text-white font-medium truncate">{displayTitle}</p>
+          </div>
+          <div className="p-6 pt-5">
+            <button
+              onClick={handleLeave}
+              className="w-full py-3 rounded-xl bg-white/10 border border-white/15 text-white font-medium hover:bg-white/15 transition-colors"
+            >
+              Back to meetings
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 text-center px-8 pb-6">
+            If you believe this was a mistake, contact the host and try the link again.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f0f12] dark:bg-[#0a0a0c] p-4">

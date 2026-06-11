@@ -18,6 +18,9 @@ export interface LiveKitTokenResponse {
   /** Meeting's guest policy. true → uninvited guest auto-knocks (waiting screen);
    *  false → show explicit "Ask for permission" button ("guests are not allowed"). */
   allowGuestJoin?: boolean;
+  /** True when the host has explicitly DENIED this waiter. The client must stop
+   *  polling and show a terminal "host declined" screen instead of waiting. */
+  rejected?: boolean;
 }
 
 export interface StartRecordingResponse {
