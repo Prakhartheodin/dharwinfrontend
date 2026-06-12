@@ -8,6 +8,22 @@ export interface InternalMeetingHost {
   email: string;
 }
 
+/** Recurrence rule for a recurring meeting series. */
+export interface MeetingRecurrence {
+  frequency: "daily" | "weekly" | "monthly" | "custom";
+  interval?: number; // every N days/weeks/months
+  daysOfWeek?: number[]; // 0=Sun .. 6=Sat (weekly)
+  dayOfMonth?: number | null; // monthly
+}
+
+export interface MeetingRecurrenceEnd {
+  mode: "never" | "onDate" | "afterCount";
+  untilDate?: string | null;
+  count?: number | null;
+}
+
+export type SeriesEditMode = "single" | "future" | "series";
+
 export interface CreateInternalMeetingPayload {
   title: string;
   description?: string;
@@ -21,10 +37,15 @@ export interface CreateInternalMeetingPayload {
   hosts: InternalMeetingHost[];
   emailInvites?: string[];
   notes?: string;
+  // Present (with frequency) => the backend creates a recurring series.
+  recurrence?: MeetingRecurrence;
+  end?: MeetingRecurrenceEnd;
 }
 
 export interface InternalMeeting {
-  _id: string;
+  /** Mongo document id (toJSON plugin exposes this as `id`). */
+  id?: string;
+  _id?: string;
   meetingId: string;
   title: string;
   description?: string;
@@ -43,6 +64,10 @@ export interface InternalMeeting {
   createdAt?: string;
   updatedAt?: string;
   publicMeetingUrl?: string;
+  // Recurring-series linkage (null/absent for one-off meetings).
+  seriesId?: string | null;
+  occurrenceIndex?: number | null;
+  recurrenceSummary?: string;
 }
 
 export interface InternalMeetingsListResponse {
@@ -85,14 +110,28 @@ export type UpdateInternalMeetingPayload = Partial<CreateInternalMeetingPayload>
 
 export async function updateInternalMeeting(
   id: string,
-  payload: UpdateInternalMeetingPayload
+  payload: UpdateInternalMeetingPayload,
+  mode?: SeriesEditMode
 ): Promise<InternalMeeting> {
-  const { data } = await apiClient.patch<InternalMeeting>(`/internal-meetings/${id}`, payload);
+  const { data } = await apiClient.patch<InternalMeeting>(`/internal-meetings/${id}`, payload, {
+    params: mode ? { mode } : undefined,
+  });
   return data;
 }
 
-export async function deleteInternalMeeting(id: string): Promise<void> {
-  await apiClient.delete(`/internal-meetings/${id}`);
+export async function deleteInternalMeeting(
+  id: string,
+  mode?: SeriesEditMode,
+  opts?: { purge?: boolean }
+): Promise<{ deleted?: number; cancelled?: number }> {
+  const params: Record<string, string | boolean> = {};
+  if (mode) params.mode = mode;
+  if (opts?.purge) params.purge = true;
+  const { data } = await apiClient.delete<{ deleted?: number; cancelled?: number }>(
+    `/internal-meetings/${id}`,
+    { params: Object.keys(params).length ? params : undefined }
+  );
+  return data ?? {};
 }
 
 export async function resendInternalMeetingInvitations(id: string): Promise<{ sent: number }> {

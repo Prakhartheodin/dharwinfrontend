@@ -1,3 +1,19 @@
+/** Build share URL from API field or meetingId fallback (matches meetings list rows). */
+export function resolveMeetingShareUrl(meeting: {
+  publicMeetingUrl?: string | null
+  meetingId?: string | null
+}): string {
+  const fromApi = (meeting.publicMeetingUrl || "").trim()
+  if (fromApi) return fromApi
+  const room = (meeting.meetingId || "").trim()
+  if (!room) return ""
+  const path = `/join/room?room=${encodeURIComponent(room)}`
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}${path}`
+  }
+  return path
+}
+
 /**
  * Append name/email query params to a /join/room URL so LiveKit pre-join can skip empty fields
  * and hosts are recognized by email.

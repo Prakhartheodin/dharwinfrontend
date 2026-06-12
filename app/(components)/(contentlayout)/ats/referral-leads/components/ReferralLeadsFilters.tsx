@@ -228,6 +228,8 @@ export function ReferralLeadsFilters({
               [
                 { value: "hiredOnly" as const, label: "Hired only" },
                 { value: "convertedEmployees" as const, label: "Converted employees" },
+                { value: "activeEmployees" as const, label: "Active employees" },
+                { value: "resignedEmployees" as const, label: "Resigned employees" },
                 { value: "pendingReferrals" as const, label: "Pending referrals" },
               ] as const
             ).map(({ value, label }) => {

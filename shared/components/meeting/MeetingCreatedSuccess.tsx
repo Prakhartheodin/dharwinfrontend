@@ -9,6 +9,7 @@ export interface MeetingCreatedSuccessProps {
   durationMinutes?: number | null
   meetingId?: string | null
   status?: string | null
+  hosts?: { nameOrRole?: string; email: string }[]
   shareUrl: string
   personalUrl?: string | null
   onClose: () => void
@@ -194,6 +195,7 @@ export default function MeetingCreatedSuccess({
   durationMinutes,
   meetingId,
   status,
+  hosts,
   shareUrl,
   personalUrl,
   onClose,
@@ -204,6 +206,18 @@ export default function MeetingCreatedSuccess({
   const dateText = safeFormat(scheduledAt, "EEE · MMM d")
   const timeText = safeFormat(scheduledAt, "h:mm a")
   const showPersonal = !!personalUrl && personalUrl !== shareUrl
+  const hostLabels = useMemo(
+    () =>
+      (hosts || [])
+        .map((h) => {
+          const name = (h.nameOrRole || "").trim()
+          const email = (h.email || "").trim()
+          if (name && email) return `${name} (${email})`
+          return name || email
+        })
+        .filter(Boolean),
+    [hosts]
+  )
   const ctaLabel = variant === "interview" ? "Join interview" : "Join meeting"
   const anotherLabel = variant === "interview" ? "Schedule another interview" : "Schedule another"
 
@@ -307,7 +321,11 @@ export default function MeetingCreatedSuccess({
         <div className="px-4 py-4 space-y-4 sm:px-6 sm:py-5 sm:space-y-5">
           <section className="space-y-2.5 sm:space-y-3">
             <Eyebrow>Share</Eyebrow>
-            <CopyField label="Public link" hint="No host identity" value={shareUrl} />
+            <CopyField
+              label="Public link"
+              hint={shareUrl ? "Room link only — no guest name or email" : undefined}
+              value={shareUrl}
+            />
             {showPersonal && (
               <CopyField
                 label="Your join link"
@@ -317,10 +335,20 @@ export default function MeetingCreatedSuccess({
             )}
           </section>
 
-          {(meetingId || status) && (
+          {(meetingId || status || hostLabels.length > 0) && (
             <section className="space-y-2.5 sm:space-y-3">
               <Eyebrow>Meeting</Eyebrow>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {hostLabels.length > 0 && (
+                  <MetaCell
+                    label="Hosts"
+                    value={
+                      <span className="line-clamp-2 whitespace-normal" title={hostLabels.join(", ")}>
+                        {hostLabels.join(", ")}
+                      </span>
+                    }
+                  />
+                )}
                 {meetingId && <MetaCell label="Meeting ID" value={meetingId} mono />}
                 {status && (
                   <MetaCell

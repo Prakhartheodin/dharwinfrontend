@@ -110,8 +110,8 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
         <input
           type="search"
           className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:focus:border-white/40"
-          placeholder="Search tasks…"
-          aria-label="Search tasks"
+          placeholder="Search tasks or people…"
+          aria-label="Search tasks or people"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />

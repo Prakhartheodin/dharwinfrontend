@@ -36,7 +36,10 @@ export type LifecycleStageKey =
   | "preboarding"
   | "joined_pending_start"
   | "employee"
+  | "resigned"
   | "pending";
+
+export type ReferralEmployeeStatus = "active" | "resigned";
 
 export interface ReferralLeadRow {
   /** Candidate document id (`candidates` collection / GET candidate by id), not a Settings org User id. */
@@ -60,7 +63,10 @@ export interface ReferralLeadRow {
   salesAgentCurrentAttributionId?: string | null;
   lifecycleStage?: LifecycleStageKey | null;
   employeeConverted?: boolean;
+  /** Only set once converted (joining date passed): active | resigned. */
+  employeeStatus?: ReferralEmployeeStatus | null;
   joiningDate?: string | null;
+  resignDate?: string | null;
 }
 
 export interface ReferralLeadsListResponse {
@@ -129,6 +135,7 @@ export interface ReferralLeadsQueryParams {
   hiredOnly?: boolean;
   convertedEmployees?: boolean;
   pendingReferrals?: boolean;
+  employeeStatus?: ReferralEmployeeStatus;
 }
 
 export function coalesceField<T>(lead: unknown, key: string, fallback: T): T {

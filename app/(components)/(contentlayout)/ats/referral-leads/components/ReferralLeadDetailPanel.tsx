@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ROUTES } from "@/shared/lib/constants";
-import { LINK_TYPE } from "@/shared/lib/ats/referral-leads-constants";
+import { EMPLOYEE_STATUS_META, LINK_TYPE } from "@/shared/lib/ats/referral-leads-constants";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { attributionLabel } from "../utils/referralPermissions.util";
 import { fmtDate, fmtTime, userDisplay } from "../utils/format.util";
@@ -88,6 +88,27 @@ export function ReferralLeadDetailPanel({
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Lifecycle stage</p>
               <LifecycleStagePill stage={lead.lifecycleStage} />
+            </div>
+          )}
+
+          {featureEnabled && lead.employeeConverted && (
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Employee status</p>
+              {(() => {
+                const m = EMPLOYEE_STATUS_META[lead.employeeStatus === "resigned" ? "resigned" : "active"];
+                return (
+                  <span
+                    className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                    style={{ background: m.bg, color: m.color }}
+                  >
+                    {m.label}
+                  </span>
+                );
+              })()}
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {lead.joiningDate && <>Joined {fmtDate(lead.joiningDate)}</>}
+                {lead.employeeStatus === "resigned" && lead.resignDate && <> · Resigned {fmtDate(lead.resignDate)}</>}
+              </p>
             </div>
           )}
 

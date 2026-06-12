@@ -363,9 +363,6 @@ function CandidateAvatar({ candidate, className = 'w-10 h-10 rounded-full' }: { 
 }
 
 interface FilterState {
-  name: string[]
-  email: string
-  employeeId: string
   /** Assigned agent user ids (from checklist) */
   agentIds: string[]
   /** 'current' | 'resigned' | 'all' - default current */
@@ -547,9 +544,6 @@ const Candidates = () => {
   const [pageSize, setPageSize] = useState(50)
   
   const [filters, setFilters] = useState<FilterState>({
-    name: [],
-    email: '',
-    employeeId: '',
     agentIds: [],
     employmentStatus: 'current',
     compensationType: '',
@@ -562,25 +556,18 @@ const Candidates = () => {
   const employeesSortDropdownRef = useRef<HTMLDivElement>(null)
   const employeesExcelDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Search state for name filter dropdown
-  const [searchName, setSearchName] = useState('')
+  /** Quick search — employee name or ID only (toolbar input, like ATS jobs). */
+  const [employeeSearch, setEmployeeSearch] = useState('')
   const [searchAgent, setSearchAgent] = useState('')
-
-  // Filter dropdown options: all names from all candidates (not limited by pagination)
-  const [filterOptions, setFilterOptions] = useState<{ names: string[] }>({
-    names: [],
-  })
-  const [filterOptionsLoading, setFilterOptionsLoading] = useState(false)
 
   const [agentOptions, setAgentOptions] = useState<AgentOption[]>([])
   const [agentsLoading, setAgentsLoading] = useState(false)
 
-  // Debounce search input so API is called after user stops typing
-  const [debouncedSearchName, setDebouncedSearchName] = useState('')
+  const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState('')
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearchName(searchName), 400)
+    const t = setTimeout(() => setDebouncedEmployeeSearch(employeeSearch), 400)
     return () => clearTimeout(t)
-  }, [searchName])
+  }, [employeeSearch])
 
   useEffect(() => {
     if (!employeesToolbarMenu) return
@@ -632,29 +619,23 @@ const Candidates = () => {
       sortBy: getEmployeesApiSortBy(selectedSort),
       includeOpenSopCount: '1',
     }
-    if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
-    else if (filters.name?.length) params.fullName = filters.name[0]
-    if (filters.email?.trim()) params.email = filters.email.trim()
-    if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
+    if (debouncedEmployeeSearch.trim()) params.search = debouncedEmployeeSearch.trim()
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
     params.employmentStatus = filters.employmentStatus
     if (filters.compensationType) params.compensationType = filters.compensationType
     return params
-  }, [filters, pageSize, debouncedSearchName, selectedSort])
+  }, [filters, pageSize, debouncedEmployeeSearch, selectedSort])
 
   /** POST /candidates/export uses the same filters as the list (omit page/limit/SOP count). */
   const exportQueryParams = useMemo(() => {
     const params: Record<string, unknown> = {
       sortBy: getEmployeesApiSortBy(selectedSort),
     }
-    if (debouncedSearchName.trim()) params.fullName = debouncedSearchName.trim()
-    else if (filters.name?.length) params.fullName = filters.name[0]
-    if (filters.email?.trim()) params.email = filters.email.trim()
-    if (filters.employeeId?.trim()) params.employeeId = filters.employeeId.trim()
+    if (debouncedEmployeeSearch.trim()) params.search = debouncedEmployeeSearch.trim()
     if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
     params.employmentStatus = filters.employmentStatus
     return params
-  }, [filters, debouncedSearchName, selectedSort])
+  }, [filters, debouncedEmployeeSearch, selectedSort])
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -681,19 +662,9 @@ const Candidates = () => {
     refreshCandidates(false)
   }, [fetchParams, apiPage])
 
-  // Fetch all unique names for filter dropdown (not limited by page); respect employmentStatus
   useEffect(() => {
-    setFilterOptionsLoading(true)
-    const params: Record<string, unknown> = { limit: 5000, sortBy: 'fullName:asc', employmentStatus: filters.employmentStatus }
-    listCandidates(params)
-      .then((res) => {
-        const results = (res.results ?? []).map(mapCandidateToDisplay)
-        const names = [...new Set(results.map((c) => c.name).filter(Boolean))].sort()
-        setFilterOptions({ names })
-      })
-      .catch(() => setFilterOptions({ names: [] }))
-      .finally(() => setFilterOptionsLoading(false))
-  }, [filters.employmentStatus])
+    setApiPage(1)
+  }, [debouncedEmployeeSearch])
 
   useEffect(() => {
     setAgentsLoading(true)
@@ -710,10 +681,6 @@ const Candidates = () => {
       setApiPage(1)
     }
   }, [filters])
-
-  useEffect(() => {
-    setApiPage(1)
-  }, [debouncedSearchName])
 
   // Note: Experience filter sync disabled with server-side pagination (data is paged)
 
@@ -2071,14 +2038,6 @@ const Candidates = () => {
   const filteredData = useMemo(() => candidates, [candidates])
   const data = filteredData
 
-  const allNames = filterOptions.names
-
-  const filteredNames = useMemo(() => {
-    const q = searchName.trim().toLowerCase()
-    if (!q) return []
-    return allNames.filter((name) => name.toLowerCase().includes(q))
-  }, [allNames, searchName])
-
   const filteredAgents = useMemo(() => {
     const q = searchAgent.trim().toLowerCase()
     if (!q) return []
@@ -2087,7 +2046,7 @@ const Candidates = () => {
     )
   }, [agentOptions, searchAgent])
 
-  const handleMultiSelectChange = (key: 'name' | 'agentIds', value: string) => {
+  const handleMultiSelectChange = (key: 'agentIds', value: string) => {
     setFilters(prev => {
       const currentArray = prev[key]
       const newArray = currentArray.includes(value)
@@ -2097,7 +2056,7 @@ const Candidates = () => {
     })
   }
 
-  const handleRemoveFilter = (key: 'name' | 'agentIds', value: string) => {
+  const handleRemoveFilter = (key: 'agentIds', value: string) => {
     setFilters(prev => ({
       ...prev,
       [key]: prev[key].filter(item => item !== value)
@@ -2106,13 +2065,11 @@ const Candidates = () => {
 
   const handleResetFilters = () => {
     setFilters({
-      name: [],
-      email: '',
-      employeeId: '',
       agentIds: [],
       employmentStatus: 'current',
+      compensationType: '',
     })
-    setSearchName('')
+    setEmployeeSearch('')
     setSearchAgent('')
   }
 
@@ -2126,21 +2083,16 @@ const Candidates = () => {
   }, [employeesFilterPanelOpen])
 
   const hasActiveFilters =
-    filters.name.length > 0 ||
-    filters.email !== '' ||
-    filters.employeeId !== '' ||
     filters.agentIds.length > 0 ||
     filters.employmentStatus !== 'current' ||
-    debouncedSearchName.trim() !== ''
+    !!filters.compensationType ||
+    debouncedEmployeeSearch.trim() !== ''
 
   const activeFilterCount =
-    filters.name.length +
-    (filters.email !== '' ? 1 : 0) +
-    (filters.employeeId !== '' ? 1 : 0) +
     filters.agentIds.length +
     (filters.employmentStatus !== 'current' ? 1 : 0) +
     (filters.compensationType ? 1 : 0) +
-    (debouncedSearchName.trim() ? 1 : 0)
+    (debouncedEmployeeSearch.trim() ? 1 : 0)
 
   const employmentScopeLabel = useMemo(() => {
     switch (filters.employmentStatus) {
@@ -2491,14 +2443,27 @@ const Candidates = () => {
                       ) : null}
                     </div>
                 ) : null}
+                <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
+                  <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem]" aria-hidden />
+                  <input
+                    type="search"
+                    className="form-control !h-8 !py-1 !ps-8 !pe-3 !text-[0.75rem] !rounded-lg w-full"
+                    placeholder="Search by name or employee ID…"
+                    value={employeeSearch}
+                    onChange={(e) => setEmployeeSearch(e.target.value)}
+                    aria-label="Search by employee name or ID"
+                  />
+                </div>
                 <button
                   type="button"
-                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ${employeesFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  className={`ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] me-2 whitespace-nowrap ${employeesFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
                   aria-expanded={employeesFilterPanelOpen}
+                  aria-controls="candidates-filter-panel"
                   onClick={() => setEmployeesFilterPanelOpen((v) => !v)}
                 >
-                  <i className="ri-search-line font-semibold align-middle me-1"></i>Search
-                  {hasActiveFilters && (
+                  <i className="ri-filter-3-line font-semibold align-middle me-1"></i>
+                  Advanced Search / Apply Filter
+                  {hasActiveFilters && !debouncedEmployeeSearch.trim() && (
                     <span className="badge bg-primary text-white rounded-full ms-1 text-[0.65rem]">
                       {activeFilterCount}
                     </span>
@@ -2538,11 +2503,6 @@ const Candidates = () => {
               onCloseLayout={() => setEmployeesFilterPanelOpen(false)}
               filters={filters}
               setFilters={setFilters}
-              allNames={allNames}
-              filterOptionsLoading={filterOptionsLoading}
-              filteredNames={filteredNames}
-              searchName={searchName}
-              setSearchName={setSearchName}
               agentOptions={agentOptions}
               agentsLoading={agentsLoading}
               filteredAgents={filteredAgents}
@@ -2551,8 +2511,6 @@ const Candidates = () => {
               handleMultiSelectChange={handleMultiSelectChange}
               handleRemoveFilter={handleRemoveFilter}
               handleResetFilters={handleResetFilters}
-              hasActiveFilters={hasActiveFilters}
-              activeFilterCount={activeFilterCount}
             />
 
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden min-h-0">
@@ -2803,7 +2761,7 @@ const Candidates = () => {
                             <div className="max-w-md space-y-1">
                               <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No employees on this page</p>
                               <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
-                                Try changing employment status, clearing name filters, or widening your search in the panel.
+                                Try a different name or employee ID, or adjust filters in the panel.
                               </p>
                             </div>
                             <button

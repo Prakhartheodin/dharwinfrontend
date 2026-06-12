@@ -44,6 +44,7 @@ export type LifecycleStageKey =
   | "preboarding"
   | "joined_pending_start"
   | "employee"
+  | "resigned"
   | "pending";
 
 export const LIFECYCLE_STAGE_META: Record<LifecycleStageKey, { label: string; color: string; bg: string }> = {
@@ -53,7 +54,13 @@ export const LIFECYCLE_STAGE_META: Record<LifecycleStageKey, { label: string; co
   preboarding: { label: "Preboarding", color: "#6d28d9", bg: "#ede9fe" },
   joined_pending_start: { label: "Joined", color: "#0e7490", bg: "#cffafe" },
   employee: { label: "Employee", color: "#047857", bg: "#d1fae5" },
+  resigned: { label: "Resigned", color: "#be123c", bg: "#ffe4e6" },
   pending: { label: "Pending", color: "#4b5563", bg: "#f3f4f6" },
+};
+
+export const EMPLOYEE_STATUS_META: Record<"active" | "resigned", { label: string; color: string; bg: string }> = {
+  active: { label: "Active", color: "#047857", bg: "#d1fae5" },
+  resigned: { label: "Resigned", color: "#be123c", bg: "#ffe4e6" },
 };
 
 export function getLifecycleStageMeta(key: string | undefined | null) {

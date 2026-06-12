@@ -4,11 +4,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { format } from "date-fns"
 import { useAuth } from "@/shared/contexts/auth-context"
-import { appendJoinIdentityToUrl } from "@/shared/lib/join-room-url"
+import { appendJoinIdentityToUrl, resolveMeetingShareUrl } from "@/shared/lib/join-room-url"
 import type { InternalMeeting } from "@/shared/lib/api/internal-meetings"
 import MeetingCreatedSuccess from "@/shared/components/meeting/MeetingCreatedSuccess"
 import { listUsers } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
+import RecurrenceFields from "@/shared/components/meeting/RecurrenceFields"
 
 const DatePicker = dynamic(() => import("react-datepicker").then((m) => m.default), { ssr: false })
 
@@ -88,7 +89,10 @@ export default function CreateInternalMeetingModal({
   useEffect(() => {
     void loadParticipantUsers()
   }, [loadParticipantUsers])
-  const shareMeetingUrl = useMemo(() => (createdMeeting?.publicMeetingUrl || "").trim(), [createdMeeting?.publicMeetingUrl])
+  const shareMeetingUrl = useMemo(
+    () => (createdMeeting ? resolveMeetingShareUrl(createdMeeting) : ""),
+    [createdMeeting]
+  )
 
   const personalMeetingUrl = useMemo(() => {
     const base = shareMeetingUrl
@@ -188,7 +192,8 @@ export default function CreateInternalMeetingModal({
               scheduledAt={createdMeeting.scheduledAt}
               durationMinutes={createdMeeting.durationMinutes}
               meetingId={createdMeeting.meetingId}
-              status={createdMeeting.status}
+              status={createdMeeting.status === "active" ? "scheduled" : createdMeeting.status}
+              hosts={createdMeeting.hosts}
               shareUrl={shareMeetingUrl}
               personalUrl={personalMeetingUrl}
               onClose={closeModal}
@@ -299,6 +304,11 @@ export default function CreateInternalMeetingModal({
                     calendar to reset.
                   </p>
                 </div>
+                <RecurrenceFields
+                  hiddenInputId="internal-schedule-recurrence"
+                  anchorDate={scheduledInternalMeetingAt}
+                  disabled={formLoading}
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="internal-schedule-duration" className="form-label block text-sm font-medium mb-1.5">

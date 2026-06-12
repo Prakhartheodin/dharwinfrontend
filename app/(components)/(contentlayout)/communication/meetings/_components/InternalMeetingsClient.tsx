@@ -12,9 +12,11 @@ import {
   getInternalMeeting,
   getInternalMeetingRecordings,
   updateInternalMeeting,
+  deleteInternalMeeting,
   type InternalMeeting,
   type CreateInternalMeetingPayload,
   type UpdateInternalMeetingPayload,
+  type SeriesEditMode,
 } from "@/shared/lib/api/internal-meetings"
 import CreateInternalMeetingModal from "./CreateInternalMeetingModal"
 import RecordingsModal, { type RecordingListItem } from "../../../ats/interviews/_components/RecordingsModal"
@@ -22,6 +24,7 @@ import { listUsers } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import MeetingReadOnlyView from "@/shared/components/meeting/MeetingReadOnlyView"
 import { useConfirm } from "@/shared/components/ui/useConfirm"
+import { useRecurringScopeDialog } from "@/shared/components/meeting/RecurringScopeDialog"
 
 interface InternalMeetingRow {
   id: string
@@ -33,6 +36,8 @@ interface InternalMeetingRow {
   status: string
   publicMeetingUrl: string
   meetingId: string
+  seriesId: string | null
+  recurrenceSummary: string
 }
 
 function formatMeetingTime(iso: string): string {
@@ -44,10 +49,12 @@ function formatMeetingTime(iso: string): string {
   }
 }
 
-function formatMeetingDate(iso: string): string {
+function formatMeetingDate(iso: string, tz?: string): string {
   try {
-    const d = new Date(iso)
-    return d.toISOString().slice(0, 10)
+    const w = utcInstantToWallClock(iso, tz || getViewerTimezone())
+    const [year, month, day] = w.date.split("-").map(Number)
+    const local = new Date(year, month - 1, day)
+    return local.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   } catch {
     return "—"
   }
@@ -62,11 +69,11 @@ function participantsSummary(m: InternalMeeting): string {
 }
 
 function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
-  const baseId = (m._id != null ? String(m._id) : m.meetingId) || ""
+  const baseId = String(m.id ?? m._id ?? m.meetingId ?? "")
   return {
     id: baseId || `meeting-${index}`,
     title: m.title || "Meeting",
-    date: formatMeetingDate(m.scheduledAt),
+    date: formatMeetingDate(m.scheduledAt, m.timezone),
     time: formatMeetingTime(m.scheduledAt),
     type: m.meetingType || "Video",
     participantsSummary: participantsSummary(m),
@@ -77,6 +84,8 @@ function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
         ? `${window.location.origin}/join/room?room=${encodeURIComponent(m.meetingId || "")}`
         : ""),
     meetingId: m.meetingId || "",
+    seriesId: m.seriesId ? String(m.seriesId) : null,
+    recurrenceSummary: m.recurrenceSummary || "",
   }
 }
 
@@ -118,11 +127,14 @@ export default function InternalMeetingsClient() {
   const [editMeeting, setEditMeeting] = useState<InternalMeeting | null>(null)
   /** Editable participant/guest invite emails for the Edit Meeting overlay. */
   const [editEmailInvites, setEditEmailInvites] = useState<string[]>([])
+  /** Scope for editing a recurring-series occurrence (single | future | series). */
+  const [editSeriesMode, setEditSeriesMode] = useState<SeriesEditMode>("single")
   const [editUsers, setEditUsers] = useState<ParticipantUser[]>([])
   const [editUsersLoading, setEditUsersLoading] = useState(false)
   const [editUsersError, setEditUsersError] = useState<string | null>(null)
   const editUsersLoadedRef = useRef(false)
   const { confirm, confirmDialog } = useConfirm()
+  const { pickScope, recurringScopeDialog } = useRecurringScopeDialog()
   /** Terminal meetings (ended/completed/cancelled) are view-only after the cycle ends. */
   const editStatusRaw = (editMeeting?.status || "").toLowerCase()
   const editReadOnly = editStatusRaw === "ended" || editStatusRaw === "completed" || editStatusRaw === "cancelled"
@@ -146,8 +158,17 @@ export default function InternalMeetingsClient() {
     setMeetingsLoading(true)
     setMeetingsError(null)
     try {
-      const res = await listInternalMeetings({ limit: 100 })
-      setMeetings(res.results || [])
+      // Fetch every page so the table holds the full history (the Show 10/25/50/100
+      // dropdown paginates client-side over the complete set).
+      const all: InternalMeeting[] = []
+      let page = 1
+      for (;;) {
+        const res = await listInternalMeetings({ limit: 500, page })
+        all.push(...(res.results || []))
+        if (page >= (res.totalPages || 1) || !(res.results || []).length) break
+        page += 1
+      }
+      setMeetings(all)
     } catch (err: any) {
       setMeetingsError(err?.response?.data?.message || err?.message || "Failed to load meetings")
       setMeetings([])
@@ -331,6 +352,19 @@ export default function InternalMeetingsClient() {
         emailInvites: emailInvites.filter((em) => em.trim()).map((em) => em.trim()),
         notes: notes || undefined,
       }
+      // Recurrence (optional) — RecurrenceFields serializes {recurrence,end} as JSON.
+      const recurrenceRaw = getVal("internal-schedule-recurrence")
+      if (recurrenceRaw) {
+        try {
+          const parsed = JSON.parse(recurrenceRaw)
+          if (parsed?.recurrence?.frequency) {
+            payload.recurrence = parsed.recurrence
+            payload.end = parsed.end
+          }
+        } catch {
+          /* ignore malformed recurrence; falls back to one-off */
+        }
+      }
       setFormLoading(true)
       try {
         const meeting = await createInternalMeeting(payload)
@@ -363,11 +397,12 @@ export default function InternalMeetingsClient() {
     }
   }, [])
 
-  const openEditModal = useCallback((id: string) => {
+  const openEditModal = useCallback((id: string, seriesMode: SeriesEditMode = "single") => {
     setEditMeetingId(id)
     setEditOpenNonce((n) => n + 1)
     setEditMeeting(null)
     setEditError(null)
+    setEditSeriesMode(seriesMode)
     setEditLoading(true)
     if (!editUsersLoadedRef.current) void loadEditUsers()
     ;(window as any).HSOverlay?.open(document.querySelector("#edit-internal-meeting-modal"))
@@ -438,7 +473,8 @@ export default function InternalMeetingsClient() {
       }
       setEditSaving(true)
       try {
-        await updateInternalMeeting(editMeetingId, payload)
+        // Series occurrences pass the chosen scope; one-off meetings omit mode.
+        await updateInternalMeeting(editMeetingId, payload, editMeeting.seriesId ? editSeriesMode : undefined)
         await fetchMeetings()
         closeEditModal()
       } catch (err: any) {
@@ -447,12 +483,59 @@ export default function InternalMeetingsClient() {
         setEditSaving(false)
       }
     },
-    [editMeetingId, editMeeting, editEmailInvites, fetchMeetings, closeEditModal]
+    [editMeetingId, editMeeting, editEmailInvites, editSeriesMode, fetchMeetings, closeEditModal]
+  )
+
+  const handleDeleteEntireSeries = useCallback(
+    async (row: InternalMeetingRow) => {
+      if (!row.id || !row.seriesId) return
+      const ok = await confirm({
+        title: "Remove entire series?",
+        message: (
+          <>
+            This permanently removes <strong>all</strong> occurrences of &quot;{row.title}&quot;
+            {row.recurrenceSummary ? <> ({row.recurrenceSummary})</> : null} from your meeting list.
+            This cannot be undone.
+          </>
+        ),
+        confirmLabel: "Remove permanently",
+        cancelLabel: "Keep series",
+        tone: "danger",
+      })
+      if (!ok) return
+      try {
+        await deleteInternalMeeting(row.id, "series", { purge: true })
+        await fetchMeetings()
+      } catch (err: any) {
+        alert(err?.response?.data?.message || err?.message || "Failed to delete series")
+      }
+    },
+    [confirm, fetchMeetings]
   )
 
   const handleCancelMeeting = useCallback(
     async (row: InternalMeetingRow) => {
       if (!row.id) return
+      if (row.seriesId) {
+        const scope = await pickScope({
+          title: "Cancel recurring meeting?",
+          message: (
+            <>
+              &quot;{row.title}&quot; repeats{row.recurrenceSummary ? <> ({row.recurrenceSummary})</> : null}. Choose
+              which occurrences to cancel.
+            </>
+          ),
+          tone: "danger",
+        })
+        if (!scope) return
+        try {
+          await deleteInternalMeeting(row.id, scope)
+          await fetchMeetings()
+        } catch (err: any) {
+          alert(err?.response?.data?.message || err?.message || "Failed to cancel")
+        }
+        return
+      }
       const ok = await confirm({
         title: "Cancel meeting?",
         message: `Cancel "${row.title}"? The join link will be disabled.`,
@@ -468,7 +551,7 @@ export default function InternalMeetingsClient() {
         alert(err?.response?.data?.message || err?.message || "Failed to cancel")
       }
     },
-    [confirm, fetchMeetings]
+    [pickScope, fetchMeetings]
   )
 
   const handleRowSelect = (id: string) => {
@@ -505,11 +588,22 @@ export default function InternalMeetingsClient() {
           const r = row.original as InternalMeetingRow
           return (
             <div className="flex flex-col gap-1">
-              <div className="font-semibold text-gray-800 dark:text-white">{r.title}</div>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-800 dark:text-white">{r.title}</span>
+                {r.seriesId ? (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-semibold text-primary"
+                    title={`Recurring${r.recurrenceSummary ? ` · ${r.recurrenceSummary}` : ""}`}
+                  >
+                    <i className="ri-repeat-2-line text-[0.7rem]" aria-hidden />
+                    {r.recurrenceSummary || "Recurring"}
+                  </span>
+                ) : null}
+              </div>
               <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2">
                 <span className="flex items-center gap-1">
                   <i className="ri-calendar-line text-primary"></i>
-                  {new Date(r.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  {r.date}
                 </span>
                 <span className="flex items-center gap-1">
                   <i className="ri-time-line text-info"></i>
@@ -584,26 +678,50 @@ export default function InternalMeetingsClient() {
             <button
               type="button"
               className="ti-btn ti-btn-icon ti-btn-sm ti-btn-info"
-              title="Edit"
-              onClick={() => openEditModal(row.original.id)}
+              title={row.original.seriesId ? "Edit this occurrence" : "Edit meeting"}
+              onClick={() => openEditModal(row.original.id, "single")}
             >
               <i className="ri-pencil-line"></i>
             </button>
+            {row.original.seriesId && row.original.status?.toLowerCase() !== "cancelled" ? (
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-primary"
+                title="Edit entire series"
+                onClick={() => openEditModal(row.original.id, "series")}
+              >
+                <i className="ri-repeat-2-line"></i>
+              </button>
+            ) : null}
             {row.original.status?.toLowerCase() !== "cancelled" && (
               <button
                 type="button"
                 className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
-                title="Cancel"
+                title={row.original.seriesId ? "Cancel occurrence or series…" : "Cancel meeting"}
                 onClick={() => handleCancelMeeting(row.original)}
               >
                 <i className="ri-close-circle-line"></i>
               </button>
             )}
+            {row.original.seriesId ? (
+              <button
+                type="button"
+                className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
+                title={
+                  row.original.status?.toLowerCase() === "cancelled"
+                    ? "Remove cancelled series permanently"
+                    : "Remove entire series permanently"
+                }
+                onClick={() => handleDeleteEntireSeries(row.original)}
+              >
+                <i className="ri-delete-bin-2-line"></i>
+              </button>
+            ) : null}
           </div>
         ),
       },
     ],
-    [selectedRows, copiedLinkId, copyMeetingLink, openEditModal, handleCancelMeeting]
+    [selectedRows, copiedLinkId, copyMeetingLink, openEditModal, handleCancelMeeting, handleDeleteEntireSeries]
   )
 
   const data = tableData
@@ -982,6 +1100,8 @@ export default function InternalMeetingsClient() {
 
       {confirmDialog}
 
+      {recurringScopeDialog}
+
       <div
         id="edit-internal-meeting-modal"
         className="hs-overlay hidden ti-modal size-lg !z-[105]"
@@ -1045,6 +1165,32 @@ export default function InternalMeetingsClient() {
               {!editLoading && editMeeting && !editReadOnly && (
                 <form onSubmit={handleEditSubmit} className="space-y-5 max-h-[calc(100vh-12rem)] overflow-y-auto">
                   {editError && <div className="p-3 rounded-lg bg-danger/10 text-danger text-sm">{editError}</div>}
+                  {editMeeting.seriesId ? (
+                    <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-3.5 dark:border-primary/25 dark:bg-primary/[0.05]">
+                      <p className="mb-2 flex items-center gap-1.5 text-sm font-medium text-defaulttextcolor dark:text-white">
+                        <i className="ri-repeat-2-line text-primary" aria-hidden />
+                        Recurring meeting — apply changes to
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        {([
+                          ["series", "The entire series"],
+                          ["future", "This and future occurrences"],
+                          ["single", "This occurrence only"],
+                        ] as const).map(([value, label]) => (
+                          <label key={value} className="flex items-center gap-2 text-sm">
+                            <input
+                              type="radio"
+                              name="edit-internal-series-mode"
+                              checked={editSeriesMode === value}
+                              onChange={() => setEditSeriesMode(value)}
+                              className="form-check-input !w-3.5 !h-3.5 text-primary"
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div>
                     <label htmlFor="edit-internal-title" className="form-label block text-sm font-medium mb-1.5">
                       Title <span className="text-danger">*</span>

@@ -49,6 +49,13 @@ function assigneeIds(task: Task): string[] {
     .filter(Boolean);
 }
 
+function assigneeSearchText(task: Task): string {
+  return (task.assignedTo ?? [])
+    .map((u) => (u ? `${u.name ?? ""} ${u.email ?? ""}` : ""))
+    .join(" ")
+    .toLowerCase();
+}
+
 function createdById(task: Task): string | undefined {
   const u = task.createdBy;
   if (!u) return undefined;
@@ -94,7 +101,13 @@ export function compilePredicate(filters: TaskFilters): (task: Task) => boolean 
       const title = (task.title ?? "").toLowerCase();
       const desc = String(task.description ?? "").toLowerCase();
       const code = String(task.taskCode ?? "").toLowerCase();
-      if (!title.includes(q) && !desc.includes(q) && !code.includes(q)) {
+      const assignees = assigneeSearchText(task);
+      if (
+        !title.includes(q) &&
+        !desc.includes(q) &&
+        !code.includes(q) &&
+        !assignees.includes(q)
+      ) {
         return false;
       }
     }

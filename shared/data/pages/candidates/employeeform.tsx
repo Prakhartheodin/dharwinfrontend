@@ -445,6 +445,9 @@ export const EmployeeForm = ({
   const auth = useAuth();
   const canManageEmployees =
     hasPermission(auth, "create_employee") || hasPermission(auth, "update_employee");
+  // Admin (Administrator role / platform super user) may override a locked,
+  // offer-sourced compensation snapshot; everyone else sees it read-only.
+  const isCompensationAdmin = Boolean(auth.isAdministrator || auth.isPlatformSuperUser);
   const isCandidate = isCandidatePersona({
     userRole: auth.user?.role,
     roleNames: auth.roleNames,
@@ -1969,7 +1972,8 @@ export const EmployeeForm = ({
         ...(canManageEmployees && isEdit && formData.departmentId
           ? { departmentId: formData.departmentId }
           : {}),
-        ...(!(isEdit && initialData?.compensationLocked) && formData.compensationType
+        ...((!(isEdit && initialData?.compensationLocked) || isCompensationAdmin) &&
+        formData.compensationType
           ? { compensationType: formData.compensationType }
           : {}),
         supervisorName: formData.supervisorName,
@@ -2452,7 +2456,7 @@ export const EmployeeForm = ({
                   id="compensationType"
                   value={formData.compensationType}
                   onChange={handleFormChange}
-                  disabled={Boolean(initialData?.compensationLocked)}
+                  disabled={Boolean(initialData?.compensationLocked) && !isCompensationAdmin}
                   className="form-control w-full !rounded-md disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">Select…</option>
@@ -2460,9 +2464,15 @@ export const EmployeeForm = ({
                   <option value="unpaid">Unpaid Internship / Trainee</option>
                 </select>
                 {initialData?.compensationLocked ? (
-                  <small className="text-gray-500 text-xs mt-1 block">
-                    Locked — set from the employee&apos;s accepted offer.
-                  </small>
+                  isCompensationAdmin ? (
+                    <small className="text-gray-500 text-xs mt-1 block">
+                      Admin override — set from the employee&apos;s accepted offer; changes are logged.
+                    </small>
+                  ) : (
+                    <small className="text-gray-500 text-xs mt-1 block">
+                      Locked — set from the employee&apos;s accepted offer.
+                    </small>
+                  )
                 ) : (
                   <small className="text-gray-500 text-xs mt-1 block">
                     Paid role, or unpaid internship / trainee.

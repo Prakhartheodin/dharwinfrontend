@@ -30,7 +30,6 @@ export function ReferralLeadsTable({
             <th className="px-4 py-3">Job</th>
             <th className="px-4 py-3">Status</th>
             {featureEnabled && <th className="px-4 py-3">Stage</th>}
-            {featureEnabled && <th className="px-4 py-3">Employee converted</th>}
             {featureEnabled && <th className="px-4 py-3">Assigned sales agent</th>}
             <th className="px-4 py-3">Claimed</th>
             <th className="px-4 py-3 w-12" aria-label="Actions" />
@@ -86,15 +85,6 @@ export function ReferralLeadsTable({
               {featureEnabled && (
                 <td className="px-4 py-3">
                   <LifecycleStagePill stage={lead.lifecycleStage} />
-                </td>
-              )}
-              {featureEnabled && (
-                <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
-                  {lead.employeeConverted ? (
-                    <span className="text-emerald-700 dark:text-emerald-300 font-medium">Yes</span>
-                  ) : (
-                    <span className="text-slate-500 dark:text-slate-400">No</span>
-                  )}
                 </td>
               )}
               {featureEnabled && (

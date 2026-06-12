@@ -358,3 +358,25 @@ html.swal2-shown {
   }
 }
 
+/*
+  Job preview offcanvas: stored job descriptions embed their own headings
+  (e.g. <h3>Requirements & Qualifications</h3>). @tailwindcss/typography sizes
+  those far larger than the "Job Description" section label. Scope to the panel
+  id so the candidate browse-job view (intentionally large editorial headings)
+  is untouched. Applies to all jobs, existing and new, at render time.
+*/
+#job-preview-panel .job-description-content {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: 1rem;
+    line-height: 1.5rem;
+    font-weight: 600;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+  }
+}
+
