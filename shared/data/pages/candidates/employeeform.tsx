@@ -1839,7 +1839,8 @@ export const EmployeeForm = ({
                 key: fileData.key,
                 originalName: fileData.originalName,
                 size: fileData.size,
-                mimeType: fileData.mimeType
+                mimeType: fileData.mimeType,
+                status: 0,
               });
             });
           } else {

@@ -43,6 +43,7 @@ export interface CandidateActionModalsProps {
   setExportAllEmail: (v: string) => void
   exportAllSubmitting: boolean
   handleExportAllSubmit: () => void
+  selectedExportCount: number
 
   assignRecruiterCandidate: CandidateDisplay | null
   setAssignRecruiterCandidate: (c: CandidateDisplay | null) => void
@@ -96,7 +97,7 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
     feedbackSubmitting, handleFeedbackSubmit,
     exportCandidate, setExportCandidate, exportEmail, setExportEmail,
     exportSubmitting, handleExportSubmit,
-    exportAllEmail, setExportAllEmail, exportAllSubmitting, handleExportAllSubmit,
+    exportAllEmail, setExportAllEmail, exportAllSubmitting, handleExportAllSubmit, selectedExportCount,
     assignRecruiterCandidate, setAssignRecruiterCandidate, recruitersList,
     assignRecruiterId, setAssignRecruiterId, assignRecruiterSubmitting, handleAssignRecruiterSubmit,
     joiningDateCandidate, setJoiningDateCandidate, joiningDateValue, setJoiningDateValue,
@@ -312,9 +313,14 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
               <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#export-all-modal"><span className="sr-only">Close</span>×</button>
             </div>
             <div className="ti-modal-body">
-              <label className="form-label">Send CSV by email (optional)</label>
+              <p className="mb-3 text-[0.8125rem] text-textmuted dark:text-white/70">
+                {selectedExportCount > 0
+                  ? `Exporting ${selectedExportCount} selected employee(s).`
+                  : 'Exporting all employees matching the current filters.'}
+              </p>
+              <label className="form-label">Send Excel by email (optional)</label>
               <input type="email" className="form-control" placeholder="email@example.com" value={exportAllEmail} onChange={(e) => setExportAllEmail(e.target.value)} />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave empty to download only.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave empty to download only. Email includes a multi-sheet .xlsx attachment.</p>
             </div>
             <div className="ti-modal-footer">
               <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#export-all-modal">Cancel</button>

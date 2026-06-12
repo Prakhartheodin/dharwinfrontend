@@ -1331,8 +1331,14 @@ const Candidates = () => {
     setExportAllSubmitting(true)
     setActionError(null)
     try {
-      const body = exportAllEmail.trim() ? { email: exportAllEmail.trim() } : undefined
-      const result = await exportAllCandidates(exportQueryParams as ExportAllCandidatesParams, body)
+      const ids = selectedRows.size > 0 ? Array.from(selectedRows) : undefined
+      const body: { email?: string; ids?: string[] } = {}
+      if (exportAllEmail.trim()) body.email = exportAllEmail.trim()
+      if (ids) body.ids = ids
+      const result = await exportAllCandidates(
+        exportQueryParams as ExportAllCandidatesParams,
+        Object.keys(body).length ? body : undefined,
+      )
       if (result && typeof (result as Blob).slice === 'function') {
         const url = URL.createObjectURL(result as Blob)
         const a = document.createElement('a')
@@ -1705,7 +1711,7 @@ const Candidates = () => {
               maxWidth: 52,
               Cell: ({ row }: any) => (
                 <input
-                  className="form-check-input"
+                  className="form-check-input h-[1.15rem] w-[1.15rem] cursor-pointer rounded border-2 border-gray-400 accent-primary focus:ring-2 focus:ring-primary/40 dark:border-white/40"
                   type="checkbox"
                   checked={selectedRows.has(row.original.id)}
                   onChange={() => handleRowSelect(row.original.id)}
@@ -2640,7 +2646,7 @@ const Candidates = () => {
                           >
                             {column.id === 'checkbox' ? (
                               <input
-                                className="form-check-input"
+                                className="form-check-input h-[1.15rem] w-[1.15rem] cursor-pointer rounded border-2 border-gray-400 accent-primary focus:ring-2 focus:ring-primary/40 dark:border-white/40"
                                 type="checkbox"
                                 checked={isAllSelected}
                                 ref={(input) => {
@@ -3747,6 +3753,7 @@ const Candidates = () => {
         setExportAllEmail={setExportAllEmail}
         exportAllSubmitting={exportAllSubmitting}
         handleExportAllSubmit={handleExportAllSubmit}
+        selectedExportCount={selectedRows.size}
         assignRecruiterCandidate={assignRecruiterCandidate}
         setAssignRecruiterCandidate={setAssignRecruiterCandidate}
         recruitersList={recruitersList}

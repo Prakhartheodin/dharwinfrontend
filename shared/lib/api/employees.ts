@@ -371,10 +371,10 @@ export type ExportAllCandidatesParams = Omit<
   format?: "csv" | "xlsx";
 };
 
-/** Export all candidates: default multi-sheet `.xlsx` blob; `format=csv` for one CSV. Email path sends CSV in body. Requires candidates.manage. */
+/** Export all candidates: default multi-sheet `.xlsx` blob; `format=csv` for one CSV. Email path sends the same format as an attachment. Requires candidates.manage. */
 export async function exportAllCandidates(
   params?: ExportAllCandidatesParams,
-  body?: { email?: string }
+  body?: { email?: string; ids?: string[] }
 ): Promise<Blob | void> {
   const sendBlob = !body?.email;
   const res = await apiClient.post("/employees/export", body ?? {}, {
