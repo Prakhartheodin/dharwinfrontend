@@ -94,7 +94,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   // Communication
   "/communication/calling": "communication.calling:",
   // Training Management
-  "/training/curriculum": "training.courses:",
+  "/training/curriculum": "training.modules:",
   "/training/attendance": "training.attendance:",
   "/training/mentors": "training.mentors:",
   "/training/students": "training.students:",
@@ -120,11 +120,11 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
 
 /**
  * Permission prefixes that also grant access to another prefix.
- * E.g. training.modules: and training.categories: grant access to paths requiring training.courses:
- * (roles UI has separate Modules/Categories checkboxes but nav shows one Training Curriculum section).
+ * E.g. training.categories: and training.positions: grant access to paths requiring training.modules:
+ * (roles UI has separate Modules/Categories/Positions checkboxes but nav shows one Training Curriculum section).
  */
 const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
-  "training.courses:": ["training.modules:", "training.categories:", "training.positions:"],
+  "training.modules:": ["training.categories:", "training.positions:"],
   /** Referral leads matrix row uses ats.referralLeads:*; legacy roles only have ats.candidates:view. */
   "ats.referralLeads:": ["ats.candidates:"],
   /** Employees page (PR3): legacy roles may still hold ats.candidates:* until migration completes everywhere. */
@@ -162,7 +162,7 @@ export function getRequiredPermissionForPath(pathname: string): string | null {
 
 /**
  * Returns true if the user has at least one permission that starts with the required prefix
- * or any of its aliases (e.g. training.modules: grants access for training.courses: paths).
+ * or any of its aliases (e.g. training.categories: grants access for training.modules: paths).
  */
 export function hasPermissionForPath(
   userPermissions: string[],

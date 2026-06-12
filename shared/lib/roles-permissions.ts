@@ -73,7 +73,6 @@ export const PERMISSION_SECTIONS: {
     label: "Communication",
     features: [
       { id: "emails", label: "Emails" },
-      { id: "campaigns", label: "Campaigns" },
       { id: "chats", label: "Chats" },
       { id: "calling", label: "Calling" },
       { id: "meetings", label: "Meetings & Recordings" },
@@ -84,7 +83,6 @@ export const PERMISSION_SECTIONS: {
     id: "training",
     label: "Training Management",
     features: [
-      { id: "courses", label: "Courses" },
       { id: "categories", label: "Categories" },
       { id: "positions", label: "Positions" },
       { id: "modules", label: "Modules" },
@@ -104,7 +102,6 @@ export const PERMISSION_SECTIONS: {
       { id: "my-projects", label: "My Projects" },
       { id: "tasks", label: "My Tasks" },
       { id: "kanban", label: "Task Board (Kanban)" },
-      { id: "milestones", label: "Milestones" },
       { id: "teams", label: "Teams" },
       { id: "analytics", label: "Analytics" },
     ],
