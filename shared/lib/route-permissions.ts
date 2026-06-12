@@ -27,6 +27,15 @@ const PATH_ACCESS_ACTIONS: Record<string, PathAccessRule> = {
   /** Jobs: view grants nav + list + detail; create/edit gate the create and edit pages only. */
   "/ats/jobs/create": { permissionPrefixes: ["ats.jobs:"], anyOf: ["create"] },
   "/ats/jobs/edit": { permissionPrefixes: ["ats.jobs:"], anyOf: ["edit"] },
+  /**
+   * Offers/Placement, Pre-boarding, Onboarding: nav + page visibility require the
+   * view action specifically. Without these rules the fallback prefix-match grants
+   * visibility for ANY CRUD action (create/edit/delete), so a role with only
+   * ats.offers:create would see the page. These pages must be view-gated.
+   */
+  "/ats/offers-placement": { permissionPrefixes: ["ats.offers:"], anyOf: ["view"] },
+  "/ats/pre-boarding": { permissionPrefixes: ["ats.pre-boarding:"], anyOf: ["view"] },
+  "/ats/onboarding": { permissionPrefixes: ["ats.onboarding:"], anyOf: ["view"] },
   "/ats/employees": {
     permissionPrefixes: EMPLOYEES_PATH_PREFIXES,
     anyOf: ["view", "create", "edit", "delete"],

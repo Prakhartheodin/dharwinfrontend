@@ -702,7 +702,7 @@ const OffersPlacement = () => {
                 </span>
               </button>
             </div>
-            {Boolean((row.original as any)._raw?.offerLetterGeneratedAt) && (
+            {canEdit && Boolean((row.original as any)._raw?.offerLetterGeneratedAt) && (
             <div className={ttWrap}>
               <button
                 type="button"
