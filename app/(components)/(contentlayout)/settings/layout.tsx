@@ -292,7 +292,7 @@ export default function SettingsLayout({
                     className={tabClass("company-email")}
                     aria-current={activeTab === "company-email" ? "page" : undefined}
                   >
-                    Company work email
+                    Company work email &amp; number
                   </Link>
                 )}
                 {showCandidateSopTab && (

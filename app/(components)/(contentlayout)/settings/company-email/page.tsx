@@ -5,6 +5,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { CandidateListItem, CompanyEmailAssignmentRow } from "@/shared/lib/api/candidates";
 import { AxiosError } from "axios";
+import CompanyWorkNumberPanel from "./_components/CompanyWorkNumberPanel";
 
 const PROVIDER_OPTIONS: { value: "" | "gmail" | "outlook" | "unknown"; label: string }[] = [
   { value: "", label: "Auto-detect" },
@@ -28,6 +29,7 @@ function formatDisplayName(raw: string): string {
 }
 
 export default function SettingsCompanyEmailPage() {
+  const [view, setView] = useState<"email" | "number">("email");
   const [enabled, setEnabled] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [students, setStudents] = useState<CompanyEmailAssignmentRow[]>([]);
@@ -379,6 +381,32 @@ export default function SettingsCompanyEmailPage() {
           </div>
         </div>
 
+        {/* Email | Number view switch */}
+        <div className="flex justify-center">
+          <div className="inline-flex rounded-full border border-defaultborder/60 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+            {(["email", "number"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                  view === v
+                    ? "bg-primary/10 text-primary"
+                    : "text-defaulttextcolor/60 hover:text-defaulttextcolor dark:text-white/55 dark:hover:text-white"
+                }`}
+              >
+                <i className={v === "email" ? "ri-mail-line" : "ri-phone-line"} aria-hidden />
+                {v === "email" ? "Email" : "Number"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {view === "number" ? (
+          <CompanyWorkNumberPanel />
+        ) : (
+        <>
         {error ? (
           <div
             className="flex gap-3 rounded-xl border border-danger/25 bg-danger/[0.07] px-4 py-3 text-sm text-danger motion-safe:opacity-100 motion-safe:transition-opacity motion-safe:duration-200 dark:bg-danger/10"
@@ -750,6 +778,8 @@ export default function SettingsCompanyEmailPage() {
               </div>
             </div>
           </>
+        )}
+        </>
         )}
       </div>
     </>
