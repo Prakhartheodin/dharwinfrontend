@@ -336,6 +336,16 @@ function isResumeExtractableFile(file: File): boolean {
   );
 }
 
+/** Escape user-controlled text (e.g. file names) before placing it in SweetAlert `html`. */
+function escapeHtml(s: string): string {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 async function showProfileSaveToast(kind: "error" | "success", title: string, text?: string): Promise<void> {
   await Swal.fire({
     icon: kind,
@@ -382,6 +392,8 @@ export default function PersonalInformationPage() {
   const [staffDomain, setStaffDomain] = useState("");
 
   const [saveLoading, setSaveLoading] = useState(false);
+  /** True while skills are being pulled from a CV/Resume uploaded via the Documents section (during Save). */
+  const [extractingFromDoc, setExtractingFromDoc] = useState(false);
   const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
   const [avatarRemoveLoading, setAvatarRemoveLoading] = useState(false);
   const [showWizardPreview, setShowWizardPreview] = useState(false);
@@ -629,8 +641,17 @@ export default function PersonalInformationPage() {
       return;
     }
     setExtractSkillsLoading(true);
+    // Prominent, unmissable feedback — the server runs OpenAI on the resume and can take several seconds.
+    Swal.fire({
+      title: "Extracting skills from your resume…",
+      html: `Reading <strong>${escapeHtml(file.name)}</strong> and detecting skills.<br/>This usually takes a few seconds.`,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      didOpen: () => Swal.showLoading(),
+    });
     try {
       const res = await authApi.extractSkillsFromResume(file);
+      Swal.close();
       const skills = res.skills || [];
       if (skills.length === 0) {
         await Swal.fire({
@@ -652,6 +673,7 @@ export default function PersonalInformationPage() {
         sourceFile: file.name,
       });
     } catch (err) {
+      Swal.close();
       const raw = extractApiErrorMessage(err);
       await showProfileSaveToast("error", "Couldn't extract skills", raw);
     } finally {
@@ -896,6 +918,23 @@ export default function PersonalInformationPage() {
                 mimeType: fileData.mimeType,
               });
             });
+            const resumeDocsToExtract = docsToUpload.filter(
+              (d) => d.name === "CV/Resume" && d.file && isResumeExtractableFile(d.file)
+            );
+            if (resumeDocsToExtract.length > 0) {
+              setExtractingFromDoc(true);
+              // Non-blocking signal so the user knows we're pulling skills from the resume they just uploaded.
+              Swal.fire({
+                title: "Extracting skills from your resume…",
+                html: "Reading your CV and detecting skills. This only takes a few seconds.",
+                toast: true,
+                position: "top-end",
+                showConfirmButton: false,
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+              });
+            }
+            const skillCountBeforeExtract = skillsForPayload.length;
             for (const docRow of docsToUpload) {
               if (docRow.name !== "CV/Resume" || !docRow.file || !isResumeExtractableFile(docRow.file)) continue;
               try {
@@ -913,6 +952,16 @@ export default function PersonalInformationPage() {
                   timer: 9000,
                 });
               }
+            }
+            if (resumeDocsToExtract.length > 0) {
+              setExtractingFromDoc(false);
+              Swal.close();
+              const added = Math.max(0, skillsForPayload.length - skillCountBeforeExtract);
+              await showProfileSaveToast(
+                "success",
+                added > 0 ? `Added ${added} skill${added === 1 ? "" : "s"} from your resume` : "Resume scanned",
+                added > 0 ? "Review them in the Skills section below." : "No new skills detected from the uploaded CV.",
+              );
             }
             setSkillsRows(skillsForPayload);
           }
@@ -2158,7 +2207,11 @@ export default function PersonalInformationPage() {
                         type="file"
                         accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         className="hidden"
+                        // Programmatic .click() dispatches a click that would bubble to the header's
+                        // collapse toggle and close the section (unmounting this input). Stop it here.
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
+                          e.stopPropagation();
                           const f = e.target.files?.[0];
                           void runResumeSkillExtract(f);
                           e.target.value = "";
@@ -2482,7 +2535,9 @@ export default function PersonalInformationPage() {
             id={notificationPanelId}
             role="region"
             aria-label="Notification preferences"
-            className={`grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${notificationSectionOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}
+            // display:none when collapsed — clipping (overflow-hidden + grid-rows-[0fr]) still leaks ~content height
+            // into the document scrollHeight (Chromium grid-collapse quirk), causing scrollable empty space below the page.
+            className={`overflow-hidden ${notificationSectionOpen ? "grid grid-rows-[1fr]" : "hidden"}`}
           >
             <div className="min-h-0">
               <div className="border-b border-defaultborder/70 bg-white/40 px-4 py-4 dark:border-defaultborder/50 dark:bg-gray-900/25 sm:px-5 sm:py-4">
@@ -2659,7 +2714,7 @@ export default function PersonalInformationPage() {
                 disabled={saveLoading || !user}
               >
                 {saveLoading ? (
-                  <><span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-0.125em] me-2" />Saving…</>
+                  <><span className="inline-block size-4 animate-spin rounded-full border-2 border-white/40 border-t-white align-[-0.125em] me-2" />{extractingFromDoc ? "Extracting skills…" : "Saving…"}</>
                 ) : (
                   <><i className="ri-save-3-line me-1.5 align-middle" />Save profile</>
                 )}

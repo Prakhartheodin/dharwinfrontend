@@ -431,7 +431,7 @@ export default function PublicJobDetailsPage() {
         {applyModalOpen && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="sticky top-0 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex justify-between items-center">
+              <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-6 flex justify-between items-center">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Apply for {job.title}</h2>
                 <button
                   onClick={() => setApplyModalOpen(false)}

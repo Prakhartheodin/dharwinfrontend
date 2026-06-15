@@ -402,15 +402,28 @@ export function fmtCurrencyParts(val: string, cur: string): { annual: string; mo
   return { annual: sym + annual, monthly: sym + monthly, sym, cur }
 }
 
-export function getJobHoursLabel(jobTypeUi: 'fulltime' | 'parttime' | 'internship'): string {
-  if (jobTypeUi === 'parttime') return '20 hours per week'
-  return '40 hours per week'
+/** Default weekly hours per UI job type, used when an explicit value isn't supplied. */
+export function getDefaultWeeklyHours(jobTypeUi: 'fulltime' | 'parttime' | 'internship'): number {
+  return jobTypeUi === 'parttime' ? 20 : 40
 }
 
-export function getJobTypeLabelUi(jobTypeUi: 'fulltime' | 'parttime' | 'internship'): string {
-  if (jobTypeUi === 'fulltime') return 'Full-Time (40 Hours per Week)'
-  if (jobTypeUi === 'parttime') return 'Part Time (25 Hours per Week)'
-  return 'Training / Unpaid Internship (Full Time)'
+export function getJobHoursLabel(
+  jobTypeUi: 'fulltime' | 'parttime' | 'internship',
+  weeklyHours?: number,
+): string {
+  const h = weeklyHours && weeklyHours > 0 ? weeklyHours : getDefaultWeeklyHours(jobTypeUi)
+  return `${h} hours per week`
+}
+
+/** Job type label with hours derived from the Working hours field (never hardcoded). */
+export function getJobTypeLabelUi(
+  jobTypeUi: 'fulltime' | 'parttime' | 'internship',
+  weeklyHours?: number,
+): string {
+  if (jobTypeUi === 'internship') return 'Training / Unpaid Internship (Full Time)'
+  const h = weeklyHours && weeklyHours > 0 ? weeklyHours : getDefaultWeeklyHours(jobTypeUi)
+  if (jobTypeUi === 'fulltime') return `Full-Time (${h} Hours per Week)`
+  return `Part Time (${h} Hours per Week)`
 }
 
 /** Map API job type to UI pill value */

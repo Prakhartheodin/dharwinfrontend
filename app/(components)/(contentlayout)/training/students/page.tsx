@@ -246,6 +246,10 @@ const Students = () => {
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [sortBy, setSortBy] = useState<string>('createdAt:desc')
+  // Excel menu: fully React-controlled — Preline hs-dropdown hooks were unreliable here (button never opened).
+  const [excelMenuOpen, setExcelMenuOpen] = useState(false)
+  const [excelExporting, setExcelExporting] = useState(false)
+  const excelDropdownRef = useRef<HTMLDivElement | null>(null)
 
   // Profile image modal state
   const [profileImageStudent, setProfileImageStudent] = useState<StudentRow | null>(null)
@@ -531,6 +535,54 @@ const Students = () => {
       setLoading(false)
     }
   }, [currentPage, pageSize, sortBy, searchQuery, mapStudentToRow])
+
+  // Close the Excel menu on outside click.
+  useEffect(() => {
+    if (!excelMenuOpen) return
+    const onDoc = (e: MouseEvent) => {
+      if (!excelDropdownRef.current?.contains(e.target as Node)) setExcelMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [excelMenuOpen])
+
+  /** Download students (respecting the active search) as an .xlsx file. */
+  const handleExportStudents = useCallback(async () => {
+    setExcelMenuOpen(false)
+    setExcelExporting(true)
+    try {
+      const blob = await studentsApi.exportStudentsExcel({
+        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const date = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `students-export-${date}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Export ready',
+        text: 'Your students spreadsheet download has started.',
+        toast: true,
+        position: 'top-end',
+        timer: 2500,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    } catch (err) {
+      const msg =
+        err instanceof AxiosError && err.response?.data?.message
+          ? String(err.response.data.message)
+          : err instanceof Error
+          ? err.message
+          : 'Export failed.'
+      await Swal.fire({ icon: 'error', title: 'Export failed', text: msg })
+    } finally {
+      setExcelExporting(false)
+    }
+  }, [searchQuery])
 
   // Update ref when fetchStudents changes
   useEffect(() => {
@@ -1412,42 +1464,41 @@ const Students = () => {
                 >
                   <i className="ri-add-line font-semibold align-middle"></i>Add Student
                 </Link>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div ref={excelDropdownRef} className="relative me-2">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
                     id="excel-dropdown-button"
-                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    aria-expanded={excelMenuOpen}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setExcelMenuOpen((prev) => !prev)
+                    }}
                   >
                     <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="excel-dropdown-button">
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        type="button"
-                        className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                      >
-                        <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                      </button>
-                    </li>
-                  </ul>
+                  {excelMenuOpen && (
+                    <ul
+                      className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg"
+                      role="menu"
+                      aria-labelledby="excel-dropdown-button"
+                    >
+                      <li role="none">
+                        <button
+                          type="button"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left disabled:opacity-60"
+                          role="menuitem"
+                          disabled={excelExporting}
+                          onClick={() => { void handleExportStudents() }}
+                        >
+                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>{excelExporting ? 'Exporting…' : 'Export'}
+                        </button>
+                      </li>
+                    </ul>
+                  )}
                 </div>
                 <button
                   type="button"

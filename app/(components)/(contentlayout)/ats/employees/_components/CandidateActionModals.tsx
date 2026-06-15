@@ -111,6 +111,11 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
     actionError, setActionError,
   } = props
 
+  // Export-all email: derive whether we'll email vs download, and validate input
+  const exportAllEmailTrimmed = exportAllEmail.trim()
+  const exportAllEmailInvalid = exportAllEmailTrimmed.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(exportAllEmailTrimmed)
+  const exportAllWillEmail = exportAllEmailTrimmed.length > 0 && !exportAllEmailInvalid
+
   return (
     <>
       {/* Documents modal */}
@@ -309,23 +314,63 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
         <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
           <div className="ti-modal-content">
             <div className="ti-modal-header">
-              <h6 className="ti-modal-title">Export all candidates</h6>
-              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#export-all-modal"><span className="sr-only">Close</span>×</button>
+              <h6 className="ti-modal-title flex items-center gap-2">
+                <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-success/10 text-success shrink-0">
+                  <i className="ri-file-excel-2-line align-middle" aria-hidden />
+                </span>
+                Export to Excel
+              </h6>
+              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#export-all-modal" aria-label="Close"><span className="sr-only">Close</span><i className="ri-close-line align-middle" aria-hidden /></button>
             </div>
             <div className="ti-modal-body">
-              <p className="mb-3 text-[0.8125rem] text-textmuted dark:text-white/70">
-                {selectedExportCount > 0
-                  ? `Exporting ${selectedExportCount} selected employee(s).`
-                  : 'Exporting all employees matching the current filters.'}
-              </p>
-              <label className="form-label">Send Excel by email (optional)</label>
-              <input type="email" className="form-control" placeholder="email@example.com" value={exportAllEmail} onChange={(e) => setExportAllEmail(e.target.value)} />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave empty to download only. Email includes a multi-sheet .xlsx attachment.</p>
+              {/* Scope summary — what exactly will be exported */}
+              <div className="flex items-start gap-2.5 rounded-md bg-primary/5 border border-primary/10 px-3 py-2.5 mb-4">
+                <i className="ri-information-line text-primary text-base leading-5 shrink-0" aria-hidden />
+                <p className="text-[0.8125rem] leading-5 text-defaulttextcolor dark:text-white/80 mb-0">
+                  {selectedExportCount > 0
+                    ? <>Exporting <span className="font-semibold">{selectedExportCount}</span> selected {selectedExportCount === 1 ? 'employee' : 'employees'}.</>
+                    : <>Exporting <span className="font-semibold">all employees</span> matching the current filters.</>}
+                </p>
+              </div>
+
+              {/* Optional email — controls download vs send */}
+              <label htmlFor="export-all-email" className="form-label flex items-center justify-between mb-1">
+                <span>Send Excel by email</span>
+                <span className="text-xs font-normal text-textmuted dark:text-white/50 border border-defaultborder dark:border-white/10 rounded-full px-2 py-0.5">Optional</span>
+              </label>
+              <input
+                id="export-all-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                className={`form-control${exportAllEmailInvalid ? ' !border-danger focus:!border-danger' : ''}`}
+                placeholder="name@company.com"
+                value={exportAllEmail}
+                onChange={(e) => setExportAllEmail(e.target.value)}
+                aria-invalid={exportAllEmailInvalid}
+                aria-describedby="export-all-email-help"
+              />
+              {exportAllEmailInvalid ? (
+                <p id="export-all-email-help" className="text-xs text-danger mt-1.5 flex items-center gap-1" role="alert">
+                  <i className="ri-error-warning-line align-middle" aria-hidden />
+                  Enter a valid email, or leave it empty to download instead.
+                </p>
+              ) : (
+                <p id="export-all-email-help" className="text-xs text-textmuted dark:text-white/60 mt-1.5">
+                  {exportAllWillEmail
+                    ? 'A multi-sheet .xlsx file will be emailed to this address.'
+                    : 'Leave empty to download the multi-sheet .xlsx directly.'}
+                </p>
+              )}
             </div>
             <div className="ti-modal-footer">
               <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#export-all-modal">Cancel</button>
-              <button type="button" className="ti-btn ti-btn-primary" disabled={exportAllSubmitting} onClick={handleExportAllSubmit}>
-                {exportAllSubmitting ? 'Exporting...' : 'Export'}
+              <button type="button" className="ti-btn ti-btn-primary" disabled={exportAllSubmitting || exportAllEmailInvalid} onClick={handleExportAllSubmit}>
+                {exportAllSubmitting
+                  ? (exportAllWillEmail ? 'Sending…' : 'Preparing…')
+                  : exportAllWillEmail
+                    ? <><i className="ri-mail-send-line me-1 align-middle" aria-hidden />Email Excel</>
+                    : <><i className="ri-download-line me-1 align-middle" aria-hidden />Download Excel</>}
               </button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import React, { Fragment, useEffect, useState, useMemo, useCallback } from "react";
+import React, { Fragment, useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -148,6 +148,81 @@ function getStatusBadgeClass(status: string): string {
   if (lower === "rejected" || lower === "overdue" || lower === "cancelled")
     return "badge bg-danger/10 text-danger";
   return "badge bg-secondary/10 text-secondary";
+}
+
+type ProjectSummarySort =
+  | "name-asc"
+  | "name-desc"
+  | "dueDate-asc"
+  | "dueDate-desc"
+  | "progress-desc"
+  | "progress-asc"
+  | "status-asc"
+  | "tasks-desc";
+
+const PROJECT_SUMMARY_SORT_OPTIONS: {
+  value: ProjectSummarySort;
+  label: string;
+  icon: string;
+}[] = [
+  { value: "name-asc", label: "Title (A–Z)", icon: "ri-sort-asc" },
+  { value: "name-desc", label: "Title (Z–A)", icon: "ri-sort-desc" },
+  { value: "dueDate-asc", label: "Due Date (Soonest)", icon: "ri-calendar-line" },
+  { value: "dueDate-desc", label: "Due Date (Latest)", icon: "ri-calendar-line" },
+  { value: "progress-desc", label: "Progress (High to Low)", icon: "ri-bar-chart-line" },
+  { value: "progress-asc", label: "Progress (Low to High)", icon: "ri-bar-chart-line" },
+  { value: "status-asc", label: "Status (A–Z)", icon: "ri-flag-line" },
+  { value: "tasks-desc", label: "Tasks (Most)", icon: "ri-task-line" },
+];
+
+function projectProgressPct(p: Project): number {
+  const total = p.totalTasks ?? 0;
+  const completed = p.completedTasks ?? 0;
+  return total > 0 ? Math.round((completed / total) * 100) : 0;
+}
+
+function parseProjectDueDate(p: Project): number {
+  if (!p.endDate) return Number.POSITIVE_INFINITY;
+  const t = new Date(p.endDate).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+function filterAndSortProjects(
+  projects: Project[],
+  search: string,
+  sort: ProjectSummarySort
+): Project[] {
+  const q = (search ?? "").trim().toLowerCase();
+  const list = q
+    ? projects.filter((p) => (p.name ?? "").toLowerCase().includes(q))
+    : [...projects];
+
+  const cmpStr = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" });
+
+  list.sort((a, b) => {
+    switch (sort) {
+      case "name-asc":
+        return cmpStr(a.name ?? "", b.name ?? "");
+      case "name-desc":
+        return cmpStr(b.name ?? "", a.name ?? "");
+      case "dueDate-asc":
+        return parseProjectDueDate(a) - parseProjectDueDate(b);
+      case "dueDate-desc":
+        return parseProjectDueDate(b) - parseProjectDueDate(a);
+      case "progress-desc":
+        return projectProgressPct(b) - projectProgressPct(a);
+      case "progress-asc":
+        return projectProgressPct(a) - projectProgressPct(b);
+      case "status-asc":
+        return cmpStr(a.status ?? "", b.status ?? "");
+      case "tasks-desc":
+        return (b.totalTasks ?? 0) - (a.totalTasks ?? 0);
+      default:
+        return 0;
+    }
+  });
+  return list;
 }
 
 function getInitial(name: string | undefined | null): string {
@@ -296,6 +371,46 @@ function buildTaskStatusChart(tasks: Task[]): {
   };
 }
 
+const DASHBOARD_RECENT_JOBS_DISPLAY_LIMIT = 6;
+
+function FunnelChartFill({
+  options,
+  series,
+}: {
+  options: ApexOptions;
+  series: ApexAxisChartSeries;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartHeight, setChartHeight] = useState(272);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = Math.floor(el.getBoundingClientRect().height);
+      if (h > 80) setChartHeight((prev) => (prev !== h ? h : prev));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative min-h-[220px] w-full h-full flex-1">
+      <div className="absolute inset-0 overflow-hidden">
+        <ReactApexChart
+          options={options}
+          series={series}
+          type="bar"
+          height={chartHeight}
+          width="100%"
+        />
+      </div>
+    </div>
+  );
+}
+
 function buildFunnelChart(funnel: StatusCount[]): {
   options: ApexOptions;
   series: ApexAxisChartSeries;
@@ -326,7 +441,6 @@ function buildFunnelChart(funnel: StatusCount[]): {
     options: {
       chart: {
         type: "bar",
-        height: 260,
         fontFamily: "Poppins, Arial, sans-serif",
         toolbar: { show: false },
       },
@@ -335,7 +449,7 @@ function buildFunnelChart(funnel: StatusCount[]): {
           horizontal: true,
           borderRadius: 4,
           distributed: true,
-          barHeight: "70%",
+          barHeight: "88%",
         },
       },
       colors: sorted.map(
@@ -349,6 +463,9 @@ function buildFunnelChart(funnel: StatusCount[]): {
         categories: sorted.map(
           (s) => s.status.charAt(0).toUpperCase() + s.status.slice(1)
         ),
+      },
+      grid: {
+        padding: { top: 0, right: 8, bottom: 0, left: 0 },
       },
       legend: { show: false },
       tooltip: {
@@ -429,6 +546,10 @@ export default function DashboardPage() {
   /** From GET /job-applications `totalResults` — aligns Applications stat with list modal (analytics total can differ). */
   const [applicationsListingTotal, setApplicationsListingTotal] = useState<number | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectSearch, setProjectSearch] = useState<string>("");
+  const [projectSort, setProjectSort] = useState<ProjectSummarySort>("dueDate-asc");
+  const [projectSortMenuOpen, setProjectSortMenuOpen] = useState(false);
+  const projectSortRef = useRef<HTMLDivElement>(null);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -790,7 +911,25 @@ export default function DashboardPage() {
   const applicationsStatCount =
     applicationsListingTotal != null ? applicationsListingTotal : totals?.totalApplications ?? 0;
   const projectCount = projects.length;
+  const displayedProjects = useMemo(
+    () => filterAndSortProjects(projects, projectSearch, projectSort),
+    [projects, projectSearch, projectSort]
+  );
   const studentCount = trainingData?.totalStudents ?? 0;
+
+  useEffect(() => {
+    if (!projectSortMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (
+        projectSortRef.current &&
+        !projectSortRef.current.contains(e.target as Node)
+      ) {
+        setProjectSortMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [projectSortMenuOpen]);
 
   /* ---- Skeleton loader ---- */
   const Skeleton = ({ className = "" }: { className?: string }) => (
@@ -920,13 +1059,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Layout from dharwinone_frontend reference: xxl:9 | xxl:3, then full-width Projects Summary */}
-      <div className="grid grid-cols-12 gap-6">
+      {/* Layout: row 1 = main panels + sidebar, row 2 = Projects Summary */}
+      <div className="grid grid-cols-12 gap-6 items-start [&_.box]:!mb-0">
         <div className="xxl:col-span-9 col-span-12">
-          <div className="grid grid-cols-12 gap-6 xxl:min-h-[55vh]">
-            {/* LEFT: 4 stat cards + Project Analysis (directly under stats) */}
-            <div className="xxl:col-span-5 col-span-12">
-              <div className="grid grid-cols-12 gap-6">
+          <div className="grid grid-cols-12 gap-6 xxl:items-stretch">
+            {/* LEFT: 4 stat cards + Application Analytics (directly under stats) */}
+            <div className="xxl:col-span-5 col-span-12 flex flex-col min-h-0 h-full">
+              <div className="grid grid-cols-12 gap-6 flex-shrink-0">
                 <div className="sm:col-span-6 col-span-12">
                   <Link
                     href="/ats/jobs"
@@ -1030,32 +1169,39 @@ export default function DashboardPage() {
                   </div>
                   </Link>
                 </div>
-                <div className="xl:col-span-12 col-span-12">
-                  <div className="box">
-                    <div className="box-header justify-between">
-                      <div className="box-title">Project Analysis</div>
+              </div>
+              <div className="xl:col-span-12 col-span-12 mt-6 flex-1 min-h-0 flex flex-col">
+                  <div className="box flex-1 flex flex-col min-h-0 overflow-hidden">
+                    <div className="box-header justify-between flex-shrink-0">
+                      <div className="box-title">Application Analytics</div>
                       <Link href="/ats/analytics" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                     </div>
-                    <div className="box-body">
+                    <div className="box-body flex-1 min-h-0 flex flex-col">
                       {loading ? (
-                        <Skeleton className="h-[315px] w-full" />
+                        <Skeleton className="h-full min-h-[220px] w-full" />
                       ) : funnelChart ? (
-                        <ReactApexChart options={funnelChart.options} series={funnelChart.series} type="bar" height={280} />
+                        <FunnelChartFill
+                          options={funnelChart.options}
+                          series={funnelChart.series}
+                        />
                       ) : (
                         <div id="projectAnalysis">
-                          <ReactApexChart options={Projectdata.ProjectAnalysis.options} series={Projectdata.ProjectAnalysis.series} type="line" width="100%" height={315} />
+                          <ReactApexChart
+                            options={Projectdata.ProjectAnalysis.options as ApexOptions}
+                            series={Projectdata.ProjectAnalysis.series as ApexAxisChartSeries}
+                            type="line"
+                            width="100%"
+                            height={315}
+                          />
                         </div>
                       )}
                     </div>
                   </div>
-                </div>
               </div>
             </div>
-            {/* MIDDLE: Candidate List + Main Tasks (Main Tasks directly under Candidate List) */}
-            <div className="xxl:col-span-4 col-span-12 flex flex-col min-h-0">
-              <div className="flex flex-col gap-6 flex-1 min-h-0">
-                <div className="xl:col-span-12 col-span-12 flex-shrink-0">
-                  <div className="box">
+            {/* MIDDLE: Candidate List + Main Tasks */}
+            <div className="xxl:col-span-4 col-span-12 grid grid-rows-[auto_1fr] gap-6 min-h-0 h-full">
+                <div className="box overflow-hidden">
                     <div className="box-header justify-between">
                       <div className="box-title">Candidate List</div>
                       <Link href="/ats/referral-leads" className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-[#8c9097] dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/10 hover:text-primary" title="View referral leads" aria-label="View referral leads">
@@ -1104,6 +1250,24 @@ export default function DashboardPage() {
                             const statusStyles = getApplicationStatusStyles(status);
                             const relTime = formatRelativeTime(app.updatedAt ?? app.createdAt);
                             const profileHref = candidateId ? `/ats/employees/edit?id=${candidateId}` : "/ats/jobs";
+                            /* Mirror the /ats/applications row "Schedule interview" action: deep-link to
+                               the interviews page with openSchedule=1 so the Create Interview modal opens
+                               and prefills from the application (candidate + job context). */
+                            const jRef = app.job;
+                            const jobId =
+                              typeof jRef === "object" && jRef !== null
+                                ? String((jRef as { _id?: string; id?: string })._id ?? (jRef as { id?: string }).id ?? "")
+                                : jRef
+                                  ? String(jRef)
+                                  : "";
+                            const scheduleHref = appId
+                              ? `/ats/interviews?${new URLSearchParams({
+                                  openSchedule: "1",
+                                  applicationId: appId,
+                                  ...(candidateId ? { candidateId } : {}),
+                                  ...(jobId ? { jobId } : {}),
+                                }).toString()}`
+                              : "/ats/interviews";
                             return (
                               <li key={appId || candidateId}>
                                 <div className="relative group">
@@ -1165,7 +1329,7 @@ export default function DashboardPage() {
                                       <i className="ri-mail-line text-[0.875rem]" />
                                     </a>
                                     <Link
-                                      href={candidateId ? `/ats/interviews?candidateId=${candidateId}` : "/ats/interviews"}
+                                      href={scheduleHref}
                                       onClick={(e) => e.stopPropagation()}
                                       title="Schedule interview"
                                       aria-label="Schedule interview"
@@ -1182,65 +1346,61 @@ export default function DashboardPage() {
                       )}
                     </div>
                   </div>
+              <div className="box min-h-0 flex flex-col overflow-hidden">
+                <div className="box-header justify-between flex-shrink-0">
+                  <div className="box-title">Main Tasks</div>
+                  <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">Today <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                 </div>
-                <div className="xl:col-span-12 col-span-12 flex-1 min-h-0 flex flex-col">
-                  <div className="box flex-1 flex flex-col min-h-0">
-                    <div className="box-header justify-between flex-shrink-0">
-                      <div className="box-title">Main Tasks</div>
-                      <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">Today <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
-                    </div>
-                    <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
-                      {loading ? (
-                        <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-                      ) : displayMyTasks.length === 0 ? (
-                        <p className="text-[#8c9097] dark:text-white/50 text-sm">No tasks assigned.</p>
-                      ) : (
-                        <ul className="list-none projects-maintask-card">
-                          {displayMyTasks.map((t) => (
-                            <li key={t._id ?? t.id}>
-                              <div className="flex items-start">
-                                <div className="flex items-start flex-grow">
-                                  <span className="me-4">
-                                    <input className="form-check-input" type="checkbox" aria-label="task" />
-                                  </span>
-                                  <div className="flex-grow">
-                                    <span>{t.title}</span>
-                                    {t.assignedTo && t.assignedTo.length > 0 && (
-                                      <span className="block mt-1">
-                                        <span className="avatar-list-stacked">
-                                          {t.assignedTo.slice(0, 3).map((u, idx) => (
-                                            <span key={`${u._id ?? u.id ?? u.email ?? "u"}-${idx}`} className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
-                                              {getInitial(u.name ?? u.email)}
-                                            </span>
-                                          ))}
+                <div className="box-body flex-1 min-h-0 overflow-y-auto">
+                  {loading ? (
+                    <div className="space-y-3">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+                  ) : displayMyTasks.length === 0 ? (
+                    <p className="text-[#8c9097] dark:text-white/50 text-sm py-4">No tasks assigned.</p>
+                  ) : (
+                    <ul className="list-none projects-maintask-card">
+                      {displayMyTasks.map((t) => (
+                        <li key={t._id ?? t.id}>
+                          <div className="flex items-start">
+                            <div className="flex items-start flex-grow">
+                              <span className="me-4">
+                                <input className="form-check-input" type="checkbox" aria-label="task" />
+                              </span>
+                              <div className="flex-grow">
+                                <span>{t.title}</span>
+                                {t.assignedTo && t.assignedTo.length > 0 && (
+                                  <span className="block mt-1">
+                                    <span className="avatar-list-stacked">
+                                      {t.assignedTo.slice(0, 3).map((u, idx) => (
+                                        <span key={`${u._id ?? u.id ?? u.email ?? "u"}-${idx}`} className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]">
+                                          {getInitial(u.name ?? u.email)}
                                         </span>
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div>
-                                  <span className={getStatusBadgeClass(t.status)}>{TASK_STATUS_LABELS[t.status] ?? t.status}</span>
-                                </div>
+                                      ))}
+                                    </span>
+                                  </span>
+                                )}
                               </div>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </div>
-                  </div>
+                            </div>
+                            <div>
+                              <span className={getStatusBadgeClass(t.status)}>{TASK_STATUS_LABELS[t.status] ?? t.status}</span>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>
-            {/* RIGHT: Daily Tasks */}
-            <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
-              <div className="box flex-1 flex flex-col min-h-0">
+            {/* RIGHT: Daily Tasks (full column height) */}
+            <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0 h-full">
+              <div className="box flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="box-header justify-between flex-shrink-0">
                   <div className="box-title">Daily Tasks</div>
                   <Link href="/task/my-tasks" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                 </div>
-                <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
+                <div className="box-body flex-1 min-h-0 overflow-y-auto">
                   {loading ? (
-                    <Skeleton className="h-40 w-full" />
+                    <Skeleton className="h-24 w-full" />
                   ) : dailyTasks.length === 0 ? (
                     <p className="text-[#8c9097] dark:text-white/50 text-sm">No tasks due today.</p>
                   ) : (
@@ -1281,8 +1441,7 @@ export default function DashboardPage() {
           </div>
         </div>
         {/* RIGHT COLUMN: Track CTA + Recent Jobs */}
-        <div className="xxl:col-span-3 col-span-12 flex flex-col min-h-0">
-          <div className="flex flex-col gap-6 flex-1 min-h-0">
+        <div className="xxl:col-span-3 col-span-12 flex flex-col gap-6 min-h-0">
             {showUpcomingHolidays && (
               <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
                 <UpcomingHolidaysCard
@@ -1293,7 +1452,8 @@ export default function DashboardPage() {
                 />
               </div>
             )}
-            <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
+            <div className="xxl:col-span-12 col-span-12 flex flex-col gap-1">
+            <div className="flex-shrink-0">
               <div className="box shadow-none projects-tracking-card overflow-hidden text-center">
                 <div className="box-body">
                   <img src="/assets/images/media/media-86.svg" alt="" className="mb-1 inline-flex" />
@@ -1310,20 +1470,20 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-            <div className="xxl:col-span-12 col-span-12 flex-1 min-h-0 flex flex-col max-h-[36vh]">
-              <div className="box flex-1 flex flex-col min-h-0">
+            <div className="min-h-0">
+              <div className="box overflow-hidden flex flex-col max-h-[min(22rem,45vh)]">
                 <div className="box-header justify-between flex-shrink-0">
                   <div className="box-title">Recent Jobs</div>
                   <Link href="/ats/jobs" className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50">View All <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i></Link>
                 </div>
-                <div className="box-body flex-1 min-h-0 overflow-y-auto min-h-[200px]">
+                <div className="box-body flex-1 min-h-0 overflow-y-auto [&_.project-transactions-card_li]:!mb-3">
                   {loading ? (
                     <div className="space-y-3">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
                   ) : recentJobs.length === 0 ? (
                     <p className="text-[#8c9097] dark:text-white/50 text-sm">No jobs yet.</p>
                   ) : (
                     <ul className="list-none project-transactions-card">
-                      {recentJobs.map((job) => {
+                      {recentJobs.slice(0, DASHBOARD_RECENT_JOBS_DISPLAY_LIMIT).map((job) => {
                         const jobId = String(job._id ?? job.id ?? "");
                         const count = applicantCountByJob[jobId] ?? 0;
                         const status = (job.status ?? "").toLowerCase();
@@ -1370,6 +1530,207 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+            </div>
+        </div>
+
+        {/* Projects Summary - full width row below dashboard panels */}
+        <div className="xxl:col-span-12 col-span-12">
+          <div className="box">
+            <div className="box-header justify-between flex-wrap gap-2">
+              <div className="box-title">Projects Summary</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  className="ti-form-control form-control-sm !rounded-sm !w-auto min-w-[140px]"
+                  type="text"
+                  inputMode="search"
+                  placeholder="Search Here"
+                  aria-label="Search projects"
+                  value={projectSearch ?? ""}
+                  onChange={(e) => setProjectSearch(e.currentTarget.value)}
+                />
+                <div ref={projectSortRef} className="relative">
+                  <button
+                    type="button"
+                    className="ti-btn ti-btn-primary !bg-primary !text-white !py-1 !px-2 !text-[0.75rem] !m-0 !gap-0 !font-medium"
+                    id="project-summary-sort-button"
+                    aria-haspopup="menu"
+                    aria-expanded={projectSortMenuOpen}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setProjectSortMenuOpen((prev) => !prev);
+                    }}
+                  >
+                    Sort By{" "}
+                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
+                  </button>
+                  {projectSortMenuOpen && (
+                    <ul
+                      className="absolute end-0 top-full z-50 mt-1 min-w-[11rem] max-h-[min(18rem,50vh)] overflow-y-auto rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg"
+                      role="menu"
+                      aria-labelledby="project-summary-sort-button"
+                    >
+                      {PROJECT_SUMMARY_SORT_OPTIONS.map((opt) => (
+                        <li key={opt.value} role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className={`ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left ${
+                              projectSort === opt.value ? "active" : ""
+                            }`}
+                            onClick={() => {
+                              setProjectSort(opt.value);
+                              setProjectSortMenuOpen(false);
+                            }}
+                          >
+                            <i
+                              className={`${opt.icon} me-2 align-middle inline-block`}
+                            ></i>
+                            {opt.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <Link href="/apps/projects/project-list" className="px-2 font-normal text-[0.75rem] text-primary">View All</Link>
+              </div>
+            </div>
+            <div className="box-body">
+              {loading ? (
+                <div className="space-y-3">
+                  {[...Array(4)].map((_, i) => (
+                    <Skeleton key={i} className="h-10 w-full" />
+                  ))}
+                </div>
+              ) : projects.length === 0 ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">
+                  No projects yet.
+                </p>
+              ) : displayedProjects.length === 0 ? (
+                <p className="text-[#8c9097] dark:text-white/50 text-sm">
+                  No projects match your search.
+                </p>
+              ) : (
+                <div className="table-responsive">
+                  <table className="table table-hover whitespace-nowrap table-bordered min-w-full">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="!text-start">
+                          S.No
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Title
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Assigned To
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Tasks
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Progress
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Status
+                        </th>
+                        <th scope="col" className="!text-start">
+                          Due Date
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedProjects.map((p, i) => {
+                        const total = p.totalTasks ?? 0;
+                        const completed = p.completedTasks ?? 0;
+                        const pct = projectProgressPct(p);
+                        return (
+                          <tr
+                            key={p._id ?? p.id ?? i}
+                            className="border border-inherit border-solid hover:bg-gray-100 dark:hover:bg-light dark:border-defaultborder/10"
+                          >
+                            <th scope="row" className="!text-start">
+                              {i + 1}
+                            </th>
+                            <td>{p.name}</td>
+                            <td>
+                              {p.assignedTo && p.assignedTo.length > 0 ? (
+                                <div className="avatar-list-stacked">
+                                  {p.assignedTo.slice(0, 3).map((u, idx) => (
+                                    <span
+                                      key={u._id ?? u.id ?? idx}
+                                      className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]"
+                                    >
+                                      {getInitial(u.name ?? u.email)}
+                                    </span>
+                                  ))}
+                                  {p.assignedTo.length > 3 && (
+                                    <span className="avatar avatar-xs bg-primary avatar-rounded text-white text-[0.65rem] font-normal">
+                                      +{p.assignedTo.length - 3}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td>
+                              {completed}/{total}
+                            </td>
+                            <td>
+                              <div className="flex items-center">
+                                <div
+                                  className="progress progress-animate progress-xs w-full"
+                                  role="progressbar"
+                                  aria-valuenow={pct}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                >
+                                  <div
+                                    className="progress-bar progress-bar-striped progress-bar-animated bg-primary"
+                                    style={{ width: `${pct}%` }}
+                                  ></div>
+                                </div>
+                                <div className="ms-2">{pct}%</div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={getStatusBadgeClass(p.status)}>
+                                {p.status}
+                              </span>
+                            </td>
+                            <td>{formatDate(p.endDate)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            {displayedProjects.length > 0 && (
+              <div className="box-footer">
+                <div className="sm:flex items-center">
+                  <div className="dark:text-defaulttextcolor/70">
+                    Showing {displayedProjects.length} Entries <i className="bi bi-arrow-right ms-2 font-semibold"></i>
+                  </div>
+                  <div className="ms-auto">
+                    <nav aria-label="Page navigation" className="pagination-style-4">
+                      <ul className="ti-pagination mb-0">
+                        <li className="page-item disabled">
+                          <Link className="page-link" href="#!" scroll={false}>Prev</Link>
+                        </li>
+                        <li className="page-item"><Link className="page-link active" href="#!" scroll={false}>1</Link></li>
+                        <li className="page-item"><Link className="page-link" href="#!" scroll={false}>2</Link></li>
+                        <li className="page-item">
+                          <Link className="page-link !text-primary" href="#!" scroll={false}>Next</Link>
+                        </li>
+                      </ul>
+                    </nav>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1449,7 +1810,7 @@ export default function DashboardPage() {
               </div>
               <div className="p-4 border-t border-gray-200 dark:border-white/10 flex justify-center">
                 <Link
-                  href={`/ats/jobs/${jobId}`}
+                  href={`/ats/jobs?view=${jobId}`}
                   className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-primary text-white hover:opacity-90"
                   onClick={() => setSelectedJobDetail(null)}
                   title="View full job"
@@ -1608,157 +1969,6 @@ export default function DashboardPage() {
       )}
 
       {/* Candidate detail modal */}
-      {/* Projects Summary - full width */}
-      <div className="grid grid-cols-12 gap-6">
-        <div className="xxl:col-span-12 col-span-12">
-          <div className="box">
-            <div className="box-header justify-between flex-wrap gap-2">
-              <div className="box-title">Projects Summary</div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input className="ti-form-control form-control-sm !rounded-sm !w-auto min-w-[140px]" type="text" placeholder="Search Here" aria-label="Search" />
-                <Link href="/apps/projects/project-list" className="ti-btn ti-btn-primary !bg-primary !text-white !py-1 !px-2 !text-[0.75rem] !m-0 !gap-0 !font-medium" aria-expanded="false">
-                  Sort By <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                </Link>
-                <Link href="/apps/projects/project-list" className="px-2 font-normal text-[0.75rem] text-primary">View All</Link>
-              </div>
-            </div>
-            <div className="box-body">
-              {loading ? (
-                <div className="space-y-3">
-                  {[...Array(4)].map((_, i) => (
-                    <Skeleton key={i} className="h-10 w-full" />
-                  ))}
-                </div>
-              ) : projects.length === 0 ? (
-                <p className="text-[#8c9097] dark:text-white/50 text-sm">
-                  No projects yet.
-                </p>
-              ) : (
-                <div className="table-responsive">
-                  <table className="table table-hover whitespace-nowrap table-bordered min-w-full">
-                    <thead>
-                      <tr>
-                        <th scope="col" className="!text-start">
-                          S.No
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Title
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Assigned To
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Tasks
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Progress
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Status
-                        </th>
-                        <th scope="col" className="!text-start">
-                          Due Date
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {projects.map((p, i) => {
-                        const total = p.totalTasks ?? 0;
-                        const completed = p.completedTasks ?? 0;
-                        const pct =
-                          total > 0
-                            ? Math.round((completed / total) * 100)
-                            : 0;
-                        return (
-                          <tr
-                            key={p._id ?? p.id ?? i}
-                            className="border border-inherit border-solid hover:bg-gray-100 dark:hover:bg-light dark:border-defaultborder/10"
-                          >
-                            <th scope="row" className="!text-start">
-                              {i + 1}
-                            </th>
-                            <td>{p.name}</td>
-                            <td>
-                              {p.assignedTo && p.assignedTo.length > 0 ? (
-                                <div className="avatar-list-stacked">
-                                  {p.assignedTo.slice(0, 3).map((u, idx) => (
-                                    <span
-                                      key={u._id ?? u.id ?? idx}
-                                      className="avatar avatar-xs avatar-rounded bg-primary/10 text-primary text-[0.65rem]"
-                                    >
-                                      {getInitial(u.name ?? u.email)}
-                                    </span>
-                                  ))}
-                                  {p.assignedTo.length > 3 && (
-                                    <span className="avatar avatar-xs bg-primary avatar-rounded text-white text-[0.65rem] font-normal">
-                                      +{p.assignedTo.length - 3}
-                                    </span>
-                                  )}
-                                </div>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-                            <td>
-                              {completed}/{total}
-                            </td>
-                            <td>
-                              <div className="flex items-center">
-                                <div
-                                  className="progress progress-animate progress-xs w-full"
-                                  role="progressbar"
-                                  aria-valuenow={pct}
-                                  aria-valuemin={0}
-                                  aria-valuemax={100}
-                                >
-                                  <div
-                                    className="progress-bar progress-bar-striped progress-bar-animated bg-primary"
-                                    style={{ width: `${pct}%` }}
-                                  ></div>
-                                </div>
-                                <div className="ms-2">{pct}%</div>
-                              </div>
-                            </td>
-                            <td>
-                              <span className={getStatusBadgeClass(p.status)}>
-                                {p.status}
-                              </span>
-                            </td>
-                            <td>{formatDate(p.endDate)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-            {projects.length > 0 && (
-              <div className="box-footer">
-                <div className="sm:flex items-center">
-                  <div className="dark:text-defaulttextcolor/70">
-                    Showing {Math.min(projects.length, 6)} Entries <i className="bi bi-arrow-right ms-2 font-semibold"></i>
-                  </div>
-                  <div className="ms-auto">
-                    <nav aria-label="Page navigation" className="pagination-style-4">
-                      <ul className="ti-pagination mb-0">
-                        <li className="page-item disabled">
-                          <Link className="page-link" href="#!" scroll={false}>Prev</Link>
-                        </li>
-                        <li className="page-item"><Link className="page-link active" href="#!" scroll={false}>1</Link></li>
-                        <li className="page-item"><Link className="page-link" href="#!" scroll={false}>2</Link></li>
-                        <li className="page-item">
-                          <Link className="page-link !text-primary" href="#!" scroll={false}>Next</Link>
-                        </li>
-                      </ul>
-                    </nav>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
     </Fragment>
   );
 }

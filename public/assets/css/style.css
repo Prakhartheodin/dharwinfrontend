@@ -11049,7 +11049,7 @@ code {
 }
 
 .content {
-  @apply lg:ms-60 mt-[60px] transition-all ms-0;
+  @apply lg:ms-60 mt-[60px] transition-all ms-0 grow;
 }
 
 pre {

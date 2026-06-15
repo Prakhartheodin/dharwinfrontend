@@ -417,6 +417,29 @@
   .sidePanelShellOpen {
     width: 100%;
   }
+
+  /* ── Master-detail view switching (tablet/mobile) ──
+     Below lg the two panes stack vertically, which pushed the chat box off
+     screen below the full-height conversation list. Show ONE pane at a time:
+     the list when no conversation is selected, the thread (full width) once
+     one is, with the thread's back button returning to the list. */
+  .grid:not(.gridConversationOpen) .mainWithDetails {
+    display: none;
+  }
+
+  .gridConversationOpen .rail {
+    display: none;
+  }
+
+  /* The shared template (_chat.scss) force-hides `.main-chat-area` below 992px
+     with a (0,2,0) `display:none`, which beat the module's `.main` display and
+     left the thread invisible after selecting a conversation. Re-show it as a
+     full-screen pane when a conversation is open. !important is required to win
+     over the template's equal-specificity rule regardless of load order. */
+  .gridConversationOpen .main {
+    display: flex !important;
+    min-height: calc(100vh - 9rem);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -477,6 +500,42 @@
 .threadMetaTyping {
   color: var(--chat-accent);
   font-weight: 500;
+}
+
+/* Mobile-only "back to list" affordance in the thread header.
+   Hidden on lg+ where list + thread sit side-by-side. */
+.threadBackBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.25rem;
+  width: 2.25rem;
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--chat-border);
+  background: var(--chat-elevated);
+  color: var(--chat-ink-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.threadBackBtn:hover {
+  border-color: rgba(13, 148, 136, 0.35);
+  color: var(--chat-accent);
+  background: var(--chat-accent-soft);
+}
+
+.threadBackBtn:focus-visible {
+  outline: 2px solid var(--chat-accent);
+  outline-offset: 2px;
+}
+
+@media (min-width: 1024px) {
+  .threadBackBtn {
+    display: none;
+  }
 }
 
 .toolbar {

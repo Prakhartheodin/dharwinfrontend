@@ -6,7 +6,8 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, exportInterviewsExcel, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
 import { listReferralLeads, type ReferralLeadRow } from '@/shared/lib/api/referralLeads'
@@ -128,7 +129,7 @@ async function fetchReferralLeadsForSchedule(): Promise<CandidateListItem[]> {
   let cursor: string | undefined
   // Backend caps limit at 100 (Joi + service); 200 was rejected and returned no rows.
   for (let page = 0; page < 15; page++) {
-    const res = await listReferralLeads({ limit: 100, cursor })
+    const res = await listReferralLeads({ limit: 100, cursor, candidateRoleOwnersOnly: true })
     aggregated.push(...(res.results ?? []))
     if (!res.hasMore || !res.nextCursor) break
     cursor = res.nextCursor
@@ -207,7 +208,38 @@ export default function InterviewsClient() {
   /** Pending overlap warning — holds the proceed callback so the user can override. */
   const [overlapWarning, setOverlapWarning] = useState<{ message: string; proceed: () => void } | null>(null)
   const [isExcelMenuOpen, setIsExcelMenuOpen] = useState(false)
+  const [isExcelExporting, setIsExcelExporting] = useState(false)
   const excelDropdownRef = useRef<HTMLDivElement | null>(null)
+
+  /** Download all accessible interviews as an .xlsx file. */
+  const handleExportInterviews = useCallback(async () => {
+    setIsExcelMenuOpen(false)
+    setIsExcelExporting(true)
+    try {
+      const blob = await exportInterviewsExcel()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const date = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `interviews-export-${date}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Export ready',
+        text: 'Your interviews spreadsheet download has started.',
+        timer: 2000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Export failed'
+      await Swal.fire({ icon: 'error', title: 'Export failed', text: message })
+    } finally {
+      setIsExcelExporting(false)
+    }
+  }, [])
   
   const [filters, setFilters] = useState<FilterState>({
     candidate: [],
@@ -595,7 +627,16 @@ export default function InterviewsClient() {
     const notes = getVal('edit-notes')
     const status = getVal('edit-status') as 'scheduled' | 'ended' | 'cancelled' || editMeeting.status
     const candidateId = (form.querySelector('#edit-candidate') as HTMLSelectElement)?.value
-    const candidate = candidateId ? candidates.find((c) => (c.id ?? c._id) === candidateId) : null
+    const candidate = candidateId
+      ? candidates.find((c) => (c.id ?? c._id) === candidateId) ??
+        (editMeeting.candidate?.id === candidateId
+          ? {
+              id: editMeeting.candidate.id,
+              fullName: editMeeting.candidate.name ?? '',
+              email: editMeeting.candidate.email ?? '',
+            }
+          : null)
+      : null
     const scheduledAt = date && time ? wallClockToUtc(date, time, timezone).toISOString() : editMeeting.scheduledAt
     const payload: UpdateMeetingPayload = {
       title: title || editMeeting.title,
@@ -965,6 +1006,23 @@ export default function InterviewsClient() {
     }
     return merged
   }, [extraScheduleCandidates, candidates])
+
+  /** Edit modal: keep the meeting's current candidate selectable even if they no longer have Candidate role. */
+  const editCandidatesMerged = useMemo<CandidateListItem[]>(() => {
+    const cand = editMeeting?.candidate
+    if (!cand?.id) return candidates
+    const id = String(cand.id)
+    if (candidates.some((c) => String(c.id ?? c._id ?? '') === id)) return candidates
+    return [
+      {
+        id: cand.id,
+        fullName: cand.name ?? cand.email ?? 'Candidate',
+        email: cand.email ?? '',
+        phoneNumber: '',
+      },
+      ...candidates,
+    ]
+  }, [candidates, editMeeting?.candidate])
 
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())
 
@@ -1697,31 +1755,12 @@ export default function InterviewsClient() {
                       <li role="none">
                         <button
                           type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
+                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left disabled:opacity-60"
                           role="menuitem"
-                          onClick={() => setIsExcelMenuOpen(false)}
+                          disabled={isExcelExporting}
+                          onClick={() => { void handleExportInterviews() }}
                         >
-                          <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                        </button>
-                      </li>
-                      <li role="none">
-                        <button
-                          type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                          role="menuitem"
-                          onClick={() => setIsExcelMenuOpen(false)}
-                        >
-                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                        </button>
-                      </li>
-                      <li role="none">
-                        <button
-                          type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                          role="menuitem"
-                          onClick={() => setIsExcelMenuOpen(false)}
-                        >
-                          <i className="ri-download-line me-2 align-middle inline-block"></i>Template
+                          <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>{isExcelExporting ? 'Exporting…' : 'Export'}
                         </button>
                       </li>
                     </ul>
@@ -2552,7 +2591,7 @@ export default function InterviewsClient() {
                     <label htmlFor="edit-candidate" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Candidate <span className="text-xs font-normal text-textmuted dark:text-white/55">(referral leads)</span></label>
                     <select id="edit-candidate" className="form-select !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" disabled={dropdownsLoading} defaultValue={editMeeting.candidate?.id ?? ''}>
                       <option value="">{dropdownsLoading ? 'Loading...' : 'Select referral lead'}</option>
-                      {candidates.map((c) => (
+                      {editCandidatesMerged.map((c) => (
                         <option key={c.id ?? c._id} value={c.id ?? c._id}>{c.fullName}{isPublicEmail(c.email) ? ` - ${c.email}` : ''}</option>
                       ))}
                     </select>

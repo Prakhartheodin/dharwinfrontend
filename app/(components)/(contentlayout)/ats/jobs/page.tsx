@@ -209,6 +209,24 @@ const Jobs = () => {
     return () => ac.abort()
   }, [listJobsParams])
 
+  // Deep-link: ?view=<jobId> (e.g. from dashboard Recent Jobs) opens that job's
+  // preview panel once jobs are loaded. Guard against re-opening if the user closes it.
+  const autoOpenedViewIdRef = useRef<string | null>(null)
+  const viewJobIdParam = searchParams.get('view')?.trim() || null
+  useEffect(() => {
+    if (!viewJobIdParam) {
+      autoOpenedViewIdRef.current = null
+      return
+    }
+    if (autoOpenedViewIdRef.current === viewJobIdParam) return
+    if (!jobsData.length) return
+    const match = jobsData.find((job) => job.id === viewJobIdParam)
+    if (match) {
+      autoOpenedViewIdRef.current = viewJobIdParam
+      setPreviewJob(match)
+    }
+  }, [viewJobIdParam, jobsData])
+
   // Search states for filter dropdowns
   const [searchJobTitle, setSearchJobTitle] = useState('')
   const [searchCompany, setSearchCompany] = useState('')

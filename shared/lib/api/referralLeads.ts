@@ -136,6 +136,8 @@ export interface ReferralLeadsQueryParams {
   convertedEmployees?: boolean;
   pendingReferrals?: boolean;
   employeeStatus?: ReferralEmployeeStatus;
+  /** When true, only referral leads whose portal user still has the Candidate role (interview scheduling). */
+  candidateRoleOwnersOnly?: boolean;
 }
 
 export function coalesceField<T>(lead: unknown, key: string, fallback: T): T {

@@ -74,6 +74,153 @@ function getResumeUrl(app: ApplicationWithDocs): string | null {
   return resume?.url || null;
 }
 
+type ApplicationRowMeta = {
+  id: string;
+  candidateId: string;
+  name: string;
+  emailDisplay: string;
+  emailForMailto: string | null;
+  jobTitle: string;
+  orgName?: string;
+  dept: string;
+  recruiterName: string;
+  resumeUrl: string | null;
+  profileHref: string;
+  jobId: string;
+  appliedAt?: string | null;
+};
+
+function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
+  const id = String(app._id ?? app.id ?? "");
+  const c = app.candidate ?? ({} as ApplicationWithDocs["candidate"]);
+  const candidateId = String(c._id ?? c.id ?? "");
+  const applicantUser = (app as { applicantUser?: { name?: string; email?: string } }).applicantUser;
+  const candidateIsSynthetic = isInternalRelayEmail(c.email);
+  const safeEmailForName = candidateIsSynthetic
+    ? ""
+    : pickPublicEmail([applicantUser?.email, c.email]) ?? "";
+  const name = (
+    c.fullName ||
+    applicantUser?.name ||
+    safeEmailForName ||
+    "Unknown Applicant"
+  ).trim() || "Unknown Applicant";
+  const emailDisplay = resolveApplicantEmail({
+    candidate: c as Parameters<typeof resolveApplicantEmail>[0]["candidate"],
+    application: app as Parameters<typeof resolveApplicantEmail>[0]["application"],
+    applicantUser,
+  });
+  const emailForMailto = candidateIsSynthetic
+    ? null
+    : pickPublicEmail([applicantUser?.email, c.email]);
+  const j = app.job ?? ({} as JobApplication["job"]);
+  return {
+    id,
+    candidateId,
+    name,
+    emailDisplay,
+    emailForMailto,
+    jobTitle: j.title ?? "—",
+    orgName: j.organisation?.name,
+    dept: c.department ?? "—",
+    recruiterName: app.appliedBy?.name ?? app.appliedBy?.email ?? "—",
+    resumeUrl: getResumeUrl(app),
+    profileHref: candidateId ? `/ats/employees/edit?id=${candidateId}` : "#",
+    jobId: String(j._id ?? j.id ?? ""),
+    appliedAt: app.createdAt,
+  };
+}
+
+function ApplicationStatusSelect({
+  value,
+  applicantName,
+  disabled,
+  onChange,
+  fullWidth = false,
+}: {
+  value: JobApplicationStatus;
+  applicantName: string;
+  disabled?: boolean;
+  onChange: (next: JobApplicationStatus) => void;
+  fullWidth?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 w-full">
+      <select
+        aria-label={`Change stage for ${applicantName}`}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value as JobApplicationStatus)}
+        className={`ti-form-select form-select-sm w-full min-w-[9rem] ${fullWidth ? "max-w-none" : "max-w-[12rem]"} text-sm sm:text-xs font-semibold rounded-full py-2.5 sm:py-1.5 min-h-[2.75rem] sm:min-h-0 ps-3 pe-8 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${STATUS_STYLE[value]}`}
+      >
+        {PIPELINE_STATUSES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      {disabled && <i className="ri-loader-2-line animate-spin text-[#8c9097] shrink-0" aria-hidden />}
+    </div>
+  );
+}
+
+function ApplicationRowActions({
+  meta,
+  appStatus,
+  isUpdating,
+  onReject,
+  onSchedule,
+}: {
+  meta: ApplicationRowMeta;
+  appStatus: JobApplicationStatus;
+  isUpdating: boolean;
+  onReject: () => void;
+  onSchedule: () => void;
+}) {
+  return (
+    <div className="inline-flex flex-wrap items-center gap-1 justify-end">
+      <Link
+        href={meta.profileHref}
+        title="View candidate"
+        aria-label="View candidate"
+        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary"
+      >
+        <i className="ri-user-3-line text-[0.875rem]" />
+      </Link>
+      <a
+        href={meta.emailForMailto ? `mailto:${meta.emailForMailto}` : "#"}
+        title={meta.emailForMailto ? "Send message" : "No public email on file"}
+        aria-label="Send message"
+        onClick={(e) => {
+          if (!meta.emailForMailto) e.preventDefault();
+        }}
+        className={`inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary ${meta.emailForMailto ? "" : "opacity-40 pointer-events-none"}`}
+      >
+        <i className="ri-mail-line text-[0.875rem]" />
+      </a>
+      <button
+        type="button"
+        title="Schedule interview"
+        aria-label="Schedule interview"
+        onClick={onSchedule}
+        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary"
+      >
+        <i className="ri-calendar-event-line text-[0.875rem]" />
+      </button>
+      <button
+        type="button"
+        title="Reject"
+        aria-label="Reject"
+        disabled={isUpdating || appStatus === "Rejected"}
+        onClick={onReject}
+        className="inline-flex items-center justify-center w-9 h-9 sm:w-8 sm:h-8 rounded-md text-[#8c9097] hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8c9097]"
+      >
+        <i className="ri-close-circle-line text-[0.875rem]" />
+      </button>
+    </div>
+  );
+}
+
 export default function ApplicationsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -96,6 +243,7 @@ export default function ApplicationsPage() {
   const [sortBy, setSortBy] = useState("createdAt:desc");
 
   const [page, setPage] = useState(1);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const pageSize = 20;
 
   const [jobOptions, setJobOptions] = useState<Job[]>([]);
@@ -187,6 +335,22 @@ export default function ApplicationsPage() {
     }
   };
 
+  const handleScheduleInterview = useCallback(
+    (meta: ApplicationRowMeta) => {
+      if (!meta.id) {
+        router.push("/ats/interviews");
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set("openSchedule", "1");
+      params.set("applicationId", meta.id);
+      if (meta.candidateId) params.set("candidateId", meta.candidateId);
+      if (meta.jobId) params.set("jobId", meta.jobId);
+      router.push(`/ats/interviews?${params.toString()}`);
+    },
+    [router],
+  );
+
   const clearAllFilters = () => {
     setSearch("");
     setStatusFilter("");
@@ -228,31 +392,31 @@ export default function ApplicationsPage() {
   return (
     <Fragment>
       <Seo title="Applications" />
-      <div className="container-fluid pt-6 space-y-6">
+      <div className="container-fluid pt-4 sm:pt-6 space-y-4 sm:space-y-6">
         {/* Header */}
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-semibold text-defaulttextcolor dark:text-white tracking-tight flex items-center gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-xl font-semibold text-defaulttextcolor dark:text-white tracking-tight flex flex-wrap items-center gap-2 sm:gap-3">
               Applications
               <span className="inline-flex items-center justify-center min-w-[2rem] h-6 px-2 rounded-full text-xs font-medium bg-defaulttextcolor/10 dark:bg-white/10 text-defaulttextcolor dark:text-white/80">
                 {loading ? "…" : totalResults}
               </span>
             </h1>
-            <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-1">
+            <p className="text-[0.8125rem] sm:text-[0.75rem] text-[#8c9097] dark:text-white/50 mt-1">
               All candidate applications across every job in your ATS pipeline.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto shrink-0">
             <Link
               href="/ats/jobs"
-              className="ti-btn ti-btn-light !py-1.5 !px-3 !text-xs !m-0 !font-medium"
+              className="ti-btn ti-btn-light !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center"
               aria-label="Back to jobs"
             >
               <i className="ri-briefcase-line align-middle me-1" /> Jobs
             </Link>
             <Link
               href="/ats/analytics"
-              className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-xs !m-0 !font-medium"
+              className="ti-btn ti-btn-primary !py-2.5 sm:!py-1.5 !px-3 !text-xs !m-0 !font-medium justify-center"
               aria-label="View analytics"
             >
               <i className="ri-line-chart-line align-middle me-1" /> Analytics
@@ -262,15 +426,19 @@ export default function ApplicationsPage() {
 
         {/* Status pipeline strip */}
         <div className="box">
-          <div className="box-body !py-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="box-body !py-3 !px-3 sm:!px-4">
+            <p className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-2 sm:sr-only">
+              Pipeline stage
+            </p>
+            <div className="overflow-x-auto -mx-1 px-1 pb-0.5 sm:overflow-visible sm:mx-0 sm:px-0 [scrollbar-width:thin]">
+              <div className="flex flex-nowrap sm:flex-wrap gap-2 min-w-max sm:min-w-0">
               <button
                 type="button"
                 onClick={() => {
                   setStatusFilter("");
                   setPage(1);
                 }}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                className={`shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full border transition-colors ${
                   statusFilter === ""
                     ? "bg-primary/10 border-primary/30 text-primary font-semibold"
                     : "bg-transparent border-gray-200 dark:border-white/10 text-[#8c9097] dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5"
@@ -286,7 +454,7 @@ export default function ApplicationsPage() {
                     setStatusFilter(s);
                     setPage(1);
                   }}
-                  className={`text-xs px-3 py-1.5 rounded-full transition-colors ${
+                  className={`shrink-0 text-xs px-3 py-2 sm:py-1.5 min-h-[2.5rem] sm:min-h-0 rounded-full transition-colors ${
                     statusFilter === s
                       ? `${STATUS_STYLE[s]} font-semibold`
                       : "border border-gray-200 dark:border-white/10 text-[#8c9097] dark:text-white/60 hover:bg-gray-50 dark:hover:bg-white/5"
@@ -295,34 +463,56 @@ export default function ApplicationsPage() {
                   {s}
                 </button>
               ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Filters bar */}
         <div className="box">
-          <div className="box-body">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="lg:col-span-2">
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
-                  Search
-                </label>
-                <div className="flex items-center w-full rounded-sm border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-colors h-[2.125rem]">
-                  <i
-                    aria-hidden
-                    className="ri-search-line shrink-0 ms-3 me-2 text-[0.875rem] text-slate-400 dark:text-white/40"
-                  />
-                  <input
-                    type="search"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search by candidate name, email, or job title"
-                    aria-label="Search applications"
-                    className="flex-1 min-w-0 h-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-[0.8125rem] text-defaulttextcolor dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 pe-3"
-                  />
-                </div>
+          <div className="box-body !p-3 sm:!p-4 space-y-3">
+            <div>
+              <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
+                Search
+              </label>
+              <div className="flex items-center w-full rounded-sm border border-defaultborder dark:border-defaultborder/10 bg-white dark:bg-bodybg focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/20 transition-colors min-h-[2.75rem] sm:min-h-[2.125rem]">
+                <i
+                  aria-hidden
+                  className="ri-search-line shrink-0 ms-3 me-2 text-[0.875rem] text-slate-400 dark:text-white/40"
+                />
+                <input
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search by candidate name, email, or job title"
+                  aria-label="Search applications"
+                  className="flex-1 min-w-0 h-full bg-transparent border-0 outline-none focus:outline-none focus:ring-0 text-[0.875rem] sm:text-[0.8125rem] text-defaulttextcolor dark:text-white placeholder:text-slate-400 dark:placeholder:text-white/40 pe-3"
+                />
               </div>
+            </div>
 
+            <button
+              type="button"
+              className="xl:hidden flex items-center justify-between w-full rounded-md border border-defaultborder dark:border-defaultborder/10 px-3 py-2.5 min-h-[2.75rem] text-sm font-medium text-defaulttextcolor dark:text-white hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              onClick={() => setFiltersExpanded((open) => !open)}
+              aria-expanded={filtersExpanded}
+              aria-controls="applications-advanced-filters"
+            >
+              <span>
+                More filters
+                {activeFilterCount > 0 && (
+                  <span className="ms-2 inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-[0.6875rem] font-semibold bg-primary/10 text-primary">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </span>
+              <i className={`ri-arrow-${filtersExpanded ? "up" : "down"}-s-line text-lg`} aria-hidden />
+            </button>
+
+            <div
+              id="applications-advanced-filters"
+              className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 ${filtersExpanded ? "" : "hidden xl:grid"}`}
+            >
               <div>
                 <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
                   Job
@@ -333,7 +523,7 @@ export default function ApplicationsPage() {
                     setJobFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="ti-form-select form-select-sm w-full"
+                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                   aria-label="Filter by job"
                 >
                   <option value="">All jobs</option>
@@ -358,7 +548,7 @@ export default function ApplicationsPage() {
                     setRecruiterFilter(e.target.value);
                     setPage(1);
                   }}
-                  className="ti-form-select form-select-sm w-full"
+                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                   aria-label="Filter by recruiter"
                 >
                   <option value="">All recruiters</option>
@@ -391,7 +581,7 @@ export default function ApplicationsPage() {
                   }}
                   placeholder="e.g. Engineering"
                   aria-label="Filter by department"
-                  className="ti-form-control form-control-sm w-full"
+                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                 />
               </div>
 
@@ -407,7 +597,7 @@ export default function ApplicationsPage() {
                     setPage(1);
                   }}
                   aria-label="Date from"
-                  className="ti-form-control form-control-sm w-full"
+                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                 />
               </div>
 
@@ -423,7 +613,7 @@ export default function ApplicationsPage() {
                     setPage(1);
                   }}
                   aria-label="Date to"
-                  className="ti-form-control form-control-sm w-full"
+                  className="ti-form-control form-control-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                 />
               </div>
 
@@ -434,7 +624,7 @@ export default function ApplicationsPage() {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="ti-form-select form-select-sm w-full"
+                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
                   aria-label="Sort"
                 >
                   <option value="createdAt:desc">Newest first</option>
@@ -446,7 +636,7 @@ export default function ApplicationsPage() {
             </div>
 
             {activeFilterCount > 0 && (
-              <div className="mt-3 flex items-center gap-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2 text-xs pt-1 border-t border-defaultborder/60 dark:border-white/10 xl:border-0 xl:pt-0">
                 <span className="text-[#8c9097] dark:text-white/50">
                   {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"} active
                 </span>
@@ -462,240 +652,248 @@ export default function ApplicationsPage() {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Applications list */}
         <div className="box">
           <div className="box-body !p-0">
-            <div className="table-responsive">
-              <table className="table table-hover whitespace-nowrap table-bordered min-w-full text-sm">
-                <thead>
-                  <tr>
-                    <th scope="col" className="!text-start">Applicant</th>
-                    <th scope="col" className="!text-start">Applied Job</th>
-                    <th scope="col" className="!text-start">Department</th>
-                    <th scope="col" className="!text-start">Status</th>
-                    <th scope="col" className="!text-start">Applied Date</th>
-                    <th scope="col" className="!text-start">Recruiter</th>
-                    <th scope="col" className="!text-start">Resume</th>
-                    <th scope="col" className="!text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    [...Array(6)].map((_, i) => (
-                      <tr key={`s-${i}`} className="border border-inherit border-solid dark:border-defaultborder/10">
-                        <td colSpan={8} className="!py-3">
-                          <div className="h-5 w-full bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
-                        </td>
-                      </tr>
-                    ))
-                  ) : rows.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="!text-center !py-12">
-                        <div className="flex flex-col items-center gap-2">
-                          <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/5 text-primary">
-                            <i className="ri-file-search-line text-[1.25rem]" />
-                          </span>
-                          <p className="font-semibold text-defaulttextcolor dark:text-white">No applications found</p>
-                          <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
-                            {activeFilterCount > 0 ? "Try adjusting your filters." : "New candidate applications will appear here."}
-                          </p>
-                          {activeFilterCount > 0 && (
-                            <button onClick={clearAllFilters} className="text-primary hover:underline text-xs mt-1">
-                              Clear filters
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    rows.map((app) => {
-                      const id = String(app._id ?? app.id ?? "");
-                      const c = app.candidate ?? ({} as ApplicationWithDocs["candidate"]);
-                      const candidateId = String(c._id ?? c.id ?? "");
-                      // Note: c.owner is intentionally NOT used here. For recruiter-created
-                      // candidates, Employee.owner is the recruiter's User account; using
-                      // owner.name/email would leak recruiter identity into applicant rows.
-                      const applicantUser = (app as any)?.applicantUser;
-                      const candidateIsSynthetic = isInternalRelayEmail(c.email);
-                      const safeEmailForName = candidateIsSynthetic
-                        ? ""
-                        : pickPublicEmail([applicantUser?.email, c.email]) ?? "";
-                      const name = (
-                        c.fullName ||
-                        applicantUser?.name ||
-                        safeEmailForName ||
-                        "Unknown Applicant"
-                      ).trim() || "Unknown Applicant";
-                      const emailDisplay = resolveApplicantEmail({
-                        candidate: c as any,
-                        application: app as any,
-                        applicantUser,
-                      });
-                      const emailForMailto = candidateIsSynthetic
-                        ? null
-                        : pickPublicEmail([applicantUser?.email, c.email]);
-                      const j = app.job ?? ({} as JobApplication["job"]);
-                      const jobTitle = j.title ?? "—";
-                      const dept = c.department ?? "—";
-                      const recruiterName = app.appliedBy?.name ?? app.appliedBy?.email ?? "—";
-                      const resumeUrl = getResumeUrl(app);
-                      const isUpdating = updatingId === id;
-                      const profileHref = candidateId ? `/ats/employees/edit?id=${candidateId}` : "#";
-
-                      return (
-                        <tr
-                          key={id}
-                          className="border border-inherit border-solid hover:bg-gray-50 dark:hover:bg-white/5 dark:border-defaultborder/10"
-                        >
-                          <td>
-                            <div className="flex items-center gap-3 min-w-0">
-                              <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md flex items-center justify-center text-xs font-semibold shrink-0">
-                                {getInitials(name)}
-                              </span>
-                              <div className="min-w-0">
-                                <Link
-                                  href={profileHref}
-                                  className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary truncate block max-w-[14rem]"
-                                >
-                                  {name}
-                                </Link>
-                                <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate block max-w-[14rem]">
-                                  {emailDisplay}
-                                </span>
-                              </div>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="block truncate max-w-[12rem]" title={jobTitle}>
-                              {jobTitle}
-                            </span>
-                            {j.organisation?.name && (
-                              <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate max-w-[12rem]">
-                                {j.organisation.name}
-                              </span>
-                            )}
-                          </td>
-                          <td>
-                            <span className="text-[#8c9097] dark:text-white/70">{dept}</span>
-                          </td>
-                          <td>
-                            <div className="inline-flex items-center gap-1">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[0.6875rem] font-semibold ${STATUS_STYLE[app.status]}`}>
-                                {app.status}
-                              </span>
-                              <select
-                                aria-label={`Change stage for ${name}`}
-                                value={app.status}
-                                disabled={isUpdating}
-                                onChange={(e) => handleStatusChange(app, e.target.value as JobApplicationStatus)}
-                                className="ti-form-select form-select-sm !text-[0.6875rem] !py-0.5 !px-1 !min-h-0 ml-1"
-                              >
-                                {PIPELINE_STATUSES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {s}
-                                  </option>
-                                ))}
-                              </select>
-                              {isUpdating && <i className="ri-loader-2-line animate-spin text-[#8c9097]" />}
-                            </div>
-                          </td>
-                          <td>
-                            <span title={app.createdAt ?? ""}>{formatDate(app.createdAt)}</span>
-                          </td>
-                          <td>
-                            <span className="text-[#8c9097] dark:text-white/70">{recruiterName}</span>
-                          </td>
-                          <td>
-                            {resumeUrl ? (
-                              <a
-                                href={resumeUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
-                                title="Open resume"
-                              >
-                                <i className="ri-file-pdf-2-line" /> View
-                              </a>
-                            ) : (
-                              <span className="text-[#8c9097]/60 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="!text-end">
-                            <div className="inline-flex items-center gap-1 justify-end">
-                              <Link
-                                href={profileHref}
-                                title="View candidate"
-                                aria-label="View candidate"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary"
-                              >
-                                <i className="ri-user-3-line text-[0.875rem]" />
-                              </Link>
-                              <a
-                                href={emailForMailto ? `mailto:${emailForMailto}` : "#"}
-                                title={emailForMailto ? "Send message" : "No public email on file"}
-                                aria-label="Send message"
-                                onClick={(e) => {
-                                  if (!emailForMailto) e.preventDefault();
-                                }}
-                                className={`inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary ${emailForMailto ? "" : "opacity-40 pointer-events-none"}`}
-                              >
-                                <i className="ri-mail-line text-[0.875rem]" />
-                              </a>
-                              <button
-                                type="button"
-                                title="Schedule interview"
-                                aria-label="Schedule interview"
-                                onClick={() => {
-                                  if (!id) {
-                                    router.push("/ats/interviews");
-                                    return;
-                                  }
-                                  const params = new URLSearchParams();
-                                  params.set("openSchedule", "1");
-                                  params.set("applicationId", id);
-                                  if (candidateId) params.set("candidateId", candidateId);
-                                  const jId = String(j._id ?? j.id ?? "");
-                                  if (jId) params.set("jobId", jId);
-                                  const url = `/ats/interviews?${params.toString()}`;
-                                  console.log("[Schedule click] navigating to", url, { id, candidateId, jId });
-                                  router.push(url);
-                                }}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] hover:bg-primary/10 hover:text-primary"
-                              >
-                                <i className="ri-calendar-event-line text-[0.875rem]" />
-                              </button>
-                              <button
-                                type="button"
-                                title="Reject"
-                                aria-label="Reject"
-                                disabled={isUpdating || app.status === "Rejected"}
-                                onClick={() => setConfirmReject(app)}
-                                className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#8c9097] hover:bg-rose-500/10 hover:text-rose-600 disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#8c9097]"
-                              >
-                                <i className="ri-close-circle-line text-[0.875rem]" />
-                              </button>
-                            </div>
+            {loading ? (
+              <>
+                <div className="xl:hidden divide-y divide-gray-200 dark:divide-white/10">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={`m-sk-${i}`} className="p-4">
+                      <div className="h-5 w-2/3 bg-gray-100 dark:bg-white/5 rounded animate-pulse mb-2" />
+                      <div className="h-4 w-1/2 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+                <div className="hidden xl:block table-responsive overflow-x-auto">
+                  <table className="table table-hover table-bordered min-w-[72rem] text-sm">
+                    <tbody>
+                      {[...Array(6)].map((_, i) => (
+                        <tr key={`s-${i}`} className="border border-inherit border-solid dark:border-defaultborder/10">
+                          <td colSpan={8} className="!py-3">
+                            <div className="h-5 w-full bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
                           </td>
                         </tr>
-                      );
-                    })
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : rows.length === 0 ? (
+              <div className="!text-center !py-12 px-4">
+                <div className="flex flex-col items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-primary/5 text-primary">
+                    <i className="ri-file-search-line text-[1.25rem]" />
+                  </span>
+                  <p className="font-semibold text-defaulttextcolor dark:text-white">No applications found</p>
+                  <p className="text-[0.75rem] text-[#8c9097] dark:text-white/50">
+                    {activeFilterCount > 0 ? "Try adjusting your filters." : "New candidate applications will appear here."}
+                  </p>
+                  {activeFilterCount > 0 && (
+                    <button onClick={clearAllFilters} className="text-primary hover:underline text-xs mt-1">
+                      Clear filters
+                    </button>
                   )}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="xl:hidden divide-y divide-gray-200 dark:divide-white/10">
+                  {rows.map((app) => {
+                    const meta = getApplicationRowMeta(app);
+                    const isUpdating = updatingId === meta.id;
+                    return (
+                      <article key={meta.id} className="p-3 sm:p-4 space-y-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md flex items-center justify-center text-xs font-semibold shrink-0">
+                            {getInitials(meta.name)}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <Link
+                              href={meta.profileHref}
+                              className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary block truncate"
+                            >
+                              {meta.name}
+                            </Link>
+                            <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 block truncate">
+                              {meta.emailDisplay}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                          <div className="min-w-0">
+                            <span className="text-[#8c9097] dark:text-white/50 block">Job</span>
+                            <span className="font-medium text-defaulttextcolor dark:text-white truncate block" title={meta.jobTitle}>
+                              {meta.jobTitle}
+                            </span>
+                            {meta.orgName && (
+                              <span className="text-[#8c9097] dark:text-white/50 truncate block">{meta.orgName}</span>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-[#8c9097] dark:text-white/50 block">Department</span>
+                            <span className="text-defaulttextcolor dark:text-white/80">{meta.dept}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#8c9097] dark:text-white/50 block">Applied</span>
+                            <span className="text-defaulttextcolor dark:text-white/80">{formatDate(meta.appliedAt)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[#8c9097] dark:text-white/50 block">Recruiter</span>
+                            <span className="text-defaulttextcolor dark:text-white/80 truncate block">{meta.recruiterName}</span>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1.5 block">
+                            Status
+                          </span>
+                          <ApplicationStatusSelect
+                            value={app.status}
+                            applicantName={meta.name}
+                            disabled={isUpdating}
+                            onChange={(next) => handleStatusChange(app, next)}
+                            fullWidth
+                          />
+                        </div>
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-1 border-t border-defaultborder/40 dark:border-white/10">
+                          {meta.resumeUrl ? (
+                            <a
+                              href={meta.resumeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                            >
+                              <i className="ri-file-pdf-2-line" /> View resume
+                            </a>
+                          ) : (
+                            <span className="text-[#8c9097]/60 text-xs">No resume</span>
+                          )}
+                          <ApplicationRowActions
+                            meta={meta}
+                            appStatus={app.status}
+                            isUpdating={isUpdating}
+                            onReject={() => setConfirmReject(app)}
+                            onSchedule={() => handleScheduleInterview(meta)}
+                          />
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                <div className="hidden xl:block table-responsive overflow-x-auto">
+                  <table className="table table-hover table-bordered min-w-[72rem] w-full text-sm">
+                    <thead>
+                      <tr>
+                        <th scope="col" className="!text-start min-w-[14rem]">Applicant</th>
+                        <th scope="col" className="!text-start min-w-[12rem]">Applied Job</th>
+                        <th scope="col" className="!text-start min-w-[8rem]">Department</th>
+                        <th scope="col" className="!text-start min-w-[11rem]">Status</th>
+                        <th scope="col" className="!text-start whitespace-nowrap">Applied Date</th>
+                        <th scope="col" className="!text-start min-w-[8rem]">Recruiter</th>
+                        <th scope="col" className="!text-start whitespace-nowrap">Resume</th>
+                        <th scope="col" className="!text-end min-w-[11rem]">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((app) => {
+                        const meta = getApplicationRowMeta(app);
+                        const isUpdating = updatingId === meta.id;
+                        return (
+                          <tr
+                            key={meta.id}
+                            className="border border-inherit border-solid hover:bg-gray-50 dark:hover:bg-white/5 dark:border-defaultborder/10"
+                          >
+                            <td className="align-middle whitespace-nowrap">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <span className="avatar avatar-sm bg-primary/10 text-primary rounded-md flex items-center justify-center text-xs font-semibold shrink-0">
+                                  {getInitials(meta.name)}
+                                </span>
+                                <div className="min-w-0">
+                                  <Link
+                                    href={meta.profileHref}
+                                    className="font-semibold text-defaulttextcolor dark:text-white hover:text-primary truncate block max-w-[14rem]"
+                                  >
+                                    {meta.name}
+                                  </Link>
+                                  <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate block max-w-[14rem]">
+                                    {meta.emailDisplay}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="align-middle whitespace-nowrap">
+                              <span className="block truncate max-w-[12rem]" title={meta.jobTitle}>
+                                {meta.jobTitle}
+                              </span>
+                              {meta.orgName && (
+                                <span className="block text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate max-w-[12rem]">
+                                  {meta.orgName}
+                                </span>
+                              )}
+                            </td>
+                            <td className="align-middle whitespace-nowrap">
+                              <span className="text-[#8c9097] dark:text-white/70">{meta.dept}</span>
+                            </td>
+                            <td className="align-middle !whitespace-normal min-w-[11rem]">
+                              <ApplicationStatusSelect
+                                value={app.status}
+                                applicantName={meta.name}
+                                disabled={isUpdating}
+                                onChange={(next) => handleStatusChange(app, next)}
+                              />
+                            </td>
+                            <td className="align-middle whitespace-nowrap">
+                              <span title={meta.appliedAt ?? ""}>{formatDate(meta.appliedAt)}</span>
+                            </td>
+                            <td className="align-middle whitespace-nowrap">
+                              <span className="text-[#8c9097] dark:text-white/70">{meta.recruiterName}</span>
+                            </td>
+                            <td className="align-middle whitespace-nowrap">
+                              {meta.resumeUrl ? (
+                                <a
+                                  href={meta.resumeUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-primary hover:underline text-xs"
+                                  title="Open resume"
+                                >
+                                  <i className="ri-file-pdf-2-line" /> View
+                                </a>
+                              ) : (
+                                <span className="text-[#8c9097]/60 text-xs">—</span>
+                              )}
+                            </td>
+                            <td className="!text-end align-middle whitespace-nowrap">
+                              <ApplicationRowActions
+                                meta={meta}
+                                appStatus={app.status}
+                                isUpdating={isUpdating}
+                                onReject={() => setConfirmReject(app)}
+                                onSchedule={() => handleScheduleInterview(meta)}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
           </div>
           {totalResults > 0 && (
-            <div className="box-footer">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-[0.75rem] text-[#8c9097] dark:text-white/60">
+            <div className="box-footer !px-3 sm:!px-4">
+              <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+                <div className="text-[0.75rem] text-[#8c9097] dark:text-white/60 text-center sm:text-start w-full sm:w-auto">
                   Showing {showingStart}–{showingEnd} of {totalResults}
                 </div>
-                <nav aria-label="Pagination" className="pagination-style-4">
-                  <ul className="ti-pagination mb-0 flex items-center gap-1">
-                    <li className={`page-item ${page <= 1 ? "disabled" : ""}`}>
+                <nav aria-label="Pagination" className="pagination-style-4 w-full sm:w-auto">
+                  <ul className="ti-pagination mb-0 flex items-center justify-center sm:justify-end gap-1">
+                    <li className={`page-item flex-1 sm:flex-initial ${page <= 1 ? "disabled" : ""}`}>
                       <button
                         type="button"
-                        className="page-link"
+                        className="page-link w-full sm:w-auto min-h-[2.75rem] sm:min-h-0 flex items-center justify-center"
                         onClick={() => setPage((p) => Math.max(1, p - 1))}
                         disabled={page <= 1}
                       >
@@ -707,10 +905,10 @@ export default function ApplicationsPage() {
                         Page {page} of {totalPages}
                       </span>
                     </li>
-                    <li className={`page-item ${page >= totalPages ? "disabled" : ""}`}>
+                    <li className={`page-item flex-1 sm:flex-initial ${page >= totalPages ? "disabled" : ""}`}>
                       <button
                         type="button"
-                        className="page-link !text-primary"
+                        className="page-link !text-primary w-full sm:w-auto min-h-[2.75rem] sm:min-h-0 flex items-center justify-center"
                         onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                         disabled={page >= totalPages}
                       >

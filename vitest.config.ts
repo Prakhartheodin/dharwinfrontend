@@ -12,6 +12,7 @@ export default defineConfig({
       "shared/hooks/__tests__/**/*.{test,spec}.{ts,tsx}",
       "shared/lib/__tests__/**/*.{test,spec}.{ts,tsx}",
       "shared/components/pm/**/__tests__/**/*.{test,spec}.{ts,tsx}",
+      "shared/components/__tests__/**/*.{test,spec}.{ts,tsx}",
       "app/**/*.{test,spec}.{ts,tsx}",
     ],
     coverage: {

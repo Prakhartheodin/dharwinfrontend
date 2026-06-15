@@ -15,6 +15,7 @@ import {
 } from "@/shared/lib/api/tasks";
 import { emitPmDataMutated } from "@/shared/hooks/usePmRefetchOnFocus";
 import { PRIORITY_OPTIONS, STATUS_COLUMNS } from "../lib/constants";
+import { assignedToWritePayload } from "../lib/task-write-payload";
 import type { DrawerMode } from "../types";
 import { useUnsavedChanges } from "../hooks/useUnsavedChanges";
 import { trackTaskBoard } from "../lib/telemetry";
@@ -182,7 +183,7 @@ export function TaskDrawer({
           dueDate: dueDate ? dueDate.toISOString() : undefined,
           projectId: projectId || undefined,
           tags: tags.length ? tags : undefined,
-          ...(assignedIds.length ? { assignedTo: assignedIds } : {}),
+          ...assignedToWritePayload(mode, assignedIds),
         });
         emitPmDataMutated();
         trackTaskBoard("taskboard.task_created", { status });
@@ -202,7 +203,7 @@ export function TaskDrawer({
           dueDate: dueDate ? dueDate.toISOString() : undefined,
           projectId: projectId || undefined,
           tags: tags.length ? tags : undefined,
-          ...(assignedIds.length ? { assignedTo: assignedIds } : {}),
+          ...assignedToWritePayload(mode, assignedIds),
         });
         emitPmDataMutated();
         trackTaskBoard("taskboard.task_status_changed", { taskId, status });

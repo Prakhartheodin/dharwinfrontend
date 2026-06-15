@@ -20,6 +20,11 @@ interface CandidatesFilterPanelProps {
   handleMultiSelectChange: (field: 'agentIds', value: string) => void
   handleRemoveFilter: (field: 'agentIds', value: string) => void
   handleResetFilters: () => void
+  canExport?: boolean
+  canImport?: boolean
+  onExport?: () => void
+  onImport?: () => void
+  onDownloadTemplate?: () => void
 }
 
 const COMPACT_INPUT_ICON = 'form-control !h-[34px] !py-[5px] !ps-7 !pe-3 !text-[0.8125rem] !rounded-md w-full'
@@ -90,8 +95,14 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   handleMultiSelectChange,
   handleRemoveFilter,
   handleResetFilters,
+  canExport = false,
+  canImport = false,
+  onExport,
+  onImport,
+  onDownloadTemplate,
 }) => {
   const agentInputRef = useRef<HTMLInputElement>(null)
+  const showExcelActions = canExport || canImport
 
   const agentQueryTrimmed = searchAgent.trim()
   const showAgentSuggestions = agentQueryTrimmed.length > 0
@@ -225,6 +236,44 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
           </div>
         </div>
       </div>
+
+      {showExcelActions && (
+        <div className="flex flex-col gap-2 border-t border-defaultborder/60 bg-gray-50/70 px-4 py-3 dark:bg-black/20 sm:flex-row sm:items-center sm:justify-between">
+          <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-gray-500 dark:text-gray-400">
+            <i className="ri-file-excel-2-line text-emerald-600 dark:text-emerald-400" aria-hidden />
+            Export respects the filters set above
+          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {canImport && (
+              <>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.75rem]"
+                  onClick={onImport}
+                >
+                  <i className="ri-upload-2-line me-1 align-middle" aria-hidden />Import
+                </button>
+                <button
+                  type="button"
+                  className="ti-btn ti-btn-light !py-1.5 !px-3 !text-[0.75rem]"
+                  onClick={onDownloadTemplate}
+                >
+                  <i className="ri-download-line me-1 align-middle" aria-hidden />Template
+                </button>
+              </>
+            )}
+            {canExport && (
+              <button
+                type="button"
+                className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.75rem]"
+                onClick={onExport}
+              >
+                <i className="ri-file-excel-2-line me-1 align-middle" aria-hidden />Export to Excel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

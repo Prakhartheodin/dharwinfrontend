@@ -34,6 +34,8 @@ export interface ProjectTeam {
 
 export interface Project {
   _id: string;
+  /** Backend toJSON may return id instead of _id */
+  id?: string;
   name: string;
   projectManager?: string;
   clientStakeholder?: string;

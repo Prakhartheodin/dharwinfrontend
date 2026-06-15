@@ -217,8 +217,8 @@ function TaskCard({
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-px border-t border-slate-100 bg-slate-100 sm:grid-cols-[minmax(0,1fr)_auto] dark:border-white/10 dark:bg-white/10">
-        <div className="flex items-center gap-2 bg-white px-5 py-2.5 pl-6 dark:bg-bgdark2">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-slate-100 bg-white px-5 py-3 pl-6 dark:border-white/10 dark:bg-bgdark2">
+        <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Status
           </span>
@@ -227,7 +227,7 @@ function TaskCard({
             disabled={updating}
             onChange={(e) => void handleStatusChange(e.target.value as TaskStatus)}
             aria-label="Change task status"
-            className="h-8 flex-1 min-w-[7.5rem] rounded-full border border-slate-200 bg-white pl-3 pr-7 text-xs font-semibold text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
+            className="w-auto min-w-[6.5rem] max-w-[10rem] rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-xs font-semibold leading-tight text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -237,7 +237,7 @@ function TaskCard({
           </select>
           {updating && <i className="ri-loader-4-line animate-spin text-slate-400" />}
         </div>
-        <div className="bg-white px-5 py-2.5 sm:text-end dark:bg-bgdark2">
+        <div className="text-end">
           <p className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Created
           </p>

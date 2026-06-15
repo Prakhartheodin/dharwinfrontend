@@ -20,7 +20,11 @@ export function buildCreateOfferPayloadFromLetterForm(
   const employmentEligibilityLines =
     letterForm.eligibilityPreset === "none" ? [] : (buildEligibilityLinesFromForm(letterForm) ?? [])
   const weeklyHours: number =
-    letterForm.jobType === "PT_25" ? 20 : letterForm.jobType === "FT_40" ? 40 : letterForm.weeklyHours
+    letterForm.weeklyHours > 0
+      ? letterForm.weeklyHours
+      : letterForm.jobType === "PT_25"
+        ? 20
+        : 40
   const g = Number(String(letterForm.annualGrossCtc).replace(/,/g, ""))
 
   const trimmedAppId = jobApplicationId?.trim() ?? ""

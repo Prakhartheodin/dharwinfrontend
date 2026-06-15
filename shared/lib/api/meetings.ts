@@ -3,6 +3,23 @@
 /** ATS screening interviews only. API: `GET|POST /meetings`. Communication internal meetings use `internal-meetings.ts` → `/internal-meetings`. */
 import { apiClient } from "@/shared/lib/api/client";
 
+/**
+ * Download interviews as an .xlsx file. Mirrors the active list filters
+ * (status / title) so the export matches what's on screen.
+ */
+export async function exportInterviewsExcel(
+  params: { status?: string; title?: string } = {}
+): Promise<Blob> {
+  const query: Record<string, string> = {};
+  if (params.status) query.status = params.status;
+  if (params.title) query.title = params.title;
+  const res = await apiClient.get<Blob>("/meetings/export", {
+    params: query,
+    responseType: "blob",
+  });
+  return res.data;
+}
+
 export interface MeetingHost {
   nameOrRole?: string;
   email: string;

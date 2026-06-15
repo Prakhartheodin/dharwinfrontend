@@ -231,7 +231,7 @@ export function PublicJobApplyModal({
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white shadow-2xl dark:bg-gray-800">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white sm:text-2xl">Apply · {jobTitle}</h2>
           <button
             type="button"

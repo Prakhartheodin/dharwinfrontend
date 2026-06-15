@@ -2,6 +2,24 @@
 
 import { apiClient } from "@/shared/lib/api/client";
 
+/**
+ * Download students as an .xlsx file. Mirrors the active list filters
+ * (status / position / search) so the export matches what's on screen.
+ */
+export async function exportStudentsExcel(
+  params: { status?: string; position?: string; search?: string } = {}
+): Promise<Blob> {
+  const query: Record<string, string> = {};
+  if (params.status) query.status = params.status;
+  if (params.position) query.position = params.position;
+  if (params.search) query.search = params.search;
+  const res = await apiClient.get<Blob>("/training/students/export", {
+    params: query,
+    responseType: "blob",
+  });
+  return res.data;
+}
+
 export interface StudentUser {
   id: string;
   name: string;

@@ -212,13 +212,20 @@ export interface ExtractSkillsFromResumeResponse {
 export async function extractSkillsFromResume(file: File): Promise<ExtractSkillsFromResumeResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  // Do not set Content-Type — apiClient defaults to JSON; FormData needs the browser to set
+  // multipart/form-data WITH its boundary, or multer can't parse the file and req.file is undefined.
   const { data } = await apiClient.post<ExtractSkillsFromResumeResponse>(
     AUTH_ENDPOINTS.extractSkillsFromResume,
     formData,
     {
-      headers: { "Content-Type": "multipart/form-data" },
       timeout: 120000,
-    }
+      transformRequest: [
+        (body: unknown, headers: Record<string, string>) => {
+          delete headers["Content-Type"];
+          return body;
+        },
+      ],
+    } as any
   );
   return data;
 }

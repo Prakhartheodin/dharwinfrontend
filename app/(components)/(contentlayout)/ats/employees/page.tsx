@@ -551,10 +551,9 @@ const Candidates = () => {
   /** React-controlled filters panel — Preline HSOverlay often misses registration after SPA navigation */
   const [employeesFilterPanelOpen, setEmployeesFilterPanelOpen] = useState(false)
 
-  /** Sort / Excel — React-controlled (Preline hs-dropdown + SPA can swallow clicks / skip init). */
-  const [employeesToolbarMenu, setEmployeesToolbarMenu] = useState<'sort' | 'excel' | null>(null)
+  /** Sort — React-controlled (Preline hs-dropdown + SPA can swallow clicks / skip init). Excel actions now live in the filter panel footer. */
+  const [employeesToolbarMenu, setEmployeesToolbarMenu] = useState<'sort' | null>(null)
   const employeesSortDropdownRef = useRef<HTMLDivElement>(null)
-  const employeesExcelDropdownRef = useRef<HTMLDivElement>(null)
 
   /** Quick search — employee name or ID only (toolbar input, like ATS jobs). */
   const [employeeSearch, setEmployeeSearch] = useState('')
@@ -573,10 +572,7 @@ const Candidates = () => {
     if (!employeesToolbarMenu) return
     const handleOutside = (e: MouseEvent) => {
       const t = e.target as Node
-      if (
-        !employeesSortDropdownRef.current?.contains(t) &&
-        !employeesExcelDropdownRef.current?.contains(t)
-      ) {
+      if (!employeesSortDropdownRef.current?.contains(t)) {
         setEmployeesToolbarMenu(null)
       }
     }
@@ -1711,7 +1707,7 @@ const Candidates = () => {
               maxWidth: 52,
               Cell: ({ row }: any) => (
                 <input
-                  className="form-check-input h-[1.15rem] w-[1.15rem] cursor-pointer rounded border-2 border-gray-400 accent-primary focus:ring-2 focus:ring-primary/40 dark:border-white/40"
+                  className="form-check-input h-5 w-5 cursor-pointer rounded-[5px] border-2 border-gray-500 bg-white shadow-sm accent-primary transition-colors hover:border-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-1 dark:border-white/60 dark:bg-white/10"
                   type="checkbox"
                   checked={selectedRows.has(row.original.id)}
                   onChange={() => handleRowSelect(row.original.id)}
@@ -2377,78 +2373,6 @@ const Candidates = () => {
                     <i className="ri-add-line font-semibold align-middle"></i>Add employee
                   </Link>
                 ) : null}
-                {(canViewEmployees || canCreateEmployee) ? (
-                    <div ref={employeesExcelDropdownRef} className="relative z-30">
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
-                        id="employees-excel-dropdown-button"
-                        aria-haspopup="menu"
-                        aria-expanded={employeesToolbarMenu === 'excel'}
-                        onClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          setEmployeesToolbarMenu((m) => (m === 'excel' ? null : 'excel'))
-                        }}
-                      >
-                        <i className="ri-file-excel-2-line font-semibold align-middle me-1"></i>Excel
-                        <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
-                      </button>
-                      {employeesToolbarMenu === 'excel' ? (
-                        <ul
-                          className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
-                          role="menu"
-                          aria-labelledby="employees-excel-dropdown-button"
-                        >
-                        {canCreateEmployee ? (
-                          <li role="none">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                              onClick={() => {
-                                setEmployeesToolbarMenu(null)
-                                router.push('/ats/employees/import')
-                              }}
-                            >
-                              <i className="ri-upload-2-line me-2 align-middle inline-block"></i>Import
-                            </button>
-                          </li>
-                        ) : null}
-                        {canViewEmployees ? (
-                          <li role="none">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                              onClick={() => {
-                                setEmployeesToolbarMenu(null)
-                                handleExportAllOpen()
-                              }}
-                            >
-                              <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>Export
-                            </button>
-                          </li>
-                        ) : null}
-                        {canCreateEmployee ? (
-                          <li role="none">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left"
-                              onClick={() => {
-                                setEmployeesToolbarMenu(null)
-                                downloadCandidateExcelTemplate()
-                              }}
-                            >
-                              <i className="ri-download-line me-2 align-middle inline-block"></i>Template
-                            </button>
-                          </li>
-                        ) : null}
-                        </ul>
-                      ) : null}
-                    </div>
-                ) : null}
                 <div className="relative flex-1 min-w-[10rem] sm:min-w-[12rem] sm:max-w-xs me-2">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-defaulttextcolor/50 text-[0.875rem]" aria-hidden />
                   <input
@@ -2475,7 +2399,7 @@ const Candidates = () => {
                     </span>
                   )}
                 </button>
-              
+
                 {canUpdateEmployee && selectedRows.size > 0 && (
                   <>
                     <button type="button" className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem]" onClick={() => openWeekOffModal(Array.from(selectedRows))}>
@@ -2517,6 +2441,11 @@ const Candidates = () => {
               handleMultiSelectChange={handleMultiSelectChange}
               handleRemoveFilter={handleRemoveFilter}
               handleResetFilters={handleResetFilters}
+              canExport={canViewEmployees}
+              canImport={canCreateEmployee}
+              onExport={handleExportAllOpen}
+              onImport={() => router.push('/ats/employees/import')}
+              onDownloadTemplate={downloadCandidateExcelTemplate}
             />
 
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden min-h-0">
@@ -2646,7 +2575,7 @@ const Candidates = () => {
                           >
                             {column.id === 'checkbox' ? (
                               <input
-                                className="form-check-input h-[1.15rem] w-[1.15rem] cursor-pointer rounded border-2 border-gray-400 accent-primary focus:ring-2 focus:ring-primary/40 dark:border-white/40"
+                                className="form-check-input h-5 w-5 cursor-pointer rounded-[5px] border-2 border-gray-500 bg-white shadow-sm accent-primary transition-colors hover:border-primary focus:ring-2 focus:ring-primary/50 focus:ring-offset-1 dark:border-white/60 dark:bg-white/10"
                                 type="checkbox"
                                 checked={isAllSelected}
                                 ref={(input) => {

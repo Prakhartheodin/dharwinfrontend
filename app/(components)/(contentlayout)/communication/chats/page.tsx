@@ -626,14 +626,22 @@ const Chat = () => {
   const typingDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef<number>(0);
   const chatContainerRef = useRef<HTMLElement | null>(null);
+  /** Set true right before prepending older messages so the auto-scroll effect
+      doesn't yank the view back to the bottom (preserve the reader's position). */
+  const skipAutoScrollRef = useRef(false);
 
   const myId = (user as any)?.id || (user as any)?._id?.toString?.();
 
   // ── Auto-scroll to bottom ──
+  // Double rAF: the merged timeline (messages + call pills + date separators)
+  // and PerfectScrollbar settle layout across two frames, so a single rAF can
+  // fire before scrollHeight is final and leave us short of the latest message.
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
-      const el = chatContainerRef.current;
-      if (el) el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        const el = chatContainerRef.current;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
     });
   }, []);
 
@@ -688,6 +696,7 @@ const Chat = () => {
     try {
       const older = await getMessages(cid, { before: oldestId, limit: 50 });
       if ((older || []).length < 50) setHasMoreMessages(false);
+      skipAutoScrollRef.current = true;
       setMessages((prev) => [...(older || []), ...prev]);
     } catch {
       setHasMoreMessages(false);
@@ -749,8 +758,20 @@ const Chat = () => {
     if (!selectedConversation) setIsOpen(false);
   }, [selectedConversation]);
 
-  // Scroll to bottom when messages change
+  // Pin to the latest message whenever a conversation finishes loading
+  // (fires on open / conversation switch, not on every new message).
   useEffect(() => {
+    if (!convId || loadingMessages) return;
+    scrollToBottom();
+  }, [convId, loadingMessages, scrollToBottom]);
+
+  // Follow new sent/received messages — but skip when older messages were just
+  // prepended (load-older preserves the reader's scroll position).
+  useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      return;
+    }
     if (messages.length > 0) scrollToBottom();
   }, [messages, scrollToBottom]);
 
@@ -1440,7 +1461,11 @@ const Chat = () => {
           </div>
         </div>
       )}
-      <div className={`main-chart-wrapper ${chatStyles.grid} p-2 gap-2 lg:flex`}>
+      <div
+        className={`main-chart-wrapper ${chatStyles.grid} ${
+          selectedConversation ? chatStyles.gridConversationOpen : ""
+        } p-2 gap-2 lg:flex`}
+      >
         {/* ── Left sidebar ── */}
         <div className={`chat-info ${chatStyles.rail} border-0 dark:border-0`}>
           <button
@@ -1685,6 +1710,14 @@ const Chat = () => {
               )}
               <div className={`${chatStyles.threadHeader} sm:flex-nowrap`}>
                 <div className="flex items-center min-w-0">
+                  <button
+                    type="button"
+                    className={chatStyles.threadBackBtn}
+                    onClick={() => setSelectedConversation(null)}
+                    aria-label="Back to conversations"
+                  >
+                    <i className="ri-arrow-left-line" />
+                  </button>
                   <span className={`avatar avatar-lg me-3 sm:me-4 avatar-rounded flex-shrink-0 ${isUserOnline(selectedConversation) ? "online" : ""}`}>
                     <img src={conversationAvatar(selectedConversation)} alt="" />
                   </span>

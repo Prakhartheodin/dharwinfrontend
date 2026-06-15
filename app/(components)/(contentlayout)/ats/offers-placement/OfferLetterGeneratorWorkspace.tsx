@@ -45,6 +45,9 @@ const dmSans = DM_Sans({
   display: 'swap',
 })
 
+/** Hard ceiling for custom weekly working hours — a week has 7 × 24 = 168 hours. */
+const MAX_WEEKLY_HOURS = 168
+
 /** Webpack emits `/_next/static/media/...` — works in prod with basePath / trailingSlash; plain `/public/...` URLs can 404 on some hosts. */
 function staticAssetPath(asset: string | StaticImageData): string {
   return typeof asset === 'string' ? asset : asset.src
@@ -308,11 +311,8 @@ export function OfferLetterGeneratorWorkspace({
       ? fmtDateLong(letterForm.letterDate)
       : fmtDateLong(letterDateStampYmd())
 
-    const hoursLabel =
-      letterForm.jobType === 'INTERN_UNPAID'
-        ? `${letterForm.weeklyHours} hours per week`
-        : getJobHoursLabel(jobUi)
-    const jobTypeLabel = getJobTypeLabelUi(jobUi)
+    const hoursLabel = getJobHoursLabel(jobUi, letterForm.weeklyHours)
+    const jobTypeLabel = getJobTypeLabelUi(jobUi, letterForm.weeklyHours)
 
     /** Branded logo: `logo.jpeg` + `ceo-signature-harvinder.png` in `offer-letter-images/`. */
     const letterheadLogoHtml = `<img class="${styles.letterLogoImg}" src="${offerLetterLogoSrcAbsolute()}" alt="Dharwin Business Solutions" />`
@@ -730,55 +730,56 @@ export function OfferLetterGeneratorWorkspace({
                   value={jobUi}
                   onChange={(e) => setJobUi(e.target.value as 'fulltime' | 'parttime' | 'internship')}
                 >
-                  <option value="fulltime">Full Time — 40 hours per week</option>
-                  <option value="parttime">Part Time — 20 hours per week</option>
-                  <option value="internship">Training / Unpaid Internship (Full Time)</option>
+                  <option value="fulltime">Full Time</option>
+                  <option value="parttime">Part Time</option>
+                  <option value="internship">Training / Unpaid Internship</option>
                 </select>
               </div>
-              {isInternship ? (
-                <div className={styles.field}>
-                  <label htmlFor="olg-weekly">Weekly hours (intern)</label>
-                  {(() => {
-                    const isPreset = letterForm.weeklyHours === 40 || letterForm.weeklyHours === 20
-                    const showCustom = weeklyHoursOther || !isPreset
-                    return (
-                      <>
-                        <select
-                          id="olg-weekly"
-                          className={styles.select}
-                          value={showCustom ? 'other' : String(letterForm.weeklyHours)}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            if (v === 'other') {
-                              setWeeklyHoursOther(true)
-                            } else {
-                              setWeeklyHoursOther(false)
-                              setLetterForm((f) => ({ ...f, weeklyHours: Number(v) }))
-                            }
-                          }}
-                        >
-                          <option value={40}>40</option>
-                          <option value={20}>20</option>
-                          <option value="other">Other</option>
-                        </select>
-                        {showCustom ? (
-                          <input
-                            type="number"
-                            min={1}
-                            max={168}
-                            className={styles.input}
-                            placeholder="Weekly hours"
-                            value={letterForm.weeklyHours || ''}
-                            onChange={(e) =>
-                              setLetterForm((f) => ({ ...f, weeklyHours: Number(e.target.value) || 0 }))
-                            }
-                          />
-                        ) : null}
-                      </>
-                    )
-                  })()}
-                </div>
-              ) : null}
+              <div className={styles.field}>
+                <label htmlFor="olg-weekly">Working hours / week *</label>
+                {(() => {
+                  const isPreset = letterForm.weeklyHours === 40 || letterForm.weeklyHours === 20
+                  const showCustom = weeklyHoursOther || !isPreset
+                  return (
+                    <>
+                      <select
+                        id="olg-weekly"
+                        className={styles.select}
+                        value={showCustom ? 'other' : String(letterForm.weeklyHours)}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          if (v === 'other') {
+                            setWeeklyHoursOther(true)
+                          } else {
+                            setWeeklyHoursOther(false)
+                            setLetterForm((f) => ({ ...f, weeklyHours: Number(v) }))
+                          }
+                        }}
+                      >
+                        <option value={40}>40</option>
+                        <option value={20}>20</option>
+                        <option value="other">Other</option>
+                      </select>
+                      {showCustom ? (
+                        <input
+                          type="number"
+                          min={1}
+                          max={MAX_WEEKLY_HOURS}
+                          className={styles.input}
+                          placeholder="e.g. 25"
+                          value={letterForm.weeklyHours || ''}
+                          onChange={(e) =>
+                            setLetterForm((f) => ({
+                              ...f,
+                              weeklyHours: Math.min(Number(e.target.value) || 0, MAX_WEEKLY_HOURS),
+                            }))
+                          }
+                        />
+                      ) : null}
+                    </>
+                  )
+                })()}
+              </div>
               <div className={styles.field}>
                 <label htmlFor="olg-location">Location</label>
                 <input
