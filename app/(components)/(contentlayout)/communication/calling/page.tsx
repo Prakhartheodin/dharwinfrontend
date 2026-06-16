@@ -9,6 +9,8 @@ import {
   syncBolnaCallRecords,
   type CallRecord,
 } from "@/shared/lib/api/bolna";
+import CallVerificationPanel from "./_components/CallVerificationPanel";
+import CallRecordings from "./_components/CallRecordings";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
@@ -1089,6 +1091,10 @@ const Calling = () => {
                         <span className="text-defaulttextcolor/50 italic">No transcript available</span>}
                     </div>
                   </div>
+                  <CallVerificationPanel record={selectedCall.data as CallRecord} />
+                  {selectedCall.data.executionId ? (
+                    <CallRecordings executionId={selectedCall.data.executionId} />
+                  ) : null}
                   {selectedCall.data.recordingUrl && (
                     <a
                       href={selectedCall.data.recordingUrl}
