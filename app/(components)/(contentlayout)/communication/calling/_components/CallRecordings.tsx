@@ -71,7 +71,7 @@ export default function CallRecordings({ executionId }: { executionId: string })
   return (
     <div className="space-y-2 text-sm">
       <div>
-        <p className="mb-1 font-medium">Agent only (Bolna)</p>
+        <p className="mb-1 font-medium">Bolna</p>
         {agentUrl ? (
           <audio controls src={agentUrl} className="w-full" preload="metadata" />
         ) : (
@@ -79,7 +79,7 @@ export default function CallRecordings({ executionId }: { executionId: string })
         )}
       </div>
       <div>
-        <p className="mb-1 font-medium">Full call — both voices (Plivo)</p>
+        <p className="mb-1 font-medium">Plivo</p>
         {fullUrl ? (
           <audio controls src={fullUrl} className="w-full" preload="metadata" />
         ) : (

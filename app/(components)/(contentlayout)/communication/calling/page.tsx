@@ -11,7 +11,7 @@ import {
   setupCandidateVerificationExtractions,
   type CallRecord,
 } from "@/shared/lib/api/bolna";
-import CallVerificationPanel, { CallQualityBadge } from "./_components/CallVerificationPanel";
+import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -53,8 +53,10 @@ const PURPOSE_OPTIONS: { value: PurposeFilter; label: string }[] = [
 
 function shouldShowVerificationPanel(record: CallRecord): boolean {
   if (record.verification) return true;
-  if (record.callQuality?.status === "needs_review") return true;
   if (readBolnaCallSummary(record.extractedData)) return true;
+  // Only treat needs_review as panel-worthy when there's actual summary data to review;
+  // pre-feature calls carry needs_review but have no verification/summary fields.
+  if (record.callQuality?.status === "needs_review" && hasReviewableSummary(record)) return true;
   return purposeToCategory(record.purpose, record.displayCategory) === "Student/Candidate";
 }
 
@@ -888,7 +890,10 @@ const Calling = () => {
                                       {statusToLabel(status)}
                                     </span>
                                     {isTelephony ? (
-                                      <CallQualityBadge callQuality={(r as CallRecord).callQuality} />
+                                      <CallQualityBadge
+                                        callQuality={(r as CallRecord).callQuality}
+                                        hasSummary={hasReviewableSummary(r as CallRecord)}
+                                      />
                                     ) : null}
                                   </div>
                                 </td>

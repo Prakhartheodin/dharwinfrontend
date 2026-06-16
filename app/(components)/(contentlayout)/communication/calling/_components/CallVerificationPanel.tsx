@@ -30,14 +30,30 @@ const REASON_LABEL: Record<string, string> = {
   runtime_error_in_transcript: "Runtime error in transcript",
 };
 
+/**
+ * A call has reviewable summary data only if it carries a structured verification
+ * or a Bolna call summary. Calls placed before the summary feature shipped have
+ * neither, so their `needs_review` status is a false positive — nothing to review.
+ */
+export function hasReviewableSummary(
+  record: Pick<CallRecord, "verification" | "extractedData">
+): boolean {
+  if (record.verification) return true;
+  return Boolean(readBolnaCallSummary(record.extractedData));
+}
+
 export function CallQualityBadge({
   callQuality,
+  hasSummary = true,
   className = "",
 }: {
   callQuality?: CallRecord["callQuality"];
+  /** When false, suppress the badge (old call with no summary fields to review). */
+  hasSummary?: boolean;
   className?: string;
 }) {
   if (callQuality?.status !== "needs_review") return null;
+  if (!hasSummary) return null;
   const title = (callQuality.reasons || [])
     .map((r) => REASON_LABEL[r] || r)
     .join("; ");
@@ -130,7 +146,7 @@ export default function CallVerificationPanel({
             {refreshing ? (
               <span className="text-xs text-defaulttextcolor/50">Syncing from Bolna…</span>
             ) : null}
-            <CallQualityBadge callQuality={q} />
+            <CallQualityBadge callQuality={q} hasSummary={hasReviewableSummary(live)} />
           </div>
         </div>
         {needsStructuredConfig ? (
