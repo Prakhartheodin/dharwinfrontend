@@ -179,7 +179,7 @@ export type CallRecordingsResponse = {
   executionId: string;
   provider?: string | null;
   recordings: {
-    bolna: { available: boolean; channel?: string; streamUrl?: string };
+    bolna: { available: boolean; channel?: string; streamUrl?: string; reason?: string };
     plivo: { available: boolean; channel?: string; durationMs?: number | null; streamUrl?: string; reason?: string };
   };
 };
@@ -187,6 +187,52 @@ export type CallRecordingsResponse = {
 export async function getCallRecordings(executionId: string): Promise<CallRecordingsResponse> {
   const { data } = await apiClient.get<CallRecordingsResponse>(
     `/bolna/call-records/${executionId}/recordings`
+  );
+  return data;
+}
+
+/** Bolna default post-call narrative (General → Call Summary → subjective). */
+export function readBolnaCallSummary(
+  extractedData: unknown
+): { subjective: string; confidence: number | null } | null {
+  if (!extractedData || typeof extractedData !== "object") return null;
+  const general = (extractedData as Record<string, unknown>).General;
+  if (!general || typeof general !== "object") return null;
+  const entry = (general as Record<string, unknown>)["Call Summary"];
+  if (!entry || typeof entry !== "object") return null;
+  const subjective = (entry as Record<string, unknown>).subjective;
+  if (typeof subjective !== "string" || !subjective.trim()) return null;
+  const confidence = (entry as Record<string, unknown>).confidence;
+  return {
+    subjective: subjective.trim(),
+    confidence: typeof confidence === "number" ? confidence : null,
+  };
+}
+
+export type RefreshCallRecordResponse = { success: boolean; record: CallRecord };
+
+export async function refreshBolnaCallRecord(executionId: string): Promise<RefreshCallRecordResponse> {
+  const { data } = await apiClient.post<RefreshCallRecordResponse>(
+    `/bolna/call-records/${encodeURIComponent(executionId)}/refresh`
+  );
+  return data;
+}
+
+export type SetupCandidateExtractionsResponse = {
+  success: boolean;
+  agentId?: string;
+  alreadyConfigured?: boolean;
+  category?: string;
+  existingCount?: number;
+  createdCount?: number;
+  createdIds?: string[];
+  fieldNames?: string[];
+};
+
+/** Idempotently provision seven Candidate Verification dispositions on the Bolna candidate agent. */
+export async function setupCandidateVerificationExtractions(): Promise<SetupCandidateExtractionsResponse> {
+  const { data } = await apiClient.post<SetupCandidateExtractionsResponse>(
+    "/bolna/candidate-agent/setup-extractions"
   );
   return data;
 }

@@ -6,10 +6,12 @@ import Link from "next/link";
 import {
   deleteBolnaCallRecord,
   getBolnaCallRecords,
+  readBolnaCallSummary,
   syncBolnaCallRecords,
+  setupCandidateVerificationExtractions,
   type CallRecord,
 } from "@/shared/lib/api/bolna";
-import CallVerificationPanel from "./_components/CallVerificationPanel";
+import CallVerificationPanel, { CallQualityBadge } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -48,6 +50,13 @@ const PURPOSE_OPTIONS: { value: PurposeFilter; label: string }[] = [
   { value: "job_recruiter", label: "Job/Recruiter" },
   { value: "student_candidate", label: "Student/Candidate" },
 ];
+
+function shouldShowVerificationPanel(record: CallRecord): boolean {
+  if (record.verification) return true;
+  if (record.callQuality?.status === "needs_review") return true;
+  if (readBolnaCallSummary(record.extractedData)) return true;
+  return purposeToCategory(record.purpose, record.displayCategory) === "Student/Candidate";
+}
 
 function purposeToCategory(purpose?: string | null, displayCategory?: string | null): "Job/Recruiter" | "Student/Candidate" | "Other" {
   if (displayCategory === "Job/Recruiter" || displayCategory === "Student/Candidate") return displayCategory;
@@ -192,6 +201,7 @@ const Calling = () => {
   const [chatTotal, setChatTotal] = useState(0);
   const [chatPages, setChatPages] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [settingUpExtractions, setSettingUpExtractions] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
   /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
@@ -422,6 +432,31 @@ const Calling = () => {
     }
   };
 
+  const handleSetupExtractions = async () => {
+    setSettingUpExtractions(true);
+    try {
+      const result = await setupCandidateVerificationExtractions();
+      if (result.alreadyConfigured) {
+        window.alert(
+          "Candidate Verification extractions are already configured on the Bolna agent."
+        );
+      } else {
+        window.alert(
+          `Created ${result.createdCount ?? 0} Bolna extraction(s) under "${result.category}". ` +
+            "Place a new test call to populate the verification grid."
+        );
+      }
+    } catch (e) {
+      const msg =
+        e && typeof e === "object" && "response" in e
+          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+          : null;
+      setError(msg || (e instanceof Error ? e.message : "Extraction setup failed"));
+    } finally {
+      setSettingUpExtractions(false);
+    }
+  };
+
   const handleDelete = async (id: string, source: "telephony" | "in_app") => {
     if (source !== "telephony") return;
     const ok = window.confirm("Delete this call record?");
@@ -544,6 +579,25 @@ const Calling = () => {
                     <>
                       <i className="ri-refresh-line font-semibold align-middle me-1" />
                       Sync Telephony
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSetupExtractions}
+                  disabled={settingUpExtractions}
+                  title="Create Candidate Verification extractions on the Bolna agent (one-time)"
+                  className="ti-btn ti-btn-secondary-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {settingUpExtractions ? (
+                    <>
+                      <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
+                      Setting up…
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-list-check-2 font-semibold align-middle me-1" />
+                      Setup Extractions
                     </>
                   )}
                 </button>
@@ -821,17 +875,22 @@ const Calling = () => {
                                   </span>
                                 </td>
                                 <td className="!text-[0.8125rem] align-middle">
-                                  <span
-                                    className={`inline-flex items-center gap-1 border px-2 py-0.5 rounded-md text-[0.7rem] font-medium ${statusBadgeClass(status)}`}
-                                  >
-                                    {isLive && (
-                                      <span className="relative flex h-1.5 w-1.5">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-60" />
-                                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
-                                      </span>
-                                    )}
-                                    {statusToLabel(status)}
-                                  </span>
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <span
+                                      className={`inline-flex items-center gap-1 border px-2 py-0.5 rounded-md text-[0.7rem] font-medium ${statusBadgeClass(status)}`}
+                                    >
+                                      {isLive && (
+                                        <span className="relative flex h-1.5 w-1.5">
+                                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-current opacity-60" />
+                                          <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-current" />
+                                        </span>
+                                      )}
+                                      {statusToLabel(status)}
+                                    </span>
+                                    {isTelephony ? (
+                                      <CallQualityBadge callQuality={(r as CallRecord).callQuality} />
+                                    ) : null}
+                                  </div>
                                 </td>
                                 <td className="!text-[0.8125rem] align-middle tabular-nums font-medium">
                                   {(r as CallRecord).duration != null
@@ -1091,21 +1150,21 @@ const Calling = () => {
                         <span className="text-defaulttextcolor/50 italic">No transcript available</span>}
                     </div>
                   </div>
-                  <CallVerificationPanel record={selectedCall.data as CallRecord} />
+                  {shouldShowVerificationPanel(selectedCall.data as CallRecord) ? (
+                    <CallVerificationPanel
+                      record={selectedCall.data as CallRecord}
+                      onRecordUpdate={(refreshed) =>
+                        setSelectedCall((prev) =>
+                          prev?.source === "telephony"
+                            ? { ...prev, data: { ...prev.data, ...refreshed } }
+                            : prev
+                        )
+                      }
+                    />
+                  ) : null}
                   {selectedCall.data.executionId ? (
                     <CallRecordings executionId={selectedCall.data.executionId} />
                   ) : null}
-                  {selectedCall.data.recordingUrl && (
-                    <a
-                      href={selectedCall.data.recordingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="ti-btn ti-btn-success-full !py-1.5 !px-3 !text-[0.8125rem] inline-flex items-center"
-                    >
-                      <i className="ri-play-line me-1" />
-                      Play Recording
-                    </a>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-4 text-[0.8125rem]">
