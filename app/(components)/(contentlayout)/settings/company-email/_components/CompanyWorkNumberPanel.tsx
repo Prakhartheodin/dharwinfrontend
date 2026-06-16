@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AxiosError } from "axios";
 import {
   searchAvailablePlivoNumbers,
   buyPlivoNumber,
+  listOwnedPlivoNumbers,
   type AvailablePlivoNumber,
+  type OwnedPlivoNumber,
   type PlivoNumberType,
 } from "@/shared/lib/api/plivo";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
@@ -28,6 +30,12 @@ function formatRate(rate: string | number | null): string {
   if (rate == null || rate === "") return "—";
   const n = Number(rate);
   return Number.isFinite(n) ? `$${n.toFixed(2)}` : String(rate);
+}
+
+function formatAddedOn(value: string): string {
+  if (!value) return "—";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? value : d.toLocaleDateString();
 }
 
 function axiosMessage(e: unknown, fallback: string): string {
@@ -61,6 +69,28 @@ export default function CompanyWorkNumberPanel() {
   const [purchased, setPurchased] = useState<Record<string, true>>({});
   const [confirmNumber, setConfirmNumber] = useState<AvailablePlivoNumber | null>(null);
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
+
+  // Numbers already on the connected Plivo account.
+  const [owned, setOwned] = useState<OwnedPlivoNumber[]>([]);
+  const [ownedLoading, setOwnedLoading] = useState(true);
+  const [ownedError, setOwnedError] = useState("");
+
+  const loadOwned = useCallback(async () => {
+    setOwnedLoading(true);
+    setOwnedError("");
+    try {
+      const res = await listOwnedPlivoNumbers();
+      setOwned(res.numbers || []);
+    } catch (err) {
+      setOwnedError(axiosMessage(err, "Failed to load your numbers"));
+    } finally {
+      setOwnedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOwned();
+  }, [loadOwned]);
 
   const services = useMemo(() => {
     const parts: string[] = [];
@@ -126,15 +156,121 @@ export default function CompanyWorkNumberPanel() {
       const res = await buyPlivoNumber(num);
       setPurchased((prev) => ({ ...prev, [num]: true }));
       showToast("success", res.message || `Purchased ${num}.`);
+      void loadOwned();
     } catch (err) {
       showToast("error", axiosMessage(err, `Failed to buy ${num}`));
     } finally {
       setBuyingNumber(null);
     }
-  }, [confirmNumber, showToast]);
+  }, [confirmNumber, showToast, loadOwned]);
 
   return (
     <div className="space-y-5">
+      {/* Your current numbers — already on the connected Plivo account */}
+      <div className="overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-defaultborder/60 px-5 py-3.5 dark:border-white/10">
+          <div>
+            <h6 className="mb-0.5 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
+              Your current numbers
+            </h6>
+            <p className="mb-0 text-xs text-defaulttextcolor/55 dark:text-white/45">
+              Numbers already rented on the connected Plivo account.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {!ownedLoading && !ownedError ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                <i className="ri-phone-line" aria-hidden />
+                {owned.length} owned
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void loadOwned()}
+              disabled={ownedLoading}
+              className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/70 px-3 py-1 text-xs font-semibold text-defaulttextcolor/75 transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:text-white/70 dark:hover:bg-white/5"
+            >
+              <i className={ownedLoading ? "ri-loader-4-line animate-spin" : "ri-refresh-line"} aria-hidden />
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {ownedError ? (
+          <div className="flex gap-3 px-5 py-4 text-sm text-danger" role="alert">
+            <i className="ri-error-warning-line mt-0.5 shrink-0 text-lg" aria-hidden />
+            <span>{ownedError}</span>
+          </div>
+        ) : ownedLoading ? (
+          <div className="flex items-center gap-2 px-5 py-6 text-sm text-defaulttextcolor/55 dark:text-white/45" role="status">
+            <i className="ri-loader-4-line animate-spin text-lg" aria-hidden />
+            Loading your numbers…
+          </div>
+        ) : owned.length === 0 ? (
+          <div className="px-5 py-8 text-center">
+            <i className="ri-phone-line mb-2 text-2xl text-defaulttextcolor/30 dark:text-white/30" aria-hidden />
+            <p className="mb-0 text-sm text-defaulttextcolor/60 dark:text-white/50">
+              No numbers yet. Buy one below and it shows up here.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-defaultborder/60 text-left text-xs uppercase tracking-wide text-defaulttextcolor/55 dark:border-white/10 dark:text-white/45">
+                  <th className="px-5 py-3 font-semibold">Number</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold">Region</th>
+                  <th className="px-4 py-3 font-semibold">Monthly</th>
+                  <th className="px-4 py-3 font-semibold">Added</th>
+                  <th className="px-4 py-3 font-semibold">Capabilities</th>
+                </tr>
+              </thead>
+              <tbody>
+                {owned.map((n) => (
+                  <tr key={n.number} className="border-b border-defaultborder/40 last:border-0 dark:border-white/5">
+                    <td className="px-5 py-3 font-medium text-defaulttextcolor dark:text-white">
+                      {n.number}
+                      {n.alias ? (
+                        <span className="mt-0.5 block text-[0.6875rem] font-normal text-defaulttextcolor/50 dark:text-white/40">
+                          {n.alias}
+                        </span>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 capitalize text-defaulttextcolor/75 dark:text-white/65">{n.type || "—"}</td>
+                    <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">{n.region || "—"}</td>
+                    <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">{formatRate(n.monthlyRentalRate)}</td>
+                    <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">{formatAddedOn(n.addedOn)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        {n.voiceEnabled ? (
+                          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:text-emerald-300">
+                            Voice
+                          </span>
+                        ) : null}
+                        {n.smsEnabled ? (
+                          <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-sky-700 dark:text-sky-300">
+                            SMS
+                          </span>
+                        ) : null}
+                        {n.mmsEnabled ? (
+                          <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:text-violet-300">
+                            MMS
+                          </span>
+                        ) : null}
+                        {!n.voiceEnabled && !n.smsEnabled && !n.mmsEnabled ? (
+                          <span className="text-defaulttextcolor/40">—</span>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Search form */}
       <form
         onSubmit={handleSearch}

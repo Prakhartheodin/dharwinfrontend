@@ -6,6 +6,8 @@ import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { CandidateListItem, CompanyEmailAssignmentRow } from "@/shared/lib/api/candidates";
 import { AxiosError } from "axios";
 import CompanyWorkNumberPanel from "./_components/CompanyWorkNumberPanel";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 const PROVIDER_OPTIONS: { value: "" | "gmail" | "outlook" | "unknown"; label: string }[] = [
   { value: "", label: "Auto-detect" },
@@ -28,8 +30,32 @@ function formatDisplayName(raw: string): string {
   return t;
 }
 
+type CompanyView = "email" | "number";
+
+/** Email | Number sub-views, each gated by its own role-matrix permission (dynamic view). */
+const VIEW_CONFIG: { id: CompanyView; label: string; icon: string; canView: (auth: ReturnType<typeof useAuth>) => boolean }[] = [
+  {
+    id: "email",
+    label: "Email",
+    icon: "ri-mail-line",
+    canView: (auth) => hasPermission(auth, "view_company_email"),
+  },
+  {
+    id: "number",
+    label: "Number",
+    icon: "ri-phone-line",
+    canView: (auth) => hasPermission(auth, "view_company_number"),
+  },
+];
+
 export default function SettingsCompanyEmailPage() {
-  const [view, setView] = useState<"email" | "number">("email");
+  const auth = useAuth();
+  const visibleViews = useMemo(() => VIEW_CONFIG.filter((v) => v.canView(auth)), [auth]);
+  const [view, setView] = useState<CompanyView>("email");
+  /** Clamp to an allowed view once permissions resolve (e.g. number-only or email-only roles). */
+  const activeView: CompanyView = visibleViews.some((v) => v.id === view)
+    ? view
+    : (visibleViews[0]?.id ?? "email");
   const [enabled, setEnabled] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [students, setStudents] = useState<CompanyEmailAssignmentRow[]>([]);
@@ -381,29 +407,31 @@ export default function SettingsCompanyEmailPage() {
           </div>
         </div>
 
-        {/* Email | Number view switch */}
-        <div className="flex justify-center">
-          <div className="inline-flex rounded-full border border-defaultborder/60 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
-            {(["email", "number"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setView(v)}
-                aria-pressed={view === v}
-                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-                  view === v
-                    ? "bg-primary/10 text-primary"
-                    : "text-defaulttextcolor/60 hover:text-defaulttextcolor dark:text-white/55 dark:hover:text-white"
-                }`}
-              >
-                <i className={v === "email" ? "ri-mail-line" : "ri-phone-line"} aria-hidden />
-                {v === "email" ? "Email" : "Number"}
-              </button>
-            ))}
+        {/* Email | Number view switch — only shown when the role can see more than one sub-view */}
+        {visibleViews.length > 1 && (
+          <div className="flex justify-center">
+            <div className="inline-flex rounded-full border border-defaultborder/60 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+              {visibleViews.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setView(v.id)}
+                  aria-pressed={activeView === v.id}
+                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                    activeView === v.id
+                      ? "bg-primary/10 text-primary"
+                      : "text-defaulttextcolor/60 hover:text-defaulttextcolor dark:text-white/55 dark:hover:text-white"
+                  }`}
+                >
+                  <i className={v.icon} aria-hidden />
+                  {v.label}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {view === "number" ? (
+        {activeView === "number" ? (
           <CompanyWorkNumberPanel />
         ) : (
         <>

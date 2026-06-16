@@ -51,6 +51,28 @@ export type BuyPlivoNumberResponse = {
   message?: string;
 };
 
+/** A number already rented/owned on the connected Plivo account. */
+export type OwnedPlivoNumber = {
+  number: string;
+  alias: string;
+  type: string;
+  region: string;
+  country: string;
+  addedOn: string;
+  application: string;
+  monthlyRentalRate: string | number | null;
+  voiceEnabled: boolean;
+  smsEnabled: boolean;
+  mmsEnabled: boolean;
+  carrier: string;
+};
+
+export type ListOwnedPlivoNumbersResponse = {
+  success: boolean;
+  numbers: OwnedPlivoNumber[];
+  total: number;
+};
+
 /** Search Plivo for available numbers to buy (safe, free). */
 export async function searchAvailablePlivoNumbers(
   params: SearchAvailablePlivoNumbersParams
@@ -67,5 +89,11 @@ export async function buyPlivoNumber(number: string): Promise<BuyPlivoNumberResp
   const res = await apiClient.post<BuyPlivoNumberResponse>("/plivo/numbers/buy", {
     number,
   });
+  return res.data;
+}
+
+/** List numbers already rented/owned on the connected Plivo account (safe, free). */
+export async function listOwnedPlivoNumbers(): Promise<ListOwnedPlivoNumbersResponse> {
+  const res = await apiClient.get<ListOwnedPlivoNumbersResponse>("/plivo/numbers/owned");
   return res.data;
 }

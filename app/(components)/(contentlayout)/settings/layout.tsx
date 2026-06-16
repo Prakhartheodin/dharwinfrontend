@@ -8,6 +8,7 @@ import {
   hasAnySettingsModulePermission,
   hasEmailReadAccess,
   hasJobsReadAccess,
+  hasPermission,
   hasSettingsFeatureAccess,
   userCanListRoles,
 } from "@/shared/lib/permissions";
@@ -169,8 +170,10 @@ export default function SettingsLayout({
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "company-email") {
       const can = matrixMode
-        ? hasSettingsFeatureAccess(raw, "company-email")
-        : hasCompanyEmailHubAccess || hasSettingsFeatureAccess(raw, "company-email");
+        ? hasSettingsFeatureAccess(raw, "company-email") || hasSettingsFeatureAccess(raw, "company-number")
+        : hasCompanyEmailHubAccess ||
+          hasSettingsFeatureAccess(raw, "company-email") ||
+          hasSettingsFeatureAccess(raw, "company-number");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
     }
   }, [
@@ -223,8 +226,17 @@ export default function SettingsLayout({
     ? hasSettingsFeatureAccess(rawPerms, "agents")
     : isAdmin === true || hasSettingsFeatureAccess(rawPerms, "agents");
   const showCompanyEmailTab = settingsMatrixMode
-    ? hasSettingsFeatureAccess(rawPerms, "company-email")
-    : hasCompanyEmailHubAccess === true || hasSettingsFeatureAccess(rawPerms, "company-email");
+    ? hasSettingsFeatureAccess(rawPerms, "company-email") || hasSettingsFeatureAccess(rawPerms, "company-number")
+    : hasCompanyEmailHubAccess === true ||
+      hasSettingsFeatureAccess(rawPerms, "company-email") ||
+      hasSettingsFeatureAccess(rawPerms, "company-number");
+  // Tab label tracks which sub-views the role can see (mirrors Training Categories/Positions nav label).
+  const companyAuthView = { permissions: rawPerms, isAdministrator, isPlatformSuperUser };
+  const canCompanyEmailView = hasPermission(companyAuthView, "view_company_email");
+  const canCompanyNumberView = hasPermission(companyAuthView, "view_company_number");
+  let companyEmailTabLabel = "Company work email & number";
+  if (canCompanyNumberView && !canCompanyEmailView) companyEmailTabLabel = "Company work number";
+  else if (!canCompanyNumberView) companyEmailTabLabel = "Company work email";
   const showCandidateSopTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "candidate-sop")
     : hasCandidateSopAccess === true || hasSettingsFeatureAccess(rawPerms, "candidate-sop");
@@ -292,7 +304,7 @@ export default function SettingsLayout({
                     className={tabClass("company-email")}
                     aria-current={activeTab === "company-email" ? "page" : undefined}
                   >
-                    Company work email &amp; number
+                    {companyEmailTabLabel}
                   </Link>
                 )}
                 {showCandidateSopTab && (

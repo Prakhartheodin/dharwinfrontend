@@ -71,6 +71,16 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     anyOf: ["create", "edit", "delete"],
   },
 
+  // Company work email / number (Settings → Company work email & number sub-views)
+  view_company_email: {
+    prefixes: ["settings.company-email"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  view_company_number: {
+    prefixes: ["settings.company-number"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+
   // Training categories (course assignment tab)
   // Cross-deps (backend): view loads GET /categories + GET /modules + GET /mentors + GET /modules/:id/employees.
   // Assign/remove employees on a module row needs training.modules:edit (modules.manage), not categories:edit alone.

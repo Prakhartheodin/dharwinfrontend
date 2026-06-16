@@ -24,6 +24,7 @@ export const PERMISSION_SECTIONS: {
       { id: "attendance", label: "Attendance" },
       { id: "agents", label: "Agents" },
       { id: "company-email", label: "Company work email" },
+      { id: "company-number", label: "Company work number" },
       { id: "candidate-sop", label: "Employee SOP" },
       { id: "email-templates", label: "My email templates" },
       { id: "job-templates", label: "My jobs template" },
