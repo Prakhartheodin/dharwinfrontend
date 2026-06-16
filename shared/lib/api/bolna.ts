@@ -48,6 +48,31 @@ export type GetCallStatusResponse = {
   details: BolnaExecutionDetails;
 };
 
+export type CallVerification = {
+  nameConfirmed?: boolean | null;
+  correctedName?: string | null;
+  jobConfirmed?: boolean | null;
+  availability?: string | null;
+  currentLocation?: string | null;
+  stillInterested?: "interested" | "not_interested" | "withdrew" | null;
+  callOutcome?:
+    | "fully_confirmed"
+    | "partially_confirmed"
+    | "refused"
+    | "voicemail"
+    | "no_data"
+    | null;
+  minConfidence?: number | null;
+  fieldsPresent?: number;
+  extractedAt?: string | null;
+};
+
+export type CallQuality = {
+  status?: "ok" | "needs_review";
+  reasons?: string[];
+  evaluatedAt?: string | null;
+};
+
 export type CallRecord = {
   _id?: string;
   id?: string;
@@ -76,6 +101,8 @@ export type CallRecord = {
   displayCategory?: string;
   /** Company name (Job/Recruiter) or student name (Student/Candidate); fallback to phone */
   displayName?: string | null;
+  verification?: CallVerification;
+  callQuality?: CallQuality;
 };
 
 export type GetCallRecordsParams = {
@@ -145,5 +172,32 @@ export async function syncBolnaCallRecords(
 export async function deleteBolnaCallRecord(id: string): Promise<{ success: boolean; message?: string }> {
   const { data } = await apiClient.delete<{ success: boolean; message?: string }>(`/bolna/call-records/${id}`);
   return data;
+}
+
+export type CallRecordingsResponse = {
+  success: boolean;
+  executionId: string;
+  provider?: string | null;
+  recordings: {
+    bolna: { available: boolean; channel?: string; streamUrl?: string };
+    plivo: { available: boolean; channel?: string; durationMs?: number | null; streamUrl?: string; reason?: string };
+  };
+};
+
+export async function getCallRecordings(executionId: string): Promise<CallRecordingsResponse> {
+  const { data } = await apiClient.get<CallRecordingsResponse>(
+    `/bolna/call-records/${executionId}/recordings`
+  );
+  return data;
+}
+
+/** Fetch a proxied recording stream as an object URL (audio routes are JWT-protected). */
+export async function fetchRecordingObjectUrl(streamUrl: string): Promise<string> {
+  // apiClient baseURL already includes /v1 (resolves to /api/v1 in-browser).
+  // Backend stream URLs come back as /v1/bolna/... — strip the /v1 prefix so
+  // the final request path matches how other calls in this file are written (/bolna/...).
+  const path = streamUrl.replace(/^\/v1/, "");
+  const res = await apiClient.get(path, { responseType: "blob" });
+  return URL.createObjectURL(res.data as Blob);
 }
 
