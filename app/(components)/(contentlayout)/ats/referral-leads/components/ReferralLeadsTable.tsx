@@ -29,7 +29,7 @@ export function ReferralLeadsTable({
             <th className="px-4 py-3">Link</th>
             <th className="px-4 py-3">Job</th>
             <th className="px-4 py-3">Status</th>
-            {featureEnabled && <th className="px-4 py-3">Stage</th>}
+            <th className="px-4 py-3">Stage</th>
             {featureEnabled && <th className="px-4 py-3">Assigned sales agent</th>}
             <th className="px-4 py-3">Claimed</th>
             <th className="px-4 py-3 w-12" aria-label="Actions" />
@@ -45,6 +45,9 @@ export function ReferralLeadsTable({
               <td className="px-4 py-3">
                 <div className="font-medium text-slate-800 dark:text-white">{lead.fullName}</div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">{lead.email}</div>
+                {lead.joiningDate && (
+                  <div className="text-xs text-slate-400 dark:text-slate-500">Joining: {fmtDate(lead.joiningDate)}</div>
+                )}
               </td>
               <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                 {lead.referralAttributionAnonymised ? (
@@ -82,11 +85,9 @@ export function ReferralLeadsTable({
                   );
                 })()}
               </td>
-              {featureEnabled && (
-                <td className="px-4 py-3">
-                  <LifecycleStagePill stage={lead.lifecycleStage} />
-                </td>
-              )}
+              <td className="px-4 py-3">
+                <LifecycleStagePill stage={lead.lifecycleStage} />
+              </td>
               {featureEnabled && (
                 <td className="px-4 py-3">
                   <SalesAgentBadge agent={lead.salesAgent} />

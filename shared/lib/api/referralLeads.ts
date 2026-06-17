@@ -104,6 +104,8 @@ export interface ReferralLeadsStatsResponse {
   conversionRate: number;
   pending: number;
   hired: number;
+  /** Raw referralPipelineStatus → count (funnel source; matches the cards). */
+  pipelineCounts?: Record<string, number>;
   /** Hired into a Full-time job. */
   paidHires?: number;
   /** Hired into an Internship. */

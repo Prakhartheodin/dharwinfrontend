@@ -136,15 +136,14 @@ export default function SalesAgentDashboard(): JSX.Element {
     void refresh();
   }, [refresh]);
 
+  // Raw referralPipelineStatus counts from stats — matches the cards (not the list's
+  // effective/job-removed reclassification).
   const funnelCounts = useMemo<Record<string, number>>(() => {
     const m: Record<string, number> = {};
-    for (const stage of FUNNEL_STAGES) m[stage] = 0;
-    for (const r of leads) {
-      const key = (r.referralPipelineStatus || "pending") as string;
-      if (key in m) m[key] += 1;
-    }
+    const src = stats?.pipelineCounts || {};
+    for (const stage of FUNNEL_STAGES) m[stage] = src[stage] || 0;
     return m;
-  }, [leads]);
+  }, [stats]);
 
   const funnelMax = useMemo(() => {
     const vals = Object.values(funnelCounts);
@@ -368,7 +367,7 @@ export default function SalesAgentDashboard(): JSX.Element {
                       Conversion funnel
                     </h2>
                     <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
-                      Based on last {leads.length} referrals
+                      Based on all {stats?.totalReferrals ?? 0} referrals
                     </p>
                   </div>
                 </div>
