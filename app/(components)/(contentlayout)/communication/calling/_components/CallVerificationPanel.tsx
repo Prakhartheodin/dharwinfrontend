@@ -70,9 +70,12 @@ export function CallQualityBadge({
 export default function CallVerificationPanel({
   record,
   onRecordUpdate,
+  alwaysRender = true,
 }: {
   record: CallRecord;
   onRecordUpdate?: (record: CallRecord) => void;
+  /** When false, hide entirely once a refresh confirms there's no summary/verification data. */
+  alwaysRender?: boolean;
 }) {
   const [live, setLive] = useState(record);
   const [refreshing, setRefreshing] = useState(false);
@@ -110,6 +113,15 @@ export default function CallVerificationPanel({
   const q = live.callQuality;
   const callSummary = readBolnaCallSummary(live.extractedData);
   const needsStructuredConfig = q?.reasons?.includes("structured_extraction_not_configured");
+
+  // Mounted speculatively (alwaysRender=false) for a telephony call whose list payload had
+  // no summary/verification. Refresh runs above; if it surfaces nothing, stay hidden — but
+  // show a brief syncing line so the user isn't staring at a dead panel.
+  if (!alwaysRender && !v && !callSummary && !hasReviewableSummary(live)) {
+    return refreshing ? (
+      <div className="text-xs text-defaulttextcolor/50">Syncing verification from Bolna…</div>
+    ) : null;
+  }
 
   const rows: Array<[string, string]> = [
     ["Name confirmed", yesNo(v?.nameConfirmed)],

@@ -1155,18 +1155,27 @@ const Calling = () => {
                         <span className="text-defaulttextcolor/50 italic">No transcript available</span>}
                     </div>
                   </div>
-                  {shouldShowVerificationPanel(selectedCall.data as CallRecord) ? (
-                    <CallVerificationPanel
-                      record={selectedCall.data as CallRecord}
-                      onRecordUpdate={(refreshed) =>
-                        setSelectedCall((prev) =>
-                          prev?.source === "telephony"
-                            ? { ...prev, data: { ...prev.data, ...refreshed } }
-                            : prev
-                        )
-                      }
-                    />
-                  ) : null}
+                  {(() => {
+                    const rec = selectedCall.data as CallRecord;
+                    const known = shouldShowVerificationPanel(rec);
+                    // Mount for any telephony call with an executionId: the panel refreshes
+                    // from Bolna on open, then reveals itself if data shows up (fixes the
+                    // dead-end where a gate-fail meant the panel never mounted to refresh).
+                    if (!known && !rec.executionId) return null;
+                    return (
+                      <CallVerificationPanel
+                        record={rec}
+                        alwaysRender={known}
+                        onRecordUpdate={(refreshed) =>
+                          setSelectedCall((prev) =>
+                            prev?.source === "telephony"
+                              ? { ...prev, data: { ...prev.data, ...refreshed } }
+                              : prev
+                          )
+                        }
+                      />
+                    );
+                  })()}
                   {selectedCall.data.executionId ? (
                     <CallRecordings executionId={selectedCall.data.executionId} />
                   ) : null}
