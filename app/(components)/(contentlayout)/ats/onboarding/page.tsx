@@ -38,7 +38,7 @@ const Onboarding = () => {
   const fetchPlacements = () => {
     setLoading(true)
     setError(null)
-    listPlacements({ status: 'Onboarding,Joined', limit: 100, page: 1 })
+    listPlacements({ stage: 'onboarding', limit: 100, page: 1 })
       .then((res) => setPlacements(res.results ?? []))
       .catch((err) => setError(err?.response?.data?.message || err?.message || 'Failed to load placements'))
       .finally(() => setLoading(false))

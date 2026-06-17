@@ -14,8 +14,6 @@ import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import PreBoardingDocumentsModal from './modals/PreBoardingDocumentsModal'
 
 const BGV_OPTIONS: BGVStatus[] = ['Pending', 'In Progress', 'Completed', 'Verified']
-/** Not yet Onboarding: placement statuses shown in this queue (API comma-list). */
-const PRE_BOARDING_QUEUE_STATUSES = 'Pending,Deferred,Cancelled' as const
 type PlacementQueueFilter = '' | 'Pending' | 'Deferred' | 'Cancelled'
 
 type PreBoardingFeedbackDialog =
@@ -81,9 +79,10 @@ const PreBoarding = () => {
   const fetchPlacements = useCallback(() => {
     setLoading(true)
     setError(null)
-    const statusParam = placementStatusFilter === '' ? PRE_BOARDING_QUEUE_STATUSES : placementStatusFilter
+    // Stage owns the queue (offerStatus=Accepted, not-yet-onboarding); dropdown narrows within it.
     listPlacements({
-      status: statusParam,
+      stage: 'preBoarding',
+      ...(placementStatusFilter ? { status: placementStatusFilter } : {}),
       limit: 100,
       page: 1,
     })

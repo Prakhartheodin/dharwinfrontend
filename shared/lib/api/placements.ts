@@ -51,6 +51,10 @@ export interface Placement {
   joiningDate: string;
   employeeId?: string | null;
   status: PlacementStatus;
+  /** Denormalized mirror of the linked Offer.status; queues filter on this = 'Accepted'. */
+  offerStatus?: string;
+  /** Set once when the placement first entered Onboarding; stage discriminator for Deferred/Cancelled. */
+  enteredOnboardingAt?: string | null;
   preBoardingStatus?: PreBoardingStatus;
   backgroundVerification?: BackgroundVerification;
   assetAllocation?: AssetAllocation[];
@@ -71,6 +75,8 @@ export interface PlacementsListParams {
   candidateId?: string;
   /** One status, or comma-separated (e.g. `Pending,Deferred`) */
   status?: PlacementStatus | string;
+  /** Queue: 'preBoarding' or 'onboarding'. Owns the offerStatus + stage-discriminator filter; `status` narrows within it. */
+  stage?: "preBoarding" | "onboarding";
   preBoardingStatus?: PreBoardingStatus;
   sortBy?: string;
   limit?: number;
