@@ -51,6 +51,15 @@ const PURPOSE_OPTIONS: { value: PurposeFilter; label: string }[] = [
   { value: "student_candidate", label: "Student/Candidate" },
 ];
 
+/** Pull a human message off an axios-style error, falling back to Error.message then a default. */
+function apiErrMsg(e: unknown, fallback: string): string {
+  const msg =
+    e && typeof e === "object" && "response" in e
+      ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
+      : null;
+  return msg || (e instanceof Error ? e.message : fallback);
+}
+
 function shouldShowVerificationPanel(record: CallRecord): boolean {
   if (record.verification) return true;
   if (readBolnaCallSummary(record.extractedData)) return true;
@@ -86,17 +95,9 @@ function categoryMatchesPurposeFilter(
 }
 
 function getTelephonyName(record: CallRecord): string {
-  const category = purposeToCategory(record.purpose, record.displayCategory);
   const resolvedName = (record.displayName || record.businessName || "").trim();
   const resolvedPhone =
     (record.toPhoneNumber || record.recipientPhoneNumber || record.phone || "").trim();
-
-  if (category === "Job/Recruiter") {
-    return resolvedName || resolvedPhone || "–";
-  }
-  if (category === "Student/Candidate") {
-    return resolvedName || resolvedPhone || "–";
-  }
   return resolvedName || resolvedPhone || "–";
 }
 
@@ -137,9 +138,7 @@ function statusBadgeClass(s?: string): string {
     return "bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30";
   if (x === "missed" || x === "declined")
     return "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/30";
-  if (x === "busy" || x === "no_answer")
-    return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
-  if (x === "in_progress" || x === "initiated" || x === "ongoing" || x === "ringing")
+  if (x === "busy" || x === "no_answer" || x === "in_progress" || x === "initiated" || x === "ongoing" || x === "ringing")
     return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
   return "bg-gray-500/10 text-gray-600 dark:text-gray-400 border-gray-500/30";
 }
@@ -154,10 +153,6 @@ const LIVE_CALL_STATUSES = new Set([
 function getUnifiedId(u: UnifiedCall): string {
   if (u.source === "telephony") return (u.data._id || u.data.id || "") as string;
   return u.data.id || "";
-}
-
-function getUnifiedDate(u: UnifiedCall): string | undefined {
-  return u.data.createdAt;
 }
 
 function getUnifiedStatus(u: UnifiedCall): string {
@@ -386,8 +381,8 @@ const Calling = () => {
       });
     }
     filtered.sort((a, b) => {
-      const da = new Date(getUnifiedDate(a) || 0).getTime();
-      const db = new Date(getUnifiedDate(b) || 0).getTime();
+      const da = new Date(a.data.createdAt || 0).getTime();
+      const db = new Date(b.data.createdAt || 0).getTime();
       return db - da;
     });
     return filtered;
@@ -424,11 +419,7 @@ const Calling = () => {
       await syncBolnaCallRecords();
       await fetchRecords();
     } catch (e) {
-      const msg =
-        e && typeof e === "object" && "response" in e
-          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-          : null;
-      setError(msg || (e instanceof Error ? e.message : "Sync failed"));
+      setError(apiErrMsg(e, "Sync failed"));
     } finally {
       setSyncing(false);
     }
@@ -449,11 +440,7 @@ const Calling = () => {
         );
       }
     } catch (e) {
-      const msg =
-        e && typeof e === "object" && "response" in e
-          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-          : null;
-      setError(msg || (e instanceof Error ? e.message : "Extraction setup failed"));
+      setError(apiErrMsg(e, "Extraction setup failed"));
     } finally {
       setSettingUpExtractions(false);
     }
@@ -472,11 +459,7 @@ const Calling = () => {
       }
       await fetchRecords();
     } catch (e) {
-      const msg =
-        e && typeof e === "object" && "response" in e
-          ? (e as { response?: { data?: { message?: string } } }).response?.data?.message
-          : null;
-      setError(msg || (e instanceof Error ? e.message : "Delete failed"));
+      setError(apiErrMsg(e, "Delete failed"));
     } finally {
       setDeletingId(null);
     }
@@ -807,7 +790,7 @@ const Calling = () => {
                                   <div className="flex flex-col gap-0.5">
                                     <span className="text-xs text-gray-700 dark:text-gray-300 flex items-center gap-1">
                                       <i className="ri-calendar-line text-primary text-[0.85rem]" />
-                                      {formatDate(getUnifiedDate(u))}
+                                      {formatDate(u.data.createdAt)}
                                     </span>
                                   </div>
                                 </td>
