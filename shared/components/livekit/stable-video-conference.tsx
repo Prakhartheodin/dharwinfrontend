@@ -11,6 +11,20 @@ import {
   type TrackReferenceOrPlaceholder,
 } from "@livekit/components-react";
 import { Track } from "livekit-client";
+import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "./meeting-control-bar-responsive.css";
+
+function useNarrowControlBar(breakpointPx = 760) {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(`(max-width: ${breakpointPx}px)`);
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [breakpointPx]);
+  return narrow;
+}
 
 /**
  * Drop-in replacement for LiveKit's prebuilt <VideoConference>.
@@ -256,6 +270,8 @@ export function StableVideoConference() {
     "--lk-col-count": cols,
   };
 
+  const narrowControlBar = useNarrowControlBar();
+
   // Memoize the control bar so re-renders from pin / spotlight / active-speaker
   // state never reconcile <ControlBar>. The page injects #recording-button-slot
   // into .lk-control-bar via raw DOM; a parent-driven reconcile would wipe that
@@ -263,11 +279,14 @@ export function StableVideoConference() {
   const controls = useMemo(
     () => (
       <>
-        <ControlBar />
+        <ControlBar
+          variation={narrowControlBar ? "minimal" : "verbose"}
+          controls={{ microphone: true, camera: true, screenShare: true, leave: true }}
+        />
         <ConnectionStateToast />
       </>
     ),
-    []
+    [narrowControlBar]
   );
 
   return (
@@ -506,4 +525,6 @@ const SVC_CSS = `
   .lk-cam-tile { animation: none; }
   .lk-pin-btn { transition: none; }
 }
+
+${MEETING_CONTROL_BAR_RESPONSIVE_CSS}
 `;

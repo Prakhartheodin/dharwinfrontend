@@ -13,6 +13,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter, useParams } from "next/navigation";
 import { ConnectionState, DisconnectReason, RoomEvent } from "livekit-client";
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
+import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { WaitingRoom } from "@/shared/components/livekit/waiting-room";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import * as livekitApi from "@/shared/lib/api/livekit";
@@ -643,6 +644,7 @@ function RoomContent({
           50% { opacity: 0.4; }
         }
         ${waitingParticipantsCSS}
+        ${MEETING_CONTROL_BAR_RESPONSIVE_CSS}
         @media (max-width: 640px) {
           .room-meeting-container .lk-control-bar {
             padding-left: max(0.75rem, env(safe-area-inset-left));

@@ -144,7 +144,7 @@ export function RecordingButton({ roomName, hostEmail, controlBar = false, onRec
         <>
           <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", backgroundColor: controlBar ? "#f87171" : "#fff", flexShrink: 0, animation: "pulse 2s infinite" }} />
           {controlBar && (
-            <span style={{ fontSize: "0.75rem", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+            <span className="lk-recording-timer-label" style={{ fontSize: "0.75rem", fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
               REC {formatDuration(elapsedSeconds)}
             </span>
           )}

@@ -18,6 +18,7 @@ import { endMeetingPublic } from "@/shared/lib/api/meetings";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { WaitingParticipantsPanel } from "@/shared/components/livekit/waiting-participants-panel";
 import { RecordingButton } from "@/shared/components/livekit/recording-button";
+import { MEETING_CONTROL_BAR_RESPONSIVE_CSS } from "@/shared/components/livekit/meeting-control-bar-responsive.css";
 import { useLiveKitBenignErrorSuppression } from "@/shared/lib/livekit-benign-logs";
 
 const MAX_RECONNECT_ATTEMPTS = 5;
@@ -1801,6 +1802,7 @@ function PublicRoomContent({
           50% { opacity: 0.4; }
         }
         ${waitingParticipantsCSS}
+        ${MEETING_CONTROL_BAR_RESPONSIVE_CSS}
         @media (max-width: 640px) {
           .room-meeting-container .lk-control-bar {
             margin: 0;
@@ -1862,7 +1864,7 @@ function PublicRoomContent({
               title="End the meeting for all participants"
             >
               <i className="ri-phone-fill text-base" style={{ transform: "rotate(135deg)" }} />
-              {endingMeeting ? "Ending…" : "End meeting"}
+              <span className="lk-host-action-btn__label">{endingMeeting ? "Ending…" : "End meeting"}</span>
             </button>,
             endMeetingSlot
           )}
