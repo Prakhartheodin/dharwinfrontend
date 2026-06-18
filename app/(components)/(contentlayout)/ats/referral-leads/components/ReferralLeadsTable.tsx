@@ -1,9 +1,8 @@
 "use client";
 
-import { LINK_TYPE, STATUS_META, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
+import { LINK_TYPE, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { fmtDate, fmtTime } from "../utils/format.util";
-import { LifecycleStagePill } from "./LifecycleStagePill";
 import { SalesAgentBadge } from "./SalesAgentBadge";
 import { RowActionsMenu, type RowActionsMenuProps } from "./RowActionsMenu";
 
@@ -29,7 +28,6 @@ export function ReferralLeadsTable({
             <th className="px-4 py-3">Link</th>
             <th className="px-4 py-3">Job</th>
             <th className="px-4 py-3">Status</th>
-            <th className="px-4 py-3">Stage</th>
             {featureEnabled && <th className="px-4 py-3">Assigned sales agent</th>}
             <th className="px-4 py-3">Claimed</th>
             <th className="px-4 py-3 w-12" aria-label="Actions" />
@@ -73,8 +71,7 @@ export function ReferralLeadsTable({
               <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{lead.job?.title || "—"}</td>
               <td className="px-4 py-3">
                 {(() => {
-                  const st = (lead.referralPipelineStatus || "pending") as keyof typeof STATUS_META;
-                  const m = getStatusMeta(st);
+                  const m = getStatusMeta(lead.referralPipelineStatus);
                   return (
                     <span
                       className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium"
@@ -84,9 +81,6 @@ export function ReferralLeadsTable({
                     </span>
                   );
                 })()}
-              </td>
-              <td className="px-4 py-3">
-                <LifecycleStagePill stage={lead.lifecycleStage} />
               </td>
               {featureEnabled && (
                 <td className="px-4 py-3">

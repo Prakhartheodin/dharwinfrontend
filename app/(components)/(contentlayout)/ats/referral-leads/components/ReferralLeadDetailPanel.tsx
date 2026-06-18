@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { ROUTES } from "@/shared/lib/constants";
-import { EMPLOYEE_STATUS_META, LINK_TYPE } from "@/shared/lib/ats/referral-leads-constants";
+import { EMPLOYEE_STATUS_META, LINK_TYPE, getStatusMeta } from "@/shared/lib/ats/referral-leads-constants";
 import type { ReferralLeadRow } from "@/shared/lib/api/referralLeads";
 import { attributionLabel } from "../utils/referralPermissions.util";
 import { fmtDate, fmtTime, userDisplay } from "../utils/format.util";
 import { SalesAgentBadge } from "./SalesAgentBadge";
-import { LifecycleStagePill } from "./LifecycleStagePill";
 
 interface ReferralLeadDetailPanelProps {
   lead: ReferralLeadRow;
@@ -84,12 +83,20 @@ export function ReferralLeadDetailPanel({
             </div>
           )}
 
-          {featureEnabled && (
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Lifecycle stage</p>
-              <LifecycleStagePill stage={lead.lifecycleStage} />
-            </div>
-          )}
+          <div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Pipeline status</p>
+            {(() => {
+              const m = getStatusMeta(lead.referralPipelineStatus);
+              return (
+                <span
+                  className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
+                  style={{ background: m.bg, color: m.color }}
+                >
+                  {m.label}
+                </span>
+              );
+            })()}
+          </div>
 
           {featureEnabled && lead.employeeConverted && (
             <div>
