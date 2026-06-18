@@ -57,26 +57,15 @@ const ROUTE_MAP: Record<string, RouteFn> = {
   joining_reminder: () => "/ats/onboarding",
   onboarding_reminder: () => "/ats/onboarding",
   leave: () => "/settings/attendance/leave-requests",
-  certificate: (n) => {
-    const id = stripId(meta(n, "certificateId"));
-    return id ? `/training/certificates?id=${id}` : "/training/certificates";
-  },
-  course: (n) => {
-    const id = stripId(meta(n, "courseId"));
-    return id ? `/training/courses/${id}` : "/training/courses";
-  },
   project: (n) => {
     const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "projectId"));
     return id ? `/apps/projects/project-list?id=${id}` : "/apps/projects/project-list";
   },
   account: () => "/ats/my-profile",
-  recruiter: (n) => {
-    const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "candidateId"));
-    return id ? `/ats/candidates/${id}` : "/ats/candidates";
-  },
+  recruiter: () => "/ats/applications", // no candidate-detail route exists
   assignment: (n) => {
     const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "candidateId"));
-    return id ? `/ats/candidates/${id}` : "/settings/agents/";
+    return id ? "/ats/applications" : "/settings/agents/";
   },
   sop: () => "/ats/onboarding",
   support_ticket: (n) => {
