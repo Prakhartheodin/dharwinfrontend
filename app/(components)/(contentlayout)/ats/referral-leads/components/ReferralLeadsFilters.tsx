@@ -1,9 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { listUsers } from "@/shared/lib/api/users";
-import type { User } from "@/shared/lib/types";
 import { STATUS_META } from "@/shared/lib/ats/referral-leads-constants";
+import { SalesAgentFilterSelect } from "./SalesAgentFilterSelect";
 import type { ReferralLeadsFilterState } from "../hooks/useReferralLeadsFilters";
 import type { DatePreset } from "../utils/dateRange.util";
 import type { QuickStatusFilter } from "../utils/attributionScope.util";
@@ -27,35 +25,6 @@ export function ReferralLeadsFilters({
   distinctReferrers,
   featureEnabled = false,
 }: ReferralLeadsFiltersProps) {
-  const [agentSearch, setAgentSearch] = useState("");
-  const [agentHits, setAgentHits] = useState<User[]>([]);
-  const [agentLoading, setAgentLoading] = useState(false);
-
-  const fetchAgents = useCallback(async (search: string) => {
-    setAgentLoading(true);
-    try {
-      const res = await listUsers({
-        search: search.trim() || undefined,
-        limit: 40,
-        page: 1,
-        status: "active",
-        role: "sales_agent",
-      });
-      setAgentHits(res.results ?? []);
-    } catch {
-      setAgentHits([]);
-    } finally {
-      setAgentLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!featureEnabled || !canUseOrgReferralControls) return;
-    const delay = agentSearch.trim() === "" ? 0 : 300;
-    const t = window.setTimeout(() => void fetchAgents(agentSearch), delay);
-    return () => window.clearTimeout(t);
-  }, [featureEnabled, canUseOrgReferralControls, agentSearch, fetchAgents]);
-
   const setQuickStatus = (value: QuickStatusFilter) => {
     setFilter("quickStatus", filters.quickStatus === value ? null : value);
   };
@@ -92,39 +61,13 @@ export function ReferralLeadsFilters({
       {featureEnabled && canUseOrgReferralControls && (
         <div className="min-w-[180px]">
           <label className="form-label text-xs">Assigned sales agent</label>
-          <select
-            className="form-select form-select-sm w-full"
-            value={filters.unassigned ? "__unassigned__" : filters.salesAgentUserId}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "__unassigned__") {
-                setFilter("unassigned", true);
-                setFilter("salesAgentUserId", "");
-              } else {
-                setFilter("unassigned", false);
-                setFilter("salesAgentUserId", v);
-              }
+          <SalesAgentFilterSelect
+            value={filters.salesAgentUserId}
+            unassigned={filters.unassigned}
+            onChange={({ salesAgentUserId, unassigned }) => {
+              setFilter("unassigned", unassigned);
+              setFilter("salesAgentUserId", salesAgentUserId);
             }}
-          >
-            <option value="">All sales agents</option>
-            <option value="__unassigned__">Unassigned</option>
-            {agentLoading && agentHits.length === 0 ? (
-              <option disabled value="">
-                Loading…
-              </option>
-            ) : (
-              agentHits.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name?.trim() || u.email || u.id}
-                </option>
-              ))
-            )}
-          </select>
-          <input
-            className="form-control form-control-sm w-full mt-1"
-            placeholder="Search sales agents…"
-            value={agentSearch}
-            onChange={(e) => setAgentSearch(e.target.value)}
           />
         </div>
       )}
