@@ -43,6 +43,7 @@ function splitRequirementsFromDescription(rawHtml: string): { description: strin
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
 import { PHONE_COUNTRIES, getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
+import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 // Both react-select entry points must follow the same SSR boundary —
 // mixing a static import (CreatableSelect) with a dynamic ssr:false
 // import (Select) created an inconsistent chunk graph that confused
@@ -101,6 +102,8 @@ export default function EditJobClient() {
   const searchParams = useSearchParams()
   const templateQueryHandled = useRef<string | null>(null)
   const jobId = params?.id as string
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(9999)
   const [activeTab, setActiveTab] = useState('general')
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
@@ -560,6 +563,8 @@ export default function EditJobClient() {
                               classNamePrefix="Select2"
                               className="ti-form-select !p-0"
                               menuPlacement="auto"
+                              menuPortalTarget={selectMenuPortalTarget}
+                              styles={selectMenuLayerStyles}
                             />
                           </div>
                           <div className="xl:col-span-3 md:col-span-6 col-span-12">
@@ -573,6 +578,8 @@ export default function EditJobClient() {
                               classNamePrefix="Select2"
                               className="ti-form-select !p-0"
                               menuPlacement="auto"
+                              menuPortalTarget={selectMenuPortalTarget}
+                              styles={selectMenuLayerStyles}
                             />
                           </div>
                           <div className="xl:col-span-2 md:col-span-4 col-span-12">
@@ -584,6 +591,8 @@ export default function EditJobClient() {
                               classNamePrefix="Select2"
                               className="ti-form-select !p-0"
                               menuPlacement="auto"
+                              menuPortalTarget={selectMenuPortalTarget}
+                              styles={selectMenuLayerStyles}
                             />
                           </div>
                           <div className="xl:col-span-3 md:col-span-6 col-span-12">
@@ -834,6 +843,8 @@ export default function EditJobClient() {
                               placeholder="Type a skill and press Enter to add..."
                               value={formData.skills}
                               className="ti-form-select"
+                              menuPortalTarget={selectMenuPortalTarget}
+                              styles={selectMenuLayerStyles}
                             />
                             <p className="text-muted text-xs mt-2 mb-0">
                               Add relevant skills required for this position. Press Enter after typing each skill.

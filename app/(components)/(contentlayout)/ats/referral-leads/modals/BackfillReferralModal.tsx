@@ -226,7 +226,7 @@ export function BackfillReferralModal({ isOpen, onClose, onSaved }: BackfillRefe
       `}</style>
       <div className="absolute inset-0 bg-slate-950/55 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10 dark:border-white/10 dark:bg-bgdark2"
+        className="relative w-full max-w-lg max-h-[92vh] flex flex-col rounded-2xl border border-slate-200/80 bg-white shadow-2xl shadow-slate-900/10 dark:border-white/10 dark:bg-bodybg2"
         style={{ animation: "popIn .22s cubic-bezier(.2,.8,.2,1)" }}
       >
         <div className="relative flex items-start gap-3 border-b border-slate-100 p-5 dark:border-white/5">

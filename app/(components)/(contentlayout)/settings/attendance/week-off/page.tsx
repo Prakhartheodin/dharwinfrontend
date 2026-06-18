@@ -24,6 +24,7 @@ import dynamic from "next/dynamic";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -63,6 +64,7 @@ export default function SettingsAttendanceWeekOffPage() {
   const sopQueryString = searchParams.toString();
   const { permissions, permissionsLoaded, isAdministrator } = useAuth();
   const canAccess = hasWeekOffAccess(permissions, isAdministrator);
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
@@ -532,9 +534,9 @@ export default function SettingsAttendanceWeekOffPage() {
                     isSearchable
                     filterOption={filterAssignPersonSelectOption}
                     isLoading={loading}
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuPortalTarget={selectMenuPortalTarget}
                     menuPosition="fixed"
-                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
               )}

@@ -20,6 +20,7 @@ import type { DrawerMode } from "../types";
 import { useUnsavedChanges } from "../hooks/useUnsavedChanges";
 import { trackTaskBoard } from "../lib/telemetry";
 import { TaskCommentsSection } from "../../../../TaskCommentsSection";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import styles from "../../../kanban-board.module.css";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -131,17 +132,8 @@ export function TaskDrawer({
     }
   }, [open, mode, task, createStatus]);
 
-  const selectMenuPortalTarget = useMemo(
-    () => (typeof window === "undefined" ? null : document.body),
-    []
-  );
-  const selectMenuLayerStyles = useMemo(
-    () => ({
-      menuPortal: (base: Record<string, unknown>) => ({ ...base, zIndex: 14000 }),
-      menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 14000 }),
-    }),
-    []
-  );
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(14000);
 
   const handleRequestClose = useCallback(async () => {
     if (!isDirty) {
@@ -486,7 +478,7 @@ export function TaskDrawer({
             {mode === "edit" && canDelete && onDelete ? (
               <button
                 type="button"
-                className="me-auto border border-red-300 bg-white px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700 transition hover:border-red-500 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-bgdark2 dark:text-red-300 dark:hover:bg-red-950/40"
+                className="me-auto border border-red-300 bg-white px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700 transition hover:border-red-500 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/50 dark:bg-bodybg2 dark:text-red-300 dark:hover:bg-red-950/40"
                 onClick={() => onDelete()}
                 disabled={submitting}
               >
@@ -495,7 +487,7 @@ export function TaskDrawer({
             ) : null}
             <button
               type="button"
-              className="border border-slate-300 bg-white px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/15 dark:bg-bgdark2 dark:text-slate-200 dark:hover:border-white dark:hover:text-white"
+              className="border border-slate-300 bg-white px-4 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/15 dark:bg-bodybg2 dark:text-slate-200 dark:hover:border-white dark:hover:text-white"
               onClick={() => void handleRequestClose()}
               disabled={submitting}
             >

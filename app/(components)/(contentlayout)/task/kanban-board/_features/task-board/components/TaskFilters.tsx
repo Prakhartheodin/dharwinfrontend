@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import dynamic from "next/dynamic";
 import { PRIORITY_OPTIONS } from "../lib/constants";
 import { useTaskFilters } from "../hooks/useTaskFilters";
 import { TaskFilterChip } from "./TaskFilterChip";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -28,17 +29,8 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
     hasActiveFilters,
   } = useTaskFilters();
 
-  const selectMenuPortalTarget = useMemo(
-    () => (typeof window === "undefined" ? null : document.body),
-    []
-  );
-  const selectMenuLayerStyles = useMemo(
-    () => ({
-      menuPortal: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 }),
-      menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 9999 }),
-    }),
-    []
-  );
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(9999);
 
   return (
     <div
@@ -83,7 +75,7 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
           "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition " +
           (assignedToMe
             ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white/30")
         }
       >
         <i className={`ri-user-${assignedToMe ? "fill" : "line"}`} aria-hidden />
@@ -98,7 +90,7 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
           "inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition " +
           (unassigned
             ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+            : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white/30")
         }
       >
         <i className={`ri-user-unfollow-${unassigned ? "fill" : "line"}`} aria-hidden />
@@ -109,7 +101,7 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
         <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="search"
-          className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:focus:border-white/40"
+          className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200 dark:focus:border-white/40"
           placeholder="Search tasks or people…"
           aria-label="Search tasks or people"
           value={searchInput}
@@ -132,7 +124,7 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
         <button
           type="button"
           onClick={clearFilters}
-          className="inline-flex h-9 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300"
+          className="inline-flex h-9 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300"
         >
           <i className="ri-close-circle-line" aria-hidden />
           Clear filters

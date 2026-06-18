@@ -17,6 +17,7 @@ import dynamic from "next/dynamic";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -26,6 +27,7 @@ export default function SettingsAttendanceAssignLeavePage() {
   const searchParams = useSearchParams();
   const sopQueryString = searchParams.toString();
   const isAdmin = useAttendanceAdminAccess();
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [leaveType, setLeaveType] = useState<"casual" | "sick" | "unpaid">("casual");
@@ -268,9 +270,9 @@ export default function SettingsAttendanceAssignLeavePage() {
                       isClearable
                       isSearchable
                       filterOption={filterAssignPersonSelectOption}
-                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      menuPortalTarget={selectMenuPortalTarget}
                       menuPosition="fixed"
-                      styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
+                      styles={selectMenuLayerStyles}
                     />
                   </div>
                   {selectedPeople.length > 0 && (

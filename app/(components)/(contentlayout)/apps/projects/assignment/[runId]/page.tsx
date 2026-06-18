@@ -713,8 +713,31 @@ export default function AssignmentRunPage() {
                               }
                               menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                               styles={{
+                                // CSS vars (--body-bg/--default-text-color) flip under `.dark`,
+                                // so control + menu follow dark mode without JS.
                                 menuPortal: (base) => ({ ...base, zIndex: 13050 }),
-                                control: (base) => ({ ...base, minHeight: 34 }),
+                                control: (base) => ({
+                                  ...base,
+                                  minHeight: 34,
+                                  backgroundColor: "rgb(var(--body-bg))",
+                                  color: "rgb(var(--default-text-color))",
+                                }),
+                                menu: (base) => ({
+                                  ...base,
+                                  backgroundColor: "rgb(var(--body-bg))",
+                                  border: "1px solid rgb(var(--input-border, 217 217 217))",
+                                }),
+                                singleValue: (base) => ({ ...base, color: "rgb(var(--default-text-color))" }),
+                                input: (base) => ({ ...base, color: "rgb(var(--default-text-color))" }),
+                                option: (base, state) => ({
+                                  ...base,
+                                  backgroundColor: state.isSelected
+                                    ? "rgb(var(--primary))"
+                                    : state.isFocused
+                                      ? "rgb(var(--primary) / 0.08)"
+                                      : "transparent",
+                                  color: state.isSelected ? "#fff" : "rgb(var(--default-text-color))",
+                                }),
                               }}
                               options={mergedCandidateOptions}
                               value={selectedOption}

@@ -60,7 +60,6 @@ export function useReferralLeadsFilters(featureEnabled = false) {
         params.salesAgentUserId = filters.salesAgentUserId;
       }
       if (filters.quickStatus === "hiredOnly") params.hiredOnly = true;
-      if (filters.quickStatus === "convertedEmployees") params.convertedEmployees = true;
       if (filters.quickStatus === "activeEmployees") params.employeeStatus = "active";
       if (filters.quickStatus === "resignedEmployees") params.employeeStatus = "resigned";
       if (filters.quickStatus === "pendingReferrals") params.pendingReferrals = true;

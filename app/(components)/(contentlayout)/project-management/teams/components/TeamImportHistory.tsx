@@ -27,7 +27,7 @@ export default function TeamImportHistory() {
       <h3 className="text-lg font-semibold mb-3">Import History</h3>
       {loading ? <p>Loading…</p> : (
         <table className="w-full text-sm border">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 text-gray-700 dark:bg-white/10 dark:text-gray-200">
             <tr>
               <th className="p-2 text-left">Date</th>
               <th className="p-2 text-left">Uploader</th>

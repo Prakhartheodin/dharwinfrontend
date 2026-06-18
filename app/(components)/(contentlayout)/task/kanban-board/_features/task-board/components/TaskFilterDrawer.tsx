@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React from "react";
 import dynamic from "next/dynamic";
 import { PRIORITY_OPTIONS } from "../lib/constants";
 import { useTaskFilters } from "../hooks/useTaskFilters";
 import { TaskFilterChip } from "./TaskFilterChip";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import styles from "../../../kanban-board.module.css";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
@@ -35,17 +36,8 @@ export function TaskFilterDrawer({
     hasActiveFilters,
   } = useTaskFilters();
 
-  const selectMenuPortalTarget = useMemo(
-    () => (typeof window === "undefined" ? null : document.body),
-    []
-  );
-  const selectMenuLayerStyles = useMemo(
-    () => ({
-      menuPortal: (base: Record<string, unknown>) => ({ ...base, zIndex: 10001 }),
-      menu: (base: Record<string, unknown>) => ({ ...base, zIndex: 10001 }),
-    }),
-    []
-  );
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(10001);
 
   return (
     <div

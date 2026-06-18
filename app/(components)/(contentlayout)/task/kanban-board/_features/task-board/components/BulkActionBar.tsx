@@ -82,7 +82,7 @@ export function BulkActionBar({
                  working pattern in ats/pre-boarding). A raw native <select> pinned to
                  h-8 with no line-height clips the option text vertically on Windows
                  browsers, which looked broken. !leading-none + !py-0 + !pe-7 fix it. */
-              className="form-control !h-8 !w-auto min-w-[9rem] max-w-[12rem] !rounded-full !border-indigo-300 !bg-white !py-0 !ps-3 !pe-7 !text-xs !leading-none !text-indigo-900 dark:!border-indigo-400/40 dark:!bg-bgdark2 dark:!text-indigo-100"
+              className="form-control !h-8 !w-auto min-w-[9rem] max-w-[12rem] !rounded-full !border-indigo-300 !bg-white !py-0 !ps-3 !pe-7 !text-xs !leading-none !text-indigo-900 dark:!border-indigo-400/40 dark:!bg-bodybg2 dark:!text-indigo-100"
               disabled={busy}
               defaultValue=""
               onChange={(e) => {

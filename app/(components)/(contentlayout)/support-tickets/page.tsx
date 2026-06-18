@@ -21,6 +21,7 @@ import { listCandidates } from "@/shared/lib/api/candidates";
 import { listUsers } from "@/shared/lib/api/users";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
 
@@ -44,6 +45,8 @@ const PRIORITY_CONFIG: Record<string, { badge: string; icon: string }> = {
 const SupportTicketsPage = () => {
   const { user, roleNames } = useAuth();
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("support.tickets");
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles();
 
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1092,6 +1095,8 @@ const SupportTicketsPage = () => {
                       options={candidatesList.map((c) => ({ value: c.id, label: c.fullName + (c.email ? " (" + c.email + ")" : "") }))}
                       className="react-select-container"
                       classNamePrefix="react-select"
+                      menuPortalTarget={selectMenuPortalTarget}
+                      styles={selectMenuLayerStyles}
                     />
                   )}
                 </div>

@@ -225,19 +225,19 @@ export default function ReferralLeadsPage() {
         )}
 
         {loading && list.length === 0 && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-12 text-center text-slate-500">
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-12 text-center text-slate-500">
             Loading referral leads…
           </div>
         )}
 
         {showEmptyNoData && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-12 text-center">
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-12 text-center">
             <p className="text-slate-600 dark:text-slate-300">No referral leads yet.</p>
           </div>
         )}
 
         {showEmptyFiltered && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-12 text-center">
+          <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-12 text-center">
             <p className="text-slate-600 dark:text-slate-300">No rows match your filters.</p>
             <button type="button" className="ti-btn ti-btn-light mt-3" onClick={handleClearFilters}>
               Clear filters

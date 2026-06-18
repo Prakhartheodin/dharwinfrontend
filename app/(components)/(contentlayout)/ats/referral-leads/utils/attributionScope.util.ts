@@ -2,7 +2,6 @@ export type AttributionJobScope = "candidate" | "job";
 
 export type QuickStatusFilter =
   | "hiredOnly"
-  | "convertedEmployees"
   | "activeEmployees"
   | "resignedEmployees"
   | "pendingReferrals"

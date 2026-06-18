@@ -42,7 +42,7 @@ export function ReferralLeadDetailPanel({
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true" aria-label="Referral detail">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <aside className="relative ml-auto h-full w-full max-w-md bg-white dark:bg-bgdark2 shadow-2xl flex flex-col overflow-y-auto">
+      <aside className="relative ml-auto h-full w-full max-w-md bg-white dark:bg-bodybg2 shadow-2xl flex flex-col overflow-y-auto">
         <div className="p-5 border-b border-slate-200 dark:border-white/10 flex justify-between items-start">
           <div>
             <p className="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">Referral detail</p>

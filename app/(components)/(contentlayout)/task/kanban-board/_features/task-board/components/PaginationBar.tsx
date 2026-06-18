@@ -103,7 +103,7 @@ export function PaginationBar(): React.JSX.Element | null {
           onClick={() => prev("button")}
           disabled={page <= 1 || isFetchingPage}
           aria-label="Previous page"
-          className="inline-flex h-7 items-center gap-1 border border-slate-300 bg-white px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-slate-700 dark:border-white/15 dark:bg-bgdark2 dark:text-slate-200 dark:hover:border-white dark:hover:bg-white dark:hover:text-slate-900"
+          className="inline-flex h-7 items-center gap-1 border border-slate-300 bg-white px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-slate-700 dark:border-white/15 dark:bg-bodybg2 dark:text-slate-200 dark:hover:border-white dark:hover:bg-white dark:hover:text-slate-900"
         >
           <span aria-hidden>&larr;</span>
           <span>Prev</span>
@@ -145,7 +145,7 @@ export function PaginationBar(): React.JSX.Element | null {
           onClick={() => next("button")}
           disabled={page >= totalPages || isFetchingPage}
           aria-label="Next page"
-          className="inline-flex h-7 items-center gap-1 border border-slate-300 bg-white px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-slate-700 dark:border-white/15 dark:bg-bgdark2 dark:text-slate-200 dark:hover:border-white dark:hover:bg-white dark:hover:text-slate-900"
+          className="inline-flex h-7 items-center gap-1 border border-slate-300 bg-white px-2.5 font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-700 transition hover:border-slate-900 hover:bg-slate-900 hover:text-white disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-white disabled:hover:text-slate-700 dark:border-white/15 dark:bg-bodybg2 dark:text-slate-200 dark:hover:border-white dark:hover:bg-white dark:hover:text-slate-900"
         >
           <span>Next</span>
           <span aria-hidden>&rarr;</span>

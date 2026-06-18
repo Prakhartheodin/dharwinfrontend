@@ -116,7 +116,7 @@ export function OverrideAttributionModal({ lead, isOpen, onClose, onSaved }: Ove
           setReferrerPickerOpen(false);
         }}
       />
-      <div className="relative bg-white dark:bg-bgdark2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl">
+      <div className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Override attribution</h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
           Current: {lead.referredBy?.name || "—"}. Choose the new referrer from your user directory (same as Settings →

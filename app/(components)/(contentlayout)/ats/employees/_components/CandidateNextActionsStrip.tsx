@@ -138,7 +138,7 @@ export default function CandidateNextActionsStrip({ candidateId, refreshKey = 0 
 
   if (loading && !data) {
     return (
-      <div className="border-t border-defaultborder/80 dark:border-defaultborder/20 bg-white/80 dark:bg-bgdark/40 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.04)]">
+      <div className="border-t border-defaultborder/80 dark:border-defaultborder/20 bg-white/80 dark:bg-bodybg/40 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.04)]">
         <div className="h-5 w-48 animate-pulse rounded bg-gray-200/80 dark:bg-white/10" aria-hidden />
       </div>
     );
@@ -160,7 +160,7 @@ export default function CandidateNextActionsStrip({ candidateId, refreshKey = 0 
 
   return (
     <section
-      className="border-t-2 border-primary/25 dark:border-primary/35 bg-gray-50/95 dark:bg-bgdark/50 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.06)] transition-colors duration-150"
+      className="border-t-2 border-primary/25 dark:border-primary/35 bg-gray-50/95 dark:bg-bodybg/50 px-4 py-3 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.06)] transition-colors duration-150"
       aria-labelledby="sop-next-heading"
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -212,7 +212,7 @@ export default function CandidateNextActionsStrip({ candidateId, refreshKey = 0 
         <div className="flex flex-shrink-0 flex-col gap-2 lg:items-end">
           {!allDone && focused?.link ? (
             <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex rounded-md border border-primary/30 bg-white/80 shadow-sm dark:bg-bgdark/80">
+              <div className="inline-flex rounded-md border border-primary/30 bg-white/80 shadow-sm dark:bg-bodybg/80">
                 <button
                   type="button"
                   className="ti-btn !mb-0 !rounded-e-none !border-0 !bg-transparent !text-primary hover:!bg-primary/10 disabled:!opacity-40"

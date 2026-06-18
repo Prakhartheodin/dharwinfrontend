@@ -16,6 +16,7 @@ import * as mentorsApi from '@/shared/lib/api/mentors'
 import * as positionsApi from '@/shared/lib/api/positions'
 import * as blogApi from '@/shared/lib/api/blog'
 import type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
+import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -453,6 +454,8 @@ const CreateModule = () => {
   const searchParams = useSearchParams()
   const moduleId = searchParams.get('id')
   const isEditMode = Boolean(moduleId)
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles()
   const [activeTab, setActiveTab] = useState<'info' | 'playlist'>('info')
   const [formData, setFormData] = useState<ModuleFormData>({
     categoryIds: [],
@@ -1845,6 +1848,8 @@ const CreateModule = () => {
                             placeholder="Select Category"
                             menuPlacement="auto"
                             isDisabled={fetchingData}
+                            menuPortalTarget={selectMenuPortalTarget}
+                            styles={selectMenuLayerStyles}
                           />
                         )}
                       </div>
@@ -1874,6 +1879,8 @@ const CreateModule = () => {
                             placeholder="Select positions"
                             menuPlacement="auto"
                             isDisabled={fetchingData}
+                            menuPortalTarget={selectMenuPortalTarget}
+                            styles={selectMenuLayerStyles}
                           />
                         )}
                         <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-1 mb-0">

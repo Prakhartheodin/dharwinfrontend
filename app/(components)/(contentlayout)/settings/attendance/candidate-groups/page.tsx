@@ -14,6 +14,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -22,6 +23,7 @@ const SELECT_ALL = "__all_students__";
 
 export default function SettingsAttendanceStudentGroupsPage() {
   const isAdmin = useAttendanceAdminAccess();
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10200);
   const [groups, setGroups] = useState<StudentGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -346,9 +348,9 @@ export default function SettingsAttendanceStudentGroupsPage() {
                         classNamePrefix="react-select"
                         isClearable
                         isSearchable
-                        menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                        menuPortalTarget={selectMenuPortalTarget}
                         menuPosition="fixed"
-                        styles={{ menuPortal: (base) => ({ ...base, zIndex: 10200 }) }}
+                        styles={selectMenuLayerStyles}
                       />
                     </div>
                   </div>

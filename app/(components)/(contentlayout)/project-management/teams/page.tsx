@@ -38,6 +38,7 @@ import {
 
 import styles from "./teams.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import { hasPermission } from "@/shared/lib/permissions";
 import TeamExcelDropdown from "./components/TeamExcelDropdown";
 import TeamImportHistory from "./components/TeamImportHistory";
@@ -570,6 +571,8 @@ function TeamMemberFormModal({
   submitting,
   onRefreshCandidates,
 }: TeamMemberFormModalProps) {
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles();
   const matchedCandidate = useMemo(
     () => (form.email.trim() ? findCandidateByFormEmail(candidates, form.email) : undefined),
     [candidates, form.email]
@@ -791,6 +794,8 @@ function TeamMemberFormModal({
                     });
                   }}
                   isClearable
+                  menuPortalTarget={selectMenuPortalTarget}
+                  styles={selectMenuLayerStyles}
                 />
                 {matchedCandidate && (
                   <p className="mb-0 mt-1.5 text-[0.72rem] text-muted dark:text-white/45">
@@ -823,6 +828,8 @@ function TeamMemberFormModal({
                     const val = (opt as { value: string } | null)?.value ?? "";
                     onChange({ teamId: val });
                   }}
+                  menuPortalTarget={selectMenuPortalTarget}
+                  styles={selectMenuLayerStyles}
                 />
               </div>
             </div>
@@ -897,6 +904,8 @@ function TeamMemberFormModal({
                         (opt as { value: "online" | "offline" } | null)?.value ?? "online",
                     })
                   }
+                  menuPortalTarget={selectMenuPortalTarget}
+                  styles={selectMenuLayerStyles}
                 />
               </div>
               <div className="xl:col-span-12 col-span-12">
@@ -1567,7 +1576,7 @@ const TeamsPage = () => {
             <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="search"
-              className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:focus:border-white/40"
+              className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200 dark:focus:border-white/40"
               placeholder="Search by name or role"
               aria-label="Search roster"
               value={searchInput}

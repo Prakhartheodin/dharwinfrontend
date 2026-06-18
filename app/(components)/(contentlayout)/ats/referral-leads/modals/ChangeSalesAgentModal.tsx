@@ -81,7 +81,7 @@ export function ChangeSalesAgentModal({ lead, isOpen, onClose, onSaved }: Change
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-bgdark2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
+      <div className="relative bg-white dark:bg-bodybg2 rounded-xl border border-slate-200 dark:border-white/10 p-6 max-w-md w-full shadow-xl max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Change sales agent</h3>
         <div className="mt-3 rounded-lg border border-slate-200 dark:border-white/10 p-3">
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Current assigned sales agent</p>

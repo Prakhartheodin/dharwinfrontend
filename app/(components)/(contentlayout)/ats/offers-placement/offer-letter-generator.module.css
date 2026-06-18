@@ -1,5 +1,9 @@
 .olg {
   position: relative;
+  /* Generator is a white-paper preview tool — always light. Pin color-scheme so native
+     controls (<select> option lists, date pickers, scrollbars) render light too, instead
+     of inheriting the OS dark theme and showing a black dropdown over the light panel. */
+  color-scheme: light;
   --brand-blue: #1e4080;
   --brand-green: #4a9e4a;
   /* Figma "Letter of Appointment" template greens */
@@ -368,6 +372,10 @@
   outline: none;
   appearance: none;
   -webkit-appearance: none;
+  /* Force the native <option> popup to light — without this the OS dark theme paints it
+     black (the Job Type dropdown bug). Set on the control itself, not just .olg, because
+     the popup's theme is tied to the <select>'s own computed color-scheme. */
+  color-scheme: light;
 }
 
 .input:focus,
@@ -388,6 +396,62 @@
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 30px;
+}
+
+/* Windows Chrome/Edge paint the native popup using these explicit values; without them
+   the OS dark theme renders the option list black. color-scheme alone is unreliable here. */
+.select option,
+.select optgroup {
+  background-color: #fff !important;
+  color: var(--text-primary) !important;
+}
+
+/* Theme ships a global `select { ... dark:bg-bodybg !important }` (style.css ~11531) — the
+   !important beats any specificity, so it paints every <select> dark. Match it with
+   !important here to keep the generator's controls white in app dark mode. */
+.olg .select,
+.olg .input,
+.olg .textarea {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Tiptap is a shared, dark-mode-aware editor (ti-btn-light + dark: utilities). Inside this
+   always-light generator its dark toolbar clashes with the white panel, so force the toolbar
+   chrome light — scoped to .olg only, leaving the shared component dark-correct everywhere else.
+   No !important: 3-class specificity beats the theme's `.dark .ti-btn-light`, but active buttons
+   keep their `!bg-primary` highlight (which is !important and outranks these). */
+.olg :global(.tiptap-toolbar .ti-btn-light) {
+  background: #f8fafc;
+  color: #334155;
+  border-color: var(--border);
+}
+.olg :global(.tiptap-toolbar .ti-btn-light:hover) {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+.olg :global(.tiptap-toolbar .tiptap-select) {
+  /* Same global `select { dark:bg-bodybg !important }` hits these — need !important to win. */
+  background: #fff !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+  /* Native (appearance:auto) — pin color-scheme so the closed control and its option popup
+     render light instead of the OS dark widget chrome. */
+  color-scheme: light;
+}
+.olg :global(.tiptap-toolbar .tiptap-select option) {
+  background: #fff !important;
+  color: var(--text-primary) !important;
+}
+.olg :global(.tiptap-toolbar) {
+  border-bottom-color: var(--border) !important;
+}
+.olg :global(.tiptap-toolbar .border-l) {
+  border-left-color: var(--border) !important;
+}
+.olg :global(.tiptap-content) {
+  border-color: var(--border) !important;
 }
 
 .helpText {

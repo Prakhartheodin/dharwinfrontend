@@ -139,7 +139,7 @@ function TaskCard({
   return (
     <div
       className={
-        "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg dark:border-white/10 dark:bg-bgdark2 dark:hover:border-white/20 " +
+        "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-lg dark:border-white/10 dark:bg-bodybg2 dark:hover:border-white/20 " +
         (updating ? "opacity-70" : "")
       }
     >
@@ -217,7 +217,7 @@ function TaskCard({
         )}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-slate-100 bg-white px-5 py-3 pl-6 dark:border-white/10 dark:bg-bgdark2">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-slate-100 bg-white px-5 py-3 pl-6 dark:border-white/10 dark:bg-bodybg2">
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-slate-400">
             Status
@@ -227,7 +227,7 @@ function TaskCard({
             disabled={updating}
             onChange={(e) => void handleStatusChange(e.target.value as TaskStatus)}
             aria-label="Change task status"
-            className="w-auto min-w-[6.5rem] max-w-[10rem] rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-xs font-semibold leading-tight text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200"
+            className="w-auto min-w-[6.5rem] max-w-[10rem] rounded-full border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-xs font-semibold leading-tight text-slate-700 focus:border-slate-900 focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -410,7 +410,7 @@ export default function MyTasksPage(): JSX.Element {
               onClick={() => refetchVisible()}
               disabled={loading}
               aria-label="Refresh"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-50 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
             >
               <i className={`ri-refresh-line ${loading ? "animate-spin" : ""}`} />
               <span>Refresh</span>
@@ -434,7 +434,7 @@ export default function MyTasksPage(): JSX.Element {
                   "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition " +
                   (active
                     ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/30")
+                    : "border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white/30")
                 }
               >
                 {f.label}
@@ -476,7 +476,7 @@ export default function MyTasksPage(): JSX.Element {
           <nav aria-label="Page navigation" className="mt-8 flex flex-wrap items-center justify-center gap-2">
             <button
               type="button"
-              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
+              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
             >
@@ -518,7 +518,7 @@ export default function MyTasksPage(): JSX.Element {
             </span>
             <button
               type="button"
-              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
+              className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 disabled:opacity-40 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white/40 dark:hover:text-white"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
             >
@@ -584,7 +584,7 @@ function Dropdown(props: {
         aria-label={props.ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:border-slate-400 dark:border-white/10 dark:bg-bgdark2 dark:text-slate-200 dark:hover:border-white/30"
+        className="inline-flex h-8 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 transition hover:border-slate-400 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200 dark:hover:border-white/30"
       >
         <span>{current?.label ?? "Select"}</span>
         <i className={`ri-arrow-down-s-line text-sm transition-transform ${open ? "rotate-180" : ""}`} />
@@ -592,7 +592,7 @@ function Dropdown(props: {
       {open && (
         <div
           role="listbox"
-          className="absolute right-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-bgdark2"
+          className="absolute right-0 top-full z-30 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-white/10 dark:bg-bodybg2"
         >
           {props.options.map((o) => {
             const active = o.value === props.value;
@@ -640,7 +640,7 @@ function Stat(props: { label: string; value: number; tone?: StatTone }): JSX.Ele
 
 function SkeletonCard(): JSX.Element {
   return (
-    <div className="relative flex h-[280px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-bgdark2">
+    <div className="relative flex h-[280px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/10 dark:bg-bodybg2">
       <span className="absolute left-0 top-0 h-full w-[3px] bg-slate-200 dark:bg-white/10" />
       <div className="flex-1 animate-pulse space-y-3 p-5">
         <div className="h-2 w-16 rounded bg-slate-200 dark:bg-white/10" />
@@ -650,8 +650,8 @@ function SkeletonCard(): JSX.Element {
         <div className="h-3 w-1/2 rounded bg-slate-200 dark:bg-white/10" />
       </div>
       <div className="grid grid-cols-2 gap-px border-t border-slate-100 bg-slate-100 dark:border-white/10 dark:bg-white/10">
-        <div className="h-12 bg-white dark:bg-bgdark2" />
-        <div className="h-12 bg-white dark:bg-bgdark2" />
+        <div className="h-12 bg-white dark:bg-bodybg2" />
+        <div className="h-12 bg-white dark:bg-bodybg2" />
       </div>
     </div>
   );
@@ -659,7 +659,7 @@ function SkeletonCard(): JSX.Element {
 
 function EmptyState(): JSX.Element {
   return (
-    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center dark:border-white/15 dark:bg-bgdark2 sm:p-12">
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center dark:border-white/15 dark:bg-bodybg2 sm:p-12">
       <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5">
         <i className="ri-task-line text-2xl text-slate-400" />
       </div>

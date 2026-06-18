@@ -22,10 +22,10 @@ export default function TeamExcelDropdown({
   const [exportScope, setExportScope] = useState<ExportScope>("current");
   const [includeInactive, setIncludeInactive] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const allowed = hasPermission(auth, "update_team");
-  if (!allowed) return null;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -40,14 +40,13 @@ export default function TeamExcelDropdown({
     setMenuOpen(false);
     setExportScope(filter?.teamId ? "current" : "all");
     setIncludeInactive(false);
-    queueMicrotask(() => {
-      const el = document.querySelector("#teams-export-modal");
-      const HSOverlay = (window as unknown as { HSOverlay?: { open: (n: Element | string) => void } })
-        .HSOverlay;
-      if (el && HSOverlay) HSOverlay.open("#teams-export-modal");
-      else el?.classList.remove("hidden");
-    });
+    setExportOpen(true);
   }, [filter?.teamId]);
+
+  // Permission gate AFTER all hooks — auth resolves async, so an early return
+  // above the hooks changes the hook count between renders (Rules of Hooks
+  // violation) and crashes the component, leaving the button dead on click.
+  if (!allowed) return null;
 
   const downloadTemplate = async () => {
     setMenuOpen(false);
@@ -83,9 +82,7 @@ export default function TeamExcelDropdown({
       a.download = `teams-export-${date}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      document.querySelector('[data-hs-overlay="#teams-export-modal"]')?.dispatchEvent(
-        new Event("click")
-      );
+      setExportOpen(false);
       await Swal.fire({
         icon: "success",
         title: "Export ready",
@@ -165,76 +162,105 @@ export default function TeamExcelDropdown({
           </ul>
         ) : null}
       </div>
-      <div id="teams-export-modal" className="hs-overlay hidden ti-modal">
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="modal-title text-[1rem] font-semibold">Export teams to Excel</h6>
-              <button
-                type="button"
-                className="hs-dropdown-toggle !text-[1rem] !font-semibold !text-defaulttextcolor"
-                data-hs-overlay="#teams-export-modal"
-              >
-                <span className="sr-only">Close</span>
-                <i className="ri-close-line"></i>
-              </button>
-            </div>
-            <div className="ti-modal-body px-4">
-              <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mb-4">
-                Download team members as a spreadsheet. Choose scope and whether to include inactive members.
+      {exportOpen ? (
+      <div
+        id="teams-export-modal"
+        className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/55"
+        role="presentation"
+        onClick={() => { if (!exportBusy) setExportOpen(false); }}
+      >
+        <div
+          className="w-[96vw] max-w-md bg-bodybg border border-defaultborder rounded-xl shadow-xl flex flex-col overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="teams-export-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-defaultborder">
+            <div>
+              <h6 id="teams-export-title" className="mb-0.5 text-[1rem] font-semibold leading-tight">
+                Export teams to Excel
+              </h6>
+              <p className="mb-0 text-[0.75rem] text-muted dark:text-white/50 leading-snug">
+                Download team members as a spreadsheet.
               </p>
-              <div className="space-y-3 mb-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="teams-export-scope"
-                    className="form-check-input"
-                    checked={exportScope === "current"}
-                    onChange={() => setExportScope("current")}
-                  />
-                  <span className="text-[0.8125rem]">Current filters</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="teams-export-scope"
-                    className="form-check-input"
-                    checked={exportScope === "all"}
-                    onChange={() => setExportScope("all")}
-                  />
-                  <span className="text-[0.8125rem]">All teams</span>
-                </label>
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              className="shrink-0 grid place-items-center h-8 w-8 rounded-lg text-muted hover:bg-light dark:hover:bg-white/5"
+              onClick={() => setExportOpen(false)}
+            >
+              <i className="ri-close-line text-[1.1rem]" />
+            </button>
+          </div>
+
+          <div className="px-5 py-4 space-y-4">
+            <div>
+              <span className="block mb-2 text-[0.75rem] font-semibold uppercase tracking-wide text-muted dark:text-white/50">
+                Scope
+              </span>
+              <div className="space-y-2">
+                {([
+                  { v: "current", label: "Current filters", hint: "Only teams matching the active filter" },
+                  { v: "all", label: "All teams", hint: "Every team in the organisation" },
+                ] as const).map((opt) => (
+                  <label
+                    key={opt.v}
+                    className={`flex items-start gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      exportScope === opt.v
+                        ? "border-primary bg-primary/5"
+                        : "border-defaultborder hover:bg-light dark:hover:bg-white/5"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="teams-export-scope"
+                      className="form-check-input mt-0.5"
+                      checked={exportScope === opt.v}
+                      onChange={() => setExportScope(opt.v)}
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-[0.8125rem] font-medium">{opt.label}</span>
+                      <span className="block text-[0.75rem] text-muted dark:text-white/45">{opt.hint}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  className="form-check-input"
-                  checked={includeInactive}
-                  onChange={(e) => setIncludeInactive(e.target.checked)}
-                />
-                <span className="text-[0.8125rem]">Include inactive members</span>
-              </label>
             </div>
-            <div className="ti-modal-footer">
-              <button
-                type="button"
-                className="ti-btn ti-btn-light"
-                data-hs-overlay="#teams-export-modal"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="ti-btn bg-primary text-white !font-medium"
-                disabled={exportBusy}
-                onClick={() => void handleExportSubmit()}
-              >
-                {exportBusy ? "Exporting…" : "Export"}
-              </button>
-            </div>
+
+            <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+              <input
+                type="checkbox"
+                className="form-check-input"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+              />
+              <span className="text-[0.8125rem]">Include inactive members</span>
+            </label>
+          </div>
+
+          <div className="flex items-center justify-end gap-2 px-5 py-3.5 border-t border-defaultborder bg-light/40 dark:bg-white/[0.02]">
+            <button
+              type="button"
+              className="ti-btn ti-btn-light !mb-0"
+              disabled={exportBusy}
+              onClick={() => setExportOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="ti-btn ti-btn-primary !mb-0 !font-medium"
+              disabled={exportBusy}
+              onClick={() => void handleExportSubmit()}
+            >
+              {exportBusy ? "Exporting…" : "Export"}
+            </button>
           </div>
         </div>
       </div>
+      ) : null}
     </>
   );
 }

@@ -63,7 +63,7 @@ function SopChecklistPreviewPanel({
   if (status.skipped) {
     return (
       <div
-        className="rounded-lg border border-defaultborder/80 bg-gray-50/90 px-4 py-3 text-sm text-gray-600 dark:border-defaultborder/25 dark:bg-bgdark/40 dark:text-gray-400"
+        className="rounded-lg border border-defaultborder/80 bg-gray-50/90 px-4 py-3 text-sm text-gray-600 dark:border-defaultborder/25 dark:bg-bodybg/40 dark:text-gray-400"
         role="status"
       >
         <p className={`${sopPreviewHeadline.className} text-base text-gray-900 dark:text-white`}>
@@ -82,7 +82,7 @@ function SopChecklistPreviewPanel({
 
   return (
     <div
-      className="rounded-lg border-t-2 border-primary/25 border-x border-b border-defaultborder/70 bg-gray-50/95 px-4 py-4 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.05)] dark:border-defaultborder/20 dark:bg-bgdark/45"
+      className="rounded-lg border-t-2 border-primary/25 border-x border-b border-defaultborder/70 bg-gray-50/95 px-4 py-4 shadow-[inset_0_1px_0_0_rgba(0,0,0,0.05)] dark:border-defaultborder/20 dark:bg-bodybg/45"
       aria-labelledby="sop-preview-heading"
     >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -158,7 +158,7 @@ function SopChecklistPreviewPanel({
                 readOnly
                 checked={s.done}
                 tabIndex={-1}
-                className="form-check-input h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary/30 dark:border-white/40 dark:bg-bgdark dark:checked:bg-primary dark:checked:border-primary"
+                className="form-check-input h-4 w-4 rounded border-gray-400 text-primary focus:ring-primary/30 dark:border-white/40 dark:bg-bodybg dark:checked:bg-primary dark:checked:border-primary"
                 aria-label={`${s.label}, ${s.done ? "complete" : "not complete"}`}
               />
             </div>
@@ -586,10 +586,10 @@ export default function SettingsCandidateSopPage() {
           ) : null}
 
           <section
-            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bgdark/40 dark:ring-white/[0.05]"
+            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bodybg/40 dark:ring-white/[0.05]"
             aria-labelledby="sop-versions-heading"
           >
-            <div className="flex flex-col gap-4 border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 pt-5 pb-7 dark:border-defaultborder/20 dark:from-bgdark dark:via-bgdark/95 dark:to-bgdark/80 sm:flex-row sm:items-center sm:justify-between sm:pt-6 sm:pb-8">
+            <div className="flex flex-col gap-4 border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 pt-5 pb-7 dark:border-defaultborder/20 dark:from-bodybg dark:via-bodybg/95 dark:to-bodybg/80 sm:flex-row sm:items-center sm:justify-between sm:pt-6 sm:pb-8">
               <div className="flex min-w-0 items-start gap-3">
                 <div
                   className="mt-0.5 h-10 w-1 shrink-0 rounded-full bg-gradient-to-b from-teal-600 via-primary to-primary/70"
@@ -610,7 +610,7 @@ export default function SettingsCandidateSopPage() {
               </div>
               <button
                 type="button"
-                className="ti-btn inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border-2 border-primary/20 bg-white px-4 text-sm font-semibold text-primary shadow-sm transition hover:border-primary hover:bg-primary hover:text-white dark:border-primary/35 dark:bg-bgdark/60 dark:hover:bg-primary"
+                className="ti-btn inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border-2 border-primary/20 bg-white px-4 text-sm font-semibold text-primary shadow-sm transition hover:border-primary hover:bg-primary hover:text-white dark:border-primary/35 dark:bg-bodybg/60 dark:hover:bg-primary"
                 disabled={loading || saving}
                 onClick={() => {
                   setEditingId(null);
@@ -689,7 +689,7 @@ export default function SettingsCandidateSopPage() {
                           >
                             <button
                               type="button"
-                              className="ti-btn order-1 inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-defaultborder/90 bg-white px-4 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-primary/30 hover:bg-gray-50 dark:border-defaultborder/40 dark:bg-bgdark dark:text-gray-100 dark:hover:bg-white/5 sm:w-auto sm:min-w-[10.5rem]"
+                              className="ti-btn order-1 inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-defaultborder/90 bg-white px-4 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-primary/30 hover:bg-gray-50 dark:border-defaultborder/40 dark:bg-bodybg dark:text-gray-100 dark:hover:bg-white/5 sm:w-auto sm:min-w-[10.5rem]"
                               onClick={() => selectTemplateForEdit(t)}
                             >
                               <i className="ti ti-pencil text-[1rem] text-primary" aria-hidden />
@@ -717,10 +717,10 @@ export default function SettingsCandidateSopPage() {
           </section>
 
           <section
-            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bgdark/40 dark:ring-white/[0.05]"
+            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bodybg/40 dark:ring-white/[0.05]"
             aria-labelledby="sop-editor-heading"
           >
-            <div className="border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 py-4 dark:border-defaultborder/20 dark:from-bgdark dark:via-bgdark/95 dark:to-bgdark/80">
+            <div className="border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/90 px-5 py-4 dark:border-defaultborder/20 dark:from-bodybg dark:via-bodybg/95 dark:to-bodybg/80">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
                   <div
@@ -738,7 +738,7 @@ export default function SettingsCandidateSopPage() {
                       <button
                         type="button"
                         id="sop-workspace-toggle"
-                        className="group -me-1 -mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-defaultborder/60 bg-white/90 text-gray-600 shadow-sm transition hover:border-primary/35 hover:bg-primary/5 hover:text-primary dark:border-defaultborder/40 dark:bg-bgdark/80 dark:text-gray-300 dark:hover:border-primary/40 dark:hover:bg-primary/10 dark:hover:text-white"
+                        className="group -me-1 -mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-defaultborder/60 bg-white/90 text-gray-600 shadow-sm transition hover:border-primary/35 hover:bg-primary/5 hover:text-primary dark:border-defaultborder/40 dark:bg-bodybg/80 dark:text-gray-300 dark:hover:border-primary/40 dark:hover:bg-primary/10 dark:hover:text-white"
                         aria-expanded={workspaceOpen}
                         aria-controls="sop-workspace-panel"
                         onClick={() => setWorkspaceOpen((o) => !o)}
@@ -828,7 +828,7 @@ export default function SettingsCandidateSopPage() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                           <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
                             <span
-                              className={`${sopOpenTasksFont.className} inline-flex h-10 min-w-[2.5rem] shrink-0 items-center justify-center rounded-lg bg-white px-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-defaultborder/40 dark:bg-bgdark dark:text-gray-100 dark:ring-white/10`}
+                              className={`${sopOpenTasksFont.className} inline-flex h-10 min-w-[2.5rem] shrink-0 items-center justify-center rounded-lg bg-white px-2.5 text-sm font-semibold text-gray-800 shadow-sm ring-1 ring-defaultborder/40 dark:bg-bodybg dark:text-gray-100 dark:ring-white/10`}
                             >
                               {i + 1}
                             </span>
@@ -839,7 +839,7 @@ export default function SettingsCandidateSopPage() {
                             >
                               <button
                                 type="button"
-                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center border-0 border-e border-defaultborder/60 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-bgdark dark:text-gray-200 dark:hover:bg-white/5"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center border-0 border-e border-defaultborder/60 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-bodybg dark:text-gray-200 dark:hover:bg-white/5"
                                 aria-label="Move step up"
                                 disabled={i === 0}
                                 onClick={() => moveStep(i, -1)}
@@ -848,7 +848,7 @@ export default function SettingsCandidateSopPage() {
                               </button>
                               <button
                                 type="button"
-                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center border-0 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-bgdark dark:text-gray-200 dark:hover:bg-white/5"
+                                className="inline-flex h-10 w-10 shrink-0 items-center justify-center border-0 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-bodybg dark:text-gray-200 dark:hover:bg-white/5"
                                 aria-label="Move step down"
                                 disabled={i === draft.length - 1}
                                 onClick={() => moveStep(i, 1)}
@@ -859,7 +859,7 @@ export default function SettingsCandidateSopPage() {
                             <label className="inline-flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-1 py-1 text-sm text-gray-700 dark:text-gray-300">
                               <input
                                 type="checkbox"
-                                className="form-check-input h-[1.125rem] w-[1.125rem] shrink-0 rounded border-gray-400 text-primary dark:border-white/40 dark:bg-bgdark dark:checked:bg-primary dark:checked:border-primary"
+                                className="form-check-input h-[1.125rem] w-[1.125rem] shrink-0 rounded border-gray-400 text-primary dark:border-white/40 dark:bg-bodybg dark:checked:bg-primary dark:checked:border-primary"
                                 checked={row.enabled !== false}
                                 onChange={(e) => updateStep(i, { enabled: e.target.checked })}
                               />
@@ -956,7 +956,7 @@ export default function SettingsCandidateSopPage() {
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:gap-2">
                   <button
                     type="button"
-                    className="inline-flex h-11 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-defaultborder/90 bg-white px-4 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 dark:border-defaultborder/40 dark:bg-bgdark dark:text-gray-100 dark:hover:bg-white/5 sm:w-auto sm:min-w-[9rem]"
+                    className="inline-flex h-11 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg border border-defaultborder/90 bg-white px-4 text-sm font-semibold text-gray-800 shadow-sm hover:bg-gray-50 dark:border-defaultborder/40 dark:bg-bodybg dark:text-gray-100 dark:hover:bg-white/5 sm:w-auto sm:min-w-[9rem]"
                     onClick={() => addStep()}
                   >
                     <i className="ti ti-row-insert-bottom text-lg" aria-hidden />
@@ -1018,7 +1018,7 @@ export default function SettingsCandidateSopPage() {
             aria-labelledby="sop-open-tasks-heading"
             aria-busy={overviewLoading || dispatchLoading}
           >
-            <div className="relative border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 px-5 py-5 dark:border-defaultborder/20 dark:from-bgdark dark:via-bgdark/95 dark:to-bgdark/80">
+            <div className="relative border-b border-defaultborder/50 bg-gradient-to-br from-slate-50 via-white to-slate-50/80 px-5 py-5 dark:border-defaultborder/20 dark:from-bodybg dark:via-bodybg/95 dark:to-bodybg/80">
               <div
                 className="pointer-events-none absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-primary via-primary/70 to-teal-600/80"
                 aria-hidden
@@ -1066,7 +1066,7 @@ export default function SettingsCandidateSopPage() {
                   </button>
                   <button
                     type="button"
-                    className="ti-btn inline-flex items-center justify-center gap-2 border border-defaultborder/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 dark:border-defaultborder/30 dark:bg-bgdark/60 dark:text-gray-100 dark:hover:bg-bgdark disabled:opacity-50"
+                    className="ti-btn inline-flex items-center justify-center gap-2 border border-defaultborder/80 bg-white/90 px-4 py-2.5 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-50 dark:border-defaultborder/30 dark:bg-bodybg/60 dark:text-gray-100 dark:hover:bg-bodybg disabled:opacity-50"
                     disabled={dispatchLoading}
                     onClick={() => void dispatchSopNotifications()}
                     title="Enqueue in-app notifications for users with candidates.manage (and stakeholders on each candidate)"
@@ -1148,7 +1148,7 @@ export default function SettingsCandidateSopPage() {
               ) : null}
 
               {!sopOverview && !overviewLoading && !overviewError && (
-                <div className="rounded-xl border-2 border-dashed border-defaultborder/50 bg-gradient-to-b from-gray-50/80 to-white px-6 py-12 text-center dark:border-defaultborder/25 dark:from-bgdark/40 dark:to-bgdark/20">
+                <div className="rounded-xl border-2 border-dashed border-defaultborder/50 bg-gradient-to-b from-gray-50/80 to-white px-6 py-12 text-center dark:border-defaultborder/25 dark:from-bodybg/40 dark:to-bodybg/20">
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary dark:bg-primary/20">
                     <i className="ti ti-list-check text-2xl" aria-hidden />
                   </div>
@@ -1174,11 +1174,11 @@ export default function SettingsCandidateSopPage() {
               {sopOverview ? (
                 <div className="space-y-5">
                   <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white px-3 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-defaultborder/25 dark:bg-bgdark/50 dark:text-gray-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white px-3 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-defaultborder/25 dark:bg-bodybg/50 dark:text-gray-200">
                       <i className="ti ti-versions text-primary" aria-hidden />
                       Template v{sopOverview.activeSopVersion ?? "—"}
                     </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white px-3 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-defaultborder/25 dark:bg-bgdark/50 dark:text-gray-200">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white px-3 py-1 text-xs font-medium text-gray-800 shadow-sm dark:border-defaultborder/25 dark:bg-bodybg/50 dark:text-gray-200">
                       <i className="ti ti-scan text-gray-500 dark:text-gray-400" aria-hidden />
                       Scanned {sopOverview.scannedCount} / {sopOverview.totalCurrentCandidates}
                     </span>
@@ -1213,7 +1213,7 @@ export default function SettingsCandidateSopPage() {
                         return (
                           <li
                             key={row.candidateId}
-                            className="overflow-hidden rounded-xl border border-defaultborder/60 bg-white shadow-sm transition hover:border-primary/25 hover:shadow-md dark:border-defaultborder/20 dark:bg-bgdark/50 dark:hover:border-primary/30"
+                            className="overflow-hidden rounded-xl border border-defaultborder/60 bg-white shadow-sm transition hover:border-primary/25 hover:shadow-md dark:border-defaultborder/20 dark:bg-bodybg/50 dark:hover:border-primary/30"
                           >
                             <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-stretch">
                               <div className="flex min-w-0 flex-1 gap-3">
@@ -1277,7 +1277,7 @@ export default function SettingsCandidateSopPage() {
                                   {row.openSteps.map((s, si) => (
                                     <li
                                       key={`${row.candidateId}-open-${si}`}
-                                      className="flex flex-col gap-1 rounded-md border border-transparent bg-white/60 px-2 py-1.5 text-sm dark:bg-bgdark/30"
+                                      className="flex flex-col gap-1 rounded-md border border-transparent bg-white/60 px-2 py-1.5 text-sm dark:bg-bodybg/30"
                                     >
                                       <div className="flex flex-wrap items-start justify-between gap-2">
                                         <span className="font-medium text-gray-900 dark:text-gray-100">{s.label}</span>
@@ -1336,7 +1336,7 @@ export default function SettingsCandidateSopPage() {
           </section>
 
           <section
-            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bgdark/40 dark:ring-white/[0.05]"
+            className="overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-sm ring-1 ring-black/[0.03] dark:border-defaultborder/25 dark:bg-bodybg/40 dark:ring-white/[0.05]"
             aria-labelledby="sop-preview-run-heading"
           >
             <div className="border-b border-defaultborder/50 px-5 py-4 dark:border-defaultborder/20">

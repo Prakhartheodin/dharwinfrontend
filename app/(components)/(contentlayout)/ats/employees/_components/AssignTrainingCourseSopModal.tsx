@@ -169,7 +169,7 @@ export default function AssignTrainingCourseSopModal({
       }}
     >
       <div
-        className="relative max-h-[min(36rem,90vh)] w-full max-w-lg overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-xl dark:border-defaultborder/30 dark:bg-bgdark"
+        className="relative max-h-[min(36rem,90vh)] w-full max-w-lg overflow-hidden rounded-xl border border-defaultborder/80 bg-white shadow-xl dark:border-defaultborder/30 dark:bg-bodybg"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-defaultborder/60 px-5 py-4 dark:border-defaultborder/20">

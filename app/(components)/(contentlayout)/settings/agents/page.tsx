@@ -715,11 +715,14 @@ export default function SettingsAgentsPage() {
                               borderRadius: "0.75rem",
                               boxShadow: "0 12px 40px rgba(15, 23, 42, 0.12)",
                               border: "1px solid rgba(148, 163, 184, 0.35)",
+                              // --body-bg flips under `.dark`; the <style jsx> only themes the
+                              // control, so set the portaled menu bg here or it stays white.
+                              backgroundColor: "rgb(var(--body-bg))",
                             }),
                             option: (base, state) => ({
                               ...base,
                               backgroundColor: state.isFocused ? "rgba(99, 102, 241, 0.08)" : "transparent",
-                              color: "inherit",
+                              color: "rgb(var(--default-text-color))",
                             }),
                             clearIndicator: (base) => ({
                               ...base,

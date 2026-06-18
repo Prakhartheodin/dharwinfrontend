@@ -13,6 +13,7 @@ import { normalizeTipTapHtmlFromApi } from '@/shared/lib/tiptapHtml'
 import { resolveTemplateVars, type TemplateVarContext } from '@/shared/lib/ats/templateVars'
 import { getPhoneCountry, getPhoneValidationError, formatPhoneForApi } from '@/shared/lib/phoneCountries'
 import { PhoneCountrySelect } from '@/shared/components/PhoneCountrySelect'
+import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 const Select = dynamic(() => import("react-select"), { ssr: false })
 import CreatableSelect from 'react-select/creatable'
 
@@ -20,6 +21,8 @@ const CreateJob = () => {
   const router = useRouter()
   const searchParams = useSearchParams()
   const templateQueryHandled = useRef<string | null>(null)
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(9999)
   const [activeTab, setActiveTab] = useState('general')
   const [jobDescription, setJobDescription] = useState('')
   const [requirements, setRequirements] = useState('')
@@ -683,6 +686,8 @@ const CreateJob = () => {
                           value={formData.jobType}
                           onChange={(selected: any) => handleInputChange('jobType', selected)}
                           menuPlacement="auto"
+                          menuPortalTarget={selectMenuPortalTarget}
+                          styles={selectMenuLayerStyles}
                         />
                       </div>
 
@@ -732,6 +737,8 @@ const CreateJob = () => {
                           placeholder="Type a skill and press Enter to add..."
                           value={formData.skills}
                           className="ti-form-select"
+                          menuPortalTarget={selectMenuPortalTarget}
+                          styles={selectMenuLayerStyles}
                         />
                         <p className="text-muted text-xs mt-2">
                           Add relevant skills required for this position. Press Enter after typing each skill.
@@ -757,6 +764,8 @@ const CreateJob = () => {
                           onChange={(selected: any) => handleInputChange('experienceLevel', selected)}
                           menuPlacement="auto"
                           isClearable
+                          menuPortalTarget={selectMenuPortalTarget}
+                          styles={selectMenuLayerStyles}
                         />
                         <p className="text-muted text-xs mt-1">Expected experience tier for this role</p>
                       </div>
@@ -833,6 +842,8 @@ const CreateJob = () => {
                           value={formData.status}
                           onChange={(selected: any) => handleInputChange('status', selected || { value: 'Active', label: 'Active' })}
                           menuPlacement="auto"
+                          menuPortalTarget={selectMenuPortalTarget}
+                          styles={selectMenuLayerStyles}
                         />
                         <p className="text-muted text-xs mt-1">
                           Draft: not visible to candidates. Active: published and accepting applications. Closed: no longer hiring.

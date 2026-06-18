@@ -13,6 +13,7 @@ import type { TrainingModule as ApiTrainingModule, PlaylistItem } from '@/shared
 import type { Category as ApiCategory } from '@/shared/lib/api/categories'
 import type { MultiValue } from 'react-select'
 import { sanitizeRichHtml } from '@/shared/lib/sanitize-html'
+import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -33,6 +34,8 @@ function AssignFoldersModal({
   onClose: () => void
   onSave: (categoryIds: string[]) => Promise<void>
 }) {
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles()
   const [selected, setSelected] = useState<MultiValue<CategorySelectOption>>([])
   const [saving, setSaving] = useState(false)
 
@@ -82,6 +85,8 @@ function AssignFoldersModal({
             placeholder="Select folders…"
             menuPlacement="auto"
             isDisabled={!categoryOptions.length}
+            menuPortalTarget={selectMenuPortalTarget}
+            styles={selectMenuLayerStyles}
           />
           {!categoryOptions.length ? (
             <p className="text-[0.8125rem] text-warning mb-0">Create a folder first, then assign modules to it.</p>
@@ -120,6 +125,8 @@ function BulkAssignFoldersModal({
   onSave: (categoryIds: string[]) => Promise<void>
   busy: boolean
 }) {
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles()
   const [selected, setSelected] = useState<MultiValue<CategorySelectOption>>([])
 
   useEffect(() => {
@@ -157,6 +164,8 @@ function BulkAssignFoldersModal({
             placeholder="Select folders…"
             menuPlacement="auto"
             isDisabled={!categoryOptions.length || busy}
+            menuPortalTarget={selectMenuPortalTarget}
+            styles={selectMenuLayerStyles}
           />
         </div>
         <div className="flex items-center justify-end gap-2 p-4 border-t border-defaultborder">
@@ -934,6 +943,8 @@ interface TrainingFolderRow {
 }
 
 const TrainingModules = () => {
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles()
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sortValue, setSortValue] = useState(SORT_OPTIONS[0])
@@ -1459,6 +1470,8 @@ const TrainingModules = () => {
                     menuPlacement="auto"
                     classNamePrefix="Select2"
                     placeholder="Sort By"
+                    menuPortalTarget={selectMenuPortalTarget}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
                 <div className="flex" role="search">

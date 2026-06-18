@@ -23,6 +23,7 @@ import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import dynamic from "next/dynamic";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import type { FilterOptionOption } from "react-select";
 import StudentAttendanceOverlay from "./StudentAttendanceOverlay";
 
@@ -75,6 +76,7 @@ function getStudentShiftForRequest(
 
 export default function SettingsAttendanceBackdatedPage() {
   const isAdmin = useAttendanceAdminAccess();
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(10060);
   const [loadingRequests, setLoadingRequests] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
@@ -803,9 +805,9 @@ return (
                     isSearchable
                     className="react-select-container backdated-add-person-select"
                     classNamePrefix="react-select"
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuPortalTarget={selectMenuPortalTarget}
                     menuPosition="fixed"
-                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
                 {addResolvingProfile && (
@@ -1041,9 +1043,9 @@ return (
                     isClearable={false}
                     className="react-select-container backdated-filter-person-select"
                     classNamePrefix="react-select"
-                    menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                    menuPortalTarget={selectMenuPortalTarget}
                     menuPosition="fixed"
-                    styles={{ menuPortal: (base) => ({ ...base, zIndex: 10060 }) }}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
               </div>

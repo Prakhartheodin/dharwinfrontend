@@ -9,6 +9,7 @@ import { getUser, updateUser } from "@/shared/lib/api/users";
 import { uploadDocument } from "@/shared/lib/api/employees";
 import { getPhoneCountry, getPhoneValidationError, parseStoredPhone } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 
 const CreatableSelect = dynamic(() => import("react-select/creatable"), { ssr: false });
 
@@ -32,6 +33,8 @@ export default function EditRecruiterClient() {
   const router = useRouter();
   const params = useParams();
   const recruiterId = params?.id as string;
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
+    usePmReactSelectStyles(9999);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [uploadingPicture, setUploadingPicture] = useState(false);
@@ -335,6 +338,8 @@ export default function EditRecruiterClient() {
                         placeholder="Select or type to add..."
                         classNamePrefix="react-select"
                         className="react-select-container"
+                        menuPortalTarget={selectMenuPortalTarget}
+                        styles={selectMenuLayerStyles}
                       />
                     </div>
                     <div className="xl:col-span-6 col-span-12">

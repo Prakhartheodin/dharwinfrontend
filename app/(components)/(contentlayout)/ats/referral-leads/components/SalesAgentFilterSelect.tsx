@@ -96,7 +96,7 @@ export function SalesAgentFilterSelect({ value, unassigned, onChange }: SalesAge
       </button>
 
       {open && (
-        <div className="absolute z-20 mt-1 w-full min-w-[220px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-bgdark2">
+        <div className="absolute z-20 mt-1 w-full min-w-[220px] rounded-lg border border-slate-200 bg-white shadow-lg dark:border-white/10 dark:bg-bodybg2">
           <div className="p-2">
             <input
               autoFocus

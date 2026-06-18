@@ -30,7 +30,7 @@ export function ReferralLeadsFilters({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-4 mb-4 space-y-3">
+    <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bodybg2 p-4 mb-4 space-y-3">
       <div className="flex flex-wrap items-end gap-3">
       <div className="flex-1 min-w-[200px]">
         <label className="form-label text-xs">Search</label>
@@ -173,7 +173,6 @@ export function ReferralLeadsFilters({
             {(
               [
                 { value: "hiredOnly" as const, label: "Hired only" },
-                { value: "convertedEmployees" as const, label: "Converted employees" },
                 { value: "activeEmployees" as const, label: "Active employees" },
                 { value: "resignedEmployees" as const, label: "Resigned employees" },
                 { value: "pendingReferrals" as const, label: "Pending referrals" },

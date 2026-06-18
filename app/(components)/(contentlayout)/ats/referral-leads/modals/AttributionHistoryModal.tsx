@@ -113,7 +113,7 @@ export function AttributionHistoryModal({
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} role="presentation" />
       <div
-        className="relative flex max-h-[min(90vh,640px)] w-full max-w-2xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-bgdark2"
+        className="relative flex max-h-[min(90vh,640px)] w-full max-w-2xl flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-bodybg2"
         role="dialog"
         aria-labelledby="attribution-history-title"
       >
@@ -151,7 +151,7 @@ export function AttributionHistoryModal({
                     aria-controls={`attribution-history-panel-${id}`}
                     className={`min-w-0 flex-1 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors sm:flex-none ${
                       active
-                        ? "bg-white text-primary shadow-sm dark:bg-bgdark2"
+                        ? "bg-white text-primary shadow-sm dark:bg-bodybg2"
                         : "text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
                     }`}
                     onClick={() => setTab(id)}

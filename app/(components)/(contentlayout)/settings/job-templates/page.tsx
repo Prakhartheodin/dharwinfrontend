@@ -32,6 +32,7 @@ import {
 } from "@/shared/lib/api/jobs";
 import DOMPurify from "isomorphic-dompurify";
 import { normalizeTipTapHtmlFromApi } from "@/shared/lib/tiptapHtml";
+import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
@@ -53,6 +54,7 @@ function templateKey(t: JobTemplate): string {
 
 export default function SettingsJobTemplatesPage() {
   const router = useRouter();
+  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } = usePmReactSelectStyles(9999);
   const { permissions, permissionsLoaded } = useAuth();
   const raw = permissions ?? [];
   const matrixWrite =
@@ -531,6 +533,8 @@ export default function SettingsJobTemplatesPage() {
                     placeholder="Select job type"
                     isClearable
                     isDisabled={!canManage}
+                    menuPortalTarget={selectMenuPortalTarget}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
                 <div>
@@ -543,6 +547,8 @@ export default function SettingsJobTemplatesPage() {
                     placeholder="Select experience"
                     isClearable
                     isDisabled={!canManage}
+                    menuPortalTarget={selectMenuPortalTarget}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
                 <div>
@@ -582,6 +588,8 @@ export default function SettingsJobTemplatesPage() {
                     placeholder="Type a skill and press Enter (e.g. React, Node.js, PostgreSQL)"
                     value={formSkills}
                     isDisabled={!canManage}
+                    menuPortalTarget={selectMenuPortalTarget}
+                    styles={selectMenuLayerStyles}
                   />
                 </div>
                 <div className="sm:col-span-2">
