@@ -14,7 +14,7 @@ import {
   canManageCandidatesFromPermissions,
   canSeeReferralLeaderboardFromRoles,
 } from "./utils/referralPermissions.util";
-import { useReferralLeadsFilters } from "./hooks/useReferralLeadsFilters";
+import { useReferralLeadsFilters, type ReferralLeadsFilterState } from "./hooks/useReferralLeadsFilters";
 import { useReferralLeadsStats } from "./hooks/useReferralLeadsStats";
 import {
   useReferralSalesAgentFeatureFlag,
@@ -24,6 +24,7 @@ import { StatCards } from "./components/StatCards";
 import { StaleDataBanner } from "./components/StaleDataBanner";
 import { ReferralLeadsFilters } from "./components/ReferralLeadsFilters";
 import { ReferralLeadsTable } from "./components/ReferralLeadsTable";
+import { ReferralLeadsPagination } from "./components/ReferralLeadsPagination";
 import { ReferralLeadDetailPanel } from "./components/ReferralLeadDetailPanel";
 import { OverrideAttributionModal } from "./modals/OverrideAttributionModal";
 import { AttributionHistoryModal } from "./modals/AttributionHistoryModal";
@@ -55,11 +56,26 @@ export default function ReferralLeadsPage() {
   const { filters, setFilter, clearFilters, hasActiveFilters, baseParams } = useReferralLeadsFilters(featureEnabled);
   const { stats, isStale, refresh: refreshStats, setIsStale } = useReferralLeadsStats(baseParams, permissionsLoaded);
 
+  const PAGE_SIZE = 25;
   const [list, setList] = useState<ReferralLeadRow[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Filter changes reset to the first page (batched with the filter update → single re-fetch).
+  const handleSetFilter = useCallback(
+    <K extends keyof ReferralLeadsFilterState>(key: K, value: ReferralLeadsFilterState[K]) => {
+      setPage(1);
+      setFilter(key, value);
+    },
+    [setFilter]
+  );
+  const handleClearFilters = useCallback(() => {
+    setPage(1);
+    clearFilters();
+  }, [clearFilters]);
 
   const [selected, setSelected] = useState<ReferralLeadRow | null>(null);
   const [overrideOpen, setOverrideOpen] = useState(false);
@@ -77,11 +93,11 @@ export default function ReferralLeadsPage() {
     setError(null);
     setIsStale(false);
     try {
-      const params: ReferralLeadsQueryParams = { ...baseParams, limit: 25 };
+      const params: ReferralLeadsQueryParams = { ...baseParams, page, limit: PAGE_SIZE };
       const res = await listReferralLeads(params);
       setList(res.results);
-      setNextCursor(res.nextCursor);
-      setHasMore(res.hasMore);
+      setTotal(res.total);
+      setTotalPages(res.totalPages);
     } catch (e: unknown) {
       const msg =
         e && typeof e === "object" && "message" in e ? String((e as { message: string }).message) : "Failed to load";
@@ -89,7 +105,7 @@ export default function ReferralLeadsPage() {
     } finally {
       setLoading(false);
     }
-  }, [permissionsLoaded, baseParams, setIsStale]);
+  }, [permissionsLoaded, baseParams, page, setIsStale]);
 
   const refresh = useCallback(async () => {
     await Promise.all([refreshList(), refreshStats().catch(() => undefined)]);
@@ -133,21 +149,6 @@ export default function ReferralLeadsPage() {
       await downloadReferralLeadsExport(baseParams);
     } catch {
       alert("Export failed. Check permissions and try again.");
-    }
-  };
-
-  const loadMore = async () => {
-    if (!nextCursor) return;
-    setLoading(true);
-    try {
-      const res = await listReferralLeads({ ...baseParams, limit: 25, cursor: nextCursor });
-      setList((prev) => [...prev, ...res.results]);
-      setNextCursor(res.nextCursor);
-      setHasMore(res.hasMore);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Load more failed");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -209,8 +210,8 @@ export default function ReferralLeadsPage() {
 
         <ReferralLeadsFilters
           filters={filters}
-          setFilter={setFilter}
-          clearFilters={clearFilters}
+          setFilter={handleSetFilter}
+          clearFilters={handleClearFilters}
           hasActiveFilters={hasActiveFilters}
           canUseOrgReferralControls={canUseOrgReferralControls}
           distinctReferrers={distinctReferrers}
@@ -238,7 +239,7 @@ export default function ReferralLeadsPage() {
         {showEmptyFiltered && (
           <div className="rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-bgdark2 p-12 text-center">
             <p className="text-slate-600 dark:text-slate-300">No rows match your filters.</p>
-            <button type="button" className="ti-btn ti-btn-light mt-3" onClick={clearFilters}>
+            <button type="button" className="ti-btn ti-btn-light mt-3" onClick={handleClearFilters}>
               Clear filters
             </button>
           </div>
@@ -271,13 +272,14 @@ export default function ReferralLeadsPage() {
                 setOverrideOpen(true);
               }}
             />
-            {hasMore && (
-              <div className="mt-4 flex justify-center">
-                <button type="button" className="ti-btn ti-btn-light" disabled={loading} onClick={() => void loadMore()}>
-                  {loading ? "Loading…" : "Load more"}
-                </button>
-              </div>
-            )}
+            <ReferralLeadsPagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              pageSize={PAGE_SIZE}
+              disabled={loading}
+              onPageChange={setPage}
+            />
           </>
         )}
       </div>

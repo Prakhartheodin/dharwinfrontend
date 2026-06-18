@@ -71,8 +71,10 @@ export interface ReferralLeadRow {
 
 export interface ReferralLeadsListResponse {
   results: ReferralLeadRow[];
-  nextCursor: string | null;
-  hasMore: boolean;
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
   staleDataWarning?: boolean;
 }
 
@@ -125,7 +127,7 @@ export interface ReferralLeadsStatsResponse {
 
 export interface ReferralLeadsQueryParams {
   limit?: number;
-  cursor?: string;
+  page?: number;
   search?: string;
   referredByUserId?: string;
   referralContext?: "SHARE_CANDIDATE_ONBOARD" | "JOB_APPLY" | "";

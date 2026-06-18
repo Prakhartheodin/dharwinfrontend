@@ -126,13 +126,11 @@ function mapReferralLeadsToScheduleCandidates(rows: ReferralLeadRow[]): Candidat
 
 async function fetchReferralLeadsForSchedule(): Promise<CandidateListItem[]> {
   const aggregated: ReferralLeadRow[] = []
-  let cursor: string | undefined
-  // Backend caps limit at 100 (Joi + service); 200 was rejected and returned no rows.
-  for (let page = 0; page < 15; page++) {
-    const res = await listReferralLeads({ limit: 100, cursor, candidateRoleOwnersOnly: true })
+  // Backend caps limit at 100 (Joi + service). Walk pages until the last one (cap 15 → 1500 leads).
+  for (let page = 1; page <= 15; page++) {
+    const res = await listReferralLeads({ limit: 100, page, candidateRoleOwnersOnly: true })
     aggregated.push(...(res.results ?? []))
-    if (!res.hasMore || !res.nextCursor) break
-    cursor = res.nextCursor
+    if (page >= (res.totalPages ?? 1)) break
   }
   return mapReferralLeadsToScheduleCandidates(aggregated)
 }
