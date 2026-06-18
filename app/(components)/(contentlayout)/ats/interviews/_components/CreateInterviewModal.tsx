@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { useAuth } from '@/shared/contexts/auth-context'
-import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
+import { appendJoinIdentityToUrl, resolvePersonalJoinIdentity } from '@/shared/lib/join-room-url'
 import type { Meeting } from '@/shared/lib/api/meetings'
 import type { Job } from '@/shared/lib/api/jobs'
 import type { CandidateListItem } from '@/shared/lib/api/candidates'
@@ -340,10 +340,9 @@ export default function CreateInterviewModal({
   const personalMeetingUrl = useMemo(() => {
     const base = shareMeetingUrl
     if (!base) return ''
-    const joinName = (user?.name?.trim() || user?.email?.split('@')[0] || '').trim()
-    const joinEmail = user?.email?.trim() || ''
+    const { name: joinName, email: joinEmail } = resolvePersonalJoinIdentity(user, createdMeeting?.hosts)
     return appendJoinIdentityToUrl(base, joinName, joinEmail)
-  }, [shareMeetingUrl, user?.name, user?.email])
+  }, [shareMeetingUrl, user, createdMeeting?.hosts])
 
   const scheduleWallClock = scheduledInterviewAt
     ? utcInstantToWallClock(scheduledInterviewAt, scheduleTimezone)

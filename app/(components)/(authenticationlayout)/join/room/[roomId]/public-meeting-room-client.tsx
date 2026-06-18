@@ -2249,13 +2249,9 @@ export default function PublicMeetingRoomClient() {
   );
 
   /**
-   * Pick the token endpoint by auth state. A logged-in user (e.g. the host who
-   * opened the public link) gets the AUTHENTICATED endpoint, so the server can
-   * recognize the host from the trusted session and skip the approval/waiting
-   * room. The public path forces forcePublicGuest=true, which can never be host —
-   * with requireApproval on, that strands the host in the waiting room with nobody
-   * to admit them. If the authenticated path is not authorized (403 — wrong tenant
-   * or not invited), fall back to the public guest endpoint so guests are unaffected.
+   * Pick the token endpoint by auth state. Logged-in users with a matching session email
+   * use the authenticated endpoint (stable user identity). Otherwise the public endpoint
+   * still grants host when the invite link email matches a host on the meeting record.
    */
   const requestToken = useCallback(
     async (identity?: string, opts?: { forcePublic?: boolean }) => {

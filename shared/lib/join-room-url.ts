@@ -14,6 +14,23 @@ export function resolveMeetingShareUrl(meeting: {
   return path
 }
 
+/** Name/email for a personalized join link — prefer the meeting hosts row for the signed-in user. */
+export function resolvePersonalJoinIdentity(
+  user: { name?: string | null; email?: string | null } | null | undefined,
+  hosts?: { nameOrRole?: string; email: string }[] | null
+): { name: string; email: string } {
+  const userEmail = (user?.email || "").trim().toLowerCase()
+  const hostEntry = (hosts || []).find(
+    (h) => (h.email || "").trim().toLowerCase() === userEmail
+  )
+  const email = (hostEntry?.email || user?.email || "").trim()
+  const name =
+    (hostEntry?.nameOrRole || user?.name || "").trim() ||
+    email.split("@")[0]?.trim() ||
+    ""
+  return { name, email }
+}
+
 /**
  * Append name/email query params to a /join/room URL so LiveKit pre-join can skip empty fields
  * and hosts are recognized by email.

@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { format } from "date-fns"
 import { useAuth } from "@/shared/contexts/auth-context"
-import { appendJoinIdentityToUrl, resolveMeetingShareUrl } from "@/shared/lib/join-room-url"
+import { appendJoinIdentityToUrl, resolveMeetingShareUrl, resolvePersonalJoinIdentity } from "@/shared/lib/join-room-url"
 import type { InternalMeeting } from "@/shared/lib/api/internal-meetings"
 import MeetingCreatedSuccess from "@/shared/components/meeting/MeetingCreatedSuccess"
 import { listUsers } from "@/shared/lib/api/users"
@@ -97,10 +97,9 @@ export default function CreateInternalMeetingModal({
   const personalMeetingUrl = useMemo(() => {
     const base = shareMeetingUrl
     if (!base) return ""
-    const joinName = (user?.name?.trim() || user?.email?.split("@")[0] || "").trim()
-    const joinEmail = user?.email?.trim() || ""
+    const { name: joinName, email: joinEmail } = resolvePersonalJoinIdentity(user, createdMeeting?.hosts)
     return appendJoinIdentityToUrl(base, joinName, joinEmail)
-  }, [shareMeetingUrl, user?.name, user?.email])
+  }, [shareMeetingUrl, user, createdMeeting?.hosts])
 
   const closeModal = useCallback(() => {
     resetCreateMeetingForm()
