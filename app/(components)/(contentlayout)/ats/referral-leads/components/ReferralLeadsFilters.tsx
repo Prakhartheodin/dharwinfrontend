@@ -91,11 +91,14 @@ export function ReferralLeadsFilters({
           onChange={(e) => setFilter("filterStatus", e.target.value)}
         >
           <option value="">All statuses</option>
-          {Object.entries(STATUS_META).map(([k, v]) => (
-            <option key={k} value={k}>
-              {v.label}
-            </option>
-          ))}
+          {/* in_review is a legacy alias of interview (same label) — drop it so the dropdown has no duplicate. */}
+          {Object.entries(STATUS_META)
+            .filter(([k]) => k !== "in_review")
+            .map(([k, v]) => (
+              <option key={k} value={k}>
+                {v.label}
+              </option>
+            ))}
         </select>
       </div>
       <div>
