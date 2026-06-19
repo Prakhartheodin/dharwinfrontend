@@ -146,7 +146,10 @@ export default function Dialpad() {
       // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
       // on per-browser via localStorage.setItem("plivo_debug","1") to capture logs.
       const debug = localStorage.getItem("plivo_debug") === "1" ? "DEBUG" : "WARN";
-      const p = new Plivo({ debug, permOnClick: true, enableTracking: false });
+      // usePlivoStunServer: ICE needs a STUN server to gather media candidates.
+      // Without it the INVITE can reach Plivo with no usable media path → call
+      // rejected in "DELAYED NEGOTIATION" before the answer_url is ever fetched.
+      const p = new Plivo({ debug, permOnClick: true, enableTracking: false, usePlivoStunServer: true });
       const client = p.client;
       const markReady = () => {
         window.clearTimeout(timeout);
