@@ -222,11 +222,13 @@ export default function Dialpad() {
     setPlacing(true);
     try {
       // Plivo often omits X-PH-callerId on sdk-answer; register intent server-side first.
-      await registerPlivoBrowserCallIntent({ toNumber: dest.trim(), callerId });
+      const { intent } = await registerPlivoBrowserCallIntent({ toNumber: dest.trim(), callerId });
       setCallState("ringing");
-      // extraHeaders keys must start with "X-PH-"; kept when Plivo does forward them.
-      // Plivo allows ONLY [A-Za-z0-9] in SIP header values — send digits-only for "+".
-      client.call(dest.trim(), { "X-PH-callerId": callerId.replace(/\D/g, "") });
+      // X-PH-* headers may reach sdk-answer; intent token is stateless across Render instances.
+      client.call(dest.trim(), {
+        "X-PH-callerId": callerId.replace(/\D/g, ""),
+        "X-PH-intent": intent,
+      });
     } catch (e) {
       setCallState("idle");
       setFeedback({ kind: "err", msg: apiErr(e, "Could not start browser call") });

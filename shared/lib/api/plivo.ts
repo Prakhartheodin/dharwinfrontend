@@ -139,9 +139,18 @@ export type RegisterPlivoBrowserCallIntentParams = {
   callerId: string;
 };
 
+export type RegisterPlivoBrowserCallIntentResponse = {
+  /** Alphanumeric HMAC token — pass as X-PH-intent on client.call(). */
+  intent: string;
+};
+
 /** Tell the backend which caller ID to use before browser client.call() (Plivo webhook fallback). */
 export async function registerPlivoBrowserCallIntent(
   params: RegisterPlivoBrowserCallIntentParams
-): Promise<void> {
-  await apiClient.post("/plivo/browser-call-intent", params);
+): Promise<RegisterPlivoBrowserCallIntentResponse> {
+  const res = await apiClient.post<RegisterPlivoBrowserCallIntentResponse>(
+    "/plivo/browser-call-intent",
+    params
+  );
+  return res.data;
 }
