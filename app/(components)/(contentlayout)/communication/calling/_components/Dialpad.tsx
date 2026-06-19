@@ -220,7 +220,10 @@ export default function Dialpad() {
     setFeedback(null);
     setCallState("ringing");
     // extraHeaders keys must start with "X-PH-"; Plivo forwards them to the answer URL.
-    client.call(dest.trim(), { "X-PH-callerId": callerId });
+    // Plivo allows ONLY [A-Za-z0-9] in SIP header values — the "+" in the E.164
+    // caller ID would make Plivo drop the header, so send digits-only. The backend
+    // (sdkAnswerXml) restores the leading "+" before dialing.
+    client.call(dest.trim(), { "X-PH-callerId": callerId.replace(/\D/g, "") });
   }, [dest, callerId]);
 
   const hangup = useCallback(() => {
