@@ -166,7 +166,7 @@ export default function CreateInternalMeetingModal({
       aria-hidden="true"
     >
       <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
-        <div className="ti-modal-content flex min-h-0 flex-col overflow-hidden border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl">
+        <div className="ti-modal-content flex min-h-0 max-h-[min(calc(100dvh_-_2rem),46rem)] flex-col overflow-hidden border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl">
           <div className="ti-modal-header shrink-0 bg-gradient-to-b from-gray-50 to-gray-50/80 dark:from-black/25 dark:to-black/15 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
             <h3
               id="create-internal-meeting-modal-label"
@@ -201,7 +201,7 @@ export default function CreateInternalMeetingModal({
             />
           ) : (
             <form
-              className="ti-modal-body !p-0 flex min-h-0 max-h-[min(88vh,46rem)] flex-col overflow-hidden"
+              className="ti-modal-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden"
               onSubmit={onSubmit}
               noValidate
             >

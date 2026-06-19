@@ -710,11 +710,11 @@ export default function CreateInterviewModal({
                   <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">
                     Interview Type <span className="text-danger">*</span>
                   </label>
-                  <div className="flex flex-wrap gap-2 sm:gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
                     {(['Video', 'In-Person', 'Phone'] as const).map((type) => (
                       <label
                         key={type}
-                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-xl border-2 border-defaultborder px-3 py-2 shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out motion-reduce:transition-none dark:border-defaultborder/10 hover:border-primary/45 hover:shadow-md dark:hover:border-primary/50 sm:flex-initial sm:px-4 sm:py-2.5 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-md has-[:checked]:ring-2 has-[:checked]:ring-primary/20 dark:has-[:checked]:bg-primary/10 active:scale-[0.98] motion-reduce:active:scale-100"
+                        className="flex min-w-0 cursor-pointer items-center gap-2 rounded-xl border-2 border-defaultborder px-3 py-2 shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out motion-reduce:transition-none dark:border-defaultborder/10 hover:border-primary/45 hover:shadow-md dark:hover:border-primary/50 sm:px-4 sm:py-2.5 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:checked]:shadow-md has-[:checked]:ring-2 has-[:checked]:ring-primary/20 dark:has-[:checked]:bg-primary/10 active:scale-[0.98] motion-reduce:active:scale-100"
                       >
                         <input
                           type="radio"
