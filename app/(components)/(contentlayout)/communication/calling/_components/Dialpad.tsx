@@ -146,18 +146,12 @@ export default function Dialpad() {
       // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
       // on per-browser via localStorage.setItem("plivo_debug","1") to capture logs.
       const debug = localStorage.getItem("plivo_debug") === "1" ? "DEBUG" : "WARN";
-      // WebRTC media setup for outbound calls:
-      // - usePlivoStunServer: ICE needs STUN to gather media candidates.
-      // - useDefaultAudioDevice: attach the default mic to the peer connection.
-      //   Without it the INVITE goes out with no audio track → empty SDP offer →
-      //   Plivo rejects in "DELAYED NEGOTIATION" before fetching the answer_url.
-      const p = new Plivo({
-        debug,
-        permOnClick: true,
-        enableTracking: false,
-        usePlivoStunServer: true,
-        useDefaultAudioDevice: true,
-      });
+      // usePlivoStunServer: ICE needs a STUN server to gather media candidates.
+      // (useDefaultAudioDevice is intentionally left default/false: enabling it
+      // makes the SDK match output devices and it crashes with "Invalid output
+      // device id" when none is selected. The real outbound fix was pointing the
+      // caller-ID number's Plivo application at our sdk-answer URL, not this.)
+      const p = new Plivo({ debug, permOnClick: true, enableTracking: false, usePlivoStunServer: true });
       const client = p.client;
       const markReady = () => {
         window.clearTimeout(timeout);
