@@ -133,3 +133,15 @@ export async function getPlivoSdkToken(): Promise<PlivoSdkTokenResponse> {
   const res = await apiClient.post<PlivoSdkTokenResponse>("/plivo/sdk-token", {});
   return res.data;
 }
+
+export type RegisterPlivoBrowserCallIntentParams = {
+  toNumber: string;
+  callerId: string;
+};
+
+/** Tell the backend which caller ID to use before browser client.call() (Plivo webhook fallback). */
+export async function registerPlivoBrowserCallIntent(
+  params: RegisterPlivoBrowserCallIntentParams
+): Promise<void> {
+  await apiClient.post("/plivo/browser-call-intent", params);
+}

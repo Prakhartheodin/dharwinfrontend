@@ -6,6 +6,7 @@ import {
   listOwnedPlivoNumbers,
   placePlivoCall,
   getPlivoSdkToken,
+  registerPlivoBrowserCallIntent,
   type OwnedPlivoNumber,
 } from "@/shared/lib/api/plivo";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
@@ -214,16 +215,24 @@ export default function Dialpad() {
     !placing &&
     (mode === "browser" ? webrtc === "ready" && callState === "idle" : isE164(agentPhone));
 
-  const handleBrowserCall = useCallback(() => {
+  const handleBrowserCall = useCallback(async () => {
     const client = plivoRef.current?.client;
     if (!client) return;
     setFeedback(null);
-    setCallState("ringing");
-    // extraHeaders keys must start with "X-PH-"; Plivo forwards them to the answer URL.
-    // Plivo allows ONLY [A-Za-z0-9] in SIP header values — the "+" in the E.164
-    // caller ID would make Plivo drop the header, so send digits-only. The backend
-    // (sdkAnswerXml) restores the leading "+" before dialing.
-    client.call(dest.trim(), { "X-PH-callerId": callerId.replace(/\D/g, "") });
+    setPlacing(true);
+    try {
+      // Plivo often omits X-PH-callerId on sdk-answer; register intent server-side first.
+      await registerPlivoBrowserCallIntent({ toNumber: dest.trim(), callerId });
+      setCallState("ringing");
+      // extraHeaders keys must start with "X-PH-"; kept when Plivo does forward them.
+      // Plivo allows ONLY [A-Za-z0-9] in SIP header values — send digits-only for "+".
+      client.call(dest.trim(), { "X-PH-callerId": callerId.replace(/\D/g, "") });
+    } catch (e) {
+      setCallState("idle");
+      setFeedback({ kind: "err", msg: apiErr(e, "Could not start browser call") });
+    } finally {
+      setPlacing(false);
+    }
   }, [dest, callerId]);
 
   const hangup = useCallback(() => {
@@ -253,7 +262,7 @@ export default function Dialpad() {
     }
   }, [dest, agentPhone, callerId]);
 
-  const onCall = mode === "browser" ? handleBrowserCall : () => void handlePhoneCall();
+  const onCall = mode === "browser" ? () => void handleBrowserCall() : () => void handlePhoneCall();
   const inCall = mode === "browser" && callState !== "idle";
 
   return (
