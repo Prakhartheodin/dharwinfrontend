@@ -147,7 +147,10 @@ export default function Dialpad() {
       try {
         const mod: any = await import("plivo-browser-sdk");
         const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
-        const p = new Plivo({ debug: "DEBUG", permOnClick: true, enableTracking: false });
+        // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
+        // on per-browser via localStorage.setItem("plivo_debug","1") to capture logs.
+        const debug = localStorage.getItem("plivo_debug") === "1" ? "DEBUG" : "WARN";
+        const p = new Plivo({ debug, permOnClick: true, enableTracking: false });
         const client = p.client;
         const markReady = () => {
           if (cancelled) return;
