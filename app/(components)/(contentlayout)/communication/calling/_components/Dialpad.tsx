@@ -120,77 +120,81 @@ export default function Dialpad() {
     setDest((prev) => (prev.length <= 1 ? "+" : prev.slice(0, -1)));
   }, []);
 
-  // --- WebRTC softphone: login when browser mode is active -------------------
-  useEffect(() => {
-    if (mode !== "browser") return;
-    if (plivoRef.current || webrtc === "connecting" || webrtc === "ready") return;
+  // --- WebRTC softphone --------------------------------------------------------
+  const connectingRef = useRef(false);
 
-    let cancelled = false;
+  const connectSoftphone = useCallback(async () => {
+    if (plivoRef.current || connectingRef.current) return;
+    connectingRef.current = true;
     setWebrtc("connecting");
     setFeedback(null);
 
-    // Don't spin forever: if login never resolves (slow token endpoint, free-tier
-    // cold start, blocked WebRTC), surface an actionable error after 60s.
+    // Don't spin forever: surface an actionable error if login never resolves
+    // (slow token endpoint, blocked WebRTC, http page) after 60s.
     const timeout = window.setTimeout(() => {
-      if (cancelled) return;
-      setWebrtc((s) => {
-        if (s === "ready") return s;
-        setFeedback({
-          kind: "err",
-          msg: "Softphone didn't connect. Check the call token request in Network — a free-tier backend can cold-start (~60s); switch the toggle to retry.",
-        });
-        return "error";
-      });
+      connectingRef.current = false;
+      setWebrtc((s) => (s === "ready" ? s : "error"));
+      setFeedback((f) =>
+        f ?? { kind: "err", msg: "Softphone didn't connect. Page must be HTTPS; check the call-token request, then Retry." }
+      );
     }, 60000);
 
-    (async () => {
-      try {
-        const mod: any = await import("plivo-browser-sdk");
-        const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
-        // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
-        // on per-browser via localStorage.setItem("plivo_debug","1") to capture logs.
-        const debug = localStorage.getItem("plivo_debug") === "1" ? "DEBUG" : "WARN";
-        const p = new Plivo({ debug, permOnClick: true, enableTracking: false });
-        const client = p.client;
-        const markReady = () => {
-          if (cancelled) return;
-          window.clearTimeout(timeout);
-          setWebrtc("ready");
-        };
-        client.on("onLogin", markReady);
-        client.on("onReady", markReady);
-        client.on("onLoginFailed", (e: string) => {
-          if (cancelled) return;
-          window.clearTimeout(timeout);
-          setWebrtc("error");
-          setFeedback({ kind: "err", msg: `Softphone login failed: ${e || "unknown"}` });
-        });
-        client.on("onCallRemoteRinging", () => !cancelled && setCallState("ringing"));
-        client.on("onCallAnswered", () => !cancelled && setCallState("connected"));
-        client.on("onCallTerminated", () => !cancelled && setCallState("idle"));
-        client.on("onCallFailed", (e: string) => {
-          if (cancelled) return;
-          setCallState("idle");
-          setFeedback({ kind: "err", msg: `Call failed: ${e || "unknown"}` });
-        });
-        plivoRef.current = p;
-
-        const { token } = await getPlivoSdkToken();
-        if (cancelled) return;
-        client.loginWithAccessToken(token);
-      } catch (e) {
-        if (cancelled) return;
+    try {
+      const mod: any = await import("plivo-browser-sdk");
+      const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
+      // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
+      // on per-browser via localStorage.setItem("plivo_debug","1") to capture logs.
+      const debug = localStorage.getItem("plivo_debug") === "1" ? "DEBUG" : "WARN";
+      const p = new Plivo({ debug, permOnClick: true, enableTracking: false });
+      const client = p.client;
+      const markReady = () => {
         window.clearTimeout(timeout);
+        connectingRef.current = false;
+        setWebrtc("ready");
+      };
+      client.on("onLogin", markReady);
+      client.on("onReady", markReady);
+      client.on("onLoginFailed", (e: string) => {
+        window.clearTimeout(timeout);
+        connectingRef.current = false;
         setWebrtc("error");
-        setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
-      }
-    })();
+        setFeedback({ kind: "err", msg: `Softphone login failed: ${e || "unknown"}` });
+      });
+      client.on("onCallRemoteRinging", () => setCallState("ringing"));
+      client.on("onCallAnswered", () => setCallState("connected"));
+      client.on("onCallTerminated", () => setCallState("idle"));
+      client.on("onCallFailed", (e: string) => {
+        setCallState("idle");
+        setFeedback({ kind: "err", msg: `Call failed: ${e || "unknown"}` });
+      });
+      plivoRef.current = p;
 
-    return () => {
-      cancelled = true;
+      const { token } = await getPlivoSdkToken();
+      client.loginWithAccessToken(token);
+    } catch (e) {
       window.clearTimeout(timeout);
-    };
-  }, [mode, webrtc]);
+      connectingRef.current = false;
+      setWebrtc("error");
+      setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
+    }
+  }, []);
+
+  // Connect on entering browser mode; login persists across toggles.
+  useEffect(() => {
+    if (mode === "browser") void connectSoftphone();
+  }, [mode, connectSoftphone]);
+
+  const retrySoftphone = useCallback(() => {
+    try {
+      plivoRef.current?.client?.logout?.();
+    } catch {
+      /* ignore */
+    }
+    plivoRef.current = null;
+    connectingRef.current = false;
+    setWebrtc("idle");
+    void connectSoftphone();
+  }, [connectSoftphone]);
 
   // Tear down the SDK on unmount.
   useEffect(() => {
@@ -366,6 +370,16 @@ export default function Dialpad() {
                       ? "Softphone offline"
                       : "Connecting softphone…"}
                 </span>
+                {webrtc === "error" ? (
+                  <button
+                    type="button"
+                    onClick={retrySoftphone}
+                    className="inline-flex items-center gap-1 rounded-full border border-defaultborder/70 px-2.5 py-1 font-semibold text-defaulttextcolor/75 transition-colors hover:bg-black/[0.03] dark:text-white/70 dark:hover:bg-white/5"
+                  >
+                    <i className="ri-refresh-line" />
+                    Retry
+                  </button>
+                ) : null}
               </div>
             )}
 
