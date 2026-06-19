@@ -161,6 +161,28 @@ export default function Dialpad() {
         setWebrtc("error");
         setFeedback({ kind: "err", msg: `Softphone login failed: ${e || "unknown"}` });
       });
+      // Browser-level WebRTC block (Brave Shields, no WebRTC support) — login can
+      // still succeed over WSS but media never starts, so the call silently dies.
+      // Surface it instead of hanging on "Connecting…".
+      client.on("onWebrtcNotSupported", () => {
+        window.clearTimeout(timeout);
+        connectingRef.current = false;
+        setWebrtc("error");
+        setFeedback({
+          kind: "err",
+          msg: "WebRTC is blocked by this browser. In Brave, turn off Shields for this site (or use Chrome), then Retry.",
+        });
+      });
+      // Mic permission denied/blocked — same silent-death cause.
+      client.on("onMediaPermission", (perm: { audio?: boolean } | boolean) => {
+        const granted = typeof perm === "boolean" ? perm : perm?.audio !== false;
+        if (!granted) {
+          setFeedback({
+            kind: "err",
+            msg: "Microphone access is blocked. Allow the mic for this site, then Retry.",
+          });
+        }
+      });
       client.on("onCallRemoteRinging", () => setCallState("ringing"));
       client.on("onCallAnswered", () => setCallState("connected"));
       client.on("onCallTerminated", () => setCallState("idle"));
