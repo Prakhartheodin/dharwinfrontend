@@ -120,3 +120,16 @@ export async function placePlivoCall(
   const res = await apiClient.post<PlacePlivoCallResponse>("/plivo/call", params);
   return res.data;
 }
+
+export type PlivoSdkTokenResponse = {
+  success: boolean;
+  /** Short-lived (1h), outbound-only WebRTC access token for plivo-browser-sdk login. */
+  token: string;
+  username: string;
+};
+
+/** Mint a WebRTC access token for the browser softphone. Self-provisions Plivo app/endpoint server-side. */
+export async function getPlivoSdkToken(): Promise<PlivoSdkTokenResponse> {
+  const res = await apiClient.post<PlivoSdkTokenResponse>("/plivo/sdk-token", {});
+  return res.data;
+}

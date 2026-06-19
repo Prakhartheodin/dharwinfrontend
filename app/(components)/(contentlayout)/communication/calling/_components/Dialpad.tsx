@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   listOwnedPlivoNumbers,
   placePlivoCall,
+  getPlivoSdkToken,
   type OwnedPlivoNumber,
 } from "@/shared/lib/api/plivo";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
@@ -16,6 +17,10 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 const DIAL_OPTIONS = COUNTRY_PHONE_RULES.filter((c) => c.code !== "OTHER")
   .map((c) => ({ code: c.code, name: c.name, dialCode: c.dialCode }))
   .sort((a, b) => a.name.localeCompare(b.name));
+
+type Mode = "browser" | "phone";
+type WebrtcStatus = "idle" | "connecting" | "ready" | "error";
+type CallState = "idle" | "ringing" | "connected";
 
 function isE164(v: string): boolean {
   return /^\+[1-9]\d{7,14}$/.test(v.trim());
@@ -36,22 +41,48 @@ function apiErr(e: unknown, fallback: string): string {
 }
 
 /**
- * Click-to-call dialer. Plivo rings the agent's own phone first, then bridges to
- * the dialed number showing a bought number as caller ID — so there's no in-browser
- * audio to manage. Numbers to call FROM are the voice-enabled ones bought in Settings.
+ * Two-mode Plivo dialer:
+ *  - browser  : WebRTC softphone (plivo-browser-sdk). Talk through the laptop mic/speakers.
+ *  - phone    : click-to-call bridge. Plivo rings your phone, then connects to the target.
+ * Both show the chosen bought number as caller ID and are billed to the Plivo account.
  */
 export default function Dialpad() {
+  const [mode, setMode] = useState<Mode>("browser");
+
   const [owned, setOwned] = useState<OwnedPlivoNumber[]>([]);
   const [ownedLoading, setOwnedLoading] = useState(true);
   const [callerId, setCallerId] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
   const [country, setCountry] = useState("US");
   const [dest, setDest] = useState("+1");
-  const [placing, setPlacing] = useState(false);
-
   const [agentCountry, setAgentCountry] = useState("US");
+  const [placing, setPlacing] = useState(false);
+  const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
-  // Swap a dial-code prefix on a field, keeping any national digits already typed.
+  // WebRTC softphone state.
+  const plivoRef = useRef<any>(null);
+  const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
+  const [callState, setCallState] = useState<CallState>("idle");
+
+  const voiceNumbers = useMemo(() => owned.filter((n) => n.voiceEnabled), [owned]);
+
+  useEffect(() => {
+    setAgentPhone(localStorage.getItem(AGENT_PHONE_KEY) || "");
+    (async () => {
+      try {
+        const res = await listOwnedPlivoNumbers();
+        const nums = res.numbers || [];
+        setOwned(nums);
+        const firstVoice = nums.find((n) => n.voiceEnabled);
+        if (firstVoice) setCallerId(toE164(firstVoice.number));
+      } catch {
+        /* surfaced via the "no numbers" hint below */
+      } finally {
+        setOwnedLoading(false);
+      }
+    })();
+  }, []);
+
   const swapDial = useCallback(
     (prevCode: string, nextCode: string, set: React.Dispatch<React.SetStateAction<string>>) => {
       const next = DIAL_OPTIONS.find((o) => o.code === nextCode);
@@ -80,27 +111,6 @@ export default function Dialpad() {
     },
     [agentCountry, swapDial]
   );
-  const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
-
-  // Voice-capable bought numbers are the only valid caller IDs.
-  const voiceNumbers = useMemo(() => owned.filter((n) => n.voiceEnabled), [owned]);
-
-  useEffect(() => {
-    setAgentPhone(localStorage.getItem(AGENT_PHONE_KEY) || "");
-    (async () => {
-      try {
-        const res = await listOwnedPlivoNumbers();
-        const nums = res.numbers || [];
-        setOwned(nums);
-        const firstVoice = nums.find((n) => n.voiceEnabled);
-        if (firstVoice) setCallerId(toE164(firstVoice.number));
-      } catch {
-        /* surfaced via the "no numbers" hint below */
-      } finally {
-        setOwnedLoading(false);
-      }
-    })();
-  }, []);
 
   const press = useCallback((k: string) => {
     setDest((prev) => (prev === "+" && k !== "+" ? `+${k}` : prev + k));
@@ -110,9 +120,88 @@ export default function Dialpad() {
     setDest((prev) => (prev.length <= 1 ? "+" : prev.slice(0, -1)));
   }, []);
 
-  const canCall = isE164(dest) && isE164(agentPhone) && isE164(callerId) && !placing;
+  // --- WebRTC softphone: login when browser mode is active -------------------
+  useEffect(() => {
+    if (mode !== "browser") return;
+    if (plivoRef.current || webrtc === "connecting" || webrtc === "ready") return;
 
-  const handleCall = useCallback(async () => {
+    let cancelled = false;
+    setWebrtc("connecting");
+    setFeedback(null);
+    (async () => {
+      try {
+        const mod: any = await import("plivo-browser-sdk");
+        const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
+        const p = new Plivo({ debug: "WARN", permOnClick: true, enableTracking: false });
+        const client = p.client;
+        client.on("onLogin", () => !cancelled && setWebrtc("ready"));
+        client.on("onLoginFailed", (e: string) => {
+          if (cancelled) return;
+          setWebrtc("error");
+          setFeedback({ kind: "err", msg: `Softphone login failed: ${e || "unknown"}` });
+        });
+        client.on("onCallRemoteRinging", () => !cancelled && setCallState("ringing"));
+        client.on("onCallAnswered", () => !cancelled && setCallState("connected"));
+        client.on("onCallTerminated", () => !cancelled && setCallState("idle"));
+        client.on("onCallFailed", (e: string) => {
+          if (cancelled) return;
+          setCallState("idle");
+          setFeedback({ kind: "err", msg: `Call failed: ${e || "unknown"}` });
+        });
+        plivoRef.current = p;
+
+        const { token } = await getPlivoSdkToken();
+        if (cancelled) return;
+        client.loginWithAccessToken(token);
+      } catch (e) {
+        if (cancelled) return;
+        setWebrtc("error");
+        setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, webrtc]);
+
+  // Tear down the SDK on unmount.
+  useEffect(() => {
+    return () => {
+      try {
+        plivoRef.current?.client?.logout?.();
+      } catch {
+        /* ignore */
+      }
+      plivoRef.current = null;
+    };
+  }, []);
+
+  const canCall =
+    isE164(dest) &&
+    isE164(callerId) &&
+    !placing &&
+    (mode === "browser" ? webrtc === "ready" && callState === "idle" : isE164(agentPhone));
+
+  const handleBrowserCall = useCallback(() => {
+    const client = plivoRef.current?.client;
+    if (!client) return;
+    setFeedback(null);
+    setCallState("ringing");
+    // extraHeaders keys must start with "X-PH-"; Plivo forwards them to the answer URL.
+    client.call(dest.trim(), { "X-PH-callerId": callerId });
+  }, [dest, callerId]);
+
+  const hangup = useCallback(() => {
+    try {
+      plivoRef.current?.client?.hangup?.();
+    } catch {
+      /* ignore */
+    }
+    setCallState("idle");
+  }, []);
+
+  const handlePhoneCall = useCallback(async () => {
     setFeedback(null);
     localStorage.setItem(AGENT_PHONE_KEY, agentPhone.trim());
     setPlacing(true);
@@ -130,12 +219,34 @@ export default function Dialpad() {
     }
   }, [dest, agentPhone, callerId]);
 
+  const onCall = mode === "browser" ? handleBrowserCall : () => void handlePhoneCall();
+  const inCall = mode === "browser" && callState !== "idle";
+
   return (
     <div className="box custom-box mb-5">
-      <div className="box-header">
+      <div className="box-header flex items-center justify-between gap-3">
         <div className="box-title flex items-center gap-2">
           <i className="ri-dial-pad-line text-primary" />
           Dialer
+        </div>
+        {/* Mode toggle: browser audio vs ring-my-phone */}
+        <div className="inline-flex rounded-lg border border-defaultborder/70 p-0.5 dark:border-white/10">
+          {(["browser", "phone"] as Mode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMode(m)}
+              disabled={inCall}
+              className={`rounded-md px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                mode === m
+                  ? "bg-primary text-white"
+                  : "text-defaulttextcolor/70 hover:bg-black/[0.03] dark:text-white/70 dark:hover:bg-white/5"
+              }`}
+            >
+              <i className={`${m === "browser" ? "ri-computer-line" : "ri-smartphone-line"} me-1`} />
+              {m === "browser" ? "Browser" : "My phone"}
+            </button>
+          ))}
         </div>
       </div>
       <div className="box-body">
@@ -172,42 +283,69 @@ export default function Dialpad() {
               )}
             </label>
 
-            <label className="block">
-              <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
-                Your phone (rings first)
-              </span>
-              <div className="flex items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 dark:border-white/10 dark:bg-black/20">
-                <select
-                  className="shrink-0 rounded-md border-0 bg-transparent py-2 text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
-                  value={agentCountry}
-                  onChange={(e) => handleAgentCountry(e.target.value)}
-                  aria-label="Your phone country dial code"
-                  title="Country dial code"
+            {mode === "phone" ? (
+              <label className="block">
+                <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
+                  Your phone (rings first)
+                </span>
+                <div className="flex items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 dark:border-white/10 dark:bg-black/20">
+                  <select
+                    className="shrink-0 rounded-md border-0 bg-transparent py-2 text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
+                    value={agentCountry}
+                    onChange={(e) => handleAgentCountry(e.target.value)}
+                    aria-label="Your phone country dial code"
+                    title="Country dial code"
+                  >
+                    {DIAL_OPTIONS.map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.code} {o.dialCode}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="h-5 w-px shrink-0 bg-defaultborder/70 dark:bg-white/10" aria-hidden />
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    placeholder="+14155550100"
+                    className="w-full bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
+                    value={agentPhone}
+                    onChange={(e) => setAgentPhone(e.target.value)}
+                  />
+                </div>
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 text-xs">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold ${
+                    webrtc === "ready"
+                      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                      : webrtc === "error"
+                        ? "bg-danger/10 text-danger"
+                        : "bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                  }`}
                 >
-                  {DIAL_OPTIONS.map((o) => (
-                    <option key={o.code} value={o.code}>
-                      {o.code} {o.dialCode}
-                    </option>
-                  ))}
-                </select>
-                <span className="h-5 w-px shrink-0 bg-defaultborder/70 dark:bg-white/10" aria-hidden />
-                <input
-                  type="tel"
-                  inputMode="tel"
-                  placeholder="+14155550100"
-                  className="w-full bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
-                  value={agentPhone}
-                  onChange={(e) => setAgentPhone(e.target.value)}
-                />
+                  <i
+                    className={
+                      webrtc === "ready"
+                        ? "ri-mic-line"
+                        : webrtc === "error"
+                          ? "ri-error-warning-line"
+                          : "ri-loader-4-line animate-spin"
+                    }
+                  />
+                  {webrtc === "ready"
+                    ? "Softphone ready"
+                    : webrtc === "error"
+                      ? "Softphone offline"
+                      : "Connecting softphone…"}
+                </span>
               </div>
-              {agentPhone && !isE164(agentPhone) ? (
-                <span className="mt-1 block text-[0.7rem] text-danger">Use E.164 format, e.g. +14155550100</span>
-              ) : null}
-            </label>
+            )}
 
             <p className="text-[0.7rem] leading-relaxed text-defaulttextcolor/55 dark:text-white/45">
-              Plivo rings your phone, then connects you to the dialed number. The recipient sees
-              your bought number. Calls are billed to the Plivo account.
+              {mode === "browser"
+                ? "You talk through this browser (mic + speakers). The recipient sees your bought number. Calls are billed to the Plivo account."
+                : "Plivo rings your phone, then connects you to the dialed number. The recipient sees your bought number. Calls are billed to the Plivo account."}
             </p>
           </div>
 
@@ -259,15 +397,26 @@ export default function Dialpad() {
               ))}
             </div>
 
-            <button
-              type="button"
-              disabled={!canCall}
-              onClick={() => void handleCall()}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <i className={placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"} />
-              {placing ? "Calling…" : "Call"}
-            </button>
+            {inCall ? (
+              <button
+                type="button"
+                onClick={hangup}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-danger py-3 text-sm font-semibold text-white transition-colors hover:bg-danger/90"
+              >
+                <i className="ri-phone-fill rotate-[135deg]" />
+                {callState === "ringing" ? "Ringing… Hang up" : "Connected — Hang up"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={!canCall}
+                onClick={onCall}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <i className={placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"} />
+                {placing ? "Calling…" : "Call"}
+              </button>
+            )}
 
             {feedback ? (
               <div
