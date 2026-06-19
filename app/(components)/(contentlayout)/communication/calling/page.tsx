@@ -13,6 +13,7 @@ import {
 } from "@/shared/lib/api/bolna";
 import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
+import Dialpad from "./_components/Dialpad";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
@@ -203,6 +204,7 @@ const Calling = () => {
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
   /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
   const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
+  const [showDialer, setShowDialer] = useState(false);
 
   const PANEL_TRANSITION_MS = 320;
 
@@ -487,6 +489,11 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
+      {showDialer ? (
+        <div className="mt-5 sm:mt-6">
+          <Dialpad />
+        </div>
+      ) : null}
       {/*
         Desktop (xl+): flex row — details column animates width 0→28rem so the main table eases into
         the freed space (no overlap). Mobile: main stays full width; details stays fixed slide-over.
@@ -505,6 +512,18 @@ const Calling = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDialer((v) => !v)}
+                  aria-pressed={showDialer}
+                  title="Toggle dialer"
+                  className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] ${
+                    showDialer ? "ti-btn-success-full" : "ti-btn-light"
+                  }`}
+                >
+                  <i className="ri-dial-pad-line align-middle me-1" />
+                  Dialer
+                </button>
                 <div className="relative">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
                   <input

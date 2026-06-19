@@ -97,3 +97,26 @@ export async function listOwnedPlivoNumbers(): Promise<ListOwnedPlivoNumbersResp
   const res = await apiClient.get<ListOwnedPlivoNumbersResponse>("/plivo/numbers/owned");
   return res.data;
 }
+
+export type PlacePlivoCallParams = {
+  /** Number to dial, E.164 (e.g. +14155550100). */
+  toNumber: string;
+  /** Your own phone — Plivo rings this first, then bridges to toNumber. */
+  agentPhone: string;
+  /** A bought number to show as caller ID, E.164. */
+  callerId: string;
+};
+
+export type PlacePlivoCallResponse = {
+  success: boolean;
+  requestUuid?: string;
+  message?: string;
+};
+
+/** Place a click-to-call bridge — REAL, billable action. Plivo rings your phone, then dials the target. */
+export async function placePlivoCall(
+  params: PlacePlivoCallParams
+): Promise<PlacePlivoCallResponse> {
+  const res = await apiClient.post<PlacePlivoCallResponse>("/plivo/call", params);
+  return res.data;
+}
