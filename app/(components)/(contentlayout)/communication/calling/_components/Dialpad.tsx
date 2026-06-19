@@ -128,15 +128,37 @@ export default function Dialpad() {
     let cancelled = false;
     setWebrtc("connecting");
     setFeedback(null);
+
+    // Don't spin forever: if login never resolves (slow token endpoint, free-tier
+    // cold start, blocked WebRTC), surface an actionable error after 60s.
+    const timeout = window.setTimeout(() => {
+      if (cancelled) return;
+      setWebrtc((s) => {
+        if (s === "ready") return s;
+        setFeedback({
+          kind: "err",
+          msg: "Softphone didn't connect. Check the call token request in Network — a free-tier backend can cold-start (~60s); switch the toggle to retry.",
+        });
+        return "error";
+      });
+    }, 60000);
+
     (async () => {
       try {
         const mod: any = await import("plivo-browser-sdk");
         const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
-        const p = new Plivo({ debug: "WARN", permOnClick: true, enableTracking: false });
+        const p = new Plivo({ debug: "DEBUG", permOnClick: true, enableTracking: false });
         const client = p.client;
-        client.on("onLogin", () => !cancelled && setWebrtc("ready"));
+        const markReady = () => {
+          if (cancelled) return;
+          window.clearTimeout(timeout);
+          setWebrtc("ready");
+        };
+        client.on("onLogin", markReady);
+        client.on("onReady", markReady);
         client.on("onLoginFailed", (e: string) => {
           if (cancelled) return;
+          window.clearTimeout(timeout);
           setWebrtc("error");
           setFeedback({ kind: "err", msg: `Softphone login failed: ${e || "unknown"}` });
         });
@@ -155,6 +177,7 @@ export default function Dialpad() {
         client.loginWithAccessToken(token);
       } catch (e) {
         if (cancelled) return;
+        window.clearTimeout(timeout);
         setWebrtc("error");
         setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
       }
@@ -162,6 +185,7 @@ export default function Dialpad() {
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [mode, webrtc]);
 
