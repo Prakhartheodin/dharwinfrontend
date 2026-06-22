@@ -512,18 +512,21 @@ const Calling = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDialer((v) => !v)}
-                  aria-pressed={showDialer}
-                  title="Toggle dialer"
-                  className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] ${
-                    showDialer ? "ti-btn-success-full" : "ti-btn-light"
-                  }`}
-                >
-                  <i className="ri-dial-pad-line align-middle me-1" />
-                  Dialer
-                </button>
+                {/* ponytail: dialer hidden for dharwin main; flip to true to re-enable */}
+                {false && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDialer((v) => !v)}
+                    aria-pressed={showDialer}
+                    title="Toggle dialer"
+                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] ${
+                      showDialer ? "ti-btn-success-full" : "ti-btn-light"
+                    }`}
+                  >
+                    <i className="ri-dial-pad-line align-middle me-1" />
+                    Dialer
+                  </button>
+                )}
                 <div className="relative">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
                   <input
