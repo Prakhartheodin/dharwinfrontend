@@ -495,16 +495,23 @@ export default function SettingsAttendanceBackdatedPage() {
       return;
     }
     const first = entries[0];
-    const dateStr = new Date(first.date).toISOString().split("T")[0];
+    const last = entries[entries.length - 1];
+    const fromStr = new Date(first.date).toISOString().split("T")[0];
+    const toStr = new Date(last.date).toISOString().split("T")[0];
     const punchInObj = new Date(first.punchIn);
     const punchOutObj = first.punchOut ? new Date(first.punchOut) : null;
     const punchInTime = punchInObj.toTimeString().slice(0, 5);
     const punchOutTime = punchOutObj ? punchOutObj.toTimeString().slice(0, 5) : "";
+    const todayStr = new Date().toISOString().split("T")[0];
     const { value: form } = await Swal.fire({
       title: "Update Backdated Attendance Request",
       html: `
-        <div class="text-left mb-4"><p><strong>Student:</strong> ${getStudentName(request)}</p></div>
-        <input id="date" type="date" value="${dateStr}" class="swal2-input" max="${new Date().toISOString().split("T")[0]}">
+        <div class="text-left mb-2"><p><strong>Student:</strong> ${getStudentName(request)}</p></div>
+        <div class="text-left text-xs text-gray-500 mb-2">Punch In/Out apply to every working day in the range (weekends excluded).</div>
+        <label class="swal2-input-label">From</label>
+        <input id="fromDate" type="date" value="${fromStr}" class="swal2-input" max="${todayStr}">
+        <label class="swal2-input-label">To</label>
+        <input id="toDate" type="date" value="${toStr}" class="swal2-input" max="${todayStr}">
         <input id="punchIn" type="time" value="${punchInTime}" class="swal2-input">
         <input id="punchOut" type="time" value="${punchOutTime}" class="swal2-input">
         <input id="timezone" type="text" value="${first.timezone || "UTC"}" class="swal2-input" placeholder="Timezone">
@@ -514,16 +521,21 @@ export default function SettingsAttendanceBackdatedPage() {
       confirmButtonText: "Update",
       cancelButtonText: "Cancel",
       preConfirm: () => {
-        const date = (document.getElementById("date") as HTMLInputElement)?.value;
+        const fromDate = (document.getElementById("fromDate") as HTMLInputElement)?.value;
+        const toDate = (document.getElementById("toDate") as HTMLInputElement)?.value;
         const punchIn = (document.getElementById("punchIn") as HTMLInputElement)?.value;
         const punchOut = (document.getElementById("punchOut") as HTMLInputElement)?.value;
         const timezone = (document.getElementById("timezone") as HTMLInputElement)?.value;
         const notes = (document.getElementById("notes") as HTMLTextAreaElement)?.value;
-        if (!date || !punchIn || !punchOut) {
-          Swal.showValidationMessage("Date, punch in, and punch out are required");
+        if (!fromDate || !toDate || !punchIn || !punchOut) {
+          Swal.showValidationMessage("From, To, punch in, and punch out are required");
           return false;
         }
-        return { date, punchIn, punchOut, timezone, notes };
+        if (toDate < fromDate) {
+          Swal.showValidationMessage("To date must be on or after From date");
+          return false;
+        }
+        return { fromDate, toDate, punchIn, punchOut, timezone, notes };
       },
     });
     if (!form) return;
@@ -531,26 +543,32 @@ export default function SettingsAttendanceBackdatedPage() {
     try {
       // Normalize time to HH:mm so "9:30" parses reliably as "09:30"
       const n = (t: string) => (t.length === 5 && t.includes(":") ? t : t.includes(":") ? `${t.split(":")[0].padStart(2, "0")}:${t.split(":")[1] ?? "00"}` : `${t.padStart(2, "0")}:00`);
-      const punchInNorm = n(form.punchIn);
-      const punchOutNorm = n(form.punchOut);
-      const dateISO = new Date(form.date).toISOString();
-      const punchInISO = new Date(`${form.date}T${punchInNorm}`).toISOString();
-      const punchOutISO = new Date(`${form.date}T${punchOutNorm}`).toISOString();
-      // Ensure every entry sends full ISO strings so backend validation accepts them
-      const toISO = (v: string | Date | undefined | null) => (v == null ? null : typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v) ? v : new Date(v as string).toISOString());
-      const attendanceEntries =
-        entries.length > 1
-          ? entries.map((entry, i) =>
-              i === 0
-                ? { date: dateISO, punchIn: punchInISO, punchOut: punchOutISO, timezone: form.timezone || "UTC" }
-                : {
-                    date: toISO(entry.date) ?? entry.date,
-                    punchIn: toISO(entry.punchIn) ?? entry.punchIn,
-                    punchOut: entry.punchOut != null ? (toISO(entry.punchOut) ?? entry.punchOut) : null,
-                    timezone: entry.timezone || "UTC",
-                  }
-            )
-          : [{ date: dateISO, punchIn: punchInISO, punchOut: punchOutISO, timezone: form.timezone || "UTC" }];
+      const pIn = n(form.punchIn);
+      const pOut = n(form.punchOut);
+      const tz = form.timezone || "UTC";
+      const pad = (num: number) => String(num).padStart(2, "0");
+      // Rebuild entries across the From–To range over working days, same as the create-range flow.
+      const attendanceEntries: Array<{ date: string; punchIn: string; punchOut: string; timezone: string }> = [];
+      const current = new Date(form.fromDate);
+      current.setHours(0, 0, 0, 0);
+      const end = new Date(form.toDate);
+      end.setHours(0, 0, 0, 0);
+      while (current <= end) {
+        if (!isWeekOffDay(current)) {
+          const dateKey = `${current.getFullYear()}-${pad(current.getMonth() + 1)}-${pad(current.getDate())}`;
+          const punchInDt = new Date(dateKey + "T" + pIn);
+          let punchOutDt = new Date(dateKey + "T" + pOut);
+          if (punchOutDt <= punchInDt) punchOutDt = new Date(punchOutDt.getTime() + 86400000);
+          if (punchOutDt.getTime() - punchInDt.getTime() > 8 * 60 * 60 * 1000) {
+            throw new Error("Duration cannot exceed 8 hours");
+          }
+          attendanceEntries.push({ date: dateKey, punchIn: punchInDt.toISOString(), punchOut: punchOutDt.toISOString(), timezone: tz });
+        }
+        current.setDate(current.getDate() + 1);
+      }
+      if (attendanceEntries.length === 0) {
+        throw new Error("The selected date range has no working days (weekends excluded).");
+      }
       await updateBackdatedAttendanceRequest(requestId, { attendanceEntries, notes: form.notes || undefined });
       await Swal.fire({ icon: "success", title: "Updated", text: "Request updated.", confirmButtonText: "OK" });
       await fetchRequests();
