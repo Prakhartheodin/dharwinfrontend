@@ -61,6 +61,7 @@ function getFormatter(timeZone: string, locale = 'en-GB'): Intl.DateTimeFormat {
 /** Render a UTC instant in a zone, e.g. "20 May 2026, 04:30 pm UTC". */
 export function formatInZone(instant: string | number | Date, tz: string): string {
   const date = instant instanceof Date ? instant : new Date(instant);
+  if (Number.isNaN(date.getTime())) return '—'; // missing/malformed instant; Intl.format would throw RangeError
   return getFormatter(normalizeTimezone(tz)).format(date);
 }
 
@@ -74,6 +75,7 @@ export function formatDualZone(
   viewerTz?: string
 ): string {
   const primary = formatInZone(instant, meetingTz);
+  if (primary === '—') return primary; // invalid instant; don't render "— (—)"
   if (!viewerTz) return primary;
   if (normalizeTimezone(viewerTz) === normalizeTimezone(meetingTz)) return primary;
   return `${primary} (${formatInZone(instant, viewerTz)})`;

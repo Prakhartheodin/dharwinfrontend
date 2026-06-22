@@ -5,6 +5,8 @@ import {
   wallClockToUtc,
   getZoneOffsetLabel,
   formatZoneLabel,
+  formatInZone,
+  formatDualZone,
 } from '../timezone';
 
 describe('timezone helpers', () => {
@@ -32,6 +34,24 @@ describe('timezone helpers', () => {
     expect(utc).toBe('2026-06-01T14:30:00.000Z');
     // The old append-Z behavior would have produced this wrong instant:
     expect(utc).not.toBe('2026-06-01T20:00:00.000Z');
+  });
+});
+
+describe('formatInZone / formatDualZone invalid-instant guard', () => {
+  // Regression: a meeting row with a missing/malformed scheduledAt reached the
+  // table after the 100-row cap was lifted. Intl.DateTimeFormat.format(Invalid Date)
+  // throws RangeError "Invalid time value", crashing the whole interviews table.
+  it('returns a dash for an empty instant instead of throwing', () => {
+    expect(formatInZone('', 'Asia/Kolkata')).toBe('—');
+  });
+
+  it('returns a dash for a malformed instant instead of throwing', () => {
+    expect(formatInZone('not-a-date', 'UTC')).toBe('—');
+    expect(formatDualZone('not-a-date', 'UTC', 'Asia/Kolkata')).toBe('—');
+  });
+
+  it('still formats a valid instant', () => {
+    expect(formatInZone('2026-05-20T16:30:00.000Z', 'UTC')).toMatch(/2026/);
   });
 });
 

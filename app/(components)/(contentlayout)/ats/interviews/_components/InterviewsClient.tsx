@@ -347,8 +347,15 @@ export default function InterviewsClient() {
     setMeetingsLoading(true)
     setMeetingsError(null)
     try {
-      const res = await listMeetings({ limit: 100 })
-      setMeetings(res.results || [])
+      // Backend caps limit at 100 (Joi max). Walk pages so orgs with >100 interviews
+      // see all of them, not just the first page. Cap 50 → 5000 interviews.
+      const aggregated: Meeting[] = []
+      for (let page = 1; page <= 50; page++) {
+        const res = await listMeetings({ limit: 100, page })
+        aggregated.push(...(res.results ?? []))
+        if (page >= (res.totalPages ?? 1)) break
+      }
+      setMeetings(aggregated)
     } catch (err: any) {
       setMeetingsError(err?.response?.data?.message || err?.message || 'Failed to load interviews')
       setMeetings([])
