@@ -313,6 +313,7 @@ export function StudentAttendanceClient() {
         const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
         let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
         if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
+        if (punchOutDateTime.getTime() - punchInDateTime.getTime() > 8 * 60 * 60 * 1000) throw new Error(`${entry.date}: duration cannot exceed 8 hours`);
         return {
           date: new Date(entry.date).toISOString().slice(0, 10),
           punchIn: punchInDateTime.toISOString(),
@@ -378,6 +379,7 @@ export function StudentAttendanceClient() {
         const punchInDateTime = new Date(`${entry.date}T${punchInStr}`);
         let punchOutDateTime = new Date(`${entry.date}T${punchOutStr}`);
         if (punchOutDateTime <= punchInDateTime) punchOutDateTime = new Date(punchOutDateTime.getTime() + 86400000);
+        if (punchOutDateTime.getTime() - punchInDateTime.getTime() > 8 * 60 * 60 * 1000) throw new Error(`${entry.date}: duration cannot exceed 8 hours`);
         return {
           date: new Date(entry.date).toISOString().slice(0, 10),
           punchIn: punchInDateTime.toISOString(),
