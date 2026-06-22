@@ -65,7 +65,12 @@ export default function Dialpad() {
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
   const [callState, setCallState] = useState<CallState>("idle");
 
-  const voiceNumbers = useMemo(() => owned.filter((n) => n.voiceEnabled), [owned]);
+  // ponytail: toll-free numbers are inbound-only — Plivo rejects them as an outbound
+  // caller ID, surfacing as "Busy" with no CDR. Keep them out of originating options.
+  const voiceNumbers = useMemo(
+    () => owned.filter((n) => n.voiceEnabled && n.type !== "tollfree"),
+    [owned]
+  );
 
   useEffect(() => {
     setAgentPhone(localStorage.getItem(AGENT_PHONE_KEY) || "");
@@ -74,7 +79,7 @@ export default function Dialpad() {
         const res = await listOwnedPlivoNumbers();
         const nums = res.numbers || [];
         setOwned(nums);
-        const firstVoice = nums.find((n) => n.voiceEnabled);
+        const firstVoice = nums.find((n) => n.voiceEnabled && n.type !== "tollfree");
         if (firstVoice) setCallerId(toE164(firstVoice.number));
       } catch {
         /* surfaced via the "no numbers" hint below */
