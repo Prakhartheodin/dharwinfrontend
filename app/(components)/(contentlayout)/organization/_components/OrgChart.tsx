@@ -598,83 +598,85 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           <label htmlFor="org-chart-search" className="form-label !text-[0.75rem] mb-1">
             Search chart
           </label>
-          <i className="ri-search-line absolute left-3 top-[2.35rem] -translate-y-1/2 text-defaulttextcolor/45" aria-hidden />
-          <input
-            id="org-chart-search"
-            type="text"
-            autoComplete="off"
-            className="form-control !ps-9 !pe-9 !py-2 !text-[0.8125rem]"
-            placeholder="Find unit or employee…"
-            value={searchInput}
-            onChange={(e) => {
-              setSearchInput(e.target.value);
-              setActiveIndex(-1);
-              setSearchOpen(true);
-            }}
-            onFocus={() => setSearchOpen(true)}
-            onBlur={() => setSearchOpen(false)}
-            onKeyDown={onSearchKeyDown}
-            role="combobox"
-            aria-expanded={searchOpen && debouncedQ.length >= 2}
-            aria-controls="org-chart-search-results"
-            aria-activedescendant={activeIndex >= 0 ? `org-search-opt-${activeIndex}` : undefined}
-            aria-describedby="org-chart-search-hint"
-          />
-          <span className="absolute right-2.5 top-[2.35rem] -translate-y-1/2">
-            {searchLoading ? (
-              <span className="ti-spinner !h-4 !w-4 text-primary" role="status" aria-label="Searching" />
-            ) : searchInput ? (
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={clearSearch}
-                aria-label="Clear search"
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-defaulttextcolor/50 transition-colors hover:bg-light/70 hover:text-defaulttextcolor dark:hover:bg-white/[0.06]"
-              >
-                <i className="ri-close-line text-base" aria-hidden />
-              </button>
-            ) : null}
-          </span>
-          {searchOpen && debouncedQ.length >= 2 ? (
-            <div
-              id="org-chart-search-results"
-              role="listbox"
-              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-defaultborder/70 bg-white shadow-lg dark:bg-bodybg"
-            >
+          <div className="relative">
+            <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-defaulttextcolor/45" aria-hidden />
+            <input
+              id="org-chart-search"
+              type="text"
+              autoComplete="off"
+              className="form-control !ps-9 !pe-9 !py-2 !text-[0.8125rem]"
+              placeholder="Find unit or employee…"
+              value={searchInput}
+              onChange={(e) => {
+                setSearchInput(e.target.value);
+                setActiveIndex(-1);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => setSearchOpen(false)}
+              onKeyDown={onSearchKeyDown}
+              role="combobox"
+              aria-expanded={searchOpen && debouncedQ.length >= 2}
+              aria-controls="org-chart-search-results"
+              aria-activedescendant={activeIndex >= 0 ? `org-search-opt-${activeIndex}` : undefined}
+              aria-describedby="org-chart-search-hint"
+            />
+            <span className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
               {searchLoading ? (
-                <div className="flex items-center gap-2 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">
-                  <span className="ti-spinner !h-3.5 !w-3.5" aria-hidden />
-                  Searching…
-                </div>
-              ) : !searchRows.length ? (
-                <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">No matches for “{debouncedQ}”.</p>
-              ) : (
-                <ul className="py-1">
-                  {searchRows.map((row, i) => (
-                    <li key={row.key} id={`org-search-opt-${i}`} role="option" aria-selected={i === activeIndex}>
-                      <button
-                        type="button"
-                        disabled={!row.pathIds.length}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onMouseEnter={() => setActiveIndex(i)}
-                        onClick={() => goToHit(row.pathIds)}
-                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8125rem] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                          i === activeIndex ? "bg-primary/10 text-primary" : "hover:bg-light/70 dark:hover:bg-white/[0.04]"
-                        }`}
-                      >
-                        <i
-                          className={`${row.kind === "employee" ? "ri-user-3-line" : "ri-node-tree"} shrink-0 text-defaulttextcolor/45`}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1 truncate font-medium">{row.label}</span>
-                        <span className="shrink-0 text-[0.7rem] text-defaulttextcolor/55">{row.sublabel}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ) : null}
+                <span className="ti-spinner !h-4 !w-4 text-primary" role="status" aria-label="Searching" />
+              ) : searchInput ? (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={clearSearch}
+                  aria-label="Clear search"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-defaulttextcolor/50 transition-colors hover:bg-light/70 hover:text-defaulttextcolor dark:hover:bg-white/[0.06]"
+                >
+                  <i className="ri-close-line text-base leading-none" aria-hidden />
+                </button>
+              ) : null}
+            </span>
+            {searchOpen && debouncedQ.length >= 2 ? (
+              <div
+                id="org-chart-search-results"
+                role="listbox"
+                className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-defaultborder/70 bg-white shadow-lg dark:bg-bodybg"
+              >
+                {searchLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">
+                    <span className="ti-spinner !h-3.5 !w-3.5" aria-hidden />
+                    Searching…
+                  </div>
+                ) : !searchRows.length ? (
+                  <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">No matches for “{debouncedQ}”.</p>
+                ) : (
+                  <ul className="py-1">
+                    {searchRows.map((row, i) => (
+                      <li key={row.key} id={`org-search-opt-${i}`} role="option" aria-selected={i === activeIndex}>
+                        <button
+                          type="button"
+                          disabled={!row.pathIds.length}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onMouseEnter={() => setActiveIndex(i)}
+                          onClick={() => goToHit(row.pathIds)}
+                          className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8125rem] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            i === activeIndex ? "bg-primary/10 text-primary" : "hover:bg-light/70 dark:hover:bg-white/[0.04]"
+                          }`}
+                        >
+                          <i
+                            className={`${row.kind === "employee" ? "ri-user-3-line" : "ri-node-tree"} shrink-0 text-defaulttextcolor/45`}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate font-medium">{row.label}</span>
+                          <span className="shrink-0 text-[0.7rem] text-defaulttextcolor/55">{row.sublabel}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
+          </div>
           <div id="org-chart-search-hint" className="mt-1 flex min-h-[1.25rem] items-center gap-2">
             {highlightPathIds.length ? (
               <button
