@@ -199,6 +199,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const [initialTreeDepth, setTreeDepth] = useState<number>(-1);
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [unassignedFilter, setUnassignedFilter] = useState("");
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
@@ -534,6 +535,12 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     return rows;
   }, [searchResult]);
 
+  const filteredUnassigned = useMemo(() => {
+    const q = unassignedFilter.trim().toLowerCase();
+    if (!q) return tree.unassigned;
+    return tree.unassigned.filter((e) => e.fullName.toLowerCase().includes(q));
+  }, [tree.unassigned, unassignedFilter]);
+
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -697,20 +704,43 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
             </div>
             <span className="badge bg-warning/15 text-warning">{tree.unassigned.length}</span>
           </div>
-          <div className="flex flex-wrap gap-2 p-4">
-            {tree.unassigned.map((e) => (
-              <Link
-                key={e.id}
-                href={`/ats/employees/edit?id=${e.id}`}
-                className="inline-flex items-center rounded-full border border-defaultborder/60 bg-white px-2.5 py-1 text-[0.75rem] font-medium text-defaulttextcolor hover:border-primary/40 dark:bg-bodybg"
-              >
-                <i className="ri-user-3-line me-1 text-defaulttextcolor/45" aria-hidden />
-                {e.fullName}
-              </Link>
-            ))}
-          </div>
+          {tree.unassigned.length > 12 ? (
+            <div className="relative border-b border-warning/15 px-4 py-3">
+              <i className="ri-search-line absolute left-7 top-1/2 -translate-y-1/2 text-defaulttextcolor/45" aria-hidden />
+              <input
+                type="search"
+                className="form-control !ps-9 !py-2 !text-[0.8125rem]"
+                placeholder={`Filter ${tree.unassigned.length} unassigned employees…`}
+                value={unassignedFilter}
+                onChange={(e) => setUnassignedFilter(e.target.value)}
+                aria-label="Filter unassigned employees"
+              />
+            </div>
+          ) : null}
+          {filteredUnassigned.length ? (
+            <div className="flex max-h-72 flex-wrap content-start gap-2 overflow-auto p-4">
+              {filteredUnassigned.map((e) => (
+                <Link
+                  key={e.id}
+                  href={`/ats/employees/edit?id=${e.id}`}
+                  title={`Open ${e.fullName}`}
+                  className="inline-flex min-h-[2rem] items-center rounded-full border border-defaultborder/60 bg-white px-3 py-1.5 text-[0.8125rem] font-medium text-defaulttextcolor transition-colors hover:border-primary/50 hover:text-primary dark:bg-bodybg"
+                >
+                  <i className="ri-user-3-line me-1.5 text-defaulttextcolor/45" aria-hidden />
+                  {e.fullName}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="mb-0 px-4 py-6 text-[0.8125rem] text-defaulttextcolor/65">
+              No unassigned employee matches “{unassignedFilter}”.
+            </p>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-warning/15 px-4 py-3">
             <p className="mb-0 text-[0.75rem] text-defaulttextcolor/60">
+              {unassignedFilter.trim()
+                ? `Showing ${filteredUnassigned.length} of ${tree.unassigned.length}. `
+                : ""}
               Assign these employees to a department to place them on the chart.
             </p>
             <div className="flex flex-wrap items-center gap-2">
