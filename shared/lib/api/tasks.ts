@@ -95,6 +95,7 @@ export interface TasksListParams {
   sprintId?: string;
   search?: string;
   assignedToMe?: boolean;
+  leaving?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -118,7 +119,13 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 
 export async function listTasks(params?: TasksListParams): Promise<TasksListResponse> {
   const { data } = await apiClient.get<TasksListResponse>("/tasks", {
-    params: params ? { ...params, assignedToMe: params.assignedToMe === true ? "true" : undefined } : undefined,
+    params: params
+      ? {
+          ...params,
+          assignedToMe: params.assignedToMe === true ? "true" : undefined,
+          leaving: params.leaving === true ? "true" : undefined,
+        }
+      : undefined,
   });
   return data;
 }
