@@ -202,6 +202,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const scrollRef = useRef<HTMLDivElement>(null);
   const [unassignedFilter, setUnassignedFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
@@ -337,7 +338,44 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const goToHit = (pathIds: string[]) => {
     selectSearchHit(pathIds);
     setSearchOpen(false);
+    setActiveIndex(-1);
     scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const clearSearch = () => {
+    setSearchInput("");
+    setHighlightPathIds([]);
+    setActiveIndex(-1);
+    setSearchOpen(false);
+  };
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      if (searchInput) clearSearch();
+      else setSearchOpen(false);
+      return;
+    }
+    if (debouncedQ.length < 2 || !searchRows.length) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSearchOpen(true);
+      setActiveIndex((i) => {
+        const next = Math.min(searchRows.length - 1, i + 1);
+        document.getElementById(`org-search-opt-${next}`)?.scrollIntoView({ block: "nearest" });
+        return next;
+      });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) => {
+        const next = Math.max(0, i - 1);
+        document.getElementById(`org-search-opt-${next}`)?.scrollIntoView({ block: "nearest" });
+        return next;
+      });
+    } else if (e.key === "Enter" && activeIndex >= 0) {
+      e.preventDefault();
+      const row = searchRows[activeIndex];
+      if (row?.pathIds.length) goToHit(row.pathIds);
+    }
   };
 
   const handleExportCsv = async () => {
@@ -561,18 +599,40 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           <i className="ri-search-line absolute left-3 top-[2.35rem] -translate-y-1/2 text-defaulttextcolor/45" aria-hidden />
           <input
             id="org-chart-search"
-            type="search"
-            className="form-control !ps-9 !py-2 !text-[0.8125rem]"
+            type="text"
+            autoComplete="off"
+            className="form-control !ps-9 !pe-9 !py-2 !text-[0.8125rem]"
             placeholder="Find unit or employee…"
             value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              setActiveIndex(-1);
+              setSearchOpen(true);
+            }}
             onFocus={() => setSearchOpen(true)}
             onBlur={() => setSearchOpen(false)}
+            onKeyDown={onSearchKeyDown}
             role="combobox"
             aria-expanded={searchOpen && debouncedQ.length >= 2}
             aria-controls="org-chart-search-results"
+            aria-activedescendant={activeIndex >= 0 ? `org-search-opt-${activeIndex}` : undefined}
             aria-describedby="org-chart-search-hint"
           />
+          <span className="absolute right-2.5 top-[2.35rem] -translate-y-1/2">
+            {searchLoading ? (
+              <span className="ti-spinner !h-4 !w-4 text-primary" role="status" aria-label="Searching" />
+            ) : searchInput ? (
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={clearSearch}
+                aria-label="Clear search"
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full text-defaulttextcolor/50 transition-colors hover:bg-light/70 hover:text-defaulttextcolor dark:hover:bg-white/[0.06]"
+              >
+                <i className="ri-close-line text-base" aria-hidden />
+              </button>
+            ) : null}
+          </span>
           {searchOpen && debouncedQ.length >= 2 ? (
             <div
               id="org-chart-search-results"
@@ -580,19 +640,25 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
               className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-defaultborder/70 bg-white shadow-lg dark:bg-bodybg"
             >
               {searchLoading ? (
-                <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">Searching…</p>
+                <div className="flex items-center gap-2 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">
+                  <span className="ti-spinner !h-3.5 !w-3.5" aria-hidden />
+                  Searching…
+                </div>
               ) : !searchRows.length ? (
                 <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">No matches for “{debouncedQ}”.</p>
               ) : (
                 <ul className="py-1">
-                  {searchRows.map((row) => (
-                    <li key={row.key} role="option" aria-selected={false}>
+                  {searchRows.map((row, i) => (
+                    <li key={row.key} id={`org-search-opt-${i}`} role="option" aria-selected={i === activeIndex}>
                       <button
                         type="button"
                         disabled={!row.pathIds.length}
                         onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setActiveIndex(i)}
                         onClick={() => goToHit(row.pathIds)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8125rem] transition-colors hover:bg-light/70 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]"
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8125rem] transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                          i === activeIndex ? "bg-primary/10 text-primary" : "hover:bg-light/70 dark:hover:bg-white/[0.04]"
+                        }`}
                       >
                         <i
                           className={`${row.kind === "employee" ? "ri-user-3-line" : "ri-node-tree"} shrink-0 text-defaulttextcolor/45`}
@@ -607,9 +673,23 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
               )}
             </div>
           ) : null}
-          <p id="org-chart-search-hint" className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/55">
-            {searchLoading ? "Searching…" : "Type at least 2 characters, then pick a result to highlight it"}
-          </p>
+          <div id="org-chart-search-hint" className="mt-1 flex min-h-[1.25rem] items-center gap-2">
+            {highlightPathIds.length ? (
+              <button
+                type="button"
+                onClick={() => setHighlightPathIds([])}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.7rem] font-medium text-primary transition-colors hover:bg-primary/20"
+              >
+                <i className="ri-focus-3-line" aria-hidden />
+                Highlight active
+                <i className="ri-close-line" aria-hidden />
+              </button>
+            ) : (
+              <p className="mb-0 text-[0.75rem] text-defaulttextcolor/55">
+                {searchLoading ? "Searching…" : "Type 2+ characters · ↑↓ to navigate · Enter to highlight"}
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div
