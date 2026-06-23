@@ -197,6 +197,8 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const [dragUnitId, setDragUnitId] = useState<string | null>(null);
   const [reparenting, setReparenting] = useState(false);
   const [initialTreeDepth, setTreeDepth] = useState<number>(-1);
+  const [zoom, setZoom] = useState(1);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
@@ -343,6 +345,31 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   };
 
   const getChartInstance = (): ECharts | undefined => chartRef.current?.getEchartsInstance();
+
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.5, Math.round(z * 10) / 10));
+  const zoomIn = () => setZoom((z) => clampZoom(z + 0.1));
+  const zoomOut = () => setZoom((z) => clampZoom(z - 0.1));
+  const resetView = () => {
+    setZoom(1);
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+  };
+  const fitWidth = () => {
+    const el = scrollRef.current;
+    if (el) setZoom(clampZoom(el.clientWidth / minChartWidth));
+  };
+  const onChartKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      zoomIn();
+    } else if (e.key === "-") {
+      e.preventDefault();
+      zoomOut();
+    } else if (e.key === "0") {
+      e.preventDefault();
+      resetView();
+    }
+  };
 
   const handleExportPng = async () => {
     setExporting("png");
@@ -549,15 +576,49 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
       </div>
 
       <OrgChartLegend />
-      <div className="overflow-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-bodybg">
-        <div style={{ minWidth: minChartWidth }}>
-          <ReactECharts
-            key={`org-depth-${initialTreeDepth}`}
-            ref={chartRef}
-            option={option}
-            style={{ height: chartHeight, width: "100%" }}
-            opts={{ renderer: "canvas" }}
-          />
+      <div className="relative">
+        <div
+          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded-lg border border-defaultborder/70 bg-white/90 p-1 shadow-sm backdrop-blur dark:bg-bodybg/90"
+          role="group"
+          aria-label="Chart zoom controls"
+        >
+          <OrgSecondaryButton type="button" aria-label="Zoom out" onClick={zoomOut}>
+            <i className="ri-subtract-line" aria-hidden />
+          </OrgSecondaryButton>
+          <OrgSecondaryButton type="button" aria-label="Zoom in" onClick={zoomIn}>
+            <i className="ri-add-line" aria-hidden />
+          </OrgSecondaryButton>
+          <OrgSecondaryButton type="button" aria-label="Fit chart to width" onClick={fitWidth}>
+            Fit
+          </OrgSecondaryButton>
+          <OrgSecondaryButton type="button" aria-label="Reset zoom and recenter" onClick={resetView}>
+            Reset
+          </OrgSecondaryButton>
+        </div>
+        <div
+          ref={scrollRef}
+          className="overflow-auto rounded-xl border border-defaultborder/70 bg-white outline-none dark:bg-bodybg"
+          tabIndex={0}
+          role="application"
+          aria-label="Organization chart. Use plus and minus keys to zoom, zero to reset."
+          onKeyDown={onChartKeyDown}
+        >
+          <div
+            style={{
+              minWidth: minChartWidth,
+              transform: `scale(${zoom})`,
+              transformOrigin: "top center",
+              transition: "transform 120ms ease-out",
+            }}
+          >
+            <ReactECharts
+              key={`org-depth-${initialTreeDepth}`}
+              ref={chartRef}
+              option={option}
+              style={{ height: chartHeight, width: "100%" }}
+              opts={{ renderer: "canvas" }}
+            />
+          </div>
         </div>
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
