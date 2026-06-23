@@ -580,7 +580,9 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         href: `/ats/employees/edit?id=${e.id}`,
       });
     }
-    return rows;
+    // Only surface hits that map to a node on the chart — an employee with no
+    // department path can't be highlighted, so drop it rather than show a dead row.
+    return rows.filter((r) => r.pathIds.length > 0);
   }, [searchResult]);
 
   const filteredUnassigned = useMemo(() => {
