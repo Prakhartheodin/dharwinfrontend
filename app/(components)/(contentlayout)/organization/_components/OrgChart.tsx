@@ -91,20 +91,29 @@ const hexToRgba = (hex: string, alpha: number) => {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 };
 
+// ECharts rich-text uses {tag|...} markup; strip braces/pipes so unit/head
+// names can't break the label parser.
+// ponytail: simple strip is enough — names are already length-capped by truncate().
+const richSafe = (s: string) => s.replace(/[{}|]/g, "");
+
 // Card-style pill rendered as the node label so each unit reads as a labelled box,
-// not bare text floating above a speck.
+// not bare text floating above a speck. Two rich lines: unit name + head name.
 const unitLabel = (baseColor: string, highlighted: boolean) => ({
   backgroundColor: highlighted ? hexToRgba(baseColor, 0.16) : "#ffffff",
   borderColor: baseColor,
   borderWidth: highlighted ? 2 : 1.25,
   borderRadius: 8,
-  padding: [6, 10],
+  padding: [6, 10] as [number, number],
   color: "#1e293b",
   fontSize: 11.5,
   fontWeight: 600,
   shadowBlur: 6,
   shadowColor: "rgba(15, 23, 42, 0.08)",
   shadowOffsetY: 1,
+  rich: {
+    name: { color: "#1e293b", fontSize: 11.5, fontWeight: 600, lineHeight: 16 },
+    head: { color: "#64748b", fontSize: 9.5, fontWeight: 400, lineHeight: 13 },
+  },
 });
 
 const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string, unknown> => {
@@ -130,6 +139,8 @@ const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string
   }));
   const baseColor = ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8";
   const highlighted = highlightIds.has(n.id);
+  const line1 = richSafe(nodeLabel(n));
+  const head = n.headEmployee?.fullName ? richSafe(truncate(n.headEmployee.fullName, 22)) : "";
   return {
     name: nodeLabel(n),
     _unitId: n.id,
@@ -144,7 +155,10 @@ const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string
       shadowColor: highlighted ? "rgba(99, 102, 241, 0.45)" : hexToRgba(baseColor, 0.35),
       ...highlightStyle(n.id, highlightIds),
     },
-    label: unitLabel(baseColor, highlighted),
+    label: {
+      ...unitLabel(baseColor, highlighted),
+      formatter: head ? `{name|${line1}}\n{head|${head}}` : `{name|${line1}}`,
+    },
     lineStyle: highlighted ? { color: "#6366f1", width: 2 } : undefined,
     children: [...unitChildren, ...employeeChildren],
   };
