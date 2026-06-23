@@ -201,6 +201,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [unassignedFilter, setUnassignedFilter] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
@@ -330,6 +331,14 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const selectSearchHit = useCallback((pathIds: string[]) => {
     setHighlightPathIds(pathIds);
   }, []);
+
+  // Highlight a hit from the inline dropdown and bring the chart into view so the
+  // user sees the result immediately (the chart can be taller than the viewport).
+  const goToHit = (pathIds: string[]) => {
+    selectSearchHit(pathIds);
+    setSearchOpen(false);
+    scrollRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const handleExportCsv = async () => {
     setExporting("csv");
@@ -557,10 +566,49 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
             placeholder="Find unit or employee…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
+            onFocus={() => setSearchOpen(true)}
+            onBlur={() => setSearchOpen(false)}
+            role="combobox"
+            aria-expanded={searchOpen && debouncedQ.length >= 2}
+            aria-controls="org-chart-search-results"
             aria-describedby="org-chart-search-hint"
           />
+          {searchOpen && debouncedQ.length >= 2 ? (
+            <div
+              id="org-chart-search-results"
+              role="listbox"
+              className="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto rounded-lg border border-defaultborder/70 bg-white shadow-lg dark:bg-bodybg"
+            >
+              {searchLoading ? (
+                <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">Searching…</p>
+              ) : !searchRows.length ? (
+                <p className="mb-0 px-3 py-3 text-[0.8125rem] text-defaulttextcolor/60">No matches for “{debouncedQ}”.</p>
+              ) : (
+                <ul className="py-1">
+                  {searchRows.map((row) => (
+                    <li key={row.key} role="option" aria-selected={false}>
+                      <button
+                        type="button"
+                        disabled={!row.pathIds.length}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => goToHit(row.pathIds)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[0.8125rem] transition-colors hover:bg-light/70 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/[0.04]"
+                      >
+                        <i
+                          className={`${row.kind === "employee" ? "ri-user-3-line" : "ri-node-tree"} shrink-0 text-defaulttextcolor/45`}
+                          aria-hidden
+                        />
+                        <span className="min-w-0 flex-1 truncate font-medium">{row.label}</span>
+                        <span className="shrink-0 text-[0.7rem] text-defaulttextcolor/55">{row.sublabel}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
           <p id="org-chart-search-hint" className="mb-0 mt-1 text-[0.75rem] text-defaulttextcolor/55">
-            {searchLoading ? "Searching…" : "Type at least 2 characters"}
+            {searchLoading ? "Searching…" : "Type at least 2 characters, then pick a result to highlight it"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
