@@ -343,6 +343,10 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
 
   const getChartInstance = (): ECharts | undefined => chartRef.current?.getEchartsInstance();
 
+  const setTreeDepth = (depth: number) => {
+    getChartInstance()?.setOption({ series: [{ initialTreeDepth: depth }] });
+  };
+
   const handleExportPng = async () => {
     setExporting("png");
     try {
@@ -524,6 +528,14 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
             {searchLoading ? "Searching…" : "Type at least 2 characters"}
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <OrgSecondaryButton type="button" onClick={() => setTreeDepth(2)}>
+            Collapse (Level 2)
+          </OrgSecondaryButton>
+          <OrgSecondaryButton type="button" onClick={() => setTreeDepth(-1)}>
+            Expand all
+          </OrgSecondaryButton>
+        </div>
         {canExport ? (
           <div className="flex flex-wrap items-center gap-2">
             <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportCsv()}>
@@ -551,7 +563,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         </div>
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
-        CEO at the top, then managers, supervisors, departments, and their members. Select a search result to highlight its path.
+        CEO at the top, then managers, supervisors, departments, and their members. Select a search result to highlight its path. Collapse and Expand all reset the current expansion state.
       </p>
 
       {debouncedQ.length >= 2 ? (
