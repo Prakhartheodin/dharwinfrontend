@@ -13,6 +13,7 @@ export interface TaskToolbarProps {
   userId: string;
   projects: Array<{ id: string; name: string }>;
   taskCount?: number;
+  leavingCount?: number;
   extraActions?: React.ReactNode;
 }
 
@@ -20,6 +21,7 @@ export function TaskToolbar({
   userId,
   projects,
   taskCount,
+  leavingCount,
   extraActions,
 }: TaskToolbarProps): React.JSX.Element {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
@@ -43,7 +45,7 @@ export function TaskToolbar({
               : "Loading task count"}
           </span>
           <div className="hidden w-full lg:block">
-            <TaskFilters projects={projects} />
+            <TaskFilters projects={projects} leavingCount={leavingCount} />
           </div>
           <div className="flex w-full flex-wrap items-center gap-2 lg:hidden">
             <button

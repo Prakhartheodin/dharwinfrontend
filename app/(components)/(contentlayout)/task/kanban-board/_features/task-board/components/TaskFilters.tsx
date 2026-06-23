@@ -11,10 +11,13 @@ const Select = dynamic(() => import("react-select"), { ssr: false });
 
 export interface TaskFiltersProps {
   projects: Array<{ id: string; name: string }>;
+  leavingCount?: number;
 }
 
-export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
+export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): React.JSX.Element {
   const {
+    filters,
+    patchFilters,
     searchInput,
     setSearchInput,
     projectId,
@@ -119,6 +122,13 @@ export function TaskFilters({ projects }: TaskFiltersProps): React.JSX.Element {
           />
         ))}
       </div>
+
+      <TaskFilterChip
+        label={leavingCount > 0 ? `Leaving · ${leavingCount}` : "Leaving"}
+        active={filters.leaving}
+        onClick={() => patchFilters({ leaving: !filters.leaving })}
+      />
+
 
       {hasActiveFilters ? (
         <button

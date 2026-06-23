@@ -20,6 +20,22 @@ const PRIORITY_LABEL: Record<string, string> = {
   low: "LOW",
 };
 
+function offboardingTooltip(task: { offboardingAssignees?: Array<{ name?: string; resignDate?: string; bucket: "soon" | "resigned" }> }): string {
+  const list = task.offboardingAssignees ?? [];
+  if (list.length === 0) return "";
+  return list
+    .map((a) => {
+      const name = a.name ?? "Assignee";
+      const when = a.resignDate
+        ? new Date(a.resignDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "";
+      return a.bucket === "resigned"
+        ? `${name} — resigned${when ? ` ${when}` : ""}`
+        : `${name} — leaving${when ? ` ${when}` : ""}`;
+    })
+    .join(", ");
+}
+
 export interface TaskCardProps {
   task: Task;
   selected?: boolean;
@@ -164,12 +180,24 @@ export const TaskCard = memo(function TaskCard({
         {title || "Untitled task"}
       </h3>
 
-      {/* Row 3 — labels (comfortable only) */}
-      {tagsToShow.length > 0 ? (
+      {/* Row 3 — labels + offboarding badge (comfortable only) */}
+      {(tagsToShow.length > 0 || task.offboardingFlag) ? (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {tagsToShow.map((t) => (
             <TaskBadge key={t} variant="label" value={t} />
           ))}
+          {task.offboardingFlag && (
+            <span
+              title={offboardingTooltip(task)}
+              className={
+                task.offboardingFlag === "resigned"
+                  ? "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                  : "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+              }
+            >
+              {task.offboardingFlag === "resigned" ? "Assignee resigned" : "Assignee leaving"}
+            </span>
+          )}
         </div>
       ) : null}
 

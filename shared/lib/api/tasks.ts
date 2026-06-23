@@ -51,6 +51,15 @@ export interface Task {
   createdBy?: TaskUser;
   createdAt?: string;
   updatedAt?: string;
+  /** Derived (response-only) — most severe offboarding state among assignees. */
+  offboardingFlag?: "soon" | "resigned";
+  /** Derived (response-only) — assignees who are leaving/gone, for the tooltip. */
+  offboardingAssignees?: Array<{
+    id: string;
+    name?: string;
+    resignDate?: string;
+    bucket: "soon" | "resigned";
+  }>;
 }
 
 /** Get task id from API response (handles id vs _id) */
@@ -86,6 +95,7 @@ export interface TasksListParams {
   sprintId?: string;
   search?: string;
   assignedToMe?: boolean;
+  leaving?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -97,6 +107,8 @@ export interface TasksListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+  /** Total OPEN tasks assigned to a resigning/resigned employee (scoped to the user). */
+  leavingTotal?: number;
 }
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
@@ -109,7 +121,13 @@ export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
 
 export async function listTasks(params?: TasksListParams): Promise<TasksListResponse> {
   const { data } = await apiClient.get<TasksListResponse>("/tasks", {
-    params: params ? { ...params, assignedToMe: params.assignedToMe === true ? "true" : undefined } : undefined,
+    params: params
+      ? {
+          ...params,
+          assignedToMe: params.assignedToMe === true ? "true" : undefined,
+          leaving: params.leaving === true ? "true" : undefined,
+        }
+      : undefined,
   });
   return data;
 }
