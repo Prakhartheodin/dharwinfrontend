@@ -60,6 +60,10 @@ export function TaskBoardShell(): React.JSX.Element {
     () => tasks.filter((t) => predicate(t)).length,
     [tasks, predicate]
   );
+  const leavingCount = useMemo(
+    () => tasks.filter((t) => t.offboardingFlag).length,
+    [tasks]
+  );
 
   const drawerTask = useMemo(() => {
     if (!drawerTaskId) return null;
@@ -135,6 +139,7 @@ export function TaskBoardShell(): React.JSX.Element {
         userId={userId}
         projects={projects}
         taskCount={visibleCount}
+        leavingCount={leavingCount}
         extraActions={createButton}
       />
       <BulkActionBar canEdit={canEditTask} canDelete={canDeleteTask} />
