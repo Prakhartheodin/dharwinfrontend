@@ -83,15 +83,48 @@ const nodeLabel = (n: OrgUnitNode) => {
   return `${truncate(n.name)}${count}`;
 };
 
+const hexToRgba = (hex: string, alpha: number) => {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+// Card-style pill rendered as the node label so each unit reads as a labelled box,
+// not bare text floating above a speck.
+const unitLabel = (baseColor: string, highlighted: boolean) => ({
+  backgroundColor: highlighted ? hexToRgba(baseColor, 0.16) : "#ffffff",
+  borderColor: baseColor,
+  borderWidth: highlighted ? 2 : 1.25,
+  borderRadius: 8,
+  padding: [6, 10],
+  color: "#1e293b",
+  fontSize: 11.5,
+  fontWeight: 600,
+  shadowBlur: 6,
+  shadowColor: "rgba(15, 23, 42, 0.08)",
+  shadowOffsetY: 1,
+});
+
 const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string, unknown> => {
   const unitChildren = (n.children ?? []).map((c) => toEChartsNode(c, highlightIds));
   const employeeChildren = (n.employees ?? []).map((e) => ({
     name: truncate(e.fullName, 22),
     symbol: "circle",
-    symbolSize: 7,
-    itemStyle: { color: "#94a3b8" },
+    symbolSize: 9,
+    itemStyle: { color: "#cbd5e1", borderColor: "#ffffff", borderWidth: 1.5 },
     lineStyle: { color: "#e2e8f0" },
-    label: { color: "#64748b", fontSize: 10 },
+    label: {
+      backgroundColor: "#f8fafc",
+      borderColor: "#e2e8f0",
+      borderWidth: 1,
+      borderRadius: 6,
+      padding: [3, 7],
+      color: "#475569",
+      fontSize: 10,
+      fontWeight: 500,
+    },
     tooltip: { formatter: `${e.fullName}<br/><a href="/ats/employees/edit?id=${e.id}">Open employee</a>` },
     _employeeId: e.id,
   }));
@@ -100,13 +133,18 @@ const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string
   return {
     name: nodeLabel(n),
     _unitId: n.id,
+    symbolSize: highlighted ? 18 : 15,
     tooltip: { formatter: nodeTooltip(n) },
     itemStyle: {
       color: baseColor,
-      borderRadius: 4,
+      borderColor: "#ffffff",
+      borderWidth: 2.5,
+      borderRadius: 5,
+      shadowBlur: highlighted ? 12 : 5,
+      shadowColor: highlighted ? "rgba(99, 102, 241, 0.45)" : hexToRgba(baseColor, 0.35),
       ...highlightStyle(n.id, highlightIds),
-      ...(highlighted ? { color: baseColor } : {}),
     },
+    label: unitLabel(baseColor, highlighted),
     lineStyle: highlighted ? { color: "#6366f1", width: 2 } : undefined,
     children: [...unitChildren, ...employeeChildren],
   };
@@ -375,37 +413,40 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         layout: "orthogonal",
         orient: "TB",
         symbol: "roundRect",
-        symbolSize: [12, 12],
+        symbolSize: 15,
+        nodePadding: 28,
         expandAndCollapse: true,
         initialTreeDepth: -1,
         animationDuration: 250,
         animationDurationUpdate: 200,
-        lineStyle: { color: "#cbd5e1", width: 1.5, curveness: 0 },
+        lineStyle: { color: "#cbd5e1", width: 1.5, curveness: 0.12 },
         label: {
           position: "top",
           verticalAlign: "bottom",
           align: "center",
-          distance: 6,
-          fontSize: 11,
-          color: "#334155",
+          distance: 10,
+          fontSize: 11.5,
+          color: "#1e293b",
         },
         leaves: {
           label: {
             position: "bottom",
             verticalAlign: "top",
             align: "center",
+            distance: 10,
           },
         },
         emphasis: {
           focus: "descendant",
-          itemStyle: { shadowBlur: 8, shadowColor: "rgba(99, 102, 241, 0.25)" },
+          lineStyle: { color: "#94a3b8", width: 2 },
+          itemStyle: { shadowBlur: 10, shadowColor: "rgba(99, 102, 241, 0.3)" },
         },
       },
     ],
   };
 
-  const chartHeight = Math.min(Math.max(460, (treeDepth(tree.roots) + 1) * 130), 1600);
-  const minChartWidth = Math.max(640, countLeaves(tree.roots) * 90);
+  const chartHeight = Math.min(Math.max(460, (treeDepth(tree.roots) + 1) * 150), 1600);
+  const minChartWidth = Math.max(640, countLeaves(tree.roots) * 120);
 
   const searchRows = useMemo(() => {
     if (!searchResult) return [];
