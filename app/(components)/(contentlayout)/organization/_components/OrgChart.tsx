@@ -351,8 +351,11 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const zoomOut = () => setZoom((z) => clampZoom(z - 0.1));
   const resetView = () => {
     setZoom(1);
-    const el = scrollRef.current;
-    if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    // Recenter after the scale=1 re-render lands, else scrollWidth is still the zoomed value.
+    requestAnimationFrame(() => {
+      const el = scrollRef.current;
+      if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+    });
   };
   const fitWidth = () => {
     const el = scrollRef.current;
@@ -597,7 +600,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         </div>
         <div
           ref={scrollRef}
-          className="overflow-auto rounded-xl border border-defaultborder/70 bg-white outline-none dark:bg-bodybg"
+          className="overflow-auto rounded-xl border border-defaultborder/70 bg-white outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:bg-bodybg"
           tabIndex={0}
           role="application"
           aria-label="Organization chart. Use plus and minus keys to zoom, zero to reset."
