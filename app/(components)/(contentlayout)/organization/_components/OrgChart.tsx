@@ -196,6 +196,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const [flatUnits, setFlatUnits] = useState<OrgUnitNode[]>([]);
   const [dragUnitId, setDragUnitId] = useState<string | null>(null);
   const [reparenting, setReparenting] = useState(false);
+  const [initialTreeDepth, setTreeDepth] = useState<number>(-1);
 
   const canExport = useMemo(() => {
     if (isPlatformSuperUser) return true;
@@ -343,10 +344,6 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
 
   const getChartInstance = (): ECharts | undefined => chartRef.current?.getEchartsInstance();
 
-  const setTreeDepth = (depth: number) => {
-    getChartInstance()?.setOption({ series: [{ initialTreeDepth: depth }] });
-  };
-
   const handleExportPng = async () => {
     setExporting("png");
     try {
@@ -441,7 +438,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         symbolSize: 15,
         nodePadding: 28,
         expandAndCollapse: true,
-        initialTreeDepth: -1,
+        initialTreeDepth: initialTreeDepth,
         animationDuration: 250,
         animationDurationUpdate: 200,
         lineStyle: { color: isDark ? "#475569" : "#cbd5e1", width: 1.5, curveness: 0.12 },
@@ -555,6 +552,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
       <div className="overflow-auto rounded-xl border border-defaultborder/70 bg-white dark:bg-bodybg">
         <div style={{ minWidth: minChartWidth }}>
           <ReactECharts
+            key={`org-depth-${initialTreeDepth}`}
             ref={chartRef}
             option={option}
             style={{ height: chartHeight, width: "100%" }}
