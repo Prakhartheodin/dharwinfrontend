@@ -526,10 +526,10 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <OrgSecondaryButton type="button" onClick={() => setTreeDepth(2)}>
+          <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => setTreeDepth(2)}>
             Collapse (Level 2)
           </OrgSecondaryButton>
-          <OrgSecondaryButton type="button" onClick={() => setTreeDepth(-1)}>
+          <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => setTreeDepth(-1)}>
             Expand all
           </OrgSecondaryButton>
         </div>
