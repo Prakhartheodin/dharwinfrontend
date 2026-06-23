@@ -107,6 +107,8 @@ export interface TasksListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+  /** Total OPEN tasks assigned to a resigning/resigned employee (scoped to the user). */
+  leavingTotal?: number;
 }
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {

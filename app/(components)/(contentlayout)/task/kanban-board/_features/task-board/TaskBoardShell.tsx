@@ -36,7 +36,7 @@ export function TaskBoardShell(): React.JSX.Element {
     closeDrawer,
   } = useTaskUI();
 
-  const { projects, users, tasks, refetch, isLoading } = useTaskData();
+  const { projects, users, tasks, leavingTotal, refetch, isLoading } = useTaskData();
 
   useTaskBoardKeyboard({ canCreate: canCreateTask });
 
@@ -60,10 +60,8 @@ export function TaskBoardShell(): React.JSX.Element {
     () => tasks.filter((t) => predicate(t)).length,
     [tasks, predicate]
   );
-  const leavingCount = useMemo(
-    () => tasks.filter((t) => t.offboardingFlag).length,
-    [tasks]
-  );
+  // True total across all pages (server-computed, scoped), not just the loaded page.
+  const leavingCount = leavingTotal;
 
   const drawerTask = useMemo(() => {
     if (!drawerTaskId) return null;

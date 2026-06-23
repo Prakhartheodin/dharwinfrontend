@@ -269,6 +269,8 @@ export type TaskDataContextValue = {
   users: UserRow[];
   tasks: TaskViewModel[];
   tasksByStatus: Record<TaskStatus, TaskViewModel[]>;
+  /** Total OPEN tasks assigned to a resigning/resigned employee (all pages, scoped). */
+  leavingTotal: number;
   isLoading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
@@ -289,6 +291,7 @@ export function TaskDataProvider({
   const [state, dispatch] = useReducer(taskDataReducer, undefined, initialState);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [leavingTotal, setLeavingTotal] = useState(0);
 
   // --- Pagination state (P1.5 §5) -----------------------------------------
   const sp = useSearchParams();
@@ -380,12 +383,14 @@ export function TaskDataProvider({
           ...(priorityParam && { priority: priorityParam }),
           ...(sprintIdParam && { sprintId: sprintIdParam }),
           ...(scopeToAssignedOnly || filters.assignedToMe ? { assignedToMe: true } : {}),
+          ...(filters.leaving ? { leaving: true } : {}),
         }),
         fetchBoardMetadata(TASK_LIMIT, { scopeToAssignedOnly }),
       ]);
       const totalPages = taskRes.totalPages ?? 0;
       const totalResults = taskRes.totalResults ?? 0;
       setPageMeta({ total: totalResults, totalPages });
+      setLeavingTotal(taskRes.leavingTotal ?? 0);
       // Server returned an out-of-range page → clamp to last valid page (P1.5 §5.6).
       if (totalPages > 0 && page > totalPages) {
         const clamped = totalPages;
@@ -419,6 +424,7 @@ export function TaskDataProvider({
     page,
     filters.q,
     filters.assignedToMe,
+    filters.leaving,
     scopeToAssignedOnly,
     projectIdParam,
     priorityParam,
@@ -509,6 +515,7 @@ export function TaskDataProvider({
       users: state.users,
       tasks: state.tasks,
       tasksByStatus,
+      leavingTotal,
       isLoading,
       error,
       refetch: runFetch,
@@ -520,6 +527,7 @@ export function TaskDataProvider({
       state.users,
       state.tasks,
       tasksByStatus,
+      leavingTotal,
       isLoading,
       error,
       runFetch,
