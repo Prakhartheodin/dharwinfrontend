@@ -123,13 +123,12 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
         ))}
       </div>
 
-      {leavingCount > 0 && (
-        <TaskFilterChip
-          label={`Leaving · ${leavingCount}`}
-          active={filters.leaving}
-          onClick={() => patchFilters({ leaving: !filters.leaving })}
-        />
-      )}
+      <TaskFilterChip
+        label={leavingCount > 0 ? `Leaving · ${leavingCount}` : "Leaving"}
+        active={filters.leaving}
+        onClick={() => patchFilters({ leaving: !filters.leaving })}
+      />
+
 
       {hasActiveFilters ? (
         <button
