@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { useSelector } from "react-redux";
 import ReactECharts from "echarts-for-react";
 import type { ECharts } from "echarts";
 import Swal from "sweetalert2";
@@ -98,39 +99,44 @@ const richSafe = (s: string) => s.replace(/[{}|]/g, "");
 
 // Card-style pill rendered as the node label so each unit reads as a labelled box,
 // not bare text floating above a speck. Two rich lines: unit name + head name.
-const unitLabel = (baseColor: string, highlighted: boolean) => ({
-  backgroundColor: highlighted ? hexToRgba(baseColor, 0.16) : "#ffffff",
-  borderColor: baseColor,
-  borderWidth: highlighted ? 2 : 1.25,
-  borderRadius: 8,
-  padding: [6, 10] as [number, number],
-  color: "#1e293b",
-  fontSize: 11.5,
-  fontWeight: 600,
-  shadowBlur: 6,
-  shadowColor: "rgba(15, 23, 42, 0.08)",
-  shadowOffsetY: 1,
-  rich: {
-    name: { color: "#1e293b", fontSize: 11.5, fontWeight: 600, lineHeight: 16 },
-    head: { color: "#64748b", fontSize: 9.5, fontWeight: 400, lineHeight: 13 },
-  },
-});
+const unitLabel = (baseColor: string, highlighted: boolean, isDark: boolean) => {
+  const text = isDark ? "#e2e8f0" : "#1e293b";
+  const headText = isDark ? "#94a3b8" : "#64748b";
+  const bg = highlighted ? hexToRgba(baseColor, isDark ? 0.28 : 0.16) : isDark ? "#1e293b" : "#ffffff";
+  return {
+    backgroundColor: bg,
+    borderColor: baseColor,
+    borderWidth: highlighted ? 2 : 1.25,
+    borderRadius: 8,
+    padding: [6, 10] as [number, number],
+    color: text,
+    fontSize: 11.5,
+    fontWeight: 600,
+    shadowBlur: 6,
+    shadowColor: isDark ? "rgba(0, 0, 0, 0.45)" : "rgba(15, 23, 42, 0.08)",
+    shadowOffsetY: 1,
+    rich: {
+      name: { color: text, fontSize: 11.5, fontWeight: 600, lineHeight: 16 },
+      head: { color: headText, fontSize: 9.5, fontWeight: 400, lineHeight: 13 },
+    },
+  };
+};
 
-const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string, unknown> => {
-  const unitChildren = (n.children ?? []).map((c) => toEChartsNode(c, highlightIds));
+const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>, isDark: boolean): Record<string, unknown> => {
+  const unitChildren = (n.children ?? []).map((c) => toEChartsNode(c, highlightIds, isDark));
   const employeeChildren = (n.employees ?? []).map((e) => ({
     name: truncate(e.fullName, 22),
     symbol: "circle",
     symbolSize: 9,
-    itemStyle: { color: "#cbd5e1", borderColor: "#ffffff", borderWidth: 1.5 },
-    lineStyle: { color: "#e2e8f0" },
+    itemStyle: { color: isDark ? "#475569" : "#cbd5e1", borderColor: isDark ? "#1e293b" : "#ffffff", borderWidth: 1.5 },
+    lineStyle: { color: isDark ? "#334155" : "#e2e8f0" },
     label: {
-      backgroundColor: "#f8fafc",
-      borderColor: "#e2e8f0",
+      backgroundColor: isDark ? "#334155" : "#f8fafc",
+      borderColor: isDark ? "#475569" : "#e2e8f0",
       borderWidth: 1,
       borderRadius: 6,
       padding: [3, 7],
-      color: "#475569",
+      color: isDark ? "#cbd5e1" : "#475569",
       fontSize: 10,
       fontWeight: 500,
     },
@@ -148,7 +154,7 @@ const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string
     tooltip: { formatter: nodeTooltip(n) },
     itemStyle: {
       color: baseColor,
-      borderColor: "#ffffff",
+      borderColor: isDark ? "#0f172a" : "#ffffff",
       borderWidth: 2.5,
       borderRadius: 5,
       shadowBlur: highlighted ? 12 : 5,
@@ -156,7 +162,7 @@ const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>): Record<string
       ...highlightStyle(n.id, highlightIds),
     },
     label: {
-      ...unitLabel(baseColor, highlighted),
+      ...unitLabel(baseColor, highlighted, isDark),
       formatter: head ? `{name|${line1}}\n{head|${head}}` : `{name|${line1}}`,
     },
     lineStyle: highlighted ? { color: "#6366f1", width: 2 } : undefined,
@@ -178,6 +184,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const { canEdit: canEditStructure, canCreate: canCreateStructure, canDelete: canDeleteStructure } =
     useFeaturePermissions("organization.structure");
   const { isPlatformSuperUser } = useAuth();
+  const isDark = useSelector((s: any) => s.class) === "dark";
   const chartRef = useRef<ReactECharts>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
@@ -394,7 +401,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     );
   }
 
-  const rootNodes = tree.roots.map((r) => toEChartsNode(r, highlightIds));
+  const rootNodes = tree.roots.map((r) => toEChartsNode(r, highlightIds, isDark));
   const data =
     rootNodes.length === 1
       ? rootNodes
@@ -433,14 +440,14 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         initialTreeDepth: -1,
         animationDuration: 250,
         animationDurationUpdate: 200,
-        lineStyle: { color: "#cbd5e1", width: 1.5, curveness: 0.12 },
+        lineStyle: { color: isDark ? "#475569" : "#cbd5e1", width: 1.5, curveness: 0.12 },
         label: {
           position: "top",
           verticalAlign: "bottom",
           align: "center",
           distance: 10,
           fontSize: 11.5,
-          color: "#1e293b",
+          color: isDark ? "#e2e8f0" : "#1e293b",
         },
         leaves: {
           label: {
