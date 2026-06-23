@@ -150,7 +150,8 @@ export function TaskFiltersProvider({
       filters.createdByIds.length > 0 ||
       !!filters.due ||
       filters.assignedToMe ||
-      filters.unassigned
+      filters.unassigned ||
+      filters.leaving
     );
   }, [filters]);
 
