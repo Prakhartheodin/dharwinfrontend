@@ -24,6 +24,7 @@ import {
   OrgLinkButton,
   OrgPrimaryButton,
   OrgSecondaryButton,
+  OrgTypeBadge,
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import { canReparentOrgUnit, type OrgUnitPlacement } from "@/shared/lib/org-tree.pure";
@@ -768,10 +769,11 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
               disabled while dragging. Changes are audited immediately.
             </p>
           </div>
-          <div className="table-responsive">
+          <div className="table-responsive max-h-96 overflow-auto">
             <table className="table min-w-full mb-0">
-              <thead className="bg-light/60 dark:bg-white/[0.03]">
+              <thead className="sticky top-0 z-10 bg-light/80 backdrop-blur dark:bg-bodybg/80">
                 <tr>
+                  <th scope="col" className="!w-10" aria-label="Drag handle" />
                   <th scope="col">Unit</th>
                   <th scope="col">Type</th>
                   <th scope="col" className="text-end">
@@ -782,6 +784,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
               <tbody>
                 {flatUnits.map((u) => {
                   const dropAllowed = canDropOn(u.id);
+                  const dragging = dragUnitId === u.id;
                   return (
                     <tr
                       key={u.id}
@@ -794,18 +797,31 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
                       onDrop={() => {
                         if (dropAllowed) void handleLiveReparent(u.id);
                       }}
-                      className={
-                        dragUnitId === u.id
-                          ? "bg-primary/5"
+                      title={`Drag ${u.name} onto a valid parent`}
+                      className={`transition-colors ${reparenting ? "cursor-not-allowed" : "cursor-grab active:cursor-grabbing"} ${
+                        dragging
+                          ? "bg-primary/10 ring-1 ring-inset ring-primary/30"
                           : dropAllowed
-                            ? "bg-success/5"
-                            : undefined
-                      }
+                            ? "bg-success/10 ring-1 ring-inset ring-success/30"
+                            : "hover:bg-light/60 dark:hover:bg-white/[0.03]"
+                      }`}
                     >
+                      <td className="text-defaulttextcolor/35">
+                        <i className="ri-draggable text-base" aria-hidden />
+                      </td>
                       <td className="font-medium">{u.name}</td>
-                      <td className="text-defaulttextcolor/70">{ORG_UNIT_TYPE_META[u.type]?.label ?? u.type}</td>
-                      <td className="text-end text-[0.75rem] text-defaulttextcolor/55">
-                        {dropAllowed ? "Drop to reparent here" : "—"}
+                      <td>
+                        <OrgTypeBadge type={u.type} />
+                      </td>
+                      <td className="text-end">
+                        {dropAllowed ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2.5 py-1 text-[0.75rem] font-medium text-success">
+                            <i className="ri-arrow-down-line" aria-hidden />
+                            Drop here
+                          </span>
+                        ) : (
+                          <span className="text-[0.75rem] text-defaulttextcolor/40">—</span>
+                        )}
                       </td>
                     </tr>
                   );
