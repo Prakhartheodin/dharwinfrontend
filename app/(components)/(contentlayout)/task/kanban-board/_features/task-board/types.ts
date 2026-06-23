@@ -22,6 +22,7 @@ export interface TaskFilters {
   due: DueFilter | null;
   assignedToMe: boolean;
   unassigned: boolean;
+  leaving: boolean;
 }
 
 export const EMPTY_FILTERS: TaskFilters = Object.freeze({
@@ -36,6 +37,7 @@ export const EMPTY_FILTERS: TaskFilters = Object.freeze({
   due: null,
   assignedToMe: false,
   unassigned: false,
+  leaving: false,
 });
 
 export type TaskViewModel = ApiTask & {

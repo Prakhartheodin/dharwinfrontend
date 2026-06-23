@@ -134,6 +134,7 @@ export function compilePredicate(filters: TaskFilters): (task: Task) => boolean 
       if (!cid || !createdBySet.has(cid)) return false;
     }
     if (filters.due && !matchesDue(task, filters.due)) return false;
+    if (filters.leaving && !task.offboardingFlag) return false;
     return true;
   };
 }

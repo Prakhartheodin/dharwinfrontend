@@ -51,6 +51,15 @@ export interface Task {
   createdBy?: TaskUser;
   createdAt?: string;
   updatedAt?: string;
+  /** Derived (response-only) — most severe offboarding state among assignees. */
+  offboardingFlag?: "soon" | "resigned";
+  /** Derived (response-only) — assignees who are leaving/gone, for the tooltip. */
+  offboardingAssignees?: Array<{
+    id: string;
+    name?: string;
+    resignDate?: string;
+    bucket: "soon" | "resigned";
+  }>;
 }
 
 /** Get task id from API response (handles id vs _id) */
