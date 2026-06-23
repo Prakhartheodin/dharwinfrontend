@@ -564,26 +564,46 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => setTreeDepth(2)}>
-            Collapse (Level 2)
-          </OrgSecondaryButton>
-          <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => setTreeDepth(-1)}>
-            Expand all
-          </OrgSecondaryButton>
-        </div>
-        {canExport ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportCsv()}>
-              {exporting === "csv" ? "Exporting…" : "Export CSV"}
+          <div
+            className="flex items-center gap-1 rounded-lg border border-defaultborder/60 bg-light/30 p-1 dark:bg-white/[0.02]"
+            role="group"
+            aria-label="Tree view controls"
+          >
+            <OrgSecondaryButton
+              type="button"
+              title="Collapse to level 2"
+              disabled={!!exporting}
+              onClick={() => setTreeDepth(2)}
+            >
+              <i className="ri-contract-up-down-line text-base" aria-hidden />
+              Collapse
             </OrgSecondaryButton>
-            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportPng()}>
-              {exporting === "png" ? "Exporting…" : "Export PNG"}
-            </OrgSecondaryButton>
-            <OrgSecondaryButton type="button" disabled={!!exporting} onClick={() => void handleExportPdf()}>
-              {exporting === "pdf" ? "Exporting…" : "Export PDF"}
+            <OrgSecondaryButton type="button" title="Expand all levels" disabled={!!exporting} onClick={() => setTreeDepth(-1)}>
+              <i className="ri-expand-up-down-line text-base" aria-hidden />
+              Expand
             </OrgSecondaryButton>
           </div>
-        ) : null}
+          {canExport ? (
+            <div
+              className="flex items-center gap-1 rounded-lg border border-defaultborder/60 bg-light/30 p-1 dark:bg-white/[0.02]"
+              role="group"
+              aria-label="Export chart"
+            >
+              <span className="ps-2 pe-0.5 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/50">
+                <i className="ri-download-2-line align-middle text-sm" aria-hidden />
+              </span>
+              <OrgSecondaryButton type="button" title="Export as CSV" disabled={!!exporting} onClick={() => void handleExportCsv()}>
+                {exporting === "csv" ? "…" : "CSV"}
+              </OrgSecondaryButton>
+              <OrgSecondaryButton type="button" title="Export as PNG image" disabled={!!exporting} onClick={() => void handleExportPng()}>
+                {exporting === "png" ? "…" : "PNG"}
+              </OrgSecondaryButton>
+              <OrgSecondaryButton type="button" title="Export as PDF" disabled={!!exporting} onClick={() => void handleExportPdf()}>
+                {exporting === "pdf" ? "…" : "PDF"}
+              </OrgSecondaryButton>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <OrgChartLegend />
