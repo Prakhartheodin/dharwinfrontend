@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { OrgErrorState, OrgNavButton, OrgLoadingBlock, OrgPageLayout } from "../_components/org-ui";
 
-// Lazy-load the chart (and its heavy echarts dependency) so this route compiles
-// fast and echarts is built as a separate on-demand chunk.
+// Lazy-load the chart so this route compiles fast and the chart (plus its
+// on-demand html-to-image/jspdf export libs) ships as a separate chunk.
 const OrgChart = dynamic(() => import("../_components/OrgChart"), {
   ssr: false,
   loading: () => <OrgLoadingBlock label="Loading chart…" />,

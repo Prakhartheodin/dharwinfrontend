@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Select from "react-select";
 import Swal from "sweetalert2";
 import { assignHead, listAssignableHeads } from "@/shared/lib/api/org-structure";
 import { OrgFormField, OrgModal, OrgModalCancelButton, OrgModalSubmitButton } from "./org-ui";
+
+type HeadOption = { value: string; label: string };
 
 type Props = {
   open: boolean;
@@ -31,6 +34,7 @@ export default function AssignHeadModal({
   const [roster, setRoster] = useState<{ id: string; name: string }[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [saving, setSaving] = useState(false);
+  const options = useMemo<HeadOption[]>(() => roster.map((r) => ({ value: r.id, label: r.name })), [roster]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,27 +81,28 @@ export default function AssignHeadModal({
         <div className="px-5 py-5">
           <OrgFormField
             id="head-employee"
-            label="Employee"
+            label="Head"
             hint={
               isDepartment
                 ? "Only members of this department can lead it. Set an employee's department on their record to add them here."
-                : "Any active employee can lead this unit."
+                : "Any active user can lead this unit."
             }
           >
-            <select
-              id="head-employee"
-              className="form-control"
-              value={headEmployeeId}
-              onChange={(e) => setHeadEmployeeId(e.target.value)}
-              disabled={loadingRoster || saving}
-            >
-              <option value="">{loadingRoster ? "Loading employees…" : "No head assigned"}</option>
-              {roster.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+            <Select<HeadOption>
+              inputId="head-employee"
+              classNamePrefix="org-head-select"
+              isClearable
+              isSearchable
+              isDisabled={loadingRoster || saving}
+              isLoading={loadingRoster}
+              placeholder={loadingRoster ? "Loading users…" : "No head assigned"}
+              noOptionsMessage={() => "No users found"}
+              options={options}
+              value={options.find((o) => o.value === headEmployeeId) ?? null}
+              onChange={(opt) => setHeadEmployeeId(opt?.value ?? "")}
+              menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+              styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+            />
             {isDepartment && !loadingRoster && roster.length === 0 ? (
               <p className="mb-0 mt-1.5 text-[0.75rem] text-warning">
                 No employees are assigned to this department yet. Assign one on their employee record first.

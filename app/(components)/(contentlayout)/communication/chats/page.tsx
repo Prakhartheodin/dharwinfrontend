@@ -1087,8 +1087,9 @@ const Chat = () => {
     const cid = getId(selectedConversation);
     if (!cid) return;
     // Socket-based flow: backend emits call:start to both participants on accept,
-    // and ChatSocketContext auto-navigates to the room at that point.
-    emitCallInitiate(cid, callType);
+    // and ChatSocketContext auto-navigates to the room at that point. The caller sees
+    // a "Calling…" overlay (GlobalOutgoingCall) until the callee answers/declines.
+    emitCallInitiate(cid, callType, { calleeName: selectedConversation ? displayName(selectedConversation) : undefined });
   };
 
   const [deletingChat, setDeletingChat] = useState(false);

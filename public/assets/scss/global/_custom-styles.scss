@@ -839,11 +839,23 @@ h6 {
       }
     }
   }
-  .slide.has-sub.open > .side-menu__item .side-menu__angle {
-    @apply rotate-90;
-  }
+   .slide.has-sub.open > .side-menu__item .side-menu__angle {
+     @apply rotate-90;
+   }
 
-  //styles//
+   .app-sidebar .slide__category .category-name--toggle {
+     @apply flex w-full items-center justify-between cursor-pointer border-0 bg-transparent p-0 text-inherit uppercase;
+
+     .side-menu__angle {
+       @apply text-[0.75rem] opacity-70 transition-transform duration-200 ms-2;
+     }
+
+     &.is-open .side-menu__angle {
+       @apply rotate-90;
+     }
+   }
+
+   //styles//
 
   #search-modal{
     .search-tags{

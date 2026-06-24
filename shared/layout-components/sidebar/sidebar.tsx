@@ -23,8 +23,53 @@ function menuPathMatchesItem(item: { path?: string }, currentPath: string): bool
 	return item.path === currentPath;
 }
 
+type MenuSection = { title: string; items: any[] };
+
+const SIDEBAR_SECTIONS_STORAGE_KEY = "dharwin.sidebar.sectionsCollapsed";
+
+function groupMenuIntoSections(items: any[]): MenuSection[] {
+	const sections: MenuSection[] = [];
+	let current: MenuSection | null = null;
+
+	for (const item of items) {
+		if (item.menutitle) {
+			current = { title: String(item.menutitle), items: [] };
+			sections.push(current);
+			continue;
+		}
+		if (!current) {
+			current = { title: "GENERAL", items: [] };
+			sections.push(current);
+		}
+		current.items.push(item);
+	}
+
+	return sections.filter((section) => section.items.length > 0);
+}
+
+function menuItemMatchesPath(item: any, currentPath: string): boolean {
+	if (menuPathMatchesItem(item, currentPath)) return true;
+	if (!Array.isArray(item.children)) return false;
+	return item.children.some((child: any) => !child?.hidden && menuItemMatchesPath(child, currentPath));
+}
+
+function loadCollapsedSections(): Record<string, boolean> {
+	if (typeof window === "undefined") return {};
+	try {
+		const raw = window.localStorage.getItem(SIDEBAR_SECTIONS_STORAGE_KEY);
+		if (!raw) return {};
+		const parsed = JSON.parse(raw);
+		return typeof parsed === "object" && parsed ? parsed : {};
+	} catch {
+		return {};
+	}
+}
+
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
+	const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() =>
+		loadCollapsedSections()
+	);
 	const {
 		user,
 		permissions: userPermissions,
@@ -132,6 +177,35 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		isDesignatedSuperadmin,
 		user,
 	]);
+
+	const menuSections = useMemo(() => groupMenuIntoSections(filteredMenuItems), [filteredMenuItems]);
+
+	const toggleSection = (title: string) => {
+		setCollapsedSections((prev) => {
+			const next = { ...prev, [title]: !(prev[title] === true) };
+			if (typeof window !== "undefined") {
+				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+			}
+			return next;
+		});
+	};
+
+	useEffect(() => {
+		const currentPath = path.endsWith("/") ? path.slice(0, -1) : path;
+		for (const section of menuSections) {
+			if (section.items.some((item) => menuItemMatchesPath(item, currentPath))) {
+				setCollapsedSections((prev) => {
+					if (prev[section.title] !== true) return prev;
+					const next = { ...prev, [section.title]: false };
+					if (typeof window !== "undefined") {
+						window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
+					}
+					return next;
+				});
+				break;
+			}
+		}
+	}, [path, menuSections]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {
@@ -778,54 +852,97 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 							</svg></div>
 
 							<ul className="main-menu" onClick={() => Sideclick()}>
-								{filteredMenuItems.map((levelone: any, index:any) => (
-									<Fragment key={index}>
-										<li className={`${levelone.menutitle ? 'slide__category' : ''} ${levelone.type === 'link' ? 'slide' : ''}
-                                               ${levelone.type === 'sub' ? 'slide has-sub' : ''} ${levelone?.active ? 'open' : ''} ${levelone?.selected ? 'active' : ''}`}>
-											{levelone.menutitle ?
-												<span className='category-name'>
-													{levelone.menutitle}
-												</span>
-												: ""}
-											{levelone.type === "link" ?
-												<Link href={levelone.path} className={`side-menu__item ${levelone.selected ? 'active' : ''}`} >
-												<span className={`hs-tooltip inline-block [--placement:right] leading-none ${local_varaiable?.dataVerticalStyle == 'doublemenu' ? '' : 'hidden'}`}>
-													<button type="button" className="hs-tooltip-toggle  inline-flex justify-center items-center
-															">
-														{levelone.icon}
-														<span className="hs-tooltip-content hs-tooltip-shown:opacity-100 hs-tooltip-shown:visible opacity-0 transition-opacity inline-block absolute invisible z-10 py-1 px-2 bg-black text-xs font-medium text-white rounded shadow-sm dark:bg-neutral-700" role="tooltip">
-															{levelone.title}
-														</span>
-													</button>
-												</span>
+								{menuSections.map((section) => {
+									const isCollapsed = collapsedSections[section.title] === true;
+									return (
+										<Fragment key={section.title}>
+											<li className="slide__category nav-module-section">
+												<button
+													type="button"
+													className={`category-name category-name--toggle${isCollapsed ? "" : " is-open"}`}
+													onClick={() => toggleSection(section.title)}
+													aria-expanded={!isCollapsed}
+												>
+													<span>{section.title}</span>
+													<i className="fe fe-chevron-right side-menu__angle" aria-hidden="true" />
+												</button>
+											</li>
+											{!isCollapsed &&
+												section.items.map((levelone: any, index: any) => (
+													<Fragment key={`${section.title}-${index}`}>
+														<li
+															className={`${levelone.type === "link" ? "slide" : ""}
+                                               ${levelone.type === "sub" ? "slide has-sub" : ""} ${levelone?.active ? "open" : ""} ${levelone?.selected ? "active" : ""}`}
+														>
+															{levelone.type === "link" ? (
+																<Link
+																	href={levelone.path}
+																	className={`side-menu__item ${levelone.selected ? "active" : ""}`}
+																>
+																	<span
+																		className={`hs-tooltip inline-block [--placement:right] leading-none ${local_varaiable?.dataVerticalStyle == "doublemenu" ? "" : "hidden"}`}
+																	>
+																		<button
+																			type="button"
+																			className="hs-tooltip-toggle  inline-flex justify-center items-center
+															"
+																		>
+																			{levelone.icon}
+																			<span
+																				className="hs-tooltip-content hs-tooltip-shown:opacity-100 hs-tooltip-shown:visible opacity-0 transition-opacity inline-block absolute invisible z-10 py-1 px-2 bg-black text-xs font-medium text-white rounded shadow-sm dark:bg-neutral-700"
+																				role="tooltip"
+																			>
+																				{levelone.title}
+																			</span>
+																		</button>
+																	</span>
 
-												{local_varaiable.dataVerticalStyle != "doublemenu" ? levelone.icon :""}
-										
+																	{local_varaiable.dataVerticalStyle != "doublemenu" ? levelone.icon : ""}
 
-												<span className="side-menu__label">{levelone.title} {levelone.badgetxt ? (<span className={levelone.class}> {levelone.badgetxt}</span>
-													) : (
-														""
-													)}
-													</span>
-												</Link>
-												: ""}
-											{levelone.type === "empty" ?
-												<Link href="#!" className='side-menu__item'
-												 onClick={handleClick}
-												>{levelone.icon}<span className=""> {levelone.title} {levelone.badgetxt ? (
-													<span className={levelone.class}>{levelone.badgetxt} </span>
-												) : (
-													""
-												)}
-												</span>
-												</Link>
-												: ""}
-											{levelone.type === "sub" ?
-												<Menuloop MenuItems={levelone} level={level + 1} toggleSidemenu={toggleSidemenu} HoverToggleInnerMenuFn={HoverToggleInnerMenuFn} />
-												: ''}
-										</li>
-									</Fragment>
-								))}
+																	<span className="side-menu__label">
+																		{levelone.title}{" "}
+																		{levelone.badgetxt ? (
+																			<span className={levelone.class}> {levelone.badgetxt}</span>
+																		) : (
+																			""
+																		)}
+																	</span>
+																</Link>
+															) : (
+																""
+															)}
+															{levelone.type === "empty" ? (
+																<Link href="#!" className="side-menu__item" onClick={handleClick}>
+																	{levelone.icon}
+																	<span className="">
+																		{" "}
+																		{levelone.title}{" "}
+																		{levelone.badgetxt ? (
+																			<span className={levelone.class}>{levelone.badgetxt} </span>
+																		) : (
+																			""
+																		)}
+																	</span>
+																</Link>
+															) : (
+																""
+															)}
+															{levelone.type === "sub" ? (
+																<Menuloop
+																	MenuItems={levelone}
+																	level={level + 1}
+																	toggleSidemenu={toggleSidemenu}
+																	HoverToggleInnerMenuFn={HoverToggleInnerMenuFn}
+																/>
+															) : (
+																""
+															)}
+														</li>
+													</Fragment>
+												))}
+										</Fragment>
+									);
+								})}
 							</ul>
 
 							<div className="slide-right" onClick={() => { slideRight(); }} id="slide-right">

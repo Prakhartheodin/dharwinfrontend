@@ -37,6 +37,9 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
   const [results, setResults] = useState<CandidateListItem[]>([]);
   const [searching, setSearching] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [selMembers, setSelMembers] = useState<Set<string>>(new Set());
+  const [selAdd, setSelAdd] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const loadMembers = useCallback(async () => {
     if (!departmentId) return;
@@ -55,6 +58,8 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
     setSearch("");
     setDebounced("");
     setResults([]);
+    setSelMembers(new Set());
+    setSelAdd(new Set());
     void loadMembers();
   }, [open, loadMembers]);
 
@@ -112,6 +117,41 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
     }
   };
 
+  const bulkSetDept = async (ids: string[], deptId: string | null, label: string) => {
+    if (!ids.length) return;
+    setBulkBusy(true);
+    try {
+      const outcomes = await Promise.allSettled(ids.map((id) => updateCandidate(id, { departmentId: deptId })));
+      const ok = outcomes.filter((o) => o.status === "fulfilled").length;
+      const failed = outcomes.length - ok;
+      await loadMembers();
+      onChanged?.();
+      setSelMembers(new Set());
+      setSelAdd(new Set());
+      await Swal.fire({
+        icon: failed ? "warning" : "success",
+        title: failed ? `${label}: ${ok} done, ${failed} failed` : `${label} (${ok})`,
+        toast: true,
+        position: "top-end",
+        timer: 2000,
+        showConfirmButton: false,
+      });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const toggle = (set: Set<string>, setSet: (s: Set<string>) => void, id: string) => {
+    const next = new Set(set);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSet(next);
+  };
+
+  const addableResultIds = results
+    .filter((c) => !(memberIds.has(idOf(c)) || deptIdOf(c) === departmentId))
+    .map(idOf);
+
   return (
     <OrgModal
       open={open && !!departmentId}
@@ -127,11 +167,39 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
     >
       <div className="space-y-5 px-5 py-5">
         <div>
-          <div className="mb-2 flex items-center justify-between">
-            <span className="text-[0.8125rem] font-medium text-defaulttextcolor">Current members</span>
-            <span className="rounded-full bg-light px-2 py-0.5 text-[0.6875rem] font-semibold text-defaulttextcolor/70 dark:bg-white/[0.06]">
-              {members.length}
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="flex items-center gap-2 text-[0.8125rem] font-medium text-defaulttextcolor">
+              {members.length > 0 ? (
+                <input
+                  type="checkbox"
+                  className="form-check-input m-0"
+                  title="Select all members"
+                  aria-label="Select all members"
+                  checked={selMembers.size === members.length}
+                  ref={(el) => {
+                    if (el) el.indeterminate = selMembers.size > 0 && selMembers.size < members.length;
+                  }}
+                  onChange={(e) => setSelMembers(e.target.checked ? new Set(members.map((m) => m.id)) : new Set())}
+                  disabled={bulkBusy}
+                />
+              ) : null}
+              Current members
             </span>
+            {selMembers.size > 0 ? (
+              <OrgTableAction
+                tone="danger"
+                title={`Remove ${selMembers.size} selected`}
+                disabled={bulkBusy}
+                onClick={() => bulkSetDept([...selMembers], null, "Removed from department")}
+              >
+                <i className="ri-close-line text-[0.875rem]" aria-hidden />
+                Remove selected ({selMembers.size})
+              </OrgTableAction>
+            ) : (
+              <span className="rounded-full bg-light px-2 py-0.5 text-[0.6875rem] font-semibold text-defaulttextcolor/70 dark:bg-white/[0.06]">
+                {members.length}
+              </span>
+            )}
           </div>
           {loadingMembers ? (
             <OrgLoadingBlock label="Loading members…" />
@@ -147,13 +215,21 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
                   className="flex items-center justify-between gap-2 rounded-lg border border-defaultborder/50 px-3 py-2"
                 >
                   <span className="flex min-w-0 items-center gap-2 text-[0.8125rem]">
+                    <input
+                      type="checkbox"
+                      className="form-check-input m-0"
+                      aria-label={`Select ${m.name}`}
+                      checked={selMembers.has(m.id)}
+                      onChange={() => toggle(selMembers, setSelMembers, m.id)}
+                      disabled={bulkBusy}
+                    />
                     <i className="ri-user-3-line text-defaulttextcolor/45" aria-hidden />
                     <span className="truncate text-defaulttextcolor">{m.name}</span>
                   </span>
                   <OrgTableAction
                     tone="danger"
                     title={`Remove ${m.name} from ${departmentName}`}
-                    disabled={busyId === m.id}
+                    disabled={busyId === m.id || bulkBusy}
                     onClick={() => setEmployeeDept(m.id, null, "Removed from department")}
                   >
                     <i className="ri-close-line text-[0.875rem]" aria-hidden />
@@ -189,41 +265,83 @@ export default function DepartmentMembersModal({ open, departmentId, departmentN
           ) : debounced && results.length === 0 ? (
             <p className="mb-0 mt-3 text-[0.8125rem] text-defaulttextcolor/55">No employees match “{debounced}”.</p>
           ) : results.length > 0 ? (
-            <ul className="mb-0 mt-3 max-h-52 space-y-1.5 overflow-y-auto">
-              {results.map((c) => {
-                const id = idOf(c);
-                const inThisDept = memberIds.has(id) || deptIdOf(c) === departmentId;
-                const otherDept = c.department?.trim();
-                return (
-                  <li
-                    key={id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-defaultborder/50 px-3 py-2"
-                  >
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate text-[0.8125rem] text-defaulttextcolor">{c.fullName}</span>
-                      {otherDept && !inThisDept ? (
-                        <span className="text-[0.7rem] text-defaulttextcolor/55">Currently in {otherDept}</span>
-                      ) : null}
-                    </span>
-                    {inThisDept ? (
-                      <span className="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-[0.7rem] font-medium text-success">
-                        Member
+            <>
+              {addableResultIds.length > 0 ? (
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-[0.75rem] text-defaulttextcolor/70">
+                    <input
+                      type="checkbox"
+                      className="form-check-input m-0"
+                      checked={selAdd.size === addableResultIds.length}
+                      ref={(el) => {
+                        if (el) el.indeterminate = selAdd.size > 0 && selAdd.size < addableResultIds.length;
+                      }}
+                      onChange={(e) => setSelAdd(e.target.checked ? new Set(addableResultIds) : new Set())}
+                      disabled={bulkBusy}
+                    />
+                    Select all matches
+                  </label>
+                  {selAdd.size > 0 ? (
+                    <OrgTableAction
+                      tone="primary"
+                      title={`Add ${selAdd.size} selected`}
+                      disabled={bulkBusy}
+                      onClick={() => bulkSetDept([...selAdd], departmentId, "Added to department")}
+                    >
+                      <i className="ri-add-line text-[0.875rem]" aria-hidden />
+                      Add selected ({selAdd.size})
+                    </OrgTableAction>
+                  ) : null}
+                </div>
+              ) : null}
+              <ul className="mb-0 mt-3 max-h-52 space-y-1.5 overflow-y-auto">
+                {results.map((c) => {
+                  const id = idOf(c);
+                  const inThisDept = memberIds.has(id) || deptIdOf(c) === departmentId;
+                  const otherDept = c.department?.trim();
+                  return (
+                    <li
+                      key={id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-defaultborder/50 px-3 py-2"
+                    >
+                      <span className="flex min-w-0 items-center gap-2">
+                        {!inThisDept ? (
+                          <input
+                            type="checkbox"
+                            className="form-check-input m-0"
+                            aria-label={`Select ${c.fullName}`}
+                            checked={selAdd.has(id)}
+                            onChange={() => toggle(selAdd, setSelAdd, id)}
+                            disabled={bulkBusy}
+                          />
+                        ) : null}
+                        <span className="flex min-w-0 flex-col">
+                          <span className="truncate text-[0.8125rem] text-defaulttextcolor">{c.fullName}</span>
+                          {otherDept && !inThisDept ? (
+                            <span className="text-[0.7rem] text-defaulttextcolor/55">Currently in {otherDept}</span>
+                          ) : null}
+                        </span>
                       </span>
-                    ) : (
-                      <OrgTableAction
-                        tone="primary"
-                        title={`Add ${c.fullName} to ${departmentName}`}
-                        disabled={busyId === id}
-                        onClick={() => setEmployeeDept(id, departmentId, "Added to department")}
-                      >
-                        <i className="ri-add-line text-[0.875rem]" aria-hidden />
-                        Add
-                      </OrgTableAction>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      {inThisDept ? (
+                        <span className="shrink-0 rounded-full bg-success/10 px-2 py-0.5 text-[0.7rem] font-medium text-success">
+                          Member
+                        </span>
+                      ) : (
+                        <OrgTableAction
+                          tone="primary"
+                          title={`Add ${c.fullName} to ${departmentName}`}
+                          disabled={busyId === id || bulkBusy}
+                          onClick={() => setEmployeeDept(id, departmentId, "Added to department")}
+                        >
+                          <i className="ri-add-line text-[0.875rem]" aria-hidden />
+                          Add
+                        </OrgTableAction>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
           ) : null}
         </div>
       </div>

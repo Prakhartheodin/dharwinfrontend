@@ -262,7 +262,17 @@ export default function DepartmentsPanel() {
                 const inactive = row.isActive === false;
                 return (
                   <tr key={row.id} className="border-defaultborder/50">
-                    <td className="font-medium">{row.name}</td>
+                    <td className="font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full border border-defaultborder/50"
+                          style={row.color ? { backgroundColor: row.color } : undefined}
+                          title={row.color || "Auto colour"}
+                          aria-hidden
+                        />
+                        {row.name}
+                      </span>
+                    </td>
                     <td className="text-defaulttextcolor/70">{row.code?.trim() || "—"}</td>
                     <td>
                       {inactive ? (

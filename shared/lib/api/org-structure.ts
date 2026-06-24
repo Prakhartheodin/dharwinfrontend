@@ -16,6 +16,8 @@ export interface OrgUnitNode {
   type: OrgUnitType;
   parentId: string | null;
   departmentId?: string | null;
+  /** Department-node colour (hex). Empty/undefined = chart auto-assigns a distinct colour. */
+  color?: string;
   headEmployeeId?: string | null;
   headEmployee?: OrgHeadEmployee | null;
   directToCeo?: boolean;

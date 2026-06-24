@@ -4,8 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSelector } from "react-redux";
-import ReactECharts from "echarts-for-react";
-import type { ECharts } from "echarts";
 import Swal from "sweetalert2";
 import {
   exportOrgComplianceReport,
@@ -28,24 +26,8 @@ import {
 } from "./org-ui";
 import { useFeaturePermissions } from "@/shared/hooks/use-feature-permissions";
 import { canReparentOrgUnit, type OrgUnitPlacement } from "@/shared/lib/org-tree.pure";
+import styles from "./OrgChart.module.css";
 const AssignToDepartmentModal = dynamic(() => import("./AssignToDepartmentModal"), { ssr: false });
-
-const truncate = (s: string, max = 28) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
-
-const treeDepth = (nodes: OrgUnitNode[], d = 1): number =>
-  (nodes ?? []).reduce((m, n) => {
-    const childD = n.children?.length ? treeDepth(n.children, d + 1) : d;
-    const empD = n.employees?.length ? d + 1 : d;
-    return Math.max(m, childD, empD);
-  }, d);
-
-const countLeaves = (nodes: OrgUnitNode[]): number =>
-  (nodes ?? []).reduce((acc, n) => {
-    const childLeaves = n.children?.length ? countLeaves(n.children) : 0;
-    const empLeaves = n.employees?.length ?? 0;
-    const ownLeaf = !n.children?.length && !n.employees?.length ? 1 : 0;
-    return acc + childLeaves + empLeaves + ownLeaf;
-  }, 0);
 
 const flattenUnits = (nodes: OrgUnitNode[], acc: OrgUnitNode[] = []): OrgUnitNode[] => {
   for (const n of nodes ?? []) {
@@ -55,121 +37,134 @@ const flattenUnits = (nodes: OrgUnitNode[], acc: OrgUnitNode[] = []): OrgUnitNod
   return acc;
 };
 
-const spanTooltipLine = (n: OrgUnitNode) => {
-  if (n.spanDirect == null && !n.spanBand) return null;
-  const band = n.spanBand && n.spanBand !== "ok" ? ` (${n.spanBand})` : "";
-  return `Span: ${n.spanDirect ?? 0} direct${band}`;
+// Avatar colours rotate per member; department auto-colours hash off a stable key so
+// each department is visually distinct even when no colour was picked.
+const AVATAR_PALETTE = ["#6366f1", "#0ea5e9", "#f59e0b", "#22c55e", "#ec4899", "#14b8a6", "#f43f5e", "#8b5cf6", "#84cc16", "#06b6d4"];
+const AUTO_PALETTE = ["#22c55e", "#0ea5e9", "#6366f1", "#8b5cf6", "#ec4899", "#ef4444", "#f59e0b", "#14b8a6", "#84cc16", "#64748b"];
+
+const initials = (name: string) =>
+  String(name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] || "")
+    .join("")
+    .toUpperCase() || "?";
+
+const hashColor = (key: string, palette: string[]) => {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return palette[h % palette.length];
 };
 
-const nodeTooltip = (n: OrgUnitNode) => {
+const resolveNodeColor = (n: OrgUnitNode) => {
+  if (n.type === "department") return n.color || hashColor(n.id || n.name, AUTO_PALETTE);
+  return ORG_UNIT_TYPE_META[n.type]?.chartColor ?? hashColor(n.id || n.name, AUTO_PALETTE);
+};
+
+const nodeTitle = (n: OrgUnitNode) => {
   const lines = [`${ORG_UNIT_TYPE_META[n.type]?.label ?? n.type}: ${n.name}`];
   if (n.headEmployee?.fullName) lines.push(`Head: ${n.headEmployee.fullName}`);
   if (n.memberCount) lines.push(`Members: ${n.memberCount}`);
-  const spanLine = spanTooltipLine(n);
-  if (spanLine) lines.push(spanLine);
-  return lines.join("<br/>");
+  if (n.spanDirect != null || n.spanBand) {
+    const band = n.spanBand && n.spanBand !== "ok" ? ` (${n.spanBand})` : "";
+    lines.push(`Span: ${n.spanDirect ?? 0} direct${band}`);
+  }
+  return lines.join("\n");
 };
 
-const highlightStyle = (unitId: string, highlightIds: Set<string>) => {
-  if (!highlightIds.has(unitId)) return {};
-  return {
-    borderColor: "#6366f1",
-    borderWidth: 2,
-    shadowBlur: 10,
-    shadowColor: "rgba(99, 102, 241, 0.45)",
-  };
+// Ids of every unit that has children, with its depth — drives "collapse to level 2".
+const collectCollapsibles = (nodes: OrgUnitNode[], depth = 0, acc: { id: string; depth: number }[] = []) => {
+  for (const n of nodes ?? []) {
+    if (n.children?.length) {
+      acc.push({ id: n.id, depth });
+      collectCollapsibles(n.children, depth + 1, acc);
+    }
+  }
+  return acc;
 };
 
-const nodeLabel = (n: OrgUnitNode) => {
-  const count = n.memberCount ? ` (${n.memberCount})` : "";
-  return `${truncate(n.name)}${count}`;
+type NodeCtx = {
+  collapsedIds: Set<string>;
+  highlightIds: Set<string>;
+  toggle: (id: string) => void;
 };
 
-const hexToRgba = (hex: string, alpha: number) => {
-  const h = hex.replace("#", "");
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-};
+function OrgNode({ node, ctx }: { node: OrgUnitNode; ctx: NodeCtx }) {
+  const [open, setOpen] = useState(false);
+  const isDept = node.type === "department";
+  const color = resolveNodeColor(node);
+  const employees = node.employees ?? [];
+  const memberCount = node.memberCount ?? employees.length;
+  const hasChildren = (node.children?.length ?? 0) > 0;
+  const collapsed = ctx.collapsedIds.has(node.id);
+  const highlighted = ctx.highlightIds.has(node.id);
 
-// ECharts rich-text uses {tag|...} markup; strip braces/pipes so unit/head
-// names can't break the label parser.
-// ponytail: simple strip is enough — names are already length-capped by truncate().
-const richSafe = (s: string) => s.replace(/[{}|]/g, "");
-
-// Card-style pill rendered as the node label so each unit reads as a labelled box,
-// not bare text floating above a speck. Two rich lines: unit name + head name.
-const unitLabel = (baseColor: string, highlighted: boolean, isDark: boolean) => {
-  const text = isDark ? "#e2e8f0" : "#1e293b";
-  const headText = isDark ? "#94a3b8" : "#64748b";
-  const bg = highlighted ? hexToRgba(baseColor, isDark ? 0.28 : 0.16) : isDark ? "#1e293b" : "#ffffff";
-  return {
-    backgroundColor: bg,
-    borderColor: baseColor,
-    borderWidth: highlighted ? 2 : 1.25,
-    borderRadius: 8,
-    padding: [6, 10] as [number, number],
-    color: text,
-    fontSize: 11.5,
-    fontWeight: 600,
-    shadowBlur: 6,
-    shadowColor: isDark ? "rgba(0, 0, 0, 0.45)" : "rgba(15, 23, 42, 0.08)",
-    shadowOffsetY: 1,
-    rich: {
-      name: { color: text, fontSize: 11.5, fontWeight: 600, lineHeight: 16 },
-      head: { color: headText, fontSize: 9.5, fontWeight: 400, lineHeight: 13 },
-    },
-  };
-};
-
-const toEChartsNode = (n: OrgUnitNode, highlightIds: Set<string>, isDark: boolean): Record<string, unknown> => {
-  const unitChildren = (n.children ?? []).map((c) => toEChartsNode(c, highlightIds, isDark));
-  const employeeChildren = (n.employees ?? []).map((e) => ({
-    name: truncate(e.fullName, 22),
-    symbol: "circle",
-    symbolSize: 9,
-    itemStyle: { color: isDark ? "#475569" : "#cbd5e1", borderColor: isDark ? "#1e293b" : "#ffffff", borderWidth: 1.5 },
-    lineStyle: { color: isDark ? "#334155" : "#e2e8f0" },
-    label: {
-      backgroundColor: isDark ? "#334155" : "#f8fafc",
-      borderColor: isDark ? "#475569" : "#e2e8f0",
-      borderWidth: 1,
-      borderRadius: 6,
-      padding: [3, 7],
-      color: isDark ? "#cbd5e1" : "#475569",
-      fontSize: 10,
-      fontWeight: 500,
-    },
-    tooltip: { formatter: `${e.fullName}<br/><a href="/ats/employees/edit?id=${e.id}">Open employee</a>` },
-    _employeeId: e.id,
-  }));
-  const baseColor = ORG_UNIT_TYPE_META[n.type]?.chartColor ?? "#94a3b8";
-  const highlighted = highlightIds.has(n.id);
-  const line1 = richSafe(nodeLabel(n));
-  const head = n.headEmployee?.fullName ? richSafe(truncate(n.headEmployee.fullName, 22)) : "";
-  return {
-    name: nodeLabel(n),
-    _unitId: n.id,
-    symbolSize: highlighted ? 18 : 15,
-    tooltip: { formatter: nodeTooltip(n) },
-    itemStyle: {
-      color: baseColor,
-      borderColor: isDark ? "#0f172a" : "#ffffff",
-      borderWidth: 2.5,
-      borderRadius: 5,
-      shadowBlur: highlighted ? 12 : 5,
-      shadowColor: highlighted ? "rgba(99, 102, 241, 0.45)" : hexToRgba(baseColor, 0.35),
-      ...highlightStyle(n.id, highlightIds),
-    },
-    label: {
-      ...unitLabel(baseColor, highlighted, isDark),
-      formatter: head ? `{name|${line1}}\n{head|${head}}` : `{name|${line1}}`,
-    },
-    lineStyle: highlighted ? { color: "#6366f1", width: 2 } : undefined,
-    children: [...unitChildren, ...employeeChildren],
-  };
-};
+  return (
+    <li className={collapsed ? styles.collapsed : undefined}>
+      <div className={`${styles.card} ${highlighted ? styles.highlight : ""}`} title={nodeTitle(node)}>
+        <div className={styles.head} style={{ background: color }}>
+          <span className={styles.title}>{node.name}</span>
+          <span className={styles.typeTag}>{ORG_UNIT_TYPE_META[node.type]?.label ?? node.type}</span>
+        </div>
+        <div className={styles.body}>
+          {node.headEmployee?.fullName ? <div className={styles.headName}>{node.headEmployee.fullName}</div> : null}
+          {isDept ? (
+            <>
+              <div
+                className={styles.memberLine}
+                onClick={() => employees.length && setOpen((o) => !o)}
+                role={employees.length ? "button" : undefined}
+              >
+                <strong>{memberCount}</strong>&nbsp;member{memberCount === 1 ? "" : "s"}
+                {employees.length ? ` · ${open ? "hide" : "show"}` : ""}
+              </div>
+              {employees.length ? (
+                <div className={styles.cluster} onClick={() => setOpen((o) => !o)} role="button" aria-label="Toggle members">
+                  {employees.slice(0, 4).map((e, i) => (
+                    <span key={e.id} className={styles.ava} style={{ background: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}>
+                      {initials(e.fullName)}
+                    </span>
+                  ))}
+                  {employees.length > 4 ? <span className={styles.more}>+{employees.length - 4}</span> : null}
+                </div>
+              ) : null}
+              {open && employees.length ? (
+                <div className={styles.emps}>
+                  {employees.map((e, i) => (
+                    <Link key={e.id} href={`/ats/employees/edit?id=${e.id}`} className={styles.emp} title={`Open ${e.fullName}`}>
+                      <span className={styles.dot} style={{ background: AVATAR_PALETTE[i % AVATAR_PALETTE.length] }}>
+                        {initials(e.fullName)}
+                      </span>
+                      <span className="truncate">{e.fullName}</span>
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+        {hasChildren ? (
+          <button
+            type="button"
+            className={styles.toggle}
+            onClick={() => ctx.toggle(node.id)}
+            aria-label={collapsed ? `Expand ${node.name}` : `Collapse ${node.name}`}
+          >
+            {collapsed ? "+" : "−"}
+          </button>
+        ) : null}
+      </div>
+      {hasChildren ? (
+        <ul>
+          {node.children.map((c) => (
+            <OrgNode key={c.id} node={c} ctx={ctx} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -186,7 +181,6 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     useFeaturePermissions("organization.structure");
   const { isPlatformSuperUser } = useAuth();
   const isDark = useSelector((s: any) => s.class) === "dark";
-  const chartRef = useRef<ReactECharts>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [searchInput, setSearchInput] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
@@ -197,9 +191,10 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const [flatUnits, setFlatUnits] = useState<OrgUnitNode[]>([]);
   const [dragUnitId, setDragUnitId] = useState<string | null>(null);
   const [reparenting, setReparenting] = useState(false);
-  const [initialTreeDepth, setTreeDepth] = useState<number>(-1);
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const captureRef = useRef<HTMLDivElement>(null);
   const [unassignedFilter, setUnassignedFilter] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -209,6 +204,8 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     // Backend structure.export alias includes structure.manage; matrix uses create/edit/delete on structure.
     return canEditStructure || canCreateStructure || canDeleteStructure;
   }, [isPlatformSuperUser, canEditStructure, canCreateStructure, canDeleteStructure]);
+
+  const collapsibles = useMemo(() => collectCollapsibles(tree.roots), [tree]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(searchInput.trim()), 300);
@@ -329,12 +326,17 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
 
   const highlightIds = useMemo(() => new Set(highlightPathIds), [highlightPathIds]);
 
+  // Highlight a path and make sure its ancestors are expanded so the target is visible.
   const selectSearchHit = useCallback((pathIds: string[]) => {
     setHighlightPathIds(pathIds);
+    setCollapsedIds((prev) => {
+      if (!pathIds.length) return prev;
+      const next = new Set(prev);
+      for (const id of pathIds) next.delete(id);
+      return next;
+    });
   }, []);
 
-  // Highlight a hit from the inline dropdown and bring the chart into view so the
-  // user sees the result immediately (the chart can be taller than the viewport).
   const goToHit = (pathIds: string[]) => {
     selectSearchHit(pathIds);
     setSearchOpen(false);
@@ -348,6 +350,21 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     setActiveIndex(-1);
     setSearchOpen(false);
   };
+
+  const toggle = useCallback((id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const collapseToLevel = () =>
+    setCollapsedIds(new Set(collapsibles.filter((c) => c.depth >= 1).map((c) => c.id)));
+  const expandAll = () => setCollapsedIds(new Set());
+
+  const nodeCtx = useMemo<NodeCtx>(() => ({ collapsedIds, highlightIds, toggle }), [collapsedIds, highlightIds, toggle]);
 
   const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
@@ -393,14 +410,25 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     }
   };
 
-  const getChartInstance = (): ECharts | undefined => chartRef.current?.getEchartsInstance();
+  // Rasterise the unscaled tree (not the zoomed wrapper) so exports are always full-resolution.
+  const captureChartPng = async (): Promise<string> => {
+    const node = captureRef.current;
+    if (!node) throw new Error("Chart not ready");
+    const { toPng } = await import("html-to-image");
+    return toPng(node, {
+      pixelRatio: 2,
+      cacheBust: true,
+      // Avoid SecurityError when reading cssRules from cross-origin stylesheets (Google Fonts, CDN).
+      skipFonts: true,
+      backgroundColor: isDark ? "#0f172a" : "#ffffff",
+    });
+  };
 
-  const clampZoom = (z: number) => Math.min(2, Math.max(0.5, Math.round(z * 10) / 10));
+  const clampZoom = (z: number) => Math.min(2, Math.max(0.4, Math.round(z * 10) / 10));
   const zoomIn = () => setZoom((z) => clampZoom(z + 0.1));
   const zoomOut = () => setZoom((z) => clampZoom(z - 0.1));
   const resetView = () => {
     setZoom(1);
-    // Recenter after the scale=1 re-render lands, else scrollWidth is still the zoomed value.
     requestAnimationFrame(() => {
       const el = scrollRef.current;
       if (el) el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
@@ -408,7 +436,8 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   };
   const fitWidth = () => {
     const el = scrollRef.current;
-    if (el) setZoom(clampZoom(el.clientWidth / minChartWidth));
+    const cap = captureRef.current;
+    if (el && cap && cap.scrollWidth > 0) setZoom(clampZoom(el.clientWidth / cap.scrollWidth));
   };
   const onChartKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key === "+" || e.key === "=") {
@@ -426,9 +455,7 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const handleExportPng = async () => {
     setExporting("png");
     try {
-      const inst = getChartInstance();
-      if (!inst) throw new Error("Chart not ready");
-      const url = inst.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+      const url = await captureChartPng();
       const a = document.createElement("a");
       a.href = url;
       a.download = `org-chart-${new Date().toISOString().slice(0, 10)}.png`;
@@ -443,14 +470,21 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
   const handleExportPdf = async () => {
     setExporting("pdf");
     try {
-      const inst = getChartInstance();
-      if (!inst) throw new Error("Chart not ready");
-      const url = inst.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#ffffff" });
+      const url = await captureChartPng();
+      const img = new Image();
+      img.src = url;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
-      pdf.addImage(url, "PNG", 16, 16, pageW - 32, pageH - 32);
+      const ratio = Math.min((pageW - 32) / img.width, (pageH - 32) / img.height);
+      const w = img.width * ratio;
+      const h = img.height * ratio;
+      pdf.addImage(url, "PNG", (pageW - w) / 2, 16, w, h);
       pdf.save(`org-chart-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch {
       await Swal.fire({ icon: "error", title: "Export failed", text: "Could not generate PDF." });
@@ -458,96 +492,6 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
       setExporting(null);
     }
   };
-
-  if (!tree.roots.length) {
-    return (
-      <OrgEmptyState
-        icon="ri-organization-chart"
-        title="No organization defined yet"
-        description="Start by adding a CEO node and building your hierarchy in Structure. Once units exist, the chart will render here automatically."
-        action={
-          <>
-            <OrgLinkButton href="/organization/structure">
-              <i className="ri-add-line text-base" aria-hidden />
-              Build structure
-            </OrgLinkButton>
-            <OrgLinkButton href="/organization/departments" variant="secondary">
-              <i className="ri-building-2-line text-base" aria-hidden />
-              Add departments
-            </OrgLinkButton>
-          </>
-        }
-      />
-    );
-  }
-
-  const rootNodes = tree.roots.map((r) => toEChartsNode(r, highlightIds, isDark));
-  const data =
-    rootNodes.length === 1
-      ? rootNodes
-      : [
-          {
-            name: "Organization",
-            children: rootNodes.map((r) => ({ ...r, lineStyle: { opacity: 0 } })),
-            itemStyle: { opacity: 0 },
-            label: { show: false },
-          },
-        ];
-
-  const option = {
-    tooltip: {
-      trigger: "item",
-      triggerOn: "mousemove",
-      backgroundColor: "rgba(15, 23, 42, 0.92)",
-      borderWidth: 0,
-      textStyle: { color: "#f8fafc", fontSize: 12 },
-    },
-    series: [
-      {
-        type: "tree",
-        data,
-        top: "12%",
-        bottom: "14%",
-        left: "3%",
-        right: "3%",
-        roam: true,
-        layout: "orthogonal",
-        orient: "TB",
-        symbol: "roundRect",
-        symbolSize: 15,
-        nodePadding: 28,
-        expandAndCollapse: true,
-        initialTreeDepth: initialTreeDepth,
-        animationDuration: 250,
-        animationDurationUpdate: 200,
-        lineStyle: { color: isDark ? "#475569" : "#cbd5e1", width: 1.5, curveness: 0.12 },
-        label: {
-          position: "top",
-          verticalAlign: "bottom",
-          align: "center",
-          distance: 10,
-          fontSize: 11.5,
-          color: isDark ? "#e2e8f0" : "#1e293b",
-        },
-        leaves: {
-          label: {
-            position: "bottom",
-            verticalAlign: "top",
-            align: "center",
-            distance: 10,
-          },
-        },
-        emphasis: {
-          focus: "descendant",
-          lineStyle: { color: "#94a3b8", width: 2 },
-          itemStyle: { shadowBlur: 10, shadowColor: "rgba(99, 102, 241, 0.3)" },
-        },
-      },
-    ],
-  };
-
-  const chartHeight = Math.min(Math.max(460, (treeDepth(tree.roots) + 1) * 150), 1600);
-  const minChartWidth = Math.max(640, countLeaves(tree.roots) * 120);
 
   const searchRows = useMemo(() => {
     if (!searchResult) return [];
@@ -590,6 +534,28 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
     if (!q) return tree.unassigned;
     return tree.unassigned.filter((e) => e.fullName.toLowerCase().includes(q));
   }, [tree.unassigned, unassignedFilter]);
+
+  if (!tree.roots.length) {
+    return (
+      <OrgEmptyState
+        icon="ri-organization-chart"
+        title="No organization defined yet"
+        description="Start by adding a CEO node and building your hierarchy in Structure. Once units exist, the chart will render here automatically."
+        action={
+          <>
+            <OrgLinkButton href="/organization/structure">
+              <i className="ri-add-line text-base" aria-hidden />
+              Build structure
+            </OrgLinkButton>
+            <OrgLinkButton href="/organization/departments" variant="secondary">
+              <i className="ri-building-2-line text-base" aria-hidden />
+              Add departments
+            </OrgLinkButton>
+          </>
+        }
+      />
+    );
+  }
 
   return (
     <div>
@@ -701,16 +667,11 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
             role="group"
             aria-label="Tree view controls"
           >
-            <OrgSecondaryButton
-              type="button"
-              title="Collapse to level 2"
-              disabled={!!exporting}
-              onClick={() => setTreeDepth(2)}
-            >
+            <OrgSecondaryButton type="button" title="Collapse to level 2" disabled={!!exporting} onClick={collapseToLevel}>
               <i className="ri-contract-up-down-line text-base" aria-hidden />
               Collapse
             </OrgSecondaryButton>
-            <OrgSecondaryButton type="button" title="Expand all levels" disabled={!!exporting} onClick={() => setTreeDepth(-1)}>
+            <OrgSecondaryButton type="button" title="Expand all levels" disabled={!!exporting} onClick={expandAll}>
               <i className="ri-expand-up-down-line text-base" aria-hidden />
               Expand
             </OrgSecondaryButton>
@@ -760,32 +721,25 @@ export default function OrgChart({ tree, onChanged }: { tree: OrgTree; onChanged
         </div>
         <div
           ref={scrollRef}
-          className="overflow-auto rounded-xl border border-defaultborder/70 bg-white outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:bg-bodybg"
+          className={`${styles.viewport} ${isDark ? styles.dark : ""} max-h-[70vh] overflow-auto rounded-xl border border-defaultborder/70 bg-white outline-none focus-visible:ring-2 focus-visible:ring-primary/50 dark:bg-bodybg`}
           tabIndex={0}
           role="application"
           aria-label="Organization chart. Use plus and minus keys to zoom, zero to reset."
           onKeyDown={onChartKeyDown}
         >
-          <div
-            style={{
-              minWidth: minChartWidth,
-              transform: `scale(${zoom})`,
-              transformOrigin: "top center",
-              transition: "transform 120ms ease-out",
-            }}
-          >
-            <ReactECharts
-              key={`org-depth-${initialTreeDepth}`}
-              ref={chartRef}
-              option={option}
-              style={{ height: chartHeight, width: "100%" }}
-              opts={{ renderer: "canvas" }}
-            />
+          <div className={styles.stage} style={{ transform: `scale(${zoom})` }}>
+            <div className={styles.tree} ref={captureRef}>
+              <ul>
+                {tree.roots.map((r) => (
+                  <OrgNode key={r.id} node={r} ctx={nodeCtx} />
+                ))}
+              </ul>
+            </div>
           </div>
         </div>
       </div>
       <p className="mb-0 mt-3 text-[0.75rem] text-defaulttextcolor/55">
-        CEO at the top, then managers, supervisors, departments, and their members. Select a search result to highlight its path. Collapse and Expand all reset the current expansion state.
+        CEO at the top, then managers, supervisors, departments, and their members. Each department uses its own colour (set it on the Departments page). Click a department to expand its members, or use the toggle under a node to collapse a branch.
       </p>
 
       {debouncedQ.length >= 2 ? (

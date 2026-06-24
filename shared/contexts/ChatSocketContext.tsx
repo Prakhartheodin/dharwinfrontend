@@ -4,7 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useRef, useSt
 import { io, Socket } from "socket.io-client";
 import { apiClient } from "@/shared/lib/api/client";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { GlobalIncomingCall, IncomingCallBar } from "@/shared/components/GlobalIncomingCall";
+import { GlobalIncomingCall, GlobalOutgoingCall, IncomingCallBar } from "@/shared/components/GlobalIncomingCall";
 
 function getSocketUrl(): string {
   const apiUrl = (process.env.NEXT_PUBLIC_API_URL ?? "").trim();
@@ -47,6 +47,15 @@ export interface CallStartData {
   token: string;
 }
 
+/** Caller-side ringing state. Set when the local user starts a call; drives the outgoing-call overlay. */
+export interface OutgoingCallData {
+  callId?: string;
+  conversationId: string;
+  callType: "audio" | "video";
+  calleeName: string;
+  status: "calling" | "declined" | "cancelled" | "unanswered";
+}
+
 /** Bolna telephony delta emitted on `call:update` (see chatSocket.service.js::emitCallUpdate). */
 export interface CallUpdateData {
   id?: string | null;
@@ -74,6 +83,9 @@ interface ChatSocketContextValue {
   /** Set when an incoming call is received (callee only). Cleared on accept/decline/timeout. */
   incomingCall: IncomingCallData | null;
   setIncomingCall: (data: IncomingCallData | null) => void;
+  /** Set when the local user starts a call (caller only). Cleared on connect/decline/cancel/timeout. */
+  outgoingCall: OutgoingCallData | null;
+  clearOutgoingCall: () => void;
   joinConversation: (conversationId: string) => void;
   leaveConversation: (conversationId: string) => void;
   onNewMessage: (callback: (msg: unknown) => void) => () => void;
@@ -95,7 +107,7 @@ interface ChatSocketContextValue {
   onCallUpdate: (callback: (data: CallUpdateData) => void) => () => void;
   emitSubscribeCall: (scope: "candidate" | "job", id: string) => void;
   emitUnsubscribeCall: (scope: "candidate" | "job", id: string) => void;
-  emitCallInitiate: (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => void;
+  emitCallInitiate: (conversationId: string, callType: "audio" | "video", meta?: { calleeName?: string }, cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => void;
   emitCallAccept: (callId: string, cb?: (res: { success?: boolean; error?: string }) => void) => void;
   emitCallDecline: (callId: string) => void;
   emitCallEnd: (callId: string) => void;
@@ -123,6 +135,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [incomingCall, setIncomingCall] = useState<IncomingCallData | null>(null);
+  const [outgoingCall, setOutgoingCall] = useState<OutgoingCallData | null>(null);
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
 
   const newMsgListeners = useRef<Set<(msg: unknown) => void>>(new Set());
@@ -229,10 +242,23 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     [socket]
   );
 
+  const clearOutgoingCall = useCallback(() => setOutgoingCall(null), []);
+
   const emitCallInitiate = useCallback(
-    (conversationId: string, callType: "audio" | "video", cb?: (res: { success?: boolean; callId?: string; error?: string }) => void) => {
+    (
+      conversationId: string,
+      callType: "audio" | "video",
+      meta?: { calleeName?: string },
+      cb?: (res: { success?: boolean; callId?: string; error?: string }) => void
+    ) => {
+      // Show the caller a "Calling…" overlay immediately; backend only emits call:start on accept.
+      setOutgoingCall({ conversationId, callType, calleeName: meta?.calleeName?.trim() || "Calling…", status: "calling" });
       socket?.emit("call:initiate", { conversationId, callType }, (res: { success?: boolean; callId?: string; error?: string }) => {
-        if (res?.callId) pendingInitiateCallIdRef.current = res.callId;
+        if (res?.callId) {
+          pendingInitiateCallIdRef.current = res.callId;
+          setOutgoingCall((prev) => (prev && prev.conversationId === conversationId ? { ...prev, callId: res.callId } : prev));
+        }
+        if (res?.error) setOutgoingCall(null);
         cb?.(res);
       });
     },
@@ -430,6 +456,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           ) {
             pendingAcceptCallIdRef.current = null;
             pendingInitiateCallIdRef.current = null;
+            setOutgoingCall(null);
             const params = new URLSearchParams({ from: "chat", conv: data.conversationId, callId: data.callId });
             if (data.callType === "audio") params.set("video", "0");
             else params.set("video", "1");
@@ -444,6 +471,12 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           if (pendingInitiateCallIdRef.current === data.callId) {
             pendingInitiateCallIdRef.current = null;
           }
+          // Tell the caller their call was declined, then auto-dismiss the overlay.
+          setOutgoingCall((prev) =>
+            prev && (prev.callId === data.callId || prev.conversationId === data.conversationId)
+              ? { ...prev, status: "declined" }
+              : prev
+          );
         });
 
         sock.on("call:cancelled", (data: { callId: string; conversationId: string }) => {
@@ -451,6 +484,9 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
           if (pendingAcceptCallIdRef.current === data.callId) {
             pendingAcceptCallIdRef.current = null;
           }
+          setOutgoingCall((prev) =>
+            prev && (prev.callId === data.callId || prev.conversationId === data.conversationId) ? null : prev
+          );
         });
 
         // Bolna telephony — admin dashboard + scoped subscribers see deltas live.
@@ -515,6 +551,8 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
     onlineUsers,
     incomingCall,
     setIncomingCall,
+    outgoingCall,
+    clearOutgoingCall,
     joinConversation,
     leaveConversation,
     onNewMessage,
@@ -549,6 +587,7 @@ export function ChatSocketProvider({ children }: { children: React.ReactNode }) 
       {children}
       <IncomingCallBar />
       <GlobalIncomingCall />
+      <GlobalOutgoingCall />
     </ChatSocketContext.Provider>
   );
 }

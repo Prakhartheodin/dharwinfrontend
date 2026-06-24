@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/shared/contexts/auth-context";
-import { useChatSocket, type IncomingCallData } from "@/shared/contexts/ChatSocketContext";
+import { useChatSocket, type IncomingCallData, type OutgoingCallData } from "@/shared/contexts/ChatSocketContext";
 import { updateCall } from "@/shared/lib/api/chat";
 
 const RING_TIMEOUT_MS = 45 * 1000;
@@ -815,4 +815,144 @@ function IncomingCallBarInner() {
 
 export function IncomingCallBar() {
   return <IncomingCallBarInner />;
+}
+
+/** Caller waits ~45s before we treat the call as unanswered (mirrors the callee ring timeout). */
+const OUTGOING_TIMEOUT_MS = RING_TIMEOUT_MS;
+
+function GlobalOutgoingCallInner() {
+  const { user } = useAuth();
+  const { outgoingCall, clearOutgoingCall, emitCallCancel } = useChatSocket();
+  const [localStatus, setLocalStatus] = useState<OutgoingCallData["status"] | null>(null);
+
+  const callId = outgoingCall?.callId;
+  const status = localStatus ?? outgoingCall?.status ?? null;
+
+  // Reset local override whenever a new call starts (callId changes) or overlay clears.
+  useEffect(() => {
+    setLocalStatus(null);
+  }, [outgoingCall?.conversationId, outgoingCall?.callId]);
+
+  // No-answer timeout: after the ring window, cancel the call and show "No answer".
+  useEffect(() => {
+    if (!outgoingCall || outgoingCall.status !== "calling") return;
+    const t = setTimeout(() => {
+      if (callId) emitCallCancel(callId);
+      setLocalStatus("unanswered");
+    }, OUTGOING_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [outgoingCall?.callId, outgoingCall?.status, callId, emitCallCancel, outgoingCall]);
+
+  // Auto-dismiss terminal states (declined / no answer).
+  const terminal = status === "declined" || status === "unanswered";
+  useEffect(() => {
+    if (!terminal) return;
+    const t = setTimeout(() => clearOutgoingCall(), 2600);
+    return () => clearTimeout(t);
+  }, [terminal, clearOutgoingCall]);
+
+  const cancel = useCallback(() => {
+    if (callId) emitCallCancel(callId);
+    clearOutgoingCall();
+  }, [callId, emitCallCancel, clearOutgoingCall]);
+
+  if (!user || !outgoingCall) return null;
+
+  const isVideo = outgoingCall.callType === "video";
+  const kindShort = isVideo ? "Video" : "Voice";
+  const calleeName = outgoingCall.calleeName || "Calling…";
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(calleeName)}&size=128&background=f1f5f9&color=334155`;
+  const headline =
+    status === "declined" ? "Call declined" : status === "unanswered" ? "No answer" : isVideo ? "Video call" : "Voice call";
+  const subline =
+    status === "declined"
+      ? `${calleeName} declined the call.`
+      : status === "unanswered"
+        ? `${calleeName} didn't answer.`
+        : `Ringing ${calleeName}…`;
+
+  const modal = (
+    <div
+      className="oc-overlay fixed inset-0 z-[10050] flex items-center justify-center p-4 sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${headline} ${calleeName}`}
+    >
+      <style>{`
+        @keyframes oc-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes oc-sheet-in { from { opacity: 0; transform: translateY(12px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes oc-ring-pulse { 0%,100% { transform: scale(1); opacity: 0.35; } 50% { transform: scale(1.14); opacity: 0.08; } }
+        .oc-overlay {
+          animation: oc-backdrop-in 0.35s cubic-bezier(0.22,1,0.36,1) forwards;
+          background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(15,23,42,0.72), rgba(15,23,42,0.88));
+          backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        }
+        .oc-card { animation: oc-sheet-in 0.45s cubic-bezier(0.22,1,0.36,1) forwards; box-shadow: 0 0 0 1px rgba(255,255,255,0.06) inset, 0 24px 48px -12px rgba(0,0,0,0.35); }
+        .oc-ring-1 { animation: oc-ring-pulse 1.8s ease-in-out infinite; }
+        .oc-ring-2 { animation: oc-ring-pulse 1.8s ease-in-out 0.45s infinite; }
+        .oc-btn { transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease; }
+        .oc-btn:hover { transform: scale(1.05); } .oc-btn:active { transform: scale(0.96); }
+      `}</style>
+      <div className="oc-card relative w-full max-w-[22rem] overflow-hidden rounded-2xl border border-black/[0.06] bg-white px-6 pb-6 pt-8 text-center dark:border-white/[0.08] dark:bg-[#14151a]">
+        <div className="relative mx-auto mb-5 inline-flex">
+          {!terminal && (
+            <>
+              <span className="oc-ring-1 absolute -inset-3 rounded-full bg-primary/25 dark:bg-primary/20" aria-hidden />
+              <span className="oc-ring-2 absolute -inset-5 rounded-full bg-primary/15 dark:bg-primary/10" aria-hidden />
+            </>
+          )}
+          <span className="relative flex h-[5.5rem] w-[5.5rem] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-neutral-100 to-neutral-200 shadow-inner ring-2 ring-white dark:from-white/10 dark:to-white/5 dark:ring-white/10">
+            <img src={avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
+          </span>
+        </div>
+
+        <p className={`mb-2 text-[0.6875rem] font-semibold uppercase tracking-[0.2em] ${terminal ? "text-rose-500 dark:text-rose-400" : "text-[#64748b] dark:text-white/45"}`}>
+          <span className="inline-flex items-center justify-center gap-2">
+            {!terminal && (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+            )}
+            {terminal ? headline : `Outgoing · ${kindShort}`}
+          </span>
+        </p>
+
+        <h2 className="mb-2 text-[1.375rem] font-bold leading-tight tracking-tight text-[#0f172a] dark:text-white">
+          {calleeName}
+        </h2>
+        <p className="mx-auto mb-6 max-w-[16rem] text-sm leading-relaxed text-[#64748b] dark:text-white/50">{subline}</p>
+
+        {terminal ? (
+          <button
+            type="button"
+            className="oc-btn inline-flex h-11 items-center justify-center rounded-full bg-neutral-100 px-6 text-sm font-semibold text-[#475569] hover:bg-neutral-200 dark:bg-white/10 dark:text-white/80 dark:hover:bg-white/15"
+            onClick={clearOutgoingCall}
+          >
+            Close
+          </button>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              className="oc-btn flex h-[3.75rem] w-[3.75rem] items-center justify-center rounded-full bg-gradient-to-br from-rose-500 to-rose-600 text-white shadow-lg shadow-rose-900/25 ring-2 ring-rose-300/50 ring-offset-2 ring-offset-white dark:ring-rose-400/30 dark:ring-offset-[#14151a]"
+              onClick={cancel}
+              aria-label="Cancel call"
+              title="Cancel"
+            >
+              <i className="ri-phone-fill text-2xl rotate-[135deg]" aria-hidden />
+            </button>
+            <span className="text-xs font-medium text-[#64748b] dark:text-white/40">Cancel</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return typeof document !== "undefined" ? createPortal(modal, document.body) : null;
+}
+
+/** Global outgoing (caller) call overlay; mount inside ChatSocketProvider. */
+export function GlobalOutgoingCall() {
+  return <GlobalOutgoingCallInner />;
 }
