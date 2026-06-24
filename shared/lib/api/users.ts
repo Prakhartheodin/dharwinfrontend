@@ -196,6 +196,12 @@ export interface NotificationPreferences {
   recruiterUpdatesInApp?: boolean;
   supportTicketUpdates?: boolean;
   supportTicketUpdatesInApp?: boolean;
+  placementUpdates?: boolean;
+  placementUpdatesInApp?: boolean;
+  chatMessagesInApp?: boolean;
+  assignmentUpdatesInApp?: boolean;
+  projectUpdatesInApp?: boolean;
+  sopAssignmentsInApp?: boolean;
 }
 
 export interface ProfilePicturePayload {
