@@ -57,6 +57,28 @@ export async function importRecruitersFromExcel(file: File): Promise<{
   return data;
 }
 
+/**
+ * Official/work email for business invites, falling back to the account (personal) email.
+ * Backend may expose officialEmail/workEmail/companyEmail; until then this returns the account email.
+ */
+export function pickOfficialEmail(u: User): string {
+  const r = u as Record<string, unknown>;
+  const official =
+    // companyAssignedEmail is the field assigned in Settings → Company work email.
+    (typeof r.companyAssignedEmail === "string" && r.companyAssignedEmail.trim()) ||
+    (typeof r.officialEmail === "string" && r.officialEmail.trim()) ||
+    (typeof r.workEmail === "string" && r.workEmail.trim()) ||
+    (typeof r.companyEmail === "string" && r.companyEmail.trim()) ||
+    "";
+  return official || u.email;
+}
+
+/** The company-assigned work email only (empty string if none assigned). No personal fallback. */
+export function getCompanyAssignedEmail(u: User): string {
+  const r = u as Record<string, unknown>;
+  return (typeof r.companyAssignedEmail === "string" && r.companyAssignedEmail.trim()) || "";
+}
+
 export async function listUsers(params?: ListUsersParams): Promise<UsersListResponse> {
   const { data } = await apiClient.get<UsersListResponse>("/users", { params });
   return data;

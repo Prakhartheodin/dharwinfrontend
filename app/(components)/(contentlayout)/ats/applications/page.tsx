@@ -131,6 +131,22 @@ function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
   };
 }
 
+// Internal = a logged-in user applied as themselves (JobApplication.applicantUser set);
+// external = public applicant / recruiter-added (applicantUser null).
+function ApplicantTypeBadge({ internal }: { internal: boolean }) {
+  return (
+    <span
+      className={`mt-0.5 inline-block text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full ${
+        internal
+          ? "bg-primary/10 text-primary"
+          : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60"
+      }`}
+    >
+      {internal ? "Internal Applicant" : "External Applicant"}
+    </span>
+  );
+}
+
 function ApplicationStatusSelect({
   value,
   applicantName,
@@ -718,6 +734,7 @@ export default function ApplicationsPage() {
                             <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 block truncate">
                               {meta.emailDisplay}
                             </span>
+                            <ApplicantTypeBadge internal={!!app.applicantUser} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -819,6 +836,7 @@ export default function ApplicationsPage() {
                                   <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate block max-w-[14rem]">
                                     {meta.emailDisplay}
                                   </span>
+                                  <ApplicantTypeBadge internal={!!app.applicantUser} />
                                 </div>
                               </div>
                             </td>

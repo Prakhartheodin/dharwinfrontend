@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 export interface ParticipantUser {
@@ -19,7 +19,7 @@ export interface ParticipantInvitesFieldProps {
 
 const norm = (s: string) => s.trim().toLowerCase()
 
-const MAX_USER_RESULTS = 40
+const MAX_USER_RESULTS = 500
 
 export default function ParticipantInvitesField({
   invites,
@@ -38,36 +38,49 @@ export default function ParticipantInvitesField({
   const [activeIndex, setActiveIndex] = useState(-1)
 
   const invitedSet = useMemo(() => new Set(invites.map(norm).filter(Boolean)), [invites])
-  const available = useMemo(
-    () => users.filter((u) => u.email && !invitedSet.has(norm(u.email))),
-    [users, invitedSet]
-  )
+  const userByEmail = useMemo(() => {
+    const m = new Map<string, ParticipantUser>()
+    users.forEach((u) => { if (u.email) m.set(norm(u.email), u) })
+    return m
+  }, [users])
 
+  // List ALL matching users (selected ones stay visible with a ticked checkbox).
   const filteredUsers = useMemo(() => {
     const q = norm(userQuery)
-    const pool = q
-      ? available.filter((u) => {
-          const email = norm(u.email)
-          const name = norm(u.name || '')
-          return email.includes(q) || name.includes(q)
-        })
-      : available
-    return pool.slice(0, MAX_USER_RESULTS)
-  }, [available, userQuery])
+    const pool = users.filter((u) => u.email)
+    const matched = q
+      ? pool.filter((u) => norm(u.email).includes(q) || norm(u.name || '').includes(q))
+      : pool
+    return matched.slice(0, MAX_USER_RESULTS)
+  }, [users, userQuery])
 
-  const addEmail = (email: string) => {
-    const e = email.trim()
-    if (!e || invitedSet.has(norm(e))) return
-    onChange([...invites, e])
-    setUserQuery('')
-    setPickerOpen(false)
-    setActiveIndex(-1)
-    inputRef.current?.focus()
+  // Split the single invites list: directory users → chips, free-typed guests → editable rows.
+  const directoryInvites = useMemo(
+    () => invites.map((e, i) => ({ e, i })).filter(({ e }) => userByEmail.has(norm(e))),
+    [invites, userByEmail]
+  )
+  const guestInvites = useMemo(
+    () => invites.map((e, i) => ({ e, i })).filter(({ e }) => !userByEmail.has(norm(e))),
+    [invites, userByEmail]
+  )
+
+  const toggleUser = (user: ParticipantUser) => {
+    const e = norm(user.email)
+    if (invitedSet.has(e)) {
+      onChange(invites.filter((x) => norm(x) !== e))
+    } else {
+      onChange([...invites, user.email])
+    }
   }
 
-  const pickUser = (user: ParticipantUser) => {
-    addEmail(user.email)
+  const selectAllFiltered = () => {
+    const toAdd = filteredUsers
+      .filter((u) => !invitedSet.has(norm(u.email)))
+      .map((u) => u.email)
+    if (toAdd.length) onChange([...invites, ...toAdd])
   }
+
+  const removeAt = (idx: number) => onChange(invites.filter((_, j) => j !== idx))
 
   useEffect(() => {
     if (!pickerOpen) return
@@ -99,7 +112,7 @@ export default function ParticipantInvitesField({
       setActiveIndex((i) => (i <= 0 ? filteredUsers.length - 1 : i - 1))
     } else if (e.key === 'Enter' && activeIndex >= 0) {
       e.preventDefault()
-      pickUser(filteredUsers[activeIndex])
+      toggleUser(filteredUsers[activeIndex]) // multi-select: toggle, keep dropdown open
     } else if (e.key === 'Escape') {
       setPickerOpen(false)
       setActiveIndex(-1)
@@ -107,13 +120,7 @@ export default function ParticipantInvitesField({
   }
 
   const userPickerDisabled = usersLoading || !!usersError
-  const emptyHint = usersLoading
-    ? 'Loading users...'
-    : available.length
-      ? userQuery.trim()
-        ? 'No users match your search'
-        : 'No users to show'
-      : 'No more users to add'
+  const unselectedInView = filteredUsers.filter((u) => !invitedSet.has(norm(u.email))).length
 
   return (
     <div className="space-y-3">
@@ -122,9 +129,9 @@ export default function ParticipantInvitesField({
           htmlFor={`${idPrefix}-user-search`}
           className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5"
         >
-          Add participant from users
+          Add participants from users
           <span className="text-xs font-normal text-defaulttextcolor/70 dark:text-white/70 ml-1">
-            — they get an email invite like everyone else
+            — pick several; everyone gets an email invite
           </span>
         </label>
         {usersError ? (
@@ -153,68 +160,133 @@ export default function ParticipantInvitesField({
               aria-controls={listId}
               aria-autocomplete="list"
               disabled={userPickerDisabled}
-              placeholder={
-                usersLoading
-                  ? 'Loading users...'
-                  : available.length
-                    ? 'Search by name or email...'
-                    : 'No more users to add'
-              }
+              placeholder={usersLoading ? 'Loading users...' : 'Search by name or email...'}
               value={userQuery}
               onChange={(e) => {
                 setUserQuery(e.target.value)
                 setPickerOpen(true)
               }}
               onFocus={() => {
-                if (!userPickerDisabled && available.length) setPickerOpen(true)
+                if (!userPickerDisabled) setPickerOpen(true)
               }}
               onKeyDown={onUserSearchKeyDown}
               className="form-control !py-2 !pl-9 !pr-3 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary"
             />
           </div>
           {pickerOpen && !userPickerDisabled ? (
-            <ul
-              id={listId}
-              role="listbox"
-              className="absolute z-50 mt-1 max-h-52 w-full overflow-y-auto rounded-lg border border-defaultborder bg-white shadow-lg dark:border-defaultborder/10 dark:bg-bodybg"
+            <div
+              className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-defaultborder bg-white shadow-lg dark:border-defaultborder/10 dark:bg-bodybg"
             >
-              {filteredUsers.length ? (
-                filteredUsers.map((u, i) => {
-                  const label = u.name ? `${u.name} — ${u.email}` : u.email
-                  const active = i === activeIndex
-                  return (
-                    <li key={u.id} role="presentation">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={active}
-                        className={`block w-full px-3 py-2 text-left text-sm ${
-                          active
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-defaulttextcolor hover:bg-light dark:text-white dark:hover:bg-white/5'
-                        }`}
-                        onMouseEnter={() => setActiveIndex(i)}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => pickUser(u)}
-                      >
-                        {label}
-                      </button>
-                    </li>
-                  )
-                })
-              ) : (
-                <li className="px-3 py-2 text-sm text-defaulttextcolor/60 dark:text-white/60" role="status">
-                  {emptyHint}
-                </li>
-              )}
-              {!userQuery.trim() && available.length > MAX_USER_RESULTS ? (
-                <li className="border-t border-defaultborder px-3 py-2 text-xs text-defaulttextcolor/60 dark:border-defaultborder/10 dark:text-white/60">
-                  Showing first {MAX_USER_RESULTS} users — type to narrow results
-                </li>
+              {unselectedInView > 1 ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 border-b border-defaultborder px-3 py-2 text-left text-xs font-medium text-primary hover:bg-primary/5 dark:border-defaultborder/10"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={selectAllFiltered}
+                >
+                  <i className="ri-checkbox-multiple-line text-sm" />
+                  Select all {userQuery.trim() ? 'matching' : ''} ({unselectedInView})
+                </button>
               ) : null}
-            </ul>
+              <ul id={listId} role="listbox" aria-multiselectable className="max-h-52 overflow-y-auto">
+                {filteredUsers.length ? (
+                  filteredUsers.map((u, i) => {
+                    const checked = invitedSet.has(norm(u.email))
+                    const active = i === activeIndex
+                    return (
+                      <li key={u.id} role="presentation">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={checked}
+                          className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm ${
+                            active
+                              ? 'bg-primary/10'
+                              : 'hover:bg-light dark:hover:bg-white/5'
+                          }`}
+                          onMouseEnter={() => setActiveIndex(i)}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => toggleUser(u)}
+                        >
+                          <span
+                            className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+                              checked
+                                ? 'border-primary bg-primary text-white'
+                                : 'border-defaultborder dark:border-white/20'
+                            }`}
+                            aria-hidden
+                          >
+                            {checked ? <i className="ri-check-line text-[11px] leading-none" /> : null}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-defaulttextcolor dark:text-white">
+                              {u.name || u.email}
+                            </span>
+                            {u.name ? (
+                              <span className="block truncate text-xs text-defaulttextcolor/60 dark:text-white/60">
+                                {u.email}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })
+                ) : (
+                  <li className="px-3 py-2 text-sm text-defaulttextcolor/60 dark:text-white/60" role="status">
+                    {usersLoading ? 'Loading users...' : userQuery.trim() ? 'No users match your search' : 'No users to show'}
+                  </li>
+                )}
+                {!userQuery.trim() && users.length > MAX_USER_RESULTS ? (
+                  <li className="border-t border-defaultborder px-3 py-2 text-xs text-defaulttextcolor/60 dark:border-defaultborder/10 dark:text-white/60">
+                    Showing first {MAX_USER_RESULTS} users — type to narrow results
+                  </li>
+                ) : null}
+              </ul>
+            </div>
           ) : null}
         </div>
+
+        {/* Selected participants as removable chips */}
+        {directoryInvites.length ? (
+          <div className="mt-2.5">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-xs font-medium text-defaulttextcolor/70 dark:text-white/70">
+                {directoryInvites.length} selected
+              </span>
+              <button
+                type="button"
+                className="text-xs text-danger hover:underline"
+                onClick={() => onChange(invites.filter((e) => !userByEmail.has(norm(e))))}
+              >
+                Clear all
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {directoryInvites.map(({ e, i }) => {
+                const u = userByEmail.get(norm(e))
+                return (
+                  <span
+                    key={i}
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-primary/10 py-1 pl-2.5 pr-1.5 text-xs text-primary"
+                  >
+                    <span className="truncate" title={u?.name ? `${u.name} — ${e}` : e}>
+                      {u?.name || e}
+                    </span>
+                    <button
+                      type="button"
+                      className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full hover:bg-primary/20"
+                      onClick={() => removeAt(i)}
+                      aria-label={`Remove ${u?.name || e}`}
+                    >
+                      <i className="ri-close-line text-[13px]" />
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div>
@@ -225,15 +297,15 @@ export default function ParticipantInvitesField({
           </span>
         </label>
         <div className="space-y-2">
-          {invites.map((email, i) => (
+          {guestInvites.map(({ e: email, i }) => (
             <div key={i} className="flex gap-2">
               <input
                 type="email"
                 placeholder="email@example.com"
                 value={email}
-                onChange={(e) => {
+                onChange={(ev) => {
                   const next = [...invites]
-                  next[i] = e.target.value
+                  next[i] = ev.target.value
                   onChange(next)
                 }}
                 className="form-control !py-2 !text-sm flex-1 border-defaultborder dark:border-defaultborder/10 rounded-lg"
@@ -241,7 +313,7 @@ export default function ParticipantInvitesField({
               <button
                 type="button"
                 className="ti-btn ti-btn-light !py-2 !px-2"
-                onClick={() => onChange(invites.filter((_, j) => j !== i))}
+                onClick={() => removeAt(i)}
                 aria-label="Remove invite"
               >
                 <i className="ri-close-line"></i>

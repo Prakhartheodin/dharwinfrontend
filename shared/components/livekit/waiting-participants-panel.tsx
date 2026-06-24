@@ -152,17 +152,76 @@ export function WaitingParticipantsPanel({
 
   return (
     <>
-      {/* Drawer tab when closed */}
+      {/* Full-screen amber edge alert — a light snake chases around the border while anyone waits */}
+      {count > 0 && <div aria-hidden className="waiting-snake-glow" />}
+      <style jsx>{`
+        @property --snake-angle {
+          syntax: "<angle>";
+          initial-value: 0deg;
+          inherits: false;
+        }
+        .waiting-snake-glow {
+          position: fixed;
+          inset: 0;
+          z-index: 998;
+          pointer-events: none;
+          padding: 5px;
+          border-radius: 14px;
+          background: conic-gradient(
+            from var(--snake-angle),
+            rgba(251, 191, 36, 0) 0deg,
+            rgba(251, 191, 36, 0) 210deg,
+            rgba(251, 191, 36, 0.85) 300deg,
+            #fde68a 340deg,
+            rgba(251, 191, 36, 0) 360deg
+          );
+          -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+          filter: drop-shadow(0 0 9px rgba(251, 191, 36, 0.7));
+          animation: waiting-snake-run 2.4s linear infinite;
+        }
+        @keyframes waiting-snake-run {
+          to {
+            --snake-angle: 360deg;
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .waiting-snake-glow {
+            animation: none;
+            background: none;
+            box-shadow: inset 0 0 60px 12px rgba(251, 191, 36, 0.45);
+          }
+        }
+      `}</style>
+
+      {/* Drawer tab when closed — loud when someone is waiting, quiet otherwise */}
       <button
         type="button"
         onClick={() => setDrawerOpen(true)}
-        className="fixed right-0 top-1/2 -translate-y-1/2 z-[999] flex items-center gap-2 pl-3 pr-2 py-2 rounded-l-xl bg-[#1a1a1f] border border-r-0 border-white/10 shadow-lg hover:bg-[#222] transition-colors"
-        title="Waiting room"
+        aria-label={count > 0 ? `${count} ${count === 1 ? "person" : "people"} waiting to join — review now` : "Waiting room"}
+        className={`fixed right-0 top-1/2 -translate-y-1/2 z-[999] flex items-center gap-2 pl-3 pr-2.5 py-2.5 rounded-l-xl border border-r-0 shadow-lg transition-colors ${
+          count > 0
+            ? "bg-[#1a1a1f] border-amber-400 ring-2 ring-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.55)] hover:bg-[#242018] motion-safe:animate-pulse"
+            : "bg-[#1a1a1f] border-white/10 hover:bg-[#222]"
+        }`}
+        title={count > 0 ? `${count} waiting to join` : "Waiting room"}
       >
-        <i className="ti ti-user-search text-primary text-lg" />
-        <span className="text-white text-sm font-medium">Waiting</span>
+        <span className="relative flex items-center justify-center">
+          <i className={`ti ti-user-search text-lg ${count > 0 ? "text-amber-300" : "text-primary"}`} />
+          {count > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 flex h-2.5 w-2.5">
+              <span className="motion-safe:animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+            </span>
+          )}
+        </span>
+        <span className={`text-sm font-semibold ${count > 0 ? "text-amber-100" : "text-white font-medium"}`}>
+          {count > 0 ? `${count} waiting` : "Waiting"}
+        </span>
         {count > 0 && (
-          <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-primary/20 text-primary text-xs font-semibold flex items-center justify-center">
+          <span className="min-w-[1.25rem] h-5 px-1.5 rounded-full bg-amber-400 text-[#1a1a1f] text-xs font-bold flex items-center justify-center">
             {count}
           </span>
         )}

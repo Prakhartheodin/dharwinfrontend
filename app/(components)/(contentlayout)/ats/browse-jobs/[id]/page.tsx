@@ -408,7 +408,7 @@ export default function BrowseJobDetailsPage() {
                         Skills & stack
                       </p>
                       <ul className="flex flex-wrap gap-2" aria-label="Required skills">
-                        {job.skillTags.map((tag) => (
+                        {[...new Set(job.skillTags)].map((tag) => (
                           <li key={tag}>
                             <span className="inline-block rounded-lg border border-stone-200/90 bg-white px-3 py-1.5 text-xs font-semibold text-stone-700 dark:border-white/12 dark:bg-white/[0.06] dark:text-stone-200">
                               {tag}

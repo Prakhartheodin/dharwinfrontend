@@ -15,7 +15,7 @@ import InterviewDateTimeOverlay from './InterviewDateTimeOverlay'
 import { to12Hour } from './interviewSlots'
 import AgentMultiSelect from './AgentMultiSelect'
 import { saveDraft, loadDraft, clearDraft, type InterviewDraftData } from './interviewDraft'
-import { listUsers } from '@/shared/lib/api/users'
+import { listUsers, pickOfficialEmail } from '@/shared/lib/api/users'
 import ParticipantInvitesField, { type ParticipantUser } from '@/shared/components/meeting/ParticipantInvitesField'
 
 function jobIdFromAppJob(job: JobApplication['job'] | undefined | null): string | null {
@@ -177,7 +177,7 @@ export default function CreateInterviewModal({
     try {
       const res = await listUsers({ limit: 500, status: 'active' })
       setParticipantUsers(
-        (res.results || []).map((u) => ({ id: u.id, name: u.name, email: u.email })).filter((u) => u.email)
+        (res.results || []).map((u) => ({ id: u.id, name: u.name, email: pickOfficialEmail(u) })).filter((u) => u.email)
       )
     } catch {
       setParticipantUsersError('Could not load users.')

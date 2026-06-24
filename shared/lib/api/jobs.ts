@@ -360,6 +360,22 @@ export async function getPublicJobById(id: string): Promise<PublicJob> {
   return data;
 }
 
+/**
+ * Lightweight check used by the public apply form to detect an existing account
+ * before the user fills the whole form. Returns false on any error so a flaky
+ * network never blocks the application.
+ */
+export async function checkPublicAccountExists(email: string): Promise<boolean> {
+  try {
+    const { data } = await publicApiClient.get<{ exists: boolean }>("/public/account-exists", {
+      params: { email },
+    });
+    return !!data?.exists;
+  } catch {
+    return false;
+  }
+}
+
 export interface PublicApplyPayload {
   fullName: string;
   email: string;

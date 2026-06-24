@@ -9,6 +9,7 @@ import {
   getPublicJobById,
   getPublicJobs,
   publicApplyToJob,
+  checkPublicAccountExists,
   PublicJob,
   PublicApplyPayload,
 } from "@/shared/lib/api/jobs";
@@ -74,6 +75,8 @@ export default function PublicJobDetailsPage() {
   const [documents, setDocuments] = useState<File[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [emailExists, setEmailExists] = useState(false);
+  const [checkingEmail, setCheckingEmail] = useState(false);
 
   const resumeInputRef = useRef<HTMLInputElement>(null);
   const documentsInputRef = useRef<HTMLInputElement>(null);
@@ -88,6 +91,42 @@ export default function PublicJobDetailsPage() {
     rememberJobReferralRef(jobId, referralRefFromUrl);
     setResolvedReferralRef(referralRefFromUrl || readStoredJobReferralRef(jobId) || null);
   }, [jobId, referralRefFromUrl]);
+
+  // Proactively detect an existing account so we can offer "log in to apply" instead of
+  // erroring after a full submit. Debounced 500ms; any failure is silent (never blocks applying).
+  useEffect(() => {
+    const e = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) {
+      setEmailExists(false);
+      setCheckingEmail(false);
+      return;
+    }
+    let cancelled = false;
+    setCheckingEmail(true);
+    const t = setTimeout(async () => {
+      const exists = await checkPublicAccountExists(e);
+      if (!cancelled) {
+        setEmailExists(exists);
+        setCheckingEmail(false);
+      }
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [email]);
+
+  // Route an existing user to login, returning to this job's authenticated apply afterwards.
+  const goToLoginForJob = () => {
+    if (!jobId) {
+      router.push(ROUTES.signIn);
+      return;
+    }
+    const applyPath = resolvedReferralRef
+      ? `/ats/browse-jobs/${jobId}?ref=${encodeURIComponent(resolvedReferralRef)}`
+      : `/ats/browse-jobs/${jobId}`;
+    router.push(`${ROUTES.signIn}?next=${encodeURIComponent(applyPath)}`);
+  };
 
   const loadJobDetails = async () => {
     try {
@@ -464,10 +503,33 @@ export default function PublicJobDetailsPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
                     className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary dark:bg-gray-700 dark:text-white"
                     placeholder="john@example.com"
                     required
                   />
+                  {checkingEmail && (
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Checking…</p>
+                  )}
+                  {emailExists && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="mt-2 flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-gray-700 dark:text-gray-200"
+                    >
+                      <i className="ri-information-line mt-0.5 text-primary" aria-hidden />
+                      <span className="flex-1">
+                        You already have an account with this email.{" "}
+                        <button
+                          type="button"
+                          onClick={goToLoginForJob}
+                          className="font-semibold text-primary hover:underline"
+                        >
+                          Log in to apply
+                        </button>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -606,13 +668,23 @@ export default function PublicJobDetailsPage() {
                   >
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={applying}
-                  >
-                    {applying ? "Submitting..." : "Submit Application"}
-                  </button>
+                  {emailExists ? (
+                    <button
+                      type="button"
+                      onClick={goToLoginForJob}
+                      className="flex-1 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition"
+                    >
+                      Log in to apply
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      className="flex-1 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={applying}
+                    >
+                      {applying ? "Submitting..." : "Submit Application"}
+                    </button>
+                  )}
                 </div>
               </form>
             </div>
