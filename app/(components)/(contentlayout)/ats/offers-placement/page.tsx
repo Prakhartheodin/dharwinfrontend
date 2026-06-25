@@ -1320,7 +1320,7 @@ const OffersPlacement = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
               {offersLoading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -1351,8 +1351,7 @@ const OffersPlacement = () => {
                 </div>
               ) : (
               <div
-                className={`table-responsive flex-1 min-w-0 max-w-full touch-pan-x ${offersStyles.tableCard} ${offersStyles.tableWrap}`}
-                style={{ minHeight: 0 }}
+                className={`table-responsive min-w-0 max-w-full ${offersStyles.tableCard} ${offersStyles.tableWrap}`}
               >
                 <table
                   {...getTableProps()}
