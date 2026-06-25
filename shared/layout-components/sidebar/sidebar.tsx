@@ -182,7 +182,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	const toggleSection = (title: string) => {
 		setCollapsedSections((prev) => {
-			const next = { ...prev, [title]: !(prev[title] === true) };
+			const isOpen = prev[title] === false;
+			// Accordion: collapse every section, then open the clicked one (unless it was already open).
+			const next: Record<string, boolean> = {};
+			for (const section of menuSections) next[section.title] = true;
+			next[title] = isOpen ? true : false;
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
@@ -192,19 +196,20 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	useEffect(() => {
 		const currentPath = path.endsWith("/") ? path.slice(0, -1) : path;
-		for (const section of menuSections) {
-			if (section.items.some((item) => menuItemMatchesPath(item, currentPath))) {
-				setCollapsedSections((prev) => {
-					if (prev[section.title] !== true) return prev;
-					const next = { ...prev, [section.title]: false };
-					if (typeof window !== "undefined") {
-						window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
-					}
-					return next;
-				});
-				break;
+		const match = menuSections.find((section) =>
+			section.items.some((item) => menuItemMatchesPath(item, currentPath))
+		);
+		if (!match) return;
+		setCollapsedSections((prev) => {
+			if (prev[match.title] === false) return prev; // already open
+			const next: Record<string, boolean> = {};
+			for (const section of menuSections) next[section.title] = true;
+			next[match.title] = false;
+			if (typeof window !== "undefined") {
+				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
-		}
+			return next;
+		});
 	}, [path, menuSections]);
 
 	function closeMenu() {
@@ -853,18 +858,27 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 							<ul className="main-menu" onClick={() => Sideclick()}>
 								{menuSections.map((section) => {
-									const isCollapsed = collapsedSections[section.title] === true;
+									const isCollapsed = collapsedSections[section.title] !== false;
+									const currentNavPath = path?.endsWith("/") ? path.slice(0, -1) : path;
+									const sectionHasActive = section.items.some((item) =>
+										menuItemMatchesPath(item, currentNavPath)
+									);
 									return (
 										<Fragment key={section.title}>
 											<li className="slide__category nav-module-section">
 												<button
 													type="button"
-													className={`category-name category-name--toggle${isCollapsed ? "" : " is-open"}`}
+													className={`category-name category-name--toggle flex w-full items-center justify-between cursor-pointer bg-transparent border-0 p-0 text-inherit uppercase rounded-md transition-colors duration-150 hover:bg-white/[0.04]${isCollapsed ? "" : " is-open"}`}
 													onClick={() => toggleSection(section.title)}
 													aria-expanded={!isCollapsed}
 												>
-													<span>{section.title}</span>
-													<i className="fe fe-chevron-right side-menu__angle" aria-hidden="true" />
+													<span className="flex items-center gap-2">
+														{section.title}
+														{isCollapsed && sectionHasActive && (
+															<span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+														)}
+													</span>
+													<i className={`fe fe-chevron-right side-menu__angle text-[0.75rem] opacity-70 transition-transform duration-200 ms-2${isCollapsed ? "" : " rotate-90"}`} aria-hidden="true" />
 												</button>
 											</li>
 											{!isCollapsed &&
