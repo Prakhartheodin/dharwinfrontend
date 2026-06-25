@@ -585,22 +585,23 @@ export function OfferLetterGeneratorWorkspace({
       style={{ fontFamily: 'var(--font-offer-letter-dm), system-ui, sans-serif' }}
     >
       <header className={`${styles.topbar} ${styles.printHide}`}>
-        <div className={styles.topbarLogo}>
-          <TopbarLogoIcon />
-          <span className={styles.topbarTitle}>Dharwin Business Solutions</span>
+        <div className={styles.topbarLead}>
+          <div className={styles.topbarLogo}>
+            <TopbarLogoIcon />
+            <span className={styles.topbarTitle}>Dharwin Business Solutions</span>
+          </div>
+          <div className={styles.topbarInfo}>
+            <span className={styles.topbarSub}>Offer Letter Generator</span>
+            <span className={styles.topbarMeta} title={`${offerCode}${jobTitle ? ` · ${jobTitle}` : ''}${candidateName ? ` · ${candidateName}` : ''}`}>
+              · {offerCode}
+              {jobTitle ? ` · ${jobTitle}` : ''}
+              {candidateName ? ` · ${candidateName}` : ''}
+            </span>
+            {lastSavedLabel ? (
+              <span className={styles.topbarSaved}>Last saved: {lastSavedLabel}</span>
+            ) : null}
+          </div>
         </div>
-        <div className={styles.topbarSep} />
-        <span className={styles.topbarSub}>Offer Letter Generator</span>
-        <span className={styles.topbarMeta}>
-          · {offerCode}
-          {jobTitle ? ` · ${jobTitle}` : ''}
-          {candidateName ? ` · ${candidateName}` : ''}
-        </span>
-        {lastSavedLabel ? (
-          <span className={styles.topbarMeta} style={{ color: '#86efac' }}>
-            Last saved: {lastSavedLabel}
-          </span>
-        ) : null}
         <div className={styles.topbarActions}>
           <button
             type="button"

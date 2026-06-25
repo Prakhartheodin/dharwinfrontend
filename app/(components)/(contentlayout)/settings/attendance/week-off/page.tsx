@@ -409,7 +409,7 @@ export default function SettingsAttendanceWeekOffPage() {
     <>
       <Seo title="Manage Week-Off Calendar" />
       {pageStyles}
-      <div className="week-off-page relative mt-4 space-y-6 min-h-[40vh] w-full">
+      <div className="week-off-page relative mt-4 min-h-[40vh] w-full min-w-0 space-y-6">
         <div
           className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]"
           aria-hidden
@@ -420,33 +420,33 @@ export default function SettingsAttendanceWeekOffPage() {
         />
 
         <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden transition-shadow duration-300 hover:shadow-md hover:shadow-black/[0.04] dark:hover:shadow-none">
-          <div className="flex items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
-            <div className="flex items-center gap-4 min-w-0">
+          <div className="flex min-w-0 flex-col gap-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white px-4 py-5 dark:from-white/[0.03] dark:to-transparent sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6">
+            <div className="flex min-w-0 w-full items-start gap-3 sm:w-auto sm:items-center sm:gap-4">
               <span
-                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20 sm:h-12 sm:w-12"
                 aria-hidden
               >
                 <i className="ri-calendar-schedule-line text-2xl" />
               </span>
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-semibold tracking-tight text-defaulttextcolor dark:text-white sm:text-lg">
                   Manage Week-Off Calendar
                 </h2>
-                <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">
+                <p className="mt-0.5 text-xs leading-relaxed text-defaulttextcolor/60 dark:text-white/50">
                   Set week-off days for candidates · Individual or bulk import via Excel
                 </p>
               </div>
             </div>
-            <div className="flex flex-wrap gap-2 shrink-0">
+            <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <button
                 type="button"
                 onClick={downloadTemplate}
-                className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-slate-100 dark:hover:bg-white/10 sm:w-auto"
               >
                 <i className="ri-download-line text-base" />
                 Download Template
               </button>
-              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-primary/90 hover:shadow-md transition-all disabled:opacity-60">
+              <label className="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:opacity-60 sm:w-auto">
                 <input
                   ref={excelInputRef}
                   type="file"
@@ -470,7 +470,7 @@ export default function SettingsAttendanceWeekOffPage() {
             </div>
           </div>
 
-          <div className="px-6 py-6 border-t border-defaultborder/50 space-y-6 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+          <div className="space-y-6 border-t border-defaultborder/50 bg-gradient-to-b from-slate-50/50 to-transparent px-4 py-6 dark:from-white/[0.02] dark:to-transparent sm:px-6">
             {error && (
               <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger">
                 {error}
@@ -490,7 +490,7 @@ export default function SettingsAttendanceWeekOffPage() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between gap-4">
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <label className="block text-sm font-semibold text-defaulttextcolor">
                   Select people <span className="text-danger">*</span>
                 </label>
@@ -546,7 +546,7 @@ export default function SettingsAttendanceWeekOffPage() {
             </div>
 
             <div>
-              <div className="mb-2 flex items-center justify-between gap-4">
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <label className="block text-sm font-semibold text-defaulttextcolor">Select Week-Off Days</label>
                 <div className="flex gap-2">
                   <button

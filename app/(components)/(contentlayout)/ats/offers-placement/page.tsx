@@ -1,6 +1,7 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import offersStyles from './offers-placement.module.css'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useTable, useSortBy, usePagination } from 'react-table'
@@ -158,6 +159,89 @@ const OffersPlacement = () => {
   const [offersLoading, setOffersLoading] = useState(true)
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>('')
+  /** React-controlled — Preline hs-dropdown often misses init after SPA navigation / on mobile tap. */
+  const [offersSortMenuOpen, setOffersSortMenuOpen] = useState(false)
+  const offersSortDropdownRef = useRef<HTMLDivElement>(null)
+  const offersSortMenuRef = useRef<HTMLUListElement>(null)
+  const [offersSortMenuPos, setOffersSortMenuPos] = useState<{ top: number; left: number } | null>(null)
+  /** React-controlled — Preline HSOverlay offcanvas often fails to open from data-hs-overlay on mobile. */
+  const [offersFilterPanelOpen, setOffersFilterPanelOpen] = useState(false)
+  const [offersFilterPortalMounted, setOffersFilterPortalMounted] = useState(false)
+
+  useEffect(() => {
+    setOffersFilterPortalMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!offersSortMenuOpen) return
+    const handleOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node
+      if (
+        !offersSortDropdownRef.current?.contains(target) &&
+        !offersSortMenuRef.current?.contains(target)
+      ) {
+        setOffersSortMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('touchstart', handleOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('touchstart', handleOutside)
+    }
+  }, [offersSortMenuOpen])
+
+  const updateOffersSortMenuPos = useCallback(() => {
+    const btn = document.getElementById('sort-dropdown-button')
+    const menu = offersSortMenuRef.current
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    const menuWidth = Math.max(192, menu?.offsetWidth ?? 192)
+    const menuHeight = menu?.offsetHeight ?? 320
+    const pad = 8
+
+    let left = rect.left
+    if (left + menuWidth > window.innerWidth - pad) {
+      left = window.innerWidth - menuWidth - pad
+    }
+    left = Math.max(pad, left)
+
+    let top = rect.bottom + 4
+    if (top + menuHeight > window.innerHeight - pad) {
+      top = Math.max(pad, rect.top - menuHeight - 4)
+    }
+
+    setOffersSortMenuPos({ top, left })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!offersSortMenuOpen) {
+      setOffersSortMenuPos(null)
+      return
+    }
+    updateOffersSortMenuPos()
+    const id = requestAnimationFrame(() => updateOffersSortMenuPos())
+    return () => cancelAnimationFrame(id)
+  }, [offersSortMenuOpen, updateOffersSortMenuPos])
+
+  useEffect(() => {
+    if (!offersSortMenuOpen) return
+    window.addEventListener('resize', updateOffersSortMenuPos)
+    window.addEventListener('scroll', updateOffersSortMenuPos, true)
+    return () => {
+      window.removeEventListener('resize', updateOffersSortMenuPos)
+      window.removeEventListener('scroll', updateOffersSortMenuPos, true)
+    }
+  }, [offersSortMenuOpen, updateOffersSortMenuPos])
+
+  useEffect(() => {
+    if (!offersFilterPanelOpen) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOffersFilterPanelOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [offersFilterPanelOpen])
 
   const fetchOffers = () => {
     setOffersLoading(true)
@@ -516,7 +600,7 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const candidate = row.original.candidate
           return (
-            <div className="flex min-w-0 max-w-[220px] items-center gap-2.5">
+            <div className="flex min-w-[11rem] items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
                 <img
                   src={candidate.displayPicture || '/assets/images/faces/1.jpg'}
@@ -528,8 +612,8 @@ const OffersPlacement = () => {
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-gray-900 dark:text-white">{candidate.name}</div>
-                <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{candidate.email}</div>
+                <div className="text-[13px] font-medium text-gray-900 dark:text-white">{candidate.name}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">{candidate.email}</div>
               </div>
             </div>
           )
@@ -541,7 +625,7 @@ const OffersPlacement = () => {
         Cell: ({ row }: any) => {
           const recruiter = row.original.recruiter
           return (
-            <div className="flex min-w-0 max-w-[200px] items-center gap-2.5">
+            <div className="flex min-w-[10rem] items-center gap-2.5">
               <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full ring-1 ring-slate-200/80 dark:ring-white/10">
                 <img
                   src={recruiter.displayPicture || '/assets/images/faces/1.jpg'}
@@ -553,9 +637,9 @@ const OffersPlacement = () => {
                 />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-gray-900 dark:text-white">{recruiter.name}</div>
+                <div className="text-[13px] font-medium text-gray-900 dark:text-white">{recruiter.name}</div>
                 {recruiter.email ? (
-                  <div className="truncate text-[11px] text-slate-500 dark:text-slate-400">{recruiter.email}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{recruiter.email}</div>
                 ) : null}
               </div>
             </div>
@@ -917,6 +1001,7 @@ const OffersPlacement = () => {
 
   // Handle sort selection
   const handleSortChange = (sortOption: string) => {
+    setOffersSortMenuOpen(false)
     setSelectedSort(sortOption)
     
     switch(sortOption) {
@@ -977,8 +1062,8 @@ const OffersPlacement = () => {
   const offerColMinW: Record<string, string> = {
     checkbox: '2.25rem',
     offerInfo: '9.5rem',
-    candidate: '11rem',
-    recruiter: '8rem',
+    candidate: '12rem',
+    recruiter: '10rem',
     bgvStatus: '4rem',
     offerStatus: '6.25rem',
     joiningDate: '6.75rem',
@@ -992,19 +1077,23 @@ const OffersPlacement = () => {
       <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
         <div className="col-span-12 min-w-0 flex flex-col">
           <div className="box min-w-0 flex flex-col">
-            <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <div className="min-w-0 flex flex-wrap items-center gap-3">
-                <span className="box-title min-w-0">
-                  Offers &amp; Placement
-                  <span
-                    className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
-                    title="Count after search and filters"
-                  >
-                    {filteredData.length}
-                  </span>
+            <div className="box-header flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+              <span className="box-title min-w-0">
+                Offers &amp; Placement
+                <span
+                  className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle tabular-nums"
+                  title="Count after search and filters"
+                >
+                  {filteredData.length}
                 </span>
+              </span>
+              <div
+                className="flex w-full min-w-0 max-w-full flex-col gap-2 sm:w-auto sm:max-w-none sm:flex-row sm:flex-wrap sm:items-center sm:gap-3"
+                role="toolbar"
+                aria-label="Offer list tools"
+              >
                 <div
-                  className="inline-flex flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
+                  className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-lg border border-slate-200/90 bg-slate-50/90 p-0.5 shadow-sm dark:border-white/10 dark:bg-slate-900/40"
                   aria-label="Pipeline pages"
                 >
                   <span className="inline-flex items-center rounded-md bg-white dark:bg-slate-800/80 py-1.5 px-2.5 text-[0.75rem] shadow-sm font-semibold text-primary cursor-default select-none" aria-current="page">
@@ -1028,14 +1117,13 @@ const OffersPlacement = () => {
                     Onboarding
                   </Link>
                 </div>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 shrink-0" role="toolbar" aria-label="Offer list tools">
+                <div className="flex min-w-0 w-full flex-wrap items-center gap-2 sm:w-auto sm:border-l sm:border-slate-200/80 sm:pl-3 dark:sm:border-white/10 relative z-20">
                 <label className="sr-only" htmlFor="offers-page-size">
                   Rows per page
                 </label>
                 <select
                   id="offers-page-size"
-                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -1048,25 +1136,42 @@ const OffersPlacement = () => {
                 {canCreate && (
                   <Link
                     href="/ats/offers-placement/offer-letter/new"
-                    className="ti-btn ti-btn-primary-full !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] me-2"
+                    className="ti-btn ti-btn-primary-full !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
                   >
                     <i className="ri-add-line font-semibold align-middle" aria-hidden />
                     Create
                   </Link>
                 )}
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div ref={offersSortDropdownRef} className="relative z-30">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] hs-dropdown-toggle ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light touch-manipulation !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
                     id="sort-dropdown-button"
-                    aria-expanded="false"
-                    aria-haspopup="true"
+                    aria-expanded={offersSortMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setOffersSortMenuOpen((open) => !open)
+                    }}
                   >
                     <i className="ri-arrow-up-down-line me-1 align-middle font-semibold" aria-hidden />
                     Sort
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block" aria-hidden />
                   </button>
-                  <ul className="hs-dropdown-menu ti-dropdown-menu hidden" aria-labelledby="sort-dropdown-button">
+                  {offersSortMenuOpen && offersFilterPortalMounted
+                    ? createPortal(
+                        <ul
+                          ref={offersSortMenuRef}
+                          className="fixed z-[12050] max-h-[min(70vh,24rem)] min-w-[12rem] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border border-defaultborder bg-white py-1 shadow-lg dark:border-defaultborder/20 dark:bg-bodybg"
+                          style={
+                            offersSortMenuPos
+                              ? { top: offersSortMenuPos.top, left: offersSortMenuPos.left }
+                              : { top: -9999, left: -9999, visibility: 'hidden' }
+                          }
+                          role="menu"
+                          aria-labelledby="sort-dropdown-button"
+                        >
                     <li>
                       <button
                         type="button"
@@ -1167,9 +1272,12 @@ const OffersPlacement = () => {
                         <i className="ri-close-line me-2 align-middle inline-block"></i>Clear Sort
                       </button>
                     </li>
-                  </ul>
+                        </ul>,
+                        document.body
+                      )
+                    : null}
                 </div>
-                <div className="relative me-2 w-[9.5rem] min-w-0 sm:w-40">
+                <div className="relative min-w-0 flex-1 basis-full sm:basis-auto sm:w-40 sm:flex-initial">
                   <i
                     className="ri-search-line pointer-events-none absolute left-2 top-1/2 z-[1] -translate-y-1/2 text-[0.75rem] text-slate-400"
                     aria-hidden
@@ -1186,10 +1294,10 @@ const OffersPlacement = () => {
                 </div>
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] me-2"
-                  data-hs-overlay="#offers-filter-panel"
-                  aria-expanded="false"
+                  className={`ti-btn ti-btn-light touch-manipulation !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem] ${offersFilterPanelOpen ? 'ring-2 ring-primary/30 bg-primary/[0.06]' : ''}`}
+                  aria-expanded={offersFilterPanelOpen}
                   aria-controls="offers-filter-panel"
+                  onClick={() => setOffersFilterPanelOpen((open) => !open)}
                 >
                   <i className="ri-filter-3-line me-1 align-middle" aria-hidden />
                   Filters
@@ -1209,9 +1317,10 @@ const OffersPlacement = () => {
                     Delete ({selectedRows.size})
                   </button>
                 )}
+                </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {offersLoading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -1242,12 +1351,12 @@ const OffersPlacement = () => {
                 </div>
               ) : (
               <div
-                className={`table-responsive flex-1 overflow-y-auto ${offersStyles.tableCard} ${offersStyles.tableWrap}`}
+                className={`table-responsive flex-1 min-w-0 max-w-full touch-pan-x ${offersStyles.tableCard} ${offersStyles.tableWrap}`}
                 style={{ minHeight: 0 }}
               >
                 <table
                   {...getTableProps()}
-                  className="table w-full min-w-full whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80"
+                  className={`table whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${offersStyles.tableWide}`}
                 >
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
@@ -1453,24 +1562,48 @@ const OffersPlacement = () => {
         </div>
       </div>
 
-      {/* Filter Panel Offcanvas */}
-      <div id="offers-filter-panel" className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105]" tabIndex={-1}>
+      {/* Filter Panel Offcanvas — React-controlled (Preline HSOverlay unreliable on SPA/mobile). */}
+      {offersFilterPortalMounted && offersFilterPanelOpen
+        ? createPortal(
+            <>
+              <div
+                className="fixed inset-0 z-[140] bg-black/40"
+                onClick={() => setOffersFilterPanelOpen(false)}
+                aria-hidden
+              />
+              <div
+                id="offers-filter-panel"
+                className="ti-offcanvas ti-offcanvas-right open !z-[150] flex h-full w-full max-w-sm flex-col overflow-hidden bg-white shadow-xl dark:bg-bodybg"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Offer filters"
+                tabIndex={-1}
+              >
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
           <h6 className="ti-offcanvas-title flex items-center gap-2 text-base font-semibold">
             <i className="ri-filter-3-line text-primary text-base" aria-hidden />
             Filters
           </h6>
-          <button 
-            type="button" 
-            className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1" 
-            onClick={handleResetFilters}
-          >
-            
-                <i className="ri-refresh-line me-1.5"></i>Reset
-           
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md px-2 py-1 text-[0.75rem]"
+              onClick={handleResetFilters}
+            >
+              <i className="ri-refresh-line me-1" aria-hidden />
+              Reset
+            </button>
+            <button
+              type="button"
+              className="ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 dark:focus:ring-white/10 dark:focus:ring-offset-white/10 hover:bg-gray-100 dark:hover:bg-black/40 rounded-md p-1"
+              onClick={() => setOffersFilterPanelOpen(false)}
+              aria-label="Close filters"
+            >
+              <i className="ri-close-line text-lg" aria-hidden />
+            </button>
+          </div>
         </div>
-        <div className="ti-offcanvas-body !p-4">
+        <div className="ti-offcanvas-body !p-4 flex-1 overflow-y-auto">
           <div className="space-y-5">
             {/* Candidate Filter */}
             <div className="pb-4 border-b border-gray-200 dark:border-defaultborder/10">
@@ -1728,14 +1861,18 @@ const OffersPlacement = () => {
               <button
                 type="button"
                 className="ti-btn ti-btn-light font-medium shadow-sm hover:shadow-md transition-shadow !py-1.5 !text-sm"
-                data-hs-overlay="#offers-filter-panel"
+                onClick={() => setOffersFilterPanelOpen(false)}
               >
                 <i className="ri-close-line me-1.5"></i>Close
               </button>
             </div>
           </div>
         </div>
-      </div>
+              </div>
+            </>,
+            document.body
+          )
+        : null}
 
       {/* Edit Offer Status Modal - !opacity-100 !pointer-events-auto so it shows when opened via React state */}
       {editOfferModal && (
@@ -1831,13 +1968,13 @@ const OffersPlacement = () => {
       {/* Offer letter generator (embedded UI — same layout as standalone tool; saves to this offer) */}
       {letterModalOffer && (
         <div
-          className="offer-letter-fullscreen fixed inset-0 z-[1060] flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-950 pointer-events-auto"
+          className="offer-letter-fullscreen fixed inset-0 z-[1060] flex w-full max-w-[100vw] flex-col overflow-hidden bg-slate-100 dark:bg-slate-950 pointer-events-auto"
           role="dialog"
           aria-modal="true"
           aria-label="Offer letter generator"
           {...letterModalBackdropProps}
         >
-          <div ref={letterModalContainerRef} className="flex min-h-0 flex-1 flex-col">
+          <div ref={letterModalContainerRef} className="flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col">
           <OfferLetterGeneratorWorkspace
             offerCode={letterModalOffer.offerCode || '—'}
             jobTitle={letterModalOffer.job?.title || ''}

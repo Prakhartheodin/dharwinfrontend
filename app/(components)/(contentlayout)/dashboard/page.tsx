@@ -982,10 +982,10 @@ export default function DashboardPage() {
       )}
 
       {/* ========== WELCOME BAR ========== */}
-      <div className="box mt-5 mb-4 sm:mt-6">
-        <div className="box-body flex flex-wrap items-center justify-between gap-4 !py-3">
-          <div>
-            <h4 className="font-semibold text-[1.125rem] mb-0">
+      <div className="box mt-3 mb-3 sm:mt-5 sm:mb-4">
+        <div className="box-body flex flex-wrap items-center justify-between gap-3 sm:gap-4 !py-2.5 sm:!py-3">
+          <div className="min-w-0">
+            <h4 className="font-semibold text-[1rem] sm:text-[1.125rem] mb-0">
               {getGreeting()},{" "}
               <span className="text-primary">{(user?.name || "there").replace(/\b\w/g, (c) => c.toUpperCase())}</span>
             </h4>
@@ -1060,13 +1060,13 @@ export default function DashboardPage() {
       )}
 
       {/* Layout: row 1 = main panels + sidebar, row 2 = Projects Summary */}
-      <div className="grid grid-cols-12 gap-6 items-start [&_.box]:!mb-0">
+      <div className="grid grid-cols-12 gap-3 sm:gap-4 lg:gap-6 items-start [&_.box]:!mb-0">
         <div className="xxl:col-span-9 col-span-12">
-          <div className="grid grid-cols-12 gap-6 xxl:items-stretch">
+          <div className="grid grid-cols-12 gap-3 sm:gap-4 lg:gap-6 xxl:items-stretch">
             {/* LEFT: 4 stat cards + Application Analytics (directly under stats) */}
             <div className="xxl:col-span-5 col-span-12 flex flex-col min-h-0 h-full">
-              <div className="grid grid-cols-12 gap-6 flex-shrink-0">
-                <div className="sm:col-span-6 col-span-12">
+              <div className="grid grid-cols-12 gap-3 sm:gap-4 lg:gap-6 flex-shrink-0">
+                <div className="col-span-12 min-[480px]:col-span-6">
                   <Link
                     href="/ats/jobs"
                     target="_blank"
@@ -1074,13 +1074,13 @@ export default function DashboardPage() {
                     className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
-                      <div className="box-body flex justify-between items-center">
-                        <div>
-                          <p className="mb-1">Total Jobs</p>
+                      <div className="box-body flex justify-between items-center gap-3 !p-3 sm:!p-4">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[0.8125rem] sm:text-sm">Total Jobs</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
-                          <h4 className="font-semibold mb-1 text-[1.5rem]">{totals?.totalJobs ?? 0}</h4>
+                          <h4 className="font-semibold mb-1 text-[1.25rem] sm:text-[1.5rem]">{totals?.totalJobs ?? 0}</h4>
                         )}
                         <span className="badge bg-success/10 text-success">1.5% <i className="ti ti-trending-up ms-1"></i></span>
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">this month</span>
@@ -1092,7 +1092,7 @@ export default function DashboardPage() {
                   </div>
                   </Link>
                 </div>
-                <div className="sm:col-span-6 col-span-12">
+                <div className="col-span-12 min-[480px]:col-span-6">
                   <Link
                     href="/ats/jobs?status=active"
                     target="_blank"
@@ -1100,13 +1100,13 @@ export default function DashboardPage() {
                     className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
-                      <div className="box-body flex justify-between items-center">
-                        <div>
-                          <p className="mb-1">Active Jobs</p>
+                      <div className="box-body flex justify-between items-center gap-3 !p-3 sm:!p-4">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[0.8125rem] sm:text-sm">Active Jobs</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
-                          <h4 className="font-semibold mb-1 text-[1.5rem]">{totals?.activeJobs ?? 0}</h4>
+                          <h4 className="font-semibold mb-1 text-[1.25rem] sm:text-[1.5rem]">{totals?.activeJobs ?? 0}</h4>
                         )}
                         <span className="badge bg-danger/10 text-danger">0.8% <i className="ti ti-trending-down ms-1"></i></span>
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">open</span>
@@ -1118,7 +1118,7 @@ export default function DashboardPage() {
                   </div>
                   </Link>
                 </div>
-                <div className="sm:col-span-6 col-span-12">
+                <div className="col-span-12 min-[480px]:col-span-6">
                   <Link
                     href="/ats/employees"
                     target="_blank"
@@ -1126,13 +1126,13 @@ export default function DashboardPage() {
                     className="block w-full text-left border-0 bg-transparent p-0 cursor-pointer hover:opacity-90 rounded-lg no-underline text-inherit"
                   >
                     <div className="box">
-                      <div className="box-body flex justify-between items-center">
-                        <div>
-                          <p className="mb-1">Total Employees</p>
+                      <div className="box-body flex justify-between items-center gap-3 !p-3 sm:!p-4">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[0.8125rem] sm:text-sm">Total Employees</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
-                          <h4 className="font-semibold mb-1 text-[1.5rem]">{totals?.totalCandidates ?? 0}</h4>
+                          <h4 className="font-semibold mb-1 text-[1.25rem] sm:text-[1.5rem]">{totals?.totalCandidates ?? 0}</h4>
                         )}
                         <span className="badge bg-success/10 text-success">0.5% <i className="ti ti-trending-up ms-1"></i></span>
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">ATS</span>
@@ -1144,20 +1144,20 @@ export default function DashboardPage() {
                   </div>
                   </Link>
                 </div>
-                <div className="sm:col-span-6 col-span-12">
+                <div className="col-span-12 min-[480px]:col-span-6">
                   <Link
                     href="/ats/applications"
                     aria-label="Manage all applications"
                     className="block w-full text-left rounded-lg hover:opacity-90"
                   >
                     <div className="box">
-                      <div className="box-body flex justify-between items-center">
-                        <div>
-                          <p className="mb-1">Applications</p>
+                      <div className="box-body flex justify-between items-center gap-3 !p-3 sm:!p-4">
+                        <div className="min-w-0">
+                          <p className="mb-1 text-[0.8125rem] sm:text-sm">Applications</p>
                         {loading ? (
                           <Skeleton className="h-7 w-16 mb-1" />
                         ) : (
-                          <h4 className="font-semibold mb-1 text-[1.5rem]">{applicationsStatCount}</h4>
+                          <h4 className="font-semibold mb-1 text-[1.25rem] sm:text-[1.5rem]">{applicationsStatCount}</h4>
                         )}
                         <span className="badge bg-success/10 text-success">0.5% <i className="ti ti-trending-up ms-1"></i></span>
                         <span className="text-[#8c9097] dark:text-white/50 text-[0.6875rem] ms-1">All time</span>

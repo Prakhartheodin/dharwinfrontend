@@ -388,7 +388,7 @@ const PreBoarding = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {loading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -423,10 +423,10 @@ const PreBoarding = () => {
                 </div>
               ) : (
                 <div
-                  className={`table-responsive flex-1 overflow-y-auto ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap}`}
+                  className={`table-responsive flex-1 min-w-0 max-w-full touch-pan-x ${pipelineStyles.tableCard} ${pipelineStyles.tableWrap}`}
                   style={{ minHeight: 0 }}
                 >
-                  <table className="table w-full min-w-full whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80">
+                  <table className={`table whitespace-nowrap text-[0.8125rem] text-defaulttextcolor dark:text-white/80 ${pipelineStyles.tableWideLg}`}>
                     <thead>
                       <tr className="border-b border-slate-200/90 dark:border-white/10">
                         <th

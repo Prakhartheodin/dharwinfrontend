@@ -20,6 +20,17 @@
 .tableWrap {
   border-radius: 0 0 0.5rem 0.5rem;
   scroll-behavior: smooth;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.tableWide {
+  width: 100%;
+  min-width: 56rem;
 }
 
 /* Reference: docs/references/offers-placement-redesigned.html — table card shell */

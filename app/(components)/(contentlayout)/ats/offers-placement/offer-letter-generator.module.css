@@ -28,6 +28,8 @@
   flex: 1 1 0;
   min-height: 0;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   flex-direction: column;
   background: #f1f5f9;
@@ -43,12 +45,31 @@
   background: var(--sidebar-bg);
   color: #fff;
   padding: 0 24px;
-  height: 56px;
+  min-height: 56px;
+  width: 100%;
+  max-width: 100%;
   display: flex;
   align-items: center;
   gap: 12px;
   flex-shrink: 0;
+  flex-wrap: wrap;
   border-bottom: 1px solid #1e293b;
+}
+
+.topbarLead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.topbarInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .topbarLogo {
@@ -80,7 +101,18 @@
 .topbarMeta {
   font-size: 12px;
   color: #94a3b8;
-  margin-left: 8px;
+  margin-left: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbarSaved {
+  font-size: 11px;
+  color: #86efac;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .topbarActions {
@@ -231,6 +263,9 @@
   gap: 0;
   flex: 1 1 0;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow: hidden;
 }
 
@@ -238,6 +273,9 @@
   background: var(--surface);
   border-right: 1px solid var(--border);
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -253,6 +291,8 @@
    Keep each card at content height; the form panel itself scrolls. */
 .formPanel > * {
   flex-shrink: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sectionCard {
@@ -446,12 +486,23 @@
 }
 .olg :global(.tiptap-toolbar) {
   border-bottom-color: var(--border) !important;
+  max-width: 100%;
 }
 .olg :global(.tiptap-toolbar .border-l) {
   border-left-color: var(--border) !important;
 }
+.olg :global(.tiptap-editor) {
+  min-width: 0;
+  max-width: 100%;
+}
 .olg :global(.tiptap-content) {
   border-color: var(--border) !important;
+  min-width: 0;
+  max-width: 100%;
+}
+.olg :global(.tiptap-content .ProseMirror) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .helpText {
@@ -492,6 +543,9 @@
 .previewPanel {
   position: relative;
   min-height: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -605,6 +659,7 @@
 
 .letter {
   width: 794px;
+  max-width: 100%;
   min-height: 1123px;
   background: #fff;
   box-shadow: 0 4px 32px rgba(0, 0, 0, 0.18);
@@ -1260,13 +1315,80 @@
 }
 
 @media (max-width: 1100px) {
+  .topbar {
+    padding: 10px 12px;
+    gap: 10px;
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .topbarLead {
+    flex: 1 1 100%;
+    align-items: flex-start;
+  }
+
+  .topbarTitle {
+    display: none;
+  }
+
+  .topbarSep {
+    display: none;
+  }
+
+  .topbarActions {
+    flex: 1 1 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .topbarActions .btn {
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 45vh) minmax(0, 1fr);
+    min-width: 0;
+    width: 100%;
   }
 
   .formPanel {
     border-right: none;
     border-bottom: 1px solid var(--border);
+    padding: 16px 12px;
+  }
+
+  .fieldRow {
+    grid-template-columns: 1fr;
+  }
+
+  .previewPanel {
+    padding: 12px 8px;
+  }
+
+  .letter,
+  .letterPrintSheet,
+  .letterPrintTable {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .screenOnlyLetterHead {
+    padding: 14px 16px 0 16px;
+  }
+
+  .letterPage {
+    padding: 24px 16px 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .workspace {
+    grid-template-rows: minmax(0, 42vh) minmax(0, 1fr);
   }
 }

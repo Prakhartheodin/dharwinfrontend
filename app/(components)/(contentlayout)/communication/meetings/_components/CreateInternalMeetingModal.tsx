@@ -168,8 +168,8 @@ export default function CreateInternalMeetingModal({
       aria-labelledby="create-internal-meeting-modal-label"
       aria-hidden="true"
     >
-      <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out transition-all sm:max-w-2xl">
-        <div className="ti-modal-content flex min-h-0 max-h-[min(calc(100dvh_-_2rem),46rem)] flex-col overflow-hidden border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl">
+      <div className="ti-modal-box mx-auto mt-0 w-full max-w-2xl px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] pt-[max(0.5rem,env(safe-area-inset-top,0px))] ease-out transition-all hs-overlay-open:mt-0 sm:m-3 sm:px-0 sm:pb-0 sm:pt-0 sm:hs-overlay-open:mt-7">
+        <div className="ti-modal-content flex min-h-0 max-h-[calc(100dvh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1rem)] w-full flex-col overflow-hidden border border-defaultborder dark:border-defaultborder/10 rounded-xl shadow-xl sm:max-h-[min(calc(100dvh-2rem),46rem)]">
           <div className="ti-modal-header shrink-0 bg-gradient-to-b from-gray-50 to-gray-50/80 dark:from-black/25 dark:to-black/15 border-b border-defaultborder dark:border-defaultborder/10 px-6 py-4">
             <h3
               id="create-internal-meeting-modal-label"
@@ -208,7 +208,7 @@ export default function CreateInternalMeetingModal({
               onSubmit={onSubmit}
               noValidate
             >
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 space-y-5 pb-6">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 py-5 space-y-5 pb-4 [-webkit-overflow-scrolling:touch]">
                 {formError && (
                   <div
                     id="internal-meeting-form-error"
@@ -441,15 +441,15 @@ export default function CreateInternalMeetingModal({
                   />
                 </div>
               </div>
-              <div className="ti-modal-footer flex shrink-0 flex-col gap-3 border-t bg-gray-50/95 px-6 py-4 dark:bg-black/35 dark:border-defaultborder/10">
-                <div className="flex w-full flex-wrap items-center justify-end gap-2">
-                  <button type="button" className="ti-btn ti-btn-light !py-2 !px-4 !text-sm" onClick={closeModal}>
+              <div className="ti-modal-footer sticky bottom-0 z-10 flex shrink-0 flex-col gap-3 border-t bg-gray-50/95 px-6 py-4 shadow-[0_-6px_16px_-8px_rgba(15,23,42,0.18)] backdrop-blur-sm dark:bg-black/35 dark:border-defaultborder/10 pb-[max(1rem,env(safe-area-inset-bottom,0px))]">
+                <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+                  <button type="button" className="ti-btn ti-btn-light w-full !py-2 !px-4 !text-sm sm:w-auto" onClick={closeModal}>
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={formLoading}
-                    className="ti-btn ti-btn-primary !py-2.5 !px-5 !text-sm min-w-[11rem] disabled:opacity-80"
+                    className="ti-btn ti-btn-primary w-full !py-2.5 !px-5 !text-sm min-w-[11rem] disabled:opacity-80 sm:w-auto"
                   >
                     {formLoading ? (
                       <>

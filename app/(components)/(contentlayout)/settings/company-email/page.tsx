@@ -6,6 +6,7 @@ import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { CandidateListItem, CompanyEmailAssignmentRow } from "@/shared/lib/api/candidates";
 import { AxiosError } from "axios";
 import CompanyWorkNumberPanel from "./_components/CompanyWorkNumberPanel";
+import pipelineStyles from "../../ats/ats-pipeline-list.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
 
@@ -361,23 +362,23 @@ export default function SettingsCompanyEmailPage() {
       <Seo title="Company work email" />
       <p ref={liveMsgRef} className="sr-only" aria-live="polite" aria-atomic="true" />
 
-      <div className="box-body space-y-6 pb-6 motion-reduce:transition-none">
+      <div className="box-body min-w-0 max-w-full space-y-6 overflow-x-hidden pb-6 motion-reduce:transition-none">
         {/* Page hero — aligned with Settings → Agents */}
         <div className="relative overflow-hidden rounded-2xl border border-defaultborder/60 bg-gradient-to-br from-slate-50/90 via-white to-white dark:from-white/[0.04] dark:via-bodybg dark:to-bodybg">
           <div
             className="pointer-events-none absolute -right-12 -top-20 h-56 w-56 rounded-full bg-emerald-500/[0.07] blur-3xl motion-reduce:opacity-0 dark:bg-emerald-400/[0.06]"
             aria-hidden
           />
-          <div className="relative flex flex-col gap-4 p-6 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex gap-4">
+          <div className="relative flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+            <div className="flex min-w-0 w-full items-start gap-3 sm:gap-4">
               <span
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-700 shadow-sm ring-1 ring-emerald-500/15 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20"
+                className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-700 shadow-sm ring-1 ring-emerald-500/15 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20 sm:h-14 sm:w-14"
                 aria-hidden
               >
                 <i className="ri-mail-send-line text-2xl transition-transform duration-300 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:scale-100" />
               </span>
-              <div>
-                <h4 className="box-title mb-1.5 text-lg tracking-tight text-defaulttextcolor dark:text-white">
+              <div className="min-w-0 flex-1">
+                <h4 className="box-title mb-1.5 text-base tracking-tight text-defaulttextcolor dark:text-white sm:text-lg">
                   Company work email
                 </h4>
                 <p className="mb-0 max-w-2xl text-[0.8125rem] leading-relaxed text-defaulttextcolor/65 dark:text-white/55">
@@ -388,7 +389,7 @@ export default function SettingsCompanyEmailPage() {
               </div>
             </div>
             {enabled && !listLoading && (
-              <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">
+              <div className="flex w-full min-w-0 shrink-0 flex-wrap gap-2 sm:w-auto sm:justify-end">
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/60 bg-white/80 px-3 py-1 text-xs font-medium text-defaulttextcolor/80 dark:bg-white/5 dark:text-white/70">
                   <i className="ri-group-line text-emerald-600/80 dark:text-emerald-400/90" aria-hidden />
                   {students.length} people
@@ -409,15 +410,15 @@ export default function SettingsCompanyEmailPage() {
 
         {/* Email | Number view switch — only shown when the role can see more than one sub-view */}
         {visibleViews.length > 1 && (
-          <div className="flex justify-center">
-            <div className="inline-flex rounded-full border border-defaultborder/60 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04]">
+          <div className="flex w-full min-w-0 justify-center px-1">
+            <div className="flex w-full max-w-full flex-wrap justify-center gap-1 rounded-full border border-defaultborder/60 bg-white/70 p-1 shadow-sm dark:border-white/10 dark:bg-white/[0.04] sm:inline-flex sm:w-auto sm:flex-nowrap">
               {visibleViews.map((v) => (
                 <button
                   key={v.id}
                   type="button"
                   onClick={() => setView(v.id)}
                   aria-pressed={activeView === v.id}
-                  className={`inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
+                  className={`inline-flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:flex-none sm:px-4 ${
                     activeView === v.id
                       ? "bg-primary/10 text-primary"
                       : "text-defaulttextcolor/60 hover:text-defaulttextcolor dark:text-white/55 dark:hover:text-white"
@@ -446,9 +447,9 @@ export default function SettingsCompanyEmailPage() {
         ) : null}
 
         {/* Feature toggle */}
-        <div className="rounded-2xl border border-defaultborder/70 bg-white/60 p-5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.03]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="min-w-0">
+        <div className="rounded-2xl border border-defaultborder/70 bg-white/60 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.03] sm:p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
               <h6 className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
                 Enable assignment hub
               </h6>
@@ -605,8 +606,8 @@ export default function SettingsCompanyEmailPage() {
               </div>
             )}
 
-            <div className="overflow-hidden rounded-2xl border border-defaultborder/70 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg">
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-defaultborder/60 px-4 py-3 dark:border-white/10">
+            <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg">
+              <div className="flex flex-col gap-2 border-b border-defaultborder/60 px-3 py-3 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
                 <h6 className="mb-0 font-semibold text-defaulttextcolor dark:text-white">Roster</h6>
                 {listLoading ? (
                   <span className="inline-flex items-center gap-2 text-xs text-defaulttextcolor/50 dark:text-white/45" role="status">
@@ -623,8 +624,8 @@ export default function SettingsCompanyEmailPage() {
                 )}
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="ti-custom-table full-width min-w-[760px] text-left text-sm">
+              <div className={`${pipelineStyles.tableWrap} overflow-x-auto`}>
+                <table className={`ti-custom-table full-width text-left text-sm ${pipelineStyles.tableWide}`}>
                   <thead className="bg-defaultbackground/50 text-[0.6875rem] font-semibold uppercase tracking-wide text-defaulttextcolor/55 dark:bg-white/[0.04] dark:text-white/45">
                     <tr>
                         <th className="!w-11 px-3 py-3">

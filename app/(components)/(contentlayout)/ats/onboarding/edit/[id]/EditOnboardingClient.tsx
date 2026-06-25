@@ -473,8 +473,8 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
       <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${pipelineStyles.listShell}`}>
         <div className="col-span-12 min-w-0 flex flex-col">
           <div className="box min-w-0 flex flex-col">
-            <div className="box-header flex flex-wrap items-center justify-between gap-2 overflow-visible">
-              <div className="box-title min-w-0 flex-1">
+            <div className="box-header flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+              <div className="box-title min-w-0 w-full sm:flex-1">
                 <span className="inline-flex items-start gap-2 sm:items-center">
                   <span
                     className="mt-0.5 inline-block h-8 w-0.5 shrink-0 rounded-full bg-primary"
@@ -499,30 +499,30 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                 )}
               </div>
               <div
-                className="flex flex-wrap items-center gap-2 shrink-0"
+                className="grid w-full min-w-0 max-w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:max-w-none sm:flex-wrap sm:items-center sm:gap-2"
                 role="toolbar"
                 aria-label="Onboarding edit navigation"
               >
                 <Link
                   href="/ats/offers-placement"
-                  className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
+                  className="ti-btn ti-btn-light !mb-0 !min-w-0 justify-center !py-1 !px-2 !text-[0.75rem]"
                 >
-                  <i className="ri-file-paper-2-line me-1 align-middle" aria-hidden />
-                  Offers &amp; placement
+                  <i className="ri-file-paper-2-line me-1 shrink-0 align-middle" aria-hidden />
+                  <span className="truncate">Offers</span>
                 </Link>
                 <Link
                   href="/ats/pre-boarding"
-                  className="ti-btn ti-btn-light !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
+                  className="ti-btn ti-btn-light !mb-0 !min-w-0 justify-center !py-1 !px-2 !text-[0.75rem]"
                 >
-                  <i className="ri-suitcase-line me-1 align-middle" aria-hidden />
-                  Pre-boarding
+                  <i className="ri-suitcase-line me-1 shrink-0 align-middle" aria-hidden />
+                  <span className="truncate">Pre-boarding</span>
                 </Link>
                 <Link
                   href="/ats/onboarding"
-                  className="ti-btn ti-btn-primary-full !mb-0 !w-auto !min-w-fit !py-1 !px-2 !text-[0.75rem]"
+                  className="ti-btn ti-btn-primary-full col-span-2 !mb-0 !min-w-0 justify-center !py-1 !px-2 !text-[0.75rem] sm:col-span-1 sm:w-auto"
                 >
-                  <i className="ri-arrow-left-line me-1 align-middle" aria-hidden />
-                  Back to Onboarding
+                  <i className="ri-arrow-left-line me-1 shrink-0 align-middle" aria-hidden />
+                  <span className="truncate">Back to Onboarding</span>
                 </Link>
               </div>
             </div>

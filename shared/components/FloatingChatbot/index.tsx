@@ -456,7 +456,7 @@ function FloatingChatbotInner({ userId }: { userId: string }) {
         aria-hidden={isOpen}
         tabIndex={isOpen ? -1 : 0}
         className={[
-          "z-[11001] select-none",
+          "z-[11001] select-none touch-manipulation",
           "h-14 w-14 rounded-full text-white",
           "relative overflow-visible",
           "transition-[transform,opacity] duration-200",

@@ -11,6 +11,7 @@ import {
   type PlivoNumberType,
 } from "@/shared/lib/api/plivo";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
+import pipelineStyles from "../../../ats/ats-pipeline-list.module.css";
 
 // Plivo has no list-countries endpoint, so the dropdown is sourced from the shared
 // ISO country table (real country names + 2-letter codes), sorted A–Z.
@@ -165,10 +166,10 @@ export default function CompanyWorkNumberPanel() {
   }, [confirmNumber, showToast, loadOwned]);
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
       {/* Your current numbers — already on the connected Plivo account */}
-      <div className="overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-defaultborder/60 px-5 py-3.5 dark:border-white/10">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="flex flex-col gap-2 border-b border-defaultborder/60 px-4 py-3.5 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
           <div>
             <h6 className="mb-0.5 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
               Your current numbers
@@ -214,8 +215,8 @@ export default function CompanyWorkNumberPanel() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+          <div className={pipelineStyles.tableWrap}>
+            <table className={`w-full text-sm ${pipelineStyles.tableWide}`}>
               <thead>
                 <tr className="border-b border-defaultborder/60 text-left text-xs uppercase tracking-wide text-defaulttextcolor/55 dark:border-white/10 dark:text-white/45">
                   <th className="px-5 py-3 font-semibold">Number</th>
@@ -274,7 +275,7 @@ export default function CompanyWorkNumberPanel() {
       {/* Search form */}
       <form
         onSubmit={handleSearch}
-        className="rounded-2xl border border-defaultborder/70 bg-white/60 p-5 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.03]"
+        className="min-w-0 rounded-2xl border border-defaultborder/70 bg-white/60 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.03] sm:p-5"
       >
         <div className="mb-4">
           <h6 className="mb-1 text-[0.9375rem] font-semibold text-defaulttextcolor dark:text-white">
@@ -414,9 +415,9 @@ export default function CompanyWorkNumberPanel() {
             </p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 dark:border-white/10 dark:bg-white/[0.03]">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+          <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 dark:border-white/10 dark:bg-white/[0.03]">
+            <div className={pipelineStyles.tableWrap}>
+              <table className={`w-full text-sm ${pipelineStyles.tableWideLg}`}>
                 <thead>
                   <tr className="border-b border-defaultborder/60 text-left text-xs uppercase tracking-wide text-defaulttextcolor/55 dark:border-white/10 dark:text-white/45">
                     <th className="px-4 py-3 font-semibold">Number</th>

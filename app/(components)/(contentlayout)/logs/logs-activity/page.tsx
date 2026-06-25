@@ -70,6 +70,102 @@ function toIsoEndOfDay(date: string | null): string | undefined {
 
 type DatePreset = "7d" | "30d" | "3m" | "all" | "custom";
 
+type LogRowModel = {
+  actionDisp: ReturnType<typeof getActivityActionDisplayForRow>;
+  entityDisp: ReturnType<typeof getEntityTypeDisplay>;
+  entityRich: ReturnType<typeof getOrgMutateDeniedEntitySummary>;
+  entityHref: string | null;
+  canOpenEntity: boolean;
+};
+
+function buildLogRowModel(
+  log: ActivityLog,
+  permissions: string[],
+  isAdministrator: boolean,
+  isPlatformSuperUser: boolean
+): LogRowModel {
+  return {
+    actionDisp: getActivityActionDisplayForRow(log),
+    entityDisp: getEntityTypeDisplay(log.entityType),
+    entityRich:
+      getOrgMutateDeniedEntitySummary(log) ??
+      getOrgUnitActivityEntitySummary(log) ??
+      getDepartmentActivityEntitySummary(log) ??
+      getOrgStructureActivityEntitySummary(log) ??
+      getEmployeeOrgActivityEntitySummary(log) ??
+      getCandidateActivityEntitySummary(log) ??
+      getJobActivityEntitySummary(log) ??
+      getRoleActivityEntitySummary(log) ??
+      getUserActivityEntitySummary(log) ??
+      getImpersonationEntitySummary(log),
+    entityHref: getActivityLogEntityHref(log.entityType, log.entityId),
+    canOpenEntity: canOpenActivityLogEntity(
+      log.entityType,
+      log.entityId,
+      permissions,
+      isAdministrator,
+      isPlatformSuperUser
+    ),
+  };
+}
+
+function ActivityLogEntityCell({
+  log,
+  model,
+}: {
+  log: ActivityLog;
+  model: LogRowModel;
+}) {
+  const { entityDisp, entityRich, entityHref, canOpenEntity } = model;
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0">
+      {entityRich ? (
+        <>
+          <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
+            <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+              {entityDisp.title}
+            </span>
+            <span className="font-semibold text-defaulttextcolor text-[0.8125rem]">
+              {entityRich.headline}
+            </span>
+          </div>
+          {entityRich.detailLines.map((line, i) => (
+            <span key={i} className="text-[0.7rem] text-defaulttextcolor/75">
+              {line}
+            </span>
+          ))}
+        </>
+      ) : (
+        <span>{log.entityType ?? "—"}</span>
+      )}
+      {entityHref && canOpenEntity ? (
+        <Link
+          href={entityHref}
+          className={
+            entityRich
+              ? "text-[0.65rem] text-primary font-mono break-all hover:underline"
+              : "text-[0.7rem] text-primary break-all hover:underline"
+          }
+          title="Open linked entity"
+        >
+          {log.entityId ?? "—"}
+        </Link>
+      ) : (
+        <span
+          className={
+            entityRich
+              ? "text-[0.65rem] text-defaulttextcolor/45 font-mono break-all"
+              : "text-[0.7rem] text-defaulttextcolor/70 break-all"
+          }
+          title={entityRich ? "Database id (reference)" : undefined}
+        >
+          {log.entityId ?? "—"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 // Local calendar date (YYYY-MM-DD), NOT toISOString() — avoids UTC day-drift near midnight.
 function toLocalYmd(d: Date): string {
   const y = d.getFullYear();
@@ -240,7 +336,7 @@ export default function LogsActivityPage() {
   return (
     <Fragment>
       <Seo title="Activity Logs" />
-      <div className="flex items-center justify-between flex-wrap gap-4 mb-4 px-4 pt-4">
+      <div className="flex items-center justify-between flex-wrap gap-3 sm:gap-4 mb-3 sm:mb-4 px-3 sm:px-4 pt-3 sm:pt-4">
         <h5 className="box-title mb-0">
           Activity Logs
           <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
@@ -278,7 +374,7 @@ export default function LogsActivityPage() {
         </div>
       </div>
 
-      <div className="box-body px-4 pb-4">
+      <div className="box-body px-3 sm:px-4 pb-4">
         {error && (
           <div className="p-4 mb-4 bg-danger/10 border border-danger/30 text-danger rounded-md text-sm">
             {error}
@@ -332,7 +428,7 @@ export default function LogsActivityPage() {
                 </div>
 
                 <div className="flex flex-wrap items-end gap-3">
-                  <div className="min-w-[12rem]">
+                  <div className="w-full sm:min-w-[12rem] sm:w-auto sm:flex-1">
                     <label htmlFor="logs-action" className="form-label !text-[0.75rem] mb-1">
                       Action
                     </label>
@@ -356,7 +452,7 @@ export default function LogsActivityPage() {
                       })}
                     </select>
                   </div>
-                  <div className="min-w-[12rem]">
+                  <div className="w-full sm:min-w-[12rem] sm:w-auto sm:flex-1">
                     <label htmlFor="logs-entity-type" className="form-label !text-[0.75rem] mb-1">
                       Entity type
                     </label>
@@ -383,7 +479,7 @@ export default function LogsActivityPage() {
 
                   {datePreset === "custom" && (
                     <>
-                      <div className="min-w-[10rem]">
+                      <div className="w-full sm:min-w-[10rem] sm:w-auto">
                         <label htmlFor="logs-start-date" className="form-label !text-[0.75rem] mb-1">
                           Start date
                         </label>
@@ -398,7 +494,7 @@ export default function LogsActivityPage() {
                           }}
                         />
                       </div>
-                      <div className="min-w-[10rem]">
+                      <div className="w-full sm:min-w-[10rem] sm:w-auto">
                         <label htmlFor="logs-end-date" className="form-label !text-[0.75rem] mb-1">
                           End date
                         </label>
@@ -458,140 +554,190 @@ export default function LogsActivityPage() {
               </div>
               )}
 
-              <div className="table-responsive overflow-x-auto">
-                <table className="table min-w-full table-bordered border-defaultborder">
-                  <thead>
-                    <tr className="bg-gray-50 dark:bg-gray-800/50">
-                      <th className="px-4 py-2.5 text-start font-semibold">Timestamp</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">Actor</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">Action</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">Entity</th>
-                      <th
-                        className="px-4 py-2.5 text-start font-semibold"
-                        title="Device place (GPS) when allowed; IP-based location is approximate."
-                      >
-                        Location
-                      </th>
-                      <th className="px-4 py-2.5 text-start font-semibold">IP</th>
-                      <th className="px-4 py-2.5 text-start font-semibold">User Agent</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                          Loading activity logs...
-                        </td>
-                      </tr>
-                    ) : logs.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
-                          {hasActiveFilters ? "No logs match your filters." : "No activity logs found yet."}
-                        </td>
-                      </tr>
-                    ) : (
-                      logs.map((log) => {
-                        const actionDisp = getActivityActionDisplayForRow(log);
-                        const entityDisp = getEntityTypeDisplay(log.entityType);
-                        const entityRich =
-                          getOrgMutateDeniedEntitySummary(log) ??
-                          getOrgUnitActivityEntitySummary(log) ??
-                          getDepartmentActivityEntitySummary(log) ??
-                          getOrgStructureActivityEntitySummary(log) ??
-                          getEmployeeOrgActivityEntitySummary(log) ??
-                          getCandidateActivityEntitySummary(log) ??
-                          getJobActivityEntitySummary(log) ??
-                          getRoleActivityEntitySummary(log) ??
-                          getUserActivityEntitySummary(log) ??
-                          getImpersonationEntitySummary(log);
-                        const entityHref = getActivityLogEntityHref(log.entityType, log.entityId);
-                        const canOpenEntity = canOpenActivityLogEntity(
-                          log.entityType,
-                          log.entityId,
-                          permissions,
-                          !!isAdministrator,
-                          !!isPlatformSuperUser
-                        );
-                        return (
-                        <tr key={log.id} className="border-b border-defaultborder">
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            {formatDateTime(log.createdAt)}
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            <div className="flex flex-col">
-                              <span className="font-medium">{log.actor?.name || "—"}</span>
-                              <span className="text-[0.7rem] text-defaulttextcolor/70">{log.actor?.id ?? "—"}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-medium">{actionDisp.title}</span>
-                              <span className="font-mono text-[0.7rem] text-defaulttextcolor/60">{log.action}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            <div className="flex flex-col gap-0.5">
-                              {entityRich ? (
-                                <>
-                                  <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0">
-                                    <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
-                                      {entityDisp.title}
-                                    </span>
-                                    <span className="font-semibold text-defaulttextcolor text-[0.8125rem]">
-                                      {entityRich.headline}
-                                    </span>
-                                  </div>
-                                  {entityRich.detailLines.map((line, i) => (
-                                    <span key={i} className="text-[0.7rem] text-defaulttextcolor/75">
-                                      {line}
-                                    </span>
-                                  ))}
-                                </>
-                              ) : (
-                                <span>{log.entityType ?? "—"}</span>
-                              )}
-                              {entityHref && canOpenEntity ? (
-                                <Link
-                                  href={entityHref}
-                                  className={
-                                    entityRich
-                                      ? "text-[0.65rem] text-primary font-mono break-all hover:underline"
-                                      : "text-[0.7rem] text-primary break-all hover:underline"
-                                  }
-                                  title="Open linked entity"
-                                >
-                                  {log.entityId ?? "—"}
-                                </Link>
-                              ) : (
-                                <span
-                                  className={
-                                    entityRich
-                                      ? "text-[0.65rem] text-defaulttextcolor/45 font-mono break-all"
-                                      : "text-[0.7rem] text-defaulttextcolor/70 break-all"
-                                  }
-                                  title={entityRich ? "Database id (reference)" : undefined}
-                                >
-                                  {log.entityId ?? "—"}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
-                            <ActivityLogLocationCell log={log} />
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.8125rem] font-mono text-[0.75rem]">
-                            {getActivityLogDisplayIp(log)}
-                          </td>
-                          <td className="px-4 py-2.5 align-middle text-[0.75rem] text-defaulttextcolor/80 break-all">
-                            {log.userAgent ?? "—"}
+              {loading ? (
+                <>
+                  <div className="lg:hidden divide-y divide-defaultborder rounded-lg border border-defaultborder overflow-hidden">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={`m-sk-${i}`} className="p-3 sm:p-4 space-y-2">
+                        <div className="h-4 w-2/3 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+                        <div className="h-4 w-1/2 bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+                        <div className="h-3 w-full bg-gray-100 dark:bg-white/5 rounded animate-pulse" />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="hidden lg:block overflow-x-auto overscroll-x-contain -mx-3 sm:mx-0 rounded-lg border border-defaultborder">
+                    <table className="table table-bordered border-defaultborder min-w-[56rem] w-full mb-0">
+                      <tbody>
+                        <tr>
+                          <td colSpan={7} className="px-4 py-8 text-center text-defaulttextcolor/70">
+                            Loading activity logs...
                           </td>
                         </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : logs.length === 0 ? (
+                <div className="rounded-lg border border-defaultborder px-4 py-10 text-center text-defaulttextcolor/70 text-sm">
+                  {hasActiveFilters ? "No logs match your filters." : "No activity logs found yet."}
+                </div>
+              ) : (
+                <>
+                  <div className="lg:hidden divide-y divide-defaultborder rounded-lg border border-defaultborder overflow-hidden">
+                    {logs.map((log) => {
+                      const model = buildLogRowModel(
+                        log,
+                        permissions,
+                        !!isAdministrator,
+                        !!isPlatformSuperUser
+                      );
+                      const displayIp = getActivityLogDisplayIp(log);
+                      return (
+                        <article key={log.id} className="p-3 sm:p-4 space-y-2.5 bg-white dark:bg-bodybg">
+                          <time className="block text-[0.75rem] text-defaulttextcolor/70">
+                            {formatDateTime(log.createdAt)}
+                          </time>
+
+                          <div className="grid grid-cols-1 gap-2.5 text-[0.8125rem]">
+                            <div>
+                              <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                Actor
+                              </span>
+                              <p className="font-medium mb-0">{log.actor?.name || "—"}</p>
+                              {log.actor?.id && (
+                                <p className="text-[0.7rem] text-defaulttextcolor/60 font-mono break-all mb-0">
+                                  {log.actor.id}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                Action
+                              </span>
+                              <p className="font-medium mb-0">{model.actionDisp.title}</p>
+                              <p className="text-[0.7rem] font-mono text-defaulttextcolor/60 mb-0">
+                                {log.action}
+                              </p>
+                            </div>
+
+                            <div>
+                              <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                Entity
+                              </span>
+                              <ActivityLogEntityCell log={log} model={model} />
+                            </div>
+
+                            <div>
+                              <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                Location
+                              </span>
+                              <div className="mt-0.5">
+                                <ActivityLogLocationCell log={log} />
+                              </div>
+                            </div>
+                          </div>
+
+                          <details className="rounded-md border border-defaultborder/70 bg-gray-50/60 dark:bg-gray-800/30 px-3 py-2 text-[0.75rem]">
+                            <summary className="cursor-pointer font-medium text-primary select-none">
+                              Device details
+                            </summary>
+                            <div className="mt-2 space-y-2">
+                              <div>
+                                <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                  IP
+                                </span>
+                                <p className="font-mono break-all mb-0">{displayIp}</p>
+                              </div>
+                              <div>
+                                <span className="text-[0.65rem] uppercase tracking-wide text-defaulttextcolor/50">
+                                  User Agent
+                                </span>
+                                <p className="break-words mb-0 text-defaulttextcolor/80">
+                                  {log.userAgent ?? "—"}
+                                </p>
+                              </div>
+                            </div>
+                          </details>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="hidden lg:block overflow-x-auto overscroll-x-contain -mx-3 sm:mx-0 rounded-lg border border-defaultborder">
+                    <table className="table table-bordered border-defaultborder min-w-[56rem] w-full mb-0">
+                      <thead>
+                        <tr className="bg-gray-50 dark:bg-gray-800/50">
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9.5rem] whitespace-nowrap">
+                            Timestamp
+                          </th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[8.5rem]">Actor</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[9rem]">Action</th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[12rem]">Entity</th>
+                          <th
+                            className="px-4 py-2.5 text-start font-semibold min-w-[8rem]"
+                            title="Device place (GPS) when allowed; IP-based location is approximate."
+                          >
+                            Location
+                          </th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[7rem] whitespace-nowrap">
+                            IP
+                          </th>
+                          <th className="px-4 py-2.5 text-start font-semibold min-w-[14rem]">User Agent</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {logs.map((log) => {
+                          const model = buildLogRowModel(
+                            log,
+                            permissions,
+                            !!isAdministrator,
+                            !!isPlatformSuperUser
+                          );
+                          return (
+                            <tr key={log.id} className="border-b border-defaultborder">
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem] whitespace-nowrap">
+                                {formatDateTime(log.createdAt)}
+                              </td>
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                                <div className="flex flex-col min-w-[7.5rem]">
+                                  <span className="font-medium">{log.actor?.name || "—"}</span>
+                                  <span className="text-[0.7rem] text-defaulttextcolor/70 break-all">
+                                    {log.actor?.id ?? "—"}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                                <div className="flex flex-col gap-0.5 min-w-[8rem]">
+                                  <span className="font-medium">{model.actionDisp.title}</span>
+                                  <span className="font-mono text-[0.7rem] text-defaulttextcolor/60">
+                                    {log.action}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                                <ActivityLogEntityCell log={log} model={model} />
+                              </td>
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem]">
+                                <ActivityLogLocationCell log={log} />
+                              </td>
+                              <td className="px-4 py-2.5 align-middle text-[0.8125rem] font-mono text-[0.75rem] whitespace-nowrap">
+                                {getActivityLogDisplayIp(log)}
+                              </td>
+                              <td
+                                className="px-4 py-2.5 align-middle text-[0.75rem] text-defaulttextcolor/80 max-w-[18rem]"
+                                title={log.userAgent ?? undefined}
+                              >
+                                <span className="line-clamp-3 break-words">{log.userAgent ?? "—"}</span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
 
               {!loading && (logs.length > 0 || hasActiveFilters) && (
                 <div className="flex flex-wrap items-center justify-between gap-4 mt-4 pt-4 border-t border-defaultborder">

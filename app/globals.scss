@@ -380,3 +380,10 @@ html.swal2-shown {
   }
 }
 
+/* Mobile: keep floating chatbot clear of scrollable content + safe areas */
+@media (max-width: 639px) {
+  .main-content {
+    padding-bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+

@@ -14,14 +14,18 @@ export interface TaskFilterDrawerProps {
   open: boolean;
   onClose: () => void;
   projects: Array<{ id: string; name: string }>;
+  leavingCount?: number;
 }
 
 export function TaskFilterDrawer({
   open,
   onClose,
   projects,
+  leavingCount = 0,
 }: TaskFilterDrawerProps): React.JSX.Element {
   const {
+    filters,
+    patchFilters,
     searchInput,
     setSearchInput,
     projectId,
@@ -110,6 +114,14 @@ export function TaskFilterDrawer({
                   onChange={(e) => setUnassigned(e.target.checked)}
                 />
                 Unassigned
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={filters.leaving}
+                  onChange={(e) => patchFilters({ leaving: e.target.checked })}
+                />
+                {leavingCount > 0 ? `Leaving · ${leavingCount}` : "Leaving"}
               </label>
               <div>
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">

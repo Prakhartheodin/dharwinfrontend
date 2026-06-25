@@ -252,14 +252,14 @@ export default function SettingsLayout({
     : isAdministrator || hasSettingsFeatureAccess(rawPerms, "email-templates-admin");
 
   return (
-    <div className="container w-full max-w-full mx-auto">
-      <div className="grid grid-cols-12 gap-6 mb-[3rem]">
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box">
-            <div className="box-header !flex !justify-start overflow-x-auto max-w-full">
+    <div className="container mx-auto w-full min-w-0 max-w-full">
+      <div className="mb-[3rem] grid min-w-0 grid-cols-12 gap-6">
+        <div className="col-span-12 min-w-0 xl:col-span-12">
+          <div className="box min-w-0 overflow-hidden">
+            <div className="box-header !flex !justify-start min-w-0 max-w-full overflow-x-auto">
               <nav
                 aria-label="Settings tabs"
-                className="flex !justify-start whitespace-nowrap gap-x-1"
+                className="flex min-w-0 max-w-full flex-wrap gap-1 sm:flex-nowrap sm:overflow-x-auto sm:whitespace-nowrap"
                 role="tablist"
               >
                 {showRolesTab && (
@@ -355,7 +355,7 @@ export default function SettingsLayout({
                 </Link>
               </nav>
             </div>
-            <div>{children}</div>
+            <div className="min-w-0 max-w-full overflow-x-hidden">{children}</div>
           </div>
         </div>
       </div>

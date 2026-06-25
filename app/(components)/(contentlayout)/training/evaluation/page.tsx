@@ -46,6 +46,7 @@ import {
   exportEvaluationCsv,
 } from './_components/evaluation-utils'
 import { closeHsOverlay, openHsOverlay } from './_components/evaluation-overlay'
+import pipelineStyles from '../../ats/ats-pipeline-list.module.css'
 
 const STATUS_OPTIONS: { value: '' | EvaluationDisplayStatus; label: string }[] = [
   { value: '', label: 'All statuses' },
@@ -541,8 +542,8 @@ const Evaluation = () => {
   return (
     <Fragment>
       <Seo title="Evaluation" />
-      <div className="container mx-auto mt-5 w-full max-w-full sm:mt-6">
-        <div className="grid grid-cols-12 gap-4 mb-6">
+      <div className="container mx-auto mt-5 w-full min-w-0 max-w-full sm:mt-6">
+        <div className="mb-6 grid min-w-0 grid-cols-12 gap-4">
           {[
             { label: 'Courses', value: summary.totalCourses, icon: 'ri-book-open-line', color: 'primary' },
             { label: 'Active students', value: summary.totalStudentsEnrolled, icon: 'ri-user-line', color: 'success' },
@@ -567,18 +568,18 @@ const Evaluation = () => {
           ))}
         </div>
 
-        <div className="xl:col-span-12 col-span-12">
-          <div className="box flex flex-col" style={{ minHeight: 0 }}>
-            <div className="flex items-center justify-between flex-wrap gap-4 mb-4 px-4 pt-4">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="box-title mb-0">
+        <div className="col-span-12 min-w-0 xl:col-span-12">
+          <div className="box flex min-w-0 flex-col" style={{ minHeight: 0 }}>
+            <div className="mb-4 flex min-w-0 flex-col gap-3 px-4 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
+              <div className="flex min-w-0 w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+                <div className="box-title mb-0 min-w-0">
                   {viewMode === 'student' ? 'Students' : 'Courses'}
                   <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
                     {total}
                   </span>
                 </div>
                 <div
-                  className="inline-flex rounded-xl border border-defaultborder/80 bg-defaultbackground/60 p-1"
+                  className="flex w-full min-w-0 max-w-full rounded-xl border border-defaultborder/80 bg-defaultbackground/60 p-1 sm:inline-flex sm:w-auto"
                   role="tablist"
                   aria-label="Evaluation view"
                 >
@@ -588,7 +589,7 @@ const Evaluation = () => {
                       type="button"
                       role="tab"
                       aria-selected={viewMode === mode}
-                      className={viewMode === mode ? EVAL_BTN_TAB_ACTIVE : EVAL_BTN_TAB_INACTIVE}
+                      className={`${viewMode === mode ? EVAL_BTN_TAB_ACTIVE : EVAL_BTN_TAB_INACTIVE} min-w-0 flex-1 sm:flex-none`}
                       onClick={() => setViewMode(mode)}
                     >
                       {mode === 'student' ? 'By student' : 'By course'}
@@ -596,7 +597,7 @@ const Evaluation = () => {
                   ))}
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:justify-end">
                 <button
                   type="button"
                   className={EVAL_BTN_OUTLINE_PRIMARY}
@@ -613,7 +614,7 @@ const Evaluation = () => {
                   {exporting ? 'Exporting…' : 'Export CSV'}
                 </button>
                 <select
-                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] min-h-[44px]"
+                  className="form-control select-show-page-size min-h-[44px] w-full min-w-0 max-w-full !py-1 !px-4 !text-[0.75rem] sm:w-auto"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                   aria-label="Rows per page"
@@ -627,12 +628,12 @@ const Evaluation = () => {
               </div>
             </div>
 
-            <div className="mx-4 mb-4 rounded-xl border border-defaultborder/70 bg-light/40 dark:bg-black/20 p-4 flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1.5">
+            <div className="mx-4 mb-4 grid min-w-0 max-w-[calc(100%-2rem)] grid-cols-1 gap-3 rounded-xl border border-defaultborder/70 bg-light/40 p-4 dark:bg-black/20 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end">
+              <div className="flex min-w-0 w-full flex-col gap-1.5 lg:w-auto">
                 <label htmlFor="eval-filter-status" className="text-[0.75rem] font-medium text-defaulttextcolor/80">Status</label>
                 <select
                   id="eval-filter-status"
-                  className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[140px] min-h-[44px]"
+                  className="form-control select-show-page-size min-h-[44px] w-full min-w-0 max-w-full !py-1.5 !px-3 !text-[0.8125rem] sm:min-w-[140px] sm:w-auto"
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as '' | EvaluationDisplayStatus)}
                 >
@@ -643,22 +644,22 @@ const Evaluation = () => {
                   ))}
                 </select>
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 w-full flex-col gap-1.5 sm:col-span-2 lg:col-span-1 lg:w-auto">
                 <label htmlFor="eval-filter-search" className="text-[0.75rem] font-medium text-defaulttextcolor/80">Search</label>
                 <input
                   id="eval-filter-search"
                   type="search"
-                  className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[180px] min-h-[44px]"
+                  className="form-control select-show-page-size min-h-[44px] w-full min-w-0 max-w-full !py-1.5 !px-3 !text-[0.8125rem] sm:min-w-[180px] sm:w-auto"
                   placeholder="Student or course…"
                   value={filterStudent}
                   onChange={(e) => setFilterStudent(e.target.value)}
                 />
               </div>
-              <div className="flex flex-col gap-1.5">
+              <div className="flex min-w-0 w-full flex-col gap-1.5 sm:col-span-2 lg:col-span-1 lg:w-auto">
                 <label htmlFor="eval-filter-course" className="text-[0.75rem] font-medium text-defaulttextcolor/80">Course</label>
                 <select
                   id="eval-filter-course"
-                  className="form-control select-show-page-size !w-auto !py-1.5 !px-3 !text-[0.8125rem] min-w-[160px] min-h-[44px]"
+                  className="form-control select-show-page-size min-h-[44px] w-full min-w-0 max-w-full truncate !py-1.5 !px-3 !text-[0.8125rem] sm:min-w-[160px] sm:w-auto"
                   value={filterCourseId}
                   onChange={(e) => setFilterCourseId(e.target.value)}
                 >
@@ -668,7 +669,7 @@ const Evaluation = () => {
                   ))}
                 </select>
               </div>
-              <label className="inline-flex items-center gap-2 min-h-[44px] cursor-pointer">
+              <label className="inline-flex min-h-[44px] min-w-0 cursor-pointer items-center gap-2 sm:col-span-2 lg:col-span-1">
                 <input
                   type="checkbox"
                   className="form-check-input"
@@ -720,18 +721,18 @@ const Evaluation = () => {
               </div>
             ) : (
               <>
-                <div className="box-body !p-0 flex flex-col overflow-hidden px-4 pb-4">
+                <div className="box-body !p-0 flex min-w-0 flex-col overflow-hidden px-4 pb-4">
                   <div
-                    className={`${EVAL_TABLE_SURFACE_CLASS} flex flex-col overflow-hidden`}
+                    className={`${EVAL_TABLE_SURFACE_CLASS} flex min-w-0 flex-col overflow-hidden`}
                     style={{ minHeight: 0 }}
                   >
                   <div
-                    className="table-responsive overflow-x-auto overflow-y-auto max-h-[min(70vh,42rem)] [scrollbar-width:thin]"
+                    className={`${pipelineStyles.tableWrap} table-responsive max-h-[min(70vh,42rem)] [scrollbar-width:thin]`}
                     style={{ minHeight: 0 }}
                   >
                     <table
                       {...evaluationTableProps}
-                      className="ti-custom-table min-w-full mb-0"
+                      className={`ti-custom-table mb-0 ${pipelineStyles.tableWide}`}
                     >
                       <thead className="ti-custom-table-head">
                         {headerGroups.map((headerGroup, headerIndex) => {

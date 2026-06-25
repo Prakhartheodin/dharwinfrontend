@@ -1,6 +1,7 @@
 "use client"
 import Seo from '@/shared/layout-components/seo/seo'
-import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
@@ -208,6 +209,35 @@ export default function InterviewsClient() {
   const [isExcelMenuOpen, setIsExcelMenuOpen] = useState(false)
   const [isExcelExporting, setIsExcelExporting] = useState(false)
   const excelDropdownRef = useRef<HTMLDivElement | null>(null)
+  const excelButtonRef = useRef<HTMLButtonElement | null>(null)
+  const excelMenuRef = useRef<HTMLUListElement | null>(null)
+  const [excelMenuPos, setExcelMenuPos] = useState<{ top: number; left: number } | null>(null)
+
+  const EXCEL_MENU_MIN_WIDTH = 160
+  const EXCEL_MENU_EST_HEIGHT = 52
+  const VIEWPORT_PAD = 8
+
+  const updateExcelMenuPos = useCallback(() => {
+    const btn = excelButtonRef.current
+    if (!btn) return
+    const rect = btn.getBoundingClientRect()
+    const menu = excelMenuRef.current
+    const menuWidth = Math.max(EXCEL_MENU_MIN_WIDTH, menu?.offsetWidth ?? EXCEL_MENU_MIN_WIDTH)
+    const menuHeight = menu?.offsetHeight ?? EXCEL_MENU_EST_HEIGHT
+
+    let left = rect.left
+    if (left + menuWidth > window.innerWidth - VIEWPORT_PAD) {
+      left = window.innerWidth - menuWidth - VIEWPORT_PAD
+    }
+    left = Math.max(VIEWPORT_PAD, left)
+
+    let top = rect.bottom + 4
+    if (top + menuHeight > window.innerHeight - VIEWPORT_PAD) {
+      top = Math.max(VIEWPORT_PAD, rect.top - menuHeight - 4)
+    }
+
+    setExcelMenuPos({ top, left })
+  }, [])
 
   /** Download all accessible interviews as an .xlsx file. */
   const handleExportInterviews = useCallback(async () => {
@@ -953,10 +983,32 @@ export default function InterviewsClient() {
     })
   }, [formError])
 
+  useLayoutEffect(() => {
+    if (!isExcelMenuOpen) {
+      setExcelMenuPos(null)
+      return
+    }
+    updateExcelMenuPos()
+  }, [isExcelMenuOpen, updateExcelMenuPos])
+
+  useEffect(() => {
+    if (!isExcelMenuOpen) return
+    window.addEventListener('resize', updateExcelMenuPos)
+    window.addEventListener('scroll', updateExcelMenuPos, true)
+    return () => {
+      window.removeEventListener('resize', updateExcelMenuPos)
+      window.removeEventListener('scroll', updateExcelMenuPos, true)
+    }
+  }, [isExcelMenuOpen, updateExcelMenuPos])
+
   useEffect(() => {
     if (!isExcelMenuOpen) return
     const handleOutsideClick = (event: MouseEvent) => {
-      if (!excelDropdownRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node
+      if (
+        !excelDropdownRef.current?.contains(target) &&
+        !excelMenuRef.current?.contains(target)
+      ) {
         setIsExcelMenuOpen(false)
       }
     }
@@ -1669,17 +1721,17 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-<div className="mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full min-h-[calc(100vh-6rem)] sm:min-h-[calc(100vh-8rem)] lg:gap-6">
+<div className="mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full overflow-x-hidden min-h-[calc(100vh-6rem)] sm:min-h-[calc(100vh-8rem)] lg:gap-6">
         <div className="xl:col-span-12 col-span-12 h-full min-w-0 flex flex-col">
-          <div className="box custom-box h-full min-w-0 flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
-            <div className="box-header relative z-20 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-3 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
+          <div className="box custom-box h-full min-w-0 max-w-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
+            <div className="box-header relative z-30 overflow-visible flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-3 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
               <div className="box-title text-sm sm:text-base">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.7rem] sm:text-[0.75rem] align-middle">
                   {filteredData.length}
                 </span>
               </div>
-              <div className="flex flex-col gap-2 w-full min-w-0 xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 xl:w-auto xl:max-w-full [&_.ti-btn]:shrink-0 [&_.form-select]:shrink-0 [&_.form-control]:shrink-0">
+              <div className="flex flex-col gap-2 w-full min-w-0 max-w-full xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 xl:w-auto [&_.ti-btn]:shrink-0 [&_.form-select]:shrink-0 [&_.form-control]:shrink-0">
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:contents">
                 <select
                   id="interviews-page-size"
@@ -1734,9 +1786,10 @@ export default function InterviewsClient() {
                 )}
                 </div>
                 <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 sm:contents">
-                {/* Excel menu is fully React-controlled — avoid Preline hs-dropdown / ti-dropdown-toggle hooks (they race our state). */}
-                <div ref={excelDropdownRef} className="relative">
+                {/* Excel menu is fully React-controlled — portal avoids parent overflow-hidden clipping on mobile. */}
+                <div ref={excelDropdownRef} className="relative z-30">
                   <button
+                    ref={excelButtonRef}
                     type="button"
                     className="ti-btn ti-btn-primary !py-1.5 !px-2.5 !text-[0.75rem]"
                     id="excel-dropdown-button"
@@ -1751,16 +1804,22 @@ export default function InterviewsClient() {
                     <i className="ri-file-excel-2-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Excel</span>
                     <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
                   </button>
-                  {isExcelMenuOpen && (
+                  {mounted && isExcelMenuOpen && createPortal(
                     <ul
-                      className="absolute end-0 top-full z-50 mt-1 min-w-[10rem] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg"
+                      ref={excelMenuRef}
+                      className="fixed z-[12050] w-max min-w-[10rem] max-w-[calc(100vw-1rem)] rounded-lg border border-defaultborder dark:border-defaultborder/20 bg-white py-1 shadow-lg dark:bg-bodybg"
+                      style={
+                        excelMenuPos
+                          ? { top: excelMenuPos.top, left: excelMenuPos.left }
+                          : { top: -9999, left: -9999, visibility: 'hidden' as const }
+                      }
                       role="menu"
                       aria-labelledby="excel-dropdown-button"
                     >
                       <li role="none">
                         <button
                           type="button"
-                          className="ti-dropdown-item !py-2 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left disabled:opacity-60"
+                          className="ti-dropdown-item !py-2.5 !px-[0.9375rem] !text-[0.8125rem] !font-medium w-full text-left text-defaulttextcolor dark:text-white/90 disabled:opacity-60"
                           role="menuitem"
                           disabled={isExcelExporting}
                           onClick={() => { void handleExportInterviews() }}
@@ -1768,7 +1827,8 @@ export default function InterviewsClient() {
                           <i className="ri-file-excel-2-line me-2 align-middle inline-block"></i>{isExcelExporting ? 'Exporting…' : 'Export'}
                         </button>
                       </li>
-                    </ul>
+                    </ul>,
+                    document.body
                   )}
                 </div>
                 <button
@@ -1795,7 +1855,7 @@ export default function InterviewsClient() {
                 </div>
               </div>
             </div>
-            <div className="box-body relative z-0 !p-0 flex-1 min-w-0 flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
+             <div className="box-body relative z-0 !p-0 flex-1 min-w-0 max-w-full flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
               {meetingsLoading ? (
                 <div className="flex-1 px-4 py-4">
                   <div className="rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/90 dark:bg-black/20 p-4 sm:p-5">
@@ -1978,7 +2038,7 @@ export default function InterviewsClient() {
               ) : (
               <>
               {/* Mobile card list — shown below lg; mirrors paginated react-table rows */}
-              <div className="lg:hidden flex-1 overflow-y-auto px-3 py-3 space-y-3" style={{ minHeight: 0 }}>
+              <div className="lg:hidden flex-1 w-full min-w-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-3" style={{ minHeight: 0 }}>
                 {page.map((row: any, i: number) => {
                   prepareRow(row)
                   const interview = row.original
@@ -2008,26 +2068,28 @@ export default function InterviewsClient() {
                   return (
                     <div
                       key={row.id || `card-${i}`}
-                      className="rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm p-3.5"
+                      className="w-full min-w-0 rounded-xl border border-defaultborder/70 dark:border-white/10 bg-white dark:bg-bodybg shadow-sm p-3.5 sm:p-4"
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3 min-w-0">
                         <div className="min-w-0 flex-1">
                           <div className="font-semibold text-gray-900 dark:text-white leading-snug break-words">
                             {interview.position}
                           </div>
-                          <div className="mt-1.5 flex flex-wrap gap-1.5 text-[0.7rem] text-defaulttextcolor/80">
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
-                              <i className="ri-calendar-line text-primary text-[0.75rem]" />
-                              {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
-                              <i className="ri-time-line text-info text-[0.75rem]" />
-                              {interview.time}
-                            </span>
-                            <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-white/[0.05] px-2 py-0.5">
-                              <i className="ri-vidicon-line text-success text-[0.75rem]" />
-                              {interview.type}
-                            </span>
+                          <div className="mt-2 space-y-1.5 text-[0.7rem] text-defaulttextcolor/80">
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <i className="ri-calendar-line text-primary text-[0.75rem] shrink-0 mt-0.5" />
+                              <span className="break-words leading-snug">
+                                {new Date(interview.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-1.5 min-w-0">
+                              <i className="ri-time-line text-info text-[0.75rem] shrink-0 mt-0.5" />
+                              <span className="break-words leading-snug">{interview.time}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <i className="ri-vidicon-line text-success text-[0.75rem] shrink-0" />
+                              <span className="break-words">{interview.type}</span>
+                            </div>
                           </div>
                         </div>
                         <input
@@ -2043,8 +2105,8 @@ export default function InterviewsClient() {
                           {candidateInitials}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-sm font-medium text-gray-800 dark:text-white truncate">{interview.candidate?.name ?? '—'}</div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          <div className="text-sm font-medium text-gray-800 dark:text-white break-words">{interview.candidate?.name ?? '—'}</div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 break-all">
                             {isPublicEmail(interview.candidate?.email) ? interview.candidate.email : '—'}
                           </div>
                         </div>

@@ -69,6 +69,7 @@ export function TaskToolbar({
         open={mobileFiltersOpen}
         onClose={() => setMobileFiltersOpen(false)}
         projects={projects}
+        leavingCount={leavingCount}
       />
     </>
   );

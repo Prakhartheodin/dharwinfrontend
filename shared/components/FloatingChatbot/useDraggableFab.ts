@@ -17,7 +17,8 @@ interface Options {
   onClick?: () => void;
 }
 
-const DRAG_THRESHOLD = 5; // px
+const DRAG_THRESHOLD_MOUSE = 5; // px
+const DRAG_THRESHOLD_TOUCH = 12; // px — touch slop; avoids classifying taps as drags
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.min(Math.max(v, lo), hi);
@@ -60,9 +61,14 @@ export function useDraggableFab({
   const [isDragging, setIsDragging] = useState(false);
   const [livePos, setLivePos] = useState<{ x: number; y: number } | null>(null);
 
-  const startRef = useRef<{ x: number; y: number; pointerId: number } | null>(null);
+  const startRef = useRef<{ x: number; y: number; pointerId: number; pointerType: string } | null>(null);
   const movedRef = useRef(false);
+  const suppressClickRef = useRef(false);
+  const tapHandledRef = useRef(false);
   const fabRef = useRef<HTMLButtonElement>(null);
+
+  const dragThresholdFor = (pointerType: string) =>
+    pointerType === "touch" ? DRAG_THRESHOLD_TOUCH : DRAG_THRESHOLD_MOUSE;
 
   useEffect(() => {
     setPosition(loadPosition(storageKey, defaultPos));
@@ -70,6 +76,7 @@ export function useDraggableFab({
   }, [storageKey]);
 
   const computeStyle = useCallback((): React.CSSProperties => {
+    const touchAction = isDragging ? "none" : "manipulation";
     if (livePos) {
       return {
         position: "fixed",
@@ -77,23 +84,41 @@ export function useDraggableFab({
         top: livePos.y - fabSize / 2,
         right: "auto",
         bottom: "auto",
-        touchAction: "none",
+        touchAction,
       };
     }
     const top = `calc(${position.topPct * 100}vh - ${fabSize / 2}px)`;
     return {
       position: "fixed",
       top,
-      [position.side]: margin,
-      touchAction: "none",
+      [position.side]: `max(${margin}px, env(safe-area-inset-${position.side}, 0px))`,
+      touchAction,
     } as React.CSSProperties;
-  }, [livePos, position, fabSize, margin]);
+  }, [livePos, position, fabSize, margin, isDragging]);
+
+  const fireTap = useCallback(() => {
+    if (tapHandledRef.current) return;
+    tapHandledRef.current = true;
+    onClick?.();
+    window.setTimeout(() => {
+      tapHandledRef.current = false;
+    }, 400);
+  }, [onClick]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    startRef.current = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+    startRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      pointerId: e.pointerId,
+      pointerType: e.pointerType,
+    };
     movedRef.current = false;
-    fabRef.current?.setPointerCapture(e.pointerId);
+    suppressClickRef.current = false;
+    // Defer capture on touch — immediate capture suppresses quick taps on mobile.
+    if (e.pointerType === "mouse") {
+      fabRef.current?.setPointerCapture(e.pointerId);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -101,8 +126,19 @@ export function useDraggableFab({
     if (!start || start.pointerId !== e.pointerId) return;
     const dx = e.clientX - start.x;
     const dy = e.clientY - start.y;
-    if (!movedRef.current && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
-    movedRef.current = true;
+    const threshold = dragThresholdFor(start.pointerType);
+    if (!movedRef.current && Math.hypot(dx, dy) < threshold) return;
+
+    if (!movedRef.current) {
+      movedRef.current = true;
+      suppressClickRef.current = true;
+      try {
+        fabRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        /* not captured */
+      }
+    }
+
     setIsDragging(true);
     setLivePos({
       x: clamp(e.clientX, fabSize / 2 + 4, window.innerWidth - fabSize / 2 - 4),
@@ -113,12 +149,16 @@ export function useDraggableFab({
   const handlePointerUp = (e: React.PointerEvent<HTMLButtonElement>) => {
     const start = startRef.current;
     startRef.current = null;
-    try { fabRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+    try {
+      fabRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      /* not captured */
+    }
 
     if (!movedRef.current) {
       setIsDragging(false);
       setLivePos(null);
-      onClick?.();
+      fireTap();
       return;
     }
 
@@ -130,6 +170,10 @@ export function useDraggableFab({
     setPosition(next);
     setLivePos(null);
     setIsDragging(false);
+    suppressClickRef.current = true;
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
 
     try {
       localStorage.setItem(storageKey, JSON.stringify(next));
@@ -139,10 +183,25 @@ export function useDraggableFab({
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const wasTap = startRef.current && !movedRef.current;
     startRef.current = null;
-    try { fabRef.current?.releasePointerCapture(e.pointerId); } catch { /* not captured */ }
+    try {
+      fabRef.current?.releasePointerCapture(e.pointerId);
+    } catch {
+      /* not captured */
+    }
     setIsDragging(false);
     setLivePos(null);
+    if (wasTap) fireTap();
+  };
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (suppressClickRef.current || tapHandledRef.current) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    fireTap();
   };
 
   return {
@@ -155,6 +214,7 @@ export function useDraggableFab({
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
       onPointerCancel: handlePointerCancel,
+      onClick: handleClick,
     },
   };
 }

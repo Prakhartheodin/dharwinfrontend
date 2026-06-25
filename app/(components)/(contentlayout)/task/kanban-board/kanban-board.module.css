@@ -246,11 +246,9 @@
 }
 
 .kbSavedViewsMenu {
-  position: absolute;
-  right: 0;
-  z-index: 60;
-  margin-top: 0.35rem;
+  z-index: 12050;
   width: 16rem;
+  max-width: calc(100vw - 1rem);
   border-radius: 0.5rem;
   border: 1px solid #e2e8f0;
   background: rgb(var(--body-bg, 255 255 255));

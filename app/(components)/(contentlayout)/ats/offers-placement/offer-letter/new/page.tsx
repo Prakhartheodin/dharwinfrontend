@@ -216,7 +216,7 @@ export default function NewOfferLetterPage() {
   return (
     <Fragment>
       <Seo fullDocumentTitle="Offer Letter" />
-      <div className="offer-letter-page-shell w-full min-h-[32rem] h-[calc(100dvh-5.5rem)] max-h-[calc(100dvh-3rem)] overflow-hidden [&>div]:h-full [&>div]:min-h-0">
+      <div className="offer-letter-page-shell w-full min-w-0 max-w-full min-h-[32rem] h-[calc(100dvh-5.5rem)] max-h-[calc(100dvh-3rem)] overflow-hidden [&>div]:h-full [&>div]:min-h-0 [&>div]:min-w-0">
         <OfferLetterGeneratorWorkspace
           offerCode={linkedOffer?.offerCode || "—"}
           jobTitle={letterForm.positionTitle}
