@@ -205,6 +205,10 @@ function PersonalInfoDateField({
   badgeClassName: string
   icon: string
 }) {
+  // Format/parse using LOCAL calendar fields, never UTC. react-datepicker emits a
+  // Date at local midnight; toISOString() would roll it back a day east of UTC (IST).
+  const toLocalIso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const fromIso = (s: string) => { const [y, m, dd] = s.split('-').map(Number); return new Date(y, m - 1, dd) }
   const iso = value ? new Date(value).toISOString().slice(0, 10) : ''
   const [open, setOpen] = useState(false)
   const [local, setLocal] = useState(iso)
@@ -271,8 +275,8 @@ function PersonalInfoDateField({
               <div className="date-picker-modal-cal [&_.react-datepicker]:!border-0 [&_.react-datepicker]:!rounded-xl [&_.react-datepicker]:!shadow-none [&_.react-datepicker]:!p-0 [&_.react-datepicker]:!bg-transparent [&_.react-datepicker__header]:!bg-transparent [&_.react-datepicker__header]:!border-b [&_.react-datepicker__header]:!border-defaultborder [&_.react-datepicker__header]:!pb-3 [&_.react-datepicker__header]:!mb-3 [&_.react-datepicker__current-month]:!text-defaulttextcolor [&_.react-datepicker__current-month]:!dark:text-white [&_.react-datepicker__current-month]:!text-sm [&_.react-datepicker__current-month]:!font-semibold [&_.react-datepicker__day-names]:!text-textmuted [&_.react-datepicker__day-names]:!dark:text-white/50 [&_.react-datepicker__day-names]:!text-[0.6875rem] [&_.react-datepicker__day-names]:!font-medium [&_.react-datepicker__day]:!w-9 [&_.react-datepicker__day]:!h-9 [&_.react-datepicker__day]:!leading-9 [&_.react-datepicker__day]:!text-defaulttextcolor [&_.react-datepicker__day]:!dark:text-white [&_.react-datepicker__day]:!text-[0.8125rem] [&_.react-datepicker__day]:!rounded-lg [&_.react-datepicker__day--selected]:!bg-primary [&_.react-datepicker__day--selected]:!text-white [&_.react-datepicker__day--selected]:!font-medium [&_.react-datepicker__day--keyboard-selected]:!bg-primary/15 [&_.react-datepicker__day--keyboard-selected]:!text-primary [&_.react-datepicker__day:hover]:!bg-primary/10 [&_.react-datepicker__day:hover]:!text-primary [&_.react-datepicker__day--outside-month]:!text-gray-300 [&_.react-datepicker__day--outside-month]:!dark:text-white/20 [&_.react-datepicker__navigation]:!top-1 [&_.react-datepicker__navigation-icon]:before:!border-defaulttextcolor [&_.react-datepicker__navigation-icon]:before:!dark:border-white/70 [&_.react-datepicker__month-dropdown]:!bg-white [&_.react-datepicker__month-dropdown]:!dark:bg-bodybg [&_.react-datepicker__year-dropdown]:!bg-white [&_.react-datepicker__year-dropdown]:!dark:bg-bodybg [&_.react-datepicker__today-button]:!bg-defaultbackground [&_.react-datepicker__today-button]:!dark:bg-white/5 [&_.react-datepicker__today-button]:!text-defaulttextcolor [&_.react-datepicker__today-button]:!dark:text-white [&_.react-datepicker__today-button]:!border-t [&_.react-datepicker__today-button]:!border-defaultborder [&_.react-datepicker__today-button]:!rounded-b-xl [&_.react-datepicker__today-button]:!py-2.5 [&_.react-datepicker__today-button]:!text-sm [&_.react-datepicker__today-button]:!font-medium [&_.react-datepicker__today-button]:!hover:bg-defaultbackground/80 [&_.react-datepicker__today-button]:!dark:hover:bg-white/10">
                 <DatePicker
                   inline
-                  selected={local ? new Date(local) : null}
-                  onChange={(d: Date | null) => setLocal(d ? d.toISOString().slice(0, 10) : '')}
+                  selected={local ? fromIso(local) : null}
+                  onChange={(d: Date | null) => setLocal(d ? toLocalIso(d) : '')}
                   dateFormat="yyyy-MM-dd"
                   showMonthDropdown
                   showYearDropdown
