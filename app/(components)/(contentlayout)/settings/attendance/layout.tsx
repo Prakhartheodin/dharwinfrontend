@@ -14,6 +14,7 @@ const sidebarStyles = (
 const NAV_ICONS: Record<string, string> = {
   [ROUTES.settingsAttendanceWeekOff]: "ri-calendar-schedule-line",
   [ROUTES.settingsAttendanceHolidays]: "ri-calendar-event-line",
+  [ROUTES.settingsAttendanceHolidayGroups]: "ri-folder-2-line",
   [ROUTES.settingsAttendanceAssignHolidays]: "ri-calendar-check-line",
   [ROUTES.settingsAttendanceCandidateGroups]: "ri-group-line",
   [ROUTES.settingsAttendanceManageShifts]: "ri-time-line",

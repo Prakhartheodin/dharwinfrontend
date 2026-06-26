@@ -8,6 +8,7 @@ import {
   deleteHoliday,
   type Holiday,
 } from "@/shared/lib/api/holidays";
+import { getAllHolidayGroups } from "@/shared/lib/api/holiday-groups";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
@@ -33,7 +34,7 @@ export default function SettingsAttendanceHolidaysPage() {
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingHoliday, setEditingHoliday] = useState<Holiday | null>(null);
-  const [formData, setFormData] = useState({ title: "", date: "", endDate: "" as string, isActive: true });
+  const [formData, setFormData] = useState({ title: "", date: "", endDate: "" as string, isActive: true, group: "" });
   const [submitting, setSubmitting] = useState(false);
   const [titleFilter, setTitleFilter] = useState("");
   const [startDateFilter, setStartDateFilter] = useState("");
@@ -43,6 +44,7 @@ export default function SettingsAttendanceHolidaysPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
+  const [apiGroupNames, setApiGroupNames] = useState<string[]>([]);
   const limit = 10;
 
   const fetchHolidays = useCallback(async () => {
@@ -89,8 +91,16 @@ export default function SettingsAttendanceHolidaysPage() {
     if (isAdmin === true) fetchHolidays();
   }, [isAdmin, fetchHolidays]);
 
+  // Group name suggestions: include groups created in Holiday Groups, even with zero dates yet.
+  useEffect(() => {
+    if (isAdmin !== true) return;
+    getAllHolidayGroups({ sortBy: "name:asc", limit: 500 })
+      .then((res) => setApiGroupNames((res.data?.results ?? []).map((g) => g.name).filter(Boolean)))
+      .catch(() => setApiGroupNames([]));
+  }, [isAdmin]);
+
   const resetForm = () => {
-    setFormData({ title: "", date: "", endDate: "", isActive: true });
+    setFormData({ title: "", date: "", endDate: "", isActive: true, group: "" });
     setEditingHoliday(null);
     setShowForm(false);
   };
@@ -109,6 +119,7 @@ export default function SettingsAttendanceHolidaysPage() {
       date: d,
       endDate: e,
       isActive: holiday.isActive ?? true,
+      group: holiday.group ?? "",
     });
     setShowForm(true);
   };
@@ -136,10 +147,11 @@ export default function SettingsAttendanceHolidaysPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const payload: { title: string; date: string; endDate?: string | null; isActive: boolean } = {
+      const payload: { title: string; date: string; endDate?: string | null; isActive: boolean; group: string } = {
         title: formData.title.trim(),
         date: new Date(formData.date).toISOString(),
         isActive: formData.isActive,
+        group: formData.group.trim(),
       };
       if (formData.endDate && formData.endDate.trim()) {
         const end = new Date(formData.endDate);
@@ -241,6 +253,13 @@ export default function SettingsAttendanceHolidaysPage() {
       return dateString;
     }
   };
+
+  const groupNames = Array.from(
+    new Set([
+      ...apiGroupNames,
+      ...holidays.map((h) => (h.group ?? "").trim()).filter(Boolean),
+    ])
+  ).sort();
 
   const hasActiveFilters =
     titleFilter.trim() !== "" ||
@@ -504,6 +523,12 @@ export default function SettingsAttendanceHolidaysPage() {
                           >
                             <td className="px-5 py-4 font-medium text-defaulttextcolor max-w-[280px]">
                               <span className="block truncate" title={holiday.title}>{holiday.title}</span>
+                              {holiday.group ? (
+                                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary ring-1 ring-primary/15">
+                                  <i className="ri-folder-2-line" />
+                                  {holiday.group}
+                                </span>
+                              ) : null}
                             </td>
                             <td className="px-5 py-4 text-sm text-defaulttextcolor/85 whitespace-nowrap">
                               {holiday.endDate
@@ -621,6 +646,29 @@ export default function SettingsAttendanceHolidaysPage() {
                     required
                     maxLength={200}
                   />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">
+                    Holiday Group{" "}
+                    <span className="text-defaulttextcolor/60 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    list="holiday-group-options"
+                    value={formData.group}
+                    onChange={(e) => setFormData((p) => ({ ...p, group: e.target.value }))}
+                    placeholder="e.g. US Holidays 2026"
+                    className="w-full rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor placeholder:text-defaulttextcolor/45 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    maxLength={120}
+                  />
+                  <datalist id="holiday-group-options">
+                    {groupNames.map((g) => (
+                      <option key={g} value={g} />
+                    ))}
+                  </datalist>
+                  <p className="mt-1.5 text-xs text-defaulttextcolor/60">
+                    Type a new name to create a group, or pick an existing one. Holidays in the same group can be assigned together.
+                  </p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-semibold text-defaulttextcolor">

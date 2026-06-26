@@ -95,6 +95,7 @@ export const ROUTES = {
   settingsAttendance: "/settings/attendance/",
   settingsAttendanceWeekOff: "/settings/attendance/week-off/",
   settingsAttendanceHolidays: "/settings/attendance/holidays/",
+  settingsAttendanceHolidayGroups: "/settings/attendance/holiday-groups/",
   settingsAttendanceAssignHolidays: "/settings/attendance/assign-holidays/",
   settingsAttendanceCandidateGroups: "/settings/attendance/candidate-groups/",
   settingsAttendanceManageShifts: "/settings/attendance/manage-shifts/",

@@ -12,12 +12,15 @@ export interface Holiday {
   /** Optional end date for multi-day festivals. When set, holiday spans [date, endDate] inclusive. */
   endDate?: string | null;
   isActive: boolean;
+  /** Named holiday set, e.g. "US Holidays 2026". Empty/undefined = ungrouped. */
+  group?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
 export interface ListHolidaysParams {
   title?: string;
+  group?: string;
   date?: string;
   startDate?: string;
   endDate?: string;
@@ -41,6 +44,7 @@ export interface ListHolidaysResponse {
 export async function getAllHolidays(params?: ListHolidaysParams): Promise<ListHolidaysResponse> {
   const search = new URLSearchParams();
   if (params?.title) search.set("title", params.title);
+  if (params?.group) search.set("group", params.group);
   if (params?.date) search.set("date", params.date);
   if (params?.startDate) search.set("startDate", params.startDate);
   if (params?.endDate) search.set("endDate", params.endDate);
@@ -59,11 +63,13 @@ export async function createHoliday(data: {
   date: string;
   endDate?: string | null;
   isActive?: boolean;
+  group?: string;
 }): Promise<{ data: Holiday }> {
   const body: Record<string, unknown> = {
     title: data.title,
     date: new Date(data.date).toISOString(),
     isActive: data.isActive ?? true,
+    group: data.group?.trim() ?? "",
   };
   if (data.endDate != null && data.endDate !== "") {
     body.endDate = new Date(data.endDate).toISOString();
@@ -81,9 +87,10 @@ export async function getHolidayById(holidayId: string): Promise<{ data: Holiday
 
 export async function updateHoliday(
   holidayId: string,
-  updates: { title?: string; date?: string; endDate?: string | null; isActive?: boolean }
+  updates: { title?: string; date?: string; endDate?: string | null; isActive?: boolean; group?: string }
 ): Promise<{ data: Holiday }> {
   const body: Record<string, unknown> = { ...updates };
+  if (updates.group !== undefined) body.group = updates.group.trim();
   if (updates.date) body.date = new Date(updates.date).toISOString();
   if (updates.endDate !== undefined) {
     body.endDate = updates.endDate != null && updates.endDate !== "" ? new Date(updates.endDate).toISOString() : null;
