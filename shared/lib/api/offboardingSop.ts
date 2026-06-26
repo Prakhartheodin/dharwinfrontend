@@ -30,6 +30,31 @@ export interface OffboardingStatus {
 
 export type OffboardingActionKey = "email_deactivated" | "tasks_reassigned" | "org_team_disabled";
 
+export interface OffboardingOverviewRow {
+  employeeId: string;
+  fullName: string;
+  empCode: string | null;
+  email: string | null;
+  resignDate: string | null;
+  completedCount: number;
+  totalCount: number;
+  nextStep: OffboardingStatusStep | null;
+  steps: OffboardingStatusStep[];
+}
+
+export interface OffboardingOverview {
+  scannedCount: number;
+  withOpenCount: number;
+  results: OffboardingOverviewRow[];
+}
+
+export async function getOffboardingOverview(limit?: number): Promise<OffboardingOverview> {
+  const { data } = await apiClient.get<OffboardingOverview>("/offboarding-sop/overview", {
+    params: limit != null ? { limit } : undefined,
+  });
+  return data;
+}
+
 export async function getOffboardingConfig(): Promise<OffboardingConfig> {
   const { data } = await apiClient.get<OffboardingConfig>("/offboarding-sop/config");
   return data;
