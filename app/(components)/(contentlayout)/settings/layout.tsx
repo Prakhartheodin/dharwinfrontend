@@ -23,6 +23,7 @@ function getActiveTab(
   | "attendance"
   | "agents"
   | "candidate-sop"
+  | "offboarding-sop"
   | "personal-information"
   | "email-templates"
   | "job-templates"
@@ -35,6 +36,7 @@ function getActiveTab(
   if (pathname.startsWith("/settings/agents")) return "agents";
   if (pathname.startsWith("/settings/company-email")) return "company-email";
   if (pathname.startsWith("/settings/candidates/sop")) return "candidate-sop";
+  if (pathname.startsWith("/settings/offboarding/sop")) return "offboarding-sop";
   if (pathname.startsWith("/settings/email-templates-admin")) return "email-templates-admin";
   if (pathname.startsWith("/settings/email-templates")) return "email-templates";
   if (pathname.startsWith("/settings/job-templates")) return "job-templates";
@@ -153,6 +155,13 @@ export default function SettingsLayout({
         ? hasSettingsFeatureAccess(raw, "candidate-sop")
         : hasCandidateSopAccess || hasSettingsFeatureAccess(raw, "candidate-sop");
       if (!can) router.replace(ROUTES.settingsPersonalInfo);
+    } else if (activeTab === "offboarding-sop") {
+      const authView = { permissions: raw, isAdministrator, isPlatformSuperUser };
+      const can =
+        isPlatformSuperUser ||
+        isAdministrator ||
+        hasPermission(authView, "employees.manage");
+      if (!can) router.replace(ROUTES.settingsPersonalInfo);
     } else if (activeTab === "email-templates") {
       const can = matrixMode
         ? hasSettingsFeatureAccess(raw, "email-templates")
@@ -198,6 +207,7 @@ export default function SettingsLayout({
       | "attendance"
       | "agents"
       | "candidate-sop"
+      | "offboarding-sop"
       | "personal-information"
       | "email-templates"
       | "job-templates"
@@ -240,6 +250,11 @@ export default function SettingsLayout({
   const showCandidateSopTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "candidate-sop")
     : hasCandidateSopAccess === true || hasSettingsFeatureAccess(rawPerms, "candidate-sop");
+  const offboardingAuthView = { permissions: rawPerms, isAdministrator, isPlatformSuperUser };
+  const showOffboardingSopTab =
+    isPlatformSuperUser ||
+    isAdministrator ||
+    hasPermission(offboardingAuthView, "employees.manage");
   const showEmailTemplatesTab = settingsMatrixMode
     ? hasSettingsFeatureAccess(rawPerms, "email-templates")
     : hasEmailReadAccess(rawPerms) || hasSettingsFeatureAccess(rawPerms, "email-templates");
@@ -314,6 +329,15 @@ export default function SettingsLayout({
                     aria-current={activeTab === "candidate-sop" ? "page" : undefined}
                   >
                     Employee SOP
+                  </Link>
+                )}
+                {showOffboardingSopTab && (
+                  <Link
+                    href="/settings/offboarding/sop"
+                    className={tabClass("offboarding-sop")}
+                    aria-current={activeTab === "offboarding-sop" ? "page" : undefined}
+                  >
+                    Exit SOP
                   </Link>
                 )}
                 {showEmailTemplatesTab && (
