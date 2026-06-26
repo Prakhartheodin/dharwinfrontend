@@ -65,6 +65,34 @@ export async function saveOffboardingConfig(steps: OffboardingStep[]): Promise<O
   return data;
 }
 
+export interface OffboardingOpenTask {
+  id: string;
+  title: string;
+  taskCode: string | null;
+  status: string;
+  priority: string;
+  assignees: { id: string; name: string | null; email: string | null }[];
+}
+
+export async function getOffboardingOpenTasks(employeeId: string): Promise<OffboardingOpenTask[]> {
+  const { data } = await apiClient.get<{ tasks: OffboardingOpenTask[] }>(
+    `/offboarding-sop/${employeeId}/open-tasks`
+  );
+  return data.tasks;
+}
+
+export interface AssignableUser {
+  id: string;
+  name: string | null;
+  email: string | null;
+}
+
+/** Reassignment targets, guarded by employees.manage (no separate users.read needed). */
+export async function getAssignableUsers(): Promise<AssignableUser[]> {
+  const { data } = await apiClient.get<{ users: AssignableUser[] }>("/offboarding-sop/assignable-users");
+  return data.users;
+}
+
 export async function getOffboardingStatus(employeeId: string): Promise<OffboardingStatus> {
   const { data } = await apiClient.get<OffboardingStatus>(`/offboarding-sop/${employeeId}/status`);
   return data;
