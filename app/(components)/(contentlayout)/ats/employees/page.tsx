@@ -8,6 +8,7 @@ import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
+import CallButton from '@/shared/components/CallButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
   listCandidates,
@@ -1728,6 +1729,8 @@ const Candidates = () => {
         Cell: ({ row }: any) => {
           const candidate = row.original as CandidateDisplay
           const resigned = isCandidateResigned(candidate)
+          const isUnpaid = candidate._raw?.compensationType === 'unpaid'
+          const compensationLabel = isUnpaid ? 'Unpaid Internship' : 'Paid'
           const jd = candidate._raw?.joiningDate as string | undefined
           const joinDisplay =
             jd && !Number.isNaN(new Date(jd).getTime())
@@ -1760,6 +1763,16 @@ const Candidates = () => {
                       {candidate.openSopCount}
                     </span>
                   ) : null}
+                  <span
+                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isUnpaid
+                        ? 'border border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-800/50 dark:bg-amber-900/30 dark:text-amber-300'
+                        : 'border border-emerald-200 bg-emerald-100 text-emerald-700 dark:border-emerald-800/50 dark:bg-emerald-900/30 dark:text-emerald-300'
+                    }`}
+                    title={`Compensation: ${compensationLabel}`}
+                  >
+                    {compensationLabel}
+                  </span>
                   {resigned && (
                     <span
                       className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide bg-red-600 text-white shadow-sm"
@@ -1940,7 +1953,7 @@ const Candidates = () => {
                   </span>
                 </button>
               </div>
-              {c.isEmailVerified === false && c.ownerUserId && (
+              {c.ownerStatus === 'pending' && c.isEmailVerified === false && c.ownerUserId && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button
                     type="button"
@@ -3408,6 +3421,7 @@ const Candidates = () => {
                         <i className="ri-phone-line"></i>
                         {candidateDetails.phone}
                       </span>
+                      <CallButton phone={candidateDetails.phone} />
                     </div>
                   </div>
                 ) : null
