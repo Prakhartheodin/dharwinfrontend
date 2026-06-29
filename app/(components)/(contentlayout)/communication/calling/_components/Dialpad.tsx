@@ -35,6 +35,13 @@ function toE164(v: string): string {
   return t.startsWith("+") ? t : `+${t}`;
 }
 
+function fmtElapsed(total: number): string {
+  const s = Math.max(0, Math.floor(total));
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
 function apiErr(e: unknown, fallback: string): string {
   const msg =
     e && typeof e === "object" && "response" in e
@@ -68,6 +75,8 @@ export default function Dialpad() {
   const twilioCallRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
   const [callState, setCallState] = useState<CallState>("idle");
+  const [elapsed, setElapsed] = useState(0); // seconds since the call connected
+  const [muted, setMuted] = useState(false);
 
   // ponytail: toll-free numbers are inbound-only — Plivo rejects them as an outbound
   // caller ID, surfacing as "Busy" with no CDR. Keep them out of originating options.
@@ -243,6 +252,17 @@ export default function Dialpad() {
     if (mode === "browser") void connectSoftphone();
   }, [mode, connectSoftphone]);
 
+  // Live call timer: tick once a second only while connected; reset otherwise.
+  useEffect(() => {
+    if (callState !== "connected") {
+      setElapsed(0);
+      return;
+    }
+    setElapsed(0);
+    const id = window.setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [callState]);
+
   const retrySoftphone = useCallback(() => {
     try {
       plivoRef.current?.client?.logout?.();
@@ -332,8 +352,26 @@ export default function Dialpad() {
       /* ignore */
     }
     twilioCallRef.current = null;
+    setMuted(false);
     setCallState("idle");
   }, [provider]);
+
+  // Mute/unmute the live call. Twilio: Call.mute(bool); Plivo: client.mute()/unmute().
+  const toggleMute = useCallback(() => {
+    const next = !muted;
+    try {
+      if (provider === "twilio") {
+        twilioCallRef.current?.mute?.(next);
+      } else if (next) {
+        plivoRef.current?.client?.mute?.();
+      } else {
+        plivoRef.current?.client?.unmute?.();
+      }
+      setMuted(next);
+    } catch {
+      /* ignore — leave state unchanged if the SDK rejects */
+    }
+  }, [muted, provider]);
 
   const handlePhoneCall = useCallback(async () => {
     setFeedback(null);
@@ -544,14 +582,34 @@ export default function Dialpad() {
             </div>
 
             {inCall ? (
-              <button
-                type="button"
-                onClick={hangup}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-danger py-3 text-sm font-semibold text-white transition-colors hover:bg-danger/90"
-              >
-                <i className="ri-phone-fill rotate-[135deg]" />
-                {callState === "ringing" ? "Ringing… Hang up" : "Connected — Hang up"}
-              </button>
+              <div className="flex items-center gap-2">
+                {callState === "connected" ? (
+                  <button
+                    type="button"
+                    onClick={toggleMute}
+                    aria-pressed={muted}
+                    title={muted ? "Unmute" : "Mute"}
+                    className={`flex shrink-0 items-center justify-center gap-1.5 rounded-lg border px-4 py-3 text-sm font-semibold transition-colors ${
+                      muted
+                        ? "border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+                        : "border-defaultborder/70 text-defaulttextcolor/75 hover:bg-black/[0.03] dark:text-white/70 dark:hover:bg-white/5"
+                    }`}
+                  >
+                    <i className={muted ? "ri-mic-off-line" : "ri-mic-line"} />
+                    {muted ? "Muted" : "Mute"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={hangup}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-danger py-3 text-sm font-semibold text-white transition-colors hover:bg-danger/90"
+                >
+                  <i className="ri-phone-fill rotate-[135deg]" />
+                  {callState === "ringing"
+                    ? "Ringing… Hang up"
+                    : `Connected ${fmtElapsed(elapsed)} — Hang up`}
+                </button>
+              </div>
             ) : (
               <button
                 type="button"
