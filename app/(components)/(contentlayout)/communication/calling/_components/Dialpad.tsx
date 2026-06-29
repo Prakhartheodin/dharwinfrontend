@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   listOwnedTelephonyNumbers,
   placeTelephonyCall,
@@ -24,6 +25,12 @@ const DIAL_OPTIONS = COUNTRY_PHONE_RULES.filter((c) => c.code !== "OTHER")
 type Mode = "browser" | "phone";
 type WebrtcStatus = "idle" | "connecting" | "ready" | "error";
 type CallState = "idle" | "ringing" | "connected";
+type TwilioCall = import("@twilio/voice-sdk").Call;
+type IncomingCallInfo = {
+  from: string;
+  to: string;
+  callSid: string;
+};
 
 function isE164(v: string): boolean {
   return /^\+[1-9]\d{7,14}$/.test(v.trim());
@@ -50,6 +57,16 @@ function apiErr(e: unknown, fallback: string): string {
   return msg || (e instanceof Error ? e.message : fallback);
 }
 
+function getTwilioCallParam(call: TwilioCall, key: string): string {
+  const c = call as unknown as {
+    customParameters?: Map<string, string> | { get?: (name: string) => string | undefined };
+    parameters?: Record<string, string | undefined>;
+  };
+  const custom = c.customParameters;
+  const fromCustom = typeof custom?.get === "function" ? custom.get(key) : undefined;
+  return fromCustom || c.parameters?.[key] || "";
+}
+
 /**
  * Two-mode telephony dialer (Plivo or Twilio via backend facade):
  *  - browser  : WebRTC softphone (browser mic/speakers).
@@ -72,9 +89,11 @@ export default function Dialpad() {
   // WebRTC softphone state.
   const plivoRef = useRef<any>(null);
   const twilioDeviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
-  const twilioCallRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
+  const twilioCallRef = useRef<TwilioCall | null>(null);
+  const incomingTwilioCallRef = useRef<TwilioCall | null>(null);
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
   const [callState, setCallState] = useState<CallState>("idle");
+  const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
   const [elapsed, setElapsed] = useState(0); // seconds since the call connected
   const [muted, setMuted] = useState(false);
 
@@ -131,6 +150,21 @@ export default function Dialpad() {
     [agentCountry, swapDial]
   );
 
+  // Prefill the dial field from a ?to= deep link (profile click-to-call). Applied
+  // once on mount so the user can still edit/clear it afterwards.
+  const searchParams = useSearchParams();
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current) return;
+    const raw = searchParams.get("to");
+    if (!raw) return;
+    const e164 = toE164(raw.trim());
+    if (isE164(e164)) {
+      setDest(e164);
+      prefilledRef.current = true;
+    }
+  }, [searchParams]);
+
   const press = useCallback((k: string) => {
     setDest((prev) => (prev === "+" && k !== "+" ? `+${k}` : prev + k));
   }, []);
@@ -141,6 +175,36 @@ export default function Dialpad() {
 
   // --- WebRTC softphone --------------------------------------------------------
   const connectingRef = useRef(false);
+
+  const resetTwilioCallState = useCallback((call?: TwilioCall | null) => {
+    if (!call || twilioCallRef.current === call) twilioCallRef.current = null;
+    if (!call || incomingTwilioCallRef.current === call) incomingTwilioCallRef.current = null;
+    setIncomingCall(null);
+    setMuted(false);
+    setCallState("idle");
+  }, []);
+
+  const attachTwilioCallEvents = useCallback(
+    (call: TwilioCall, opts: { incoming?: boolean } = {}) => {
+      call.on("accept", () => {
+        twilioCallRef.current = call;
+        if (opts.incoming) {
+          incomingTwilioCallRef.current = null;
+          setIncomingCall(null);
+        }
+        setMuted(false);
+        setCallState("connected");
+      });
+      call.on("disconnect", () => resetTwilioCallState(call));
+      call.on("cancel", () => resetTwilioCallState(call));
+      call.on("reject", () => resetTwilioCallState(call));
+      call.on("error", () => {
+        resetTwilioCallState(call);
+        setFeedback({ kind: "err", msg: "Call failed" });
+      });
+    },
+    [resetTwilioCallState]
+  );
 
   const connectSoftphone = useCallback(async () => {
     if (plivoRef.current || twilioDeviceRef.current || connectingRef.current) return;
@@ -175,6 +239,21 @@ export default function Dialpad() {
           connectingRef.current = false;
           setWebrtc("error");
           setFeedback({ kind: "err", msg: `Softphone error: ${err?.message || "unknown"}` });
+        });
+        device.on("incoming", (call) => {
+          if (twilioCallRef.current || incomingTwilioCallRef.current) {
+            call.reject();
+            return;
+          }
+          const from = getTwilioCallParam(call, "From") || getTwilioCallParam(call, "Caller") || "Unknown caller";
+          const to = getTwilioCallParam(call, "To") || callerId || "your work number";
+          const callSid = getTwilioCallParam(call, "CallSid");
+          incomingTwilioCallRef.current = call;
+          setIncomingCall({ from, to, callSid });
+          setMuted(false);
+          setCallState("ringing");
+          setFeedback(null);
+          attachTwilioCallEvents(call, { incoming: true });
         });
         twilioDeviceRef.current = device;
         await device.register();
@@ -245,7 +324,7 @@ export default function Dialpad() {
       setWebrtc("error");
       setFeedback({ kind: "err", msg: apiErr(e, "Could not start the softphone") });
     }
-  }, []);
+  }, [attachTwilioCallEvents, callerId]);
 
   // Connect on entering browser mode; login persists across toggles.
   useEffect(() => {
@@ -273,6 +352,8 @@ export default function Dialpad() {
     plivoRef.current = null;
     twilioDeviceRef.current = null;
     twilioCallRef.current = null;
+    incomingTwilioCallRef.current = null;
+    setIncomingCall(null);
     connectingRef.current = false;
     setWebrtc("idle");
     void connectSoftphone();
@@ -290,6 +371,7 @@ export default function Dialpad() {
       plivoRef.current = null;
       twilioDeviceRef.current = null;
       twilioCallRef.current = null;
+      incomingTwilioCallRef.current = null;
     };
   }, []);
 
@@ -314,13 +396,7 @@ export default function Dialpad() {
           },
         });
         twilioCallRef.current = call;
-        call.on("accept", () => setCallState("connected"));
-        call.on("disconnect", () => setCallState("idle"));
-        call.on("cancel", () => setCallState("idle"));
-        call.on("error", () => {
-          setCallState("idle");
-          setFeedback({ kind: "err", msg: "Call failed" });
-        });
+        attachTwilioCallEvents(call);
         return;
       }
 
@@ -338,13 +414,39 @@ export default function Dialpad() {
     } finally {
       setPlacing(false);
     }
-  }, [dest, callerId, provider]);
+  }, [attachTwilioCallEvents, dest, callerId, provider]);
+
+  const acceptIncoming = useCallback(() => {
+    const call = incomingTwilioCallRef.current;
+    if (!call) return;
+    setFeedback(null);
+    try {
+      call.accept();
+    } catch (e) {
+      resetTwilioCallState(call);
+      setFeedback({ kind: "err", msg: apiErr(e, "Could not answer incoming call") });
+    }
+  }, [resetTwilioCallState]);
+
+  const rejectIncoming = useCallback(() => {
+    const call = incomingTwilioCallRef.current;
+    try {
+      call?.reject?.();
+    } catch {
+      /* ignore */
+    }
+    resetTwilioCallState(call);
+  }, [resetTwilioCallState]);
 
   const hangup = useCallback(() => {
     try {
       if (provider === "twilio") {
-        twilioCallRef.current?.disconnect?.();
-        twilioDeviceRef.current?.disconnectAll?.();
+        if (incomingTwilioCallRef.current && !twilioCallRef.current) {
+          incomingTwilioCallRef.current.reject();
+        } else {
+          twilioCallRef.current?.disconnect?.();
+          twilioDeviceRef.current?.disconnectAll?.();
+        }
       } else {
         plivoRef.current?.client?.hangup?.();
       }
@@ -352,6 +454,8 @@ export default function Dialpad() {
       /* ignore */
     }
     twilioCallRef.current = null;
+    incomingTwilioCallRef.current = null;
+    setIncomingCall(null);
     setMuted(false);
     setCallState("idle");
   }, [provider]);
@@ -581,7 +685,45 @@ export default function Dialpad() {
               ))}
             </div>
 
-            {inCall ? (
+            {incomingCall ? (
+              <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-3">
+                <div className="mb-3 flex items-start gap-3">
+                  <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
+                    <i className="ri-phone-line text-lg" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="mb-0 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                      Incoming call
+                    </p>
+                    <p className="mb-0 truncate text-sm font-semibold text-defaulttextcolor dark:text-white">
+                      {incomingCall.from}
+                    </p>
+                    <p className="mb-0 truncate text-[0.7rem] text-defaulttextcolor/55 dark:text-white/45">
+                      To {incomingCall.to}
+                      {incomingCall.callSid ? ` · ${incomingCall.callSid}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={rejectIncoming}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-danger py-2.5 text-sm font-semibold text-white transition-colors hover:bg-danger/90"
+                  >
+                    <i className="ri-phone-fill rotate-[135deg]" />
+                    Decline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={acceptIncoming}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                  >
+                    <i className="ri-phone-fill" />
+                    Accept
+                  </button>
+                </div>
+              </div>
+            ) : inCall ? (
               <div className="flex items-center gap-2">
                 {callState === "connected" ? (
                   <button
