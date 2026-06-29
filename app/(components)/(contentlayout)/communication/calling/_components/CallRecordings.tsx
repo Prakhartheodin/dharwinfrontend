@@ -86,8 +86,14 @@ export default function CallRecordings({ executionId }: { executionId: string })
         const { recordings } = await getCallRecordings(executionId);
         if (cancelled) return;
         setRecs({
-          bolna: { streamUrl: recordings.bolna.available ? recordings.bolna.streamUrl : undefined, reason: recordings.bolna.reason },
-          plivo: { streamUrl: recordings.plivo.available ? recordings.plivo.streamUrl : undefined, reason: recordings.plivo.reason },
+          bolna: {
+            streamUrl: recordings.bolna.available ? recordings.bolna.streamUrl : undefined,
+            reason: recordings.bolna.reason,
+          },
+          plivo: {
+            streamUrl: recordings.plivo.available ? recordings.plivo.streamUrl : undefined,
+            reason: recordings.plivo.reason,
+          },
         });
       } catch {
         if (!cancelled) setError("Could not load recordings");

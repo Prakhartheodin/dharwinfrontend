@@ -3,25 +3,26 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AxiosError } from "axios";
 import {
-  searchAvailablePlivoNumbers,
-  buyPlivoNumber,
-  listOwnedPlivoNumbers,
-  type AvailablePlivoNumber,
-  type OwnedPlivoNumber,
-  type PlivoNumberType,
-} from "@/shared/lib/api/plivo";
+  searchAvailableTelephonyNumbers,
+  buyTelephonyNumber,
+  listOwnedTelephonyNumbers,
+  type AvailableTelephonyNumber,
+  type OwnedTelephonyNumber,
+  type TelephonyNumberType,
+} from "@/shared/lib/api/telephony";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
 import pipelineStyles from "../../../ats/ats-pipeline-list.module.css";
 
-// Plivo has no list-countries endpoint, so the dropdown is sourced from the shared
-// ISO country table (real country names + 2-letter codes), sorted A–Z.
+// Country catalogue for number search (ISO codes from shared country-phone rules).
 const COUNTRY_OPTIONS: { value: string; label: string }[] = COUNTRY_PHONE_RULES.filter(
   (c) => c.code !== "OTHER"
 )
   .map((c) => ({ value: c.code, label: `${c.name} (${c.code})` }))
   .sort((a, b) => a.label.localeCompare(b.label));
 
-const TYPE_OPTIONS: { value: PlivoNumberType; label: string }[] = [
+const TYPE_OPTIONS: { value: TelephonyNumberType; label: string }[] = [
   { value: "local", label: "Local" },
   { value: "tollfree", label: "Toll-free" },
   { value: "mobile", label: "Mobile" },
@@ -47,19 +48,30 @@ function axiosMessage(e: unknown, fallback: string): string {
 }
 
 export default function CompanyWorkNumberPanel() {
+  const { permissions, isPlatformSuperUser, isAdministrator, permissionsLoaded } = useAuth();
+  const authSubject = { permissions, isPlatformSuperUser, isAdministrator };
+  const canManageCalls = hasPermission(authSubject, "manage_calls");
+
   const [countryIso, setCountryIso] = useState("US");
-  const [type, setType] = useState<PlivoNumberType>("local");
+  const [type, setType] = useState<TelephonyNumberType>("local");
   const [pattern, setPattern] = useState("");
   const [city, setCity] = useState("");
   const [region, setRegion] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [nearNumber, setNearNumber] = useState("");
+  const [distance, setDistance] = useState("");
   const [voice, setVoice] = useState(true);
   const [sms, setSms] = useState(false);
+  const [mms, setMms] = useState(false);
+  const [fax, setFax] = useState(false);
 
   const [searching, setSearching] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
-  const [results, setResults] = useState<AvailablePlivoNumber[]>([]);
+  const [results, setResults] = useState<AvailableTelephonyNumber[]>([]);
   const [offset, setOffset] = useState(0);
+  const [nextPageToken, setNextPageToken] = useState("");
+  const [searchProvider, setSearchProvider] = useState<"plivo" | "twilio" | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
@@ -68,11 +80,11 @@ export default function CompanyWorkNumberPanel() {
 
   const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
   const [purchased, setPurchased] = useState<Record<string, true>>({});
-  const [confirmNumber, setConfirmNumber] = useState<AvailablePlivoNumber | null>(null);
+  const [confirmNumber, setConfirmNumber] = useState<AvailableTelephonyNumber | null>(null);
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
 
-  // Numbers already on the connected Plivo account.
-  const [owned, setOwned] = useState<OwnedPlivoNumber[]>([]);
+  // Numbers already on the connected telephony account.
+  const [owned, setOwned] = useState<OwnedTelephonyNumber[]>([]);
   const [ownedLoading, setOwnedLoading] = useState(true);
   const [ownedError, setOwnedError] = useState("");
 
@@ -80,7 +92,7 @@ export default function CompanyWorkNumberPanel() {
     setOwnedLoading(true);
     setOwnedError("");
     try {
-      const res = await listOwnedPlivoNumbers();
+      const res = await listOwnedTelephonyNumbers();
       setOwned(res.numbers || []);
     } catch (err) {
       setOwnedError(axiosMessage(err, "Failed to load your numbers"));
@@ -97,64 +109,103 @@ export default function CompanyWorkNumberPanel() {
     const parts: string[] = [];
     if (voice) parts.push("voice");
     if (sms) parts.push("sms");
+    if (mms) parts.push("mms");
+    if (fax) parts.push("fax");
     return parts.join(",");
-  }, [voice, sms]);
-
-  const showToast = useCallback((kind: "success" | "error", msg: string) => {
-    setToast({ kind, msg });
-    setTimeout(() => setToast(null), 4000);
-  }, []);
+  }, [voice, sms, mms, fax]);
 
   const runSearch = useCallback(
-    async (nextOffset: number) => {
-      const append = nextOffset > 0;
+    async (mode: "new" | "more") => {
+      const append = mode === "more";
       setError("");
       if (append) setLoadingMore(true);
-      else setSearching(true);
+      else {
+        setSearching(true);
+        setNextPageToken("");
+        setSearchProvider(null);
+      }
       setSearched(true);
       try {
-        const res = await searchAvailablePlivoNumbers({
+        const trimmedNear = nearNumber.trim();
+        const distanceNum = distance.trim() ? Number(distance.trim()) : undefined;
+        const params: Parameters<typeof searchAvailableTelephonyNumbers>[0] = {
           countryIso,
           type,
           pattern: pattern.trim() || undefined,
           services: services || undefined,
           city: city.trim() || undefined,
           region: region.trim() || undefined,
+          postalCode: postalCode.trim() || undefined,
+          nearNumber: trimmedNear || undefined,
+          distance:
+            trimmedNear && distanceNum != null && Number.isFinite(distanceNum) ? distanceNum : undefined,
           limit: PAGE_LIMIT,
-          offset: nextOffset,
-        });
+        };
+
+        if (append && searchProvider === "twilio" && nextPageToken) {
+          params.pageToken = nextPageToken;
+        } else if (append) {
+          params.offset = offset + PAGE_LIMIT;
+        } else {
+          params.offset = 0;
+        }
+
+        const res = await searchAvailableTelephonyNumbers(params);
         const batch = res.numbers || [];
         setResults((prev) => (append ? [...prev, ...batch] : batch));
         setHasMore(Boolean(res.hasMore));
-        setOffset(nextOffset);
+        setNextPageToken(res.nextPageToken || "");
+        setSearchProvider(res.provider ?? null);
+        if (!append) setOffset(0);
+        else if (res.provider !== "twilio") setOffset(offset + PAGE_LIMIT);
         setTotal(typeof res.total === "number" ? res.total : null);
       } catch (err) {
         if (!append) setResults([]);
         setHasMore(false);
+        setNextPageToken("");
         setError(axiosMessage(err, "Failed to search numbers"));
       } finally {
         setSearching(false);
         setLoadingMore(false);
       }
     },
-    [countryIso, type, pattern, services, city, region]
+    [
+      countryIso,
+      type,
+      pattern,
+      services,
+      city,
+      region,
+      postalCode,
+      nearNumber,
+      distance,
+      offset,
+      nextPageToken,
+      searchProvider,
+    ]
   );
 
   const handleSearch = useCallback(
     (e?: React.FormEvent) => {
       e?.preventDefault();
-      void runSearch(0);
+      void runSearch("new");
     },
     [runSearch]
   );
 
+  const showToast = useCallback((kind: "success" | "error", msg: string) => {
+    setToast({ kind, msg });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
   const handleConfirmBuy = useCallback(async () => {
+    if (!canManageCalls) return;
     if (!confirmNumber) return;
     const num = confirmNumber.number;
     setConfirmNumber(null);
     setBuyingNumber(num);
     try {
-      const res = await buyPlivoNumber(num);
+      const res = await buyTelephonyNumber(num);
       setPurchased((prev) => ({ ...prev, [num]: true }));
       showToast("success", res.message || `Purchased ${num}.`);
       void loadOwned();
@@ -167,7 +218,7 @@ export default function CompanyWorkNumberPanel() {
 
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
-      {/* Your current numbers — already on the connected Plivo account */}
+      {/* Your current numbers — already on the connected telephony account */}
       <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 shadow-sm dark:border-white/10 dark:bg-white/[0.03]">
         <div className="flex flex-col gap-2 border-b border-defaultborder/60 px-4 py-3.5 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-5">
           <div>
@@ -175,7 +226,7 @@ export default function CompanyWorkNumberPanel() {
               Your current numbers
             </h6>
             <p className="mb-0 text-xs text-defaulttextcolor/55 dark:text-white/45">
-              Numbers already rented on the connected Plivo account.
+              Numbers already rented on the connected telephony account.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -282,11 +333,16 @@ export default function CompanyWorkNumberPanel() {
             Buy a company work number
           </h6>
           <p className="mb-0 max-w-xl text-xs leading-relaxed text-defaulttextcolor/60 dark:text-white/50">
-            Search Plivo for available numbers, then purchase one.{" "}
+            Search the telephony catalogue for available numbers, then purchase one.{" "}
             <span className="font-medium text-defaulttextcolor/80 dark:text-white/70">
               Buying a number is a real, paid action
             </span>{" "}
-            billed to the connected Plivo account.
+            billed to the connected telephony account.
+            {!canManageCalls && permissionsLoaded ? (
+              <span className="mt-1 block text-amber-700 dark:text-amber-400">
+                Read-only: you need call manage permission to buy numbers.
+              </span>
+            ) : null}
           </p>
         </div>
 
@@ -315,7 +371,7 @@ export default function CompanyWorkNumberPanel() {
             <select
               className="form-select w-full rounded-lg border-defaultborder/70 bg-white text-sm dark:bg-black/20 dark:text-white"
               value={type}
-              onChange={(e) => setType(e.target.value as PlivoNumberType)}
+              onChange={(e) => setType(e.target.value as TelephonyNumberType)}
             >
               {TYPE_OPTIONS.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -341,7 +397,7 @@ export default function CompanyWorkNumberPanel() {
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
-              City <span className="text-defaulttextcolor/40">(local only)</span>
+              City <span className="text-defaulttextcolor/40">(local)</span>
             </span>
             <input
               type="text"
@@ -354,22 +410,64 @@ export default function CompanyWorkNumberPanel() {
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
-              Region <span className="text-defaulttextcolor/40">(fixed only)</span>
+              State / province
             </span>
             <input
               type="text"
-              placeholder="e.g. Frankfurt"
+              placeholder="e.g. CA or California"
               className="form-control w-full rounded-lg border-defaultborder/70 bg-white text-sm dark:bg-black/20 dark:text-white"
               value={region}
               onChange={(e) => setRegion(e.target.value)}
             />
           </label>
 
-          <div className="block">
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
+              Postal code <span className="text-defaulttextcolor/40">(optional)</span>
+            </span>
+            <input
+              type="text"
+              placeholder="e.g. 94105"
+              className="form-control w-full rounded-lg border-defaultborder/70 bg-white text-sm dark:bg-black/20 dark:text-white"
+              value={postalCode}
+              onChange={(e) => setPostalCode(e.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
+              Near number <span className="text-defaulttextcolor/40">(geo search)</span>
+            </span>
+            <input
+              type="text"
+              inputMode="tel"
+              placeholder="e.g. +14155551212"
+              className="form-control w-full rounded-lg border-defaultborder/70 bg-white text-sm dark:bg-black/20 dark:text-white"
+              value={nearNumber}
+              onChange={(e) => setNearNumber(e.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
+              Distance (miles) <span className="text-defaulttextcolor/40">(with near number)</span>
+            </span>
+            <input
+              type="text"
+              inputMode="numeric"
+              placeholder="e.g. 25"
+              className="form-control w-full rounded-lg border-defaultborder/70 bg-white text-sm dark:bg-black/20 dark:text-white"
+              value={distance}
+              onChange={(e) => setDistance(e.target.value)}
+              disabled={!nearNumber.trim()}
+            />
+          </label>
+
+          <div className="block lg:col-span-2">
             <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
               Capabilities
             </span>
-            <div className="flex items-center gap-4 pt-1.5">
+            <div className="flex flex-wrap items-center gap-4 pt-1.5">
               <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-defaulttextcolor/80 dark:text-white/70">
                 <input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} />
                 Voice
@@ -377,6 +475,14 @@ export default function CompanyWorkNumberPanel() {
               <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-defaulttextcolor/80 dark:text-white/70">
                 <input type="checkbox" checked={sms} onChange={(e) => setSms(e.target.checked)} />
                 SMS
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-defaulttextcolor/80 dark:text-white/70">
+                <input type="checkbox" checked={mms} onChange={(e) => setMms(e.target.checked)} />
+                MMS
+              </label>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 text-sm text-defaulttextcolor/80 dark:text-white/70">
+                <input type="checkbox" checked={fax} onChange={(e) => setFax(e.target.checked)} />
+                Fax
               </label>
             </div>
           </div>
@@ -503,7 +609,7 @@ export default function CompanyWorkNumberPanel() {
                           ) : (
                             <button
                               type="button"
-                              disabled={isBuying}
+                              disabled={isBuying || !canManageCalls}
                               onClick={() => setConfirmNumber(n)}
                               className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 px-3 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                             >
@@ -527,7 +633,7 @@ export default function CompanyWorkNumberPanel() {
                 <button
                   type="button"
                   disabled={loadingMore}
-                  onClick={() => void runSearch(offset + PAGE_LIMIT)}
+                  onClick={() => void runSearch("more")}
                   className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/70 px-4 py-1.5 text-xs font-semibold text-defaulttextcolor/75 transition-colors hover:bg-black/[0.03] disabled:cursor-not-allowed disabled:opacity-60 dark:text-white/70 dark:hover:bg-white/5"
                 >
                   <i className={loadingMore ? "ri-loader-4-line animate-spin" : "ri-arrow-down-line"} aria-hidden />
@@ -560,7 +666,7 @@ export default function CompanyWorkNumberPanel() {
               {confirmNumber.setupRate != null ? (
                 <> plus a {formatRate(confirmNumber.setupRate)} setup fee</>
               ) : null}
-              . This is a <span className="font-semibold text-danger">real, paid action</span> charged to the Plivo
+              . This is a <span className="font-semibold text-danger">real, paid action</span> charged to the telephony
               account and cannot be undone here.
             </p>
             <div className="flex justify-end gap-2">

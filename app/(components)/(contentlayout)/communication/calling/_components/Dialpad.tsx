@@ -3,15 +3,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  listOwnedPlivoNumbers,
-  placePlivoCall,
-  getPlivoSdkToken,
-  registerPlivoBrowserCallIntent,
-  type OwnedPlivoNumber,
-} from "@/shared/lib/api/plivo";
+  listOwnedTelephonyNumbers,
+  placeTelephonyCall,
+  getTelephonySdkToken,
+  registerTelephonyBrowserCallIntent,
+  type OwnedTelephonyNumber,
+  type TelephonyProvider,
+} from "@/shared/lib/api/telephony";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
 
-const AGENT_PHONE_KEY = "plivo_agent_phone";
+const AGENT_PHONE_KEY = "telephony_agent_phone";
+const LEGACY_AGENT_PHONE_KEY = "plivo_agent_phone";
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
 
 // Country dial codes, A–Z; "OTHER" has no usable dial code so it's dropped.
@@ -42,15 +44,15 @@ function apiErr(e: unknown, fallback: string): string {
 }
 
 /**
- * Two-mode Plivo dialer:
- *  - browser  : WebRTC softphone (plivo-browser-sdk). Talk through the laptop mic/speakers.
- *  - phone    : click-to-call bridge. Plivo rings your phone, then connects to the target.
- * Both show the chosen bought number as caller ID and are billed to the Plivo account.
+ * Two-mode telephony dialer (Plivo or Twilio via backend facade):
+ *  - browser  : WebRTC softphone (browser mic/speakers).
+ *  - phone    : click-to-call bridge — rings your phone, then connects to the target.
  */
 export default function Dialpad() {
   const [mode, setMode] = useState<Mode>("browser");
+  const [provider, setProvider] = useState<TelephonyProvider>("plivo");
 
-  const [owned, setOwned] = useState<OwnedPlivoNumber[]>([]);
+  const [owned, setOwned] = useState<OwnedTelephonyNumber[]>([]);
   const [ownedLoading, setOwnedLoading] = useState(true);
   const [callerId, setCallerId] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
@@ -62,6 +64,8 @@ export default function Dialpad() {
 
   // WebRTC softphone state.
   const plivoRef = useRef<any>(null);
+  const twilioDeviceRef = useRef<import("@twilio/voice-sdk").Device | null>(null);
+  const twilioCallRef = useRef<import("@twilio/voice-sdk").Call | null>(null);
   const [webrtc, setWebrtc] = useState<WebrtcStatus>("idle");
   const [callState, setCallState] = useState<CallState>("idle");
 
@@ -73,10 +77,10 @@ export default function Dialpad() {
   );
 
   useEffect(() => {
-    setAgentPhone(localStorage.getItem(AGENT_PHONE_KEY) || "");
+    setAgentPhone(localStorage.getItem(AGENT_PHONE_KEY) || localStorage.getItem(LEGACY_AGENT_PHONE_KEY) || "");
     (async () => {
       try {
-        const res = await listOwnedPlivoNumbers();
+        const res = await listOwnedTelephonyNumbers();
         const nums = res.numbers || [];
         setOwned(nums);
         const firstVoice = nums.find((n) => n.voiceEnabled && n.type !== "tollfree");
@@ -130,13 +134,11 @@ export default function Dialpad() {
   const connectingRef = useRef(false);
 
   const connectSoftphone = useCallback(async () => {
-    if (plivoRef.current || connectingRef.current) return;
+    if (plivoRef.current || twilioDeviceRef.current || connectingRef.current) return;
     connectingRef.current = true;
     setWebrtc("connecting");
     setFeedback(null);
 
-    // Don't spin forever: surface an actionable error if login never resolves
-    // (slow token endpoint, blocked WebRTC, http page) after 60s.
     const timeout = window.setTimeout(() => {
       connectingRef.current = false;
       setWebrtc((s) => (s === "ready" ? s : "error"));
@@ -146,6 +148,31 @@ export default function Dialpad() {
     }, 60000);
 
     try {
+      const tokenRes = await getTelephonySdkToken();
+      const activeProvider = tokenRes.provider === "twilio" ? "twilio" : "plivo";
+      setProvider(activeProvider);
+
+      if (activeProvider === "twilio") {
+        const { Device } = await import("@twilio/voice-sdk");
+        const device = new Device(tokenRes.token, { logLevel: "warn" });
+        const markReady = () => {
+          window.clearTimeout(timeout);
+          connectingRef.current = false;
+          setWebrtc("ready");
+        };
+        device.on("registered", markReady);
+        device.on("error", (err) => {
+          window.clearTimeout(timeout);
+          connectingRef.current = false;
+          setWebrtc("error");
+          setFeedback({ kind: "err", msg: `Softphone error: ${err?.message || "unknown"}` });
+        });
+        twilioDeviceRef.current = device;
+        await device.register();
+        if (device.state === "registered") markReady();
+        return;
+      }
+
       const mod: any = await import("plivo-browser-sdk");
       const Plivo = mod.Plivo || mod.default?.Plivo || mod.default;
       // Default WARN — DEBUG can log the access token / SIP auth. Support flips it
@@ -202,8 +229,7 @@ export default function Dialpad() {
       });
       plivoRef.current = p;
 
-      const { token } = await getPlivoSdkToken();
-      client.loginWithAccessToken(token);
+      client.loginWithAccessToken(tokenRes.token);
     } catch (e) {
       window.clearTimeout(timeout);
       connectingRef.current = false;
@@ -220,10 +246,13 @@ export default function Dialpad() {
   const retrySoftphone = useCallback(() => {
     try {
       plivoRef.current?.client?.logout?.();
+      twilioDeviceRef.current?.unregister?.();
     } catch {
       /* ignore */
     }
     plivoRef.current = null;
+    twilioDeviceRef.current = null;
+    twilioCallRef.current = null;
     connectingRef.current = false;
     setWebrtc("idle");
     void connectSoftphone();
@@ -234,10 +263,13 @@ export default function Dialpad() {
     return () => {
       try {
         plivoRef.current?.client?.logout?.();
+        twilioDeviceRef.current?.unregister?.();
       } catch {
         /* ignore */
       }
       plivoRef.current = null;
+      twilioDeviceRef.current = null;
+      twilioCallRef.current = null;
     };
   }, []);
 
@@ -248,15 +280,34 @@ export default function Dialpad() {
     (mode === "browser" ? webrtc === "ready" && callState === "idle" : isE164(agentPhone));
 
   const handleBrowserCall = useCallback(async () => {
-    const client = plivoRef.current?.client;
-    if (!client) return;
     setFeedback(null);
     setPlacing(true);
     try {
-      // Plivo often omits X-PH-callerId on sdk-answer; register intent server-side first.
-      const { intent } = await registerPlivoBrowserCallIntent({ toNumber: dest.trim(), callerId });
+      if (provider === "twilio") {
+        const device = twilioDeviceRef.current;
+        if (!device) return;
+        setCallState("ringing");
+        const call = await device.connect({
+          params: {
+            To: dest.trim(),
+            CallerId: callerId,
+          },
+        });
+        twilioCallRef.current = call;
+        call.on("accept", () => setCallState("connected"));
+        call.on("disconnect", () => setCallState("idle"));
+        call.on("cancel", () => setCallState("idle"));
+        call.on("error", () => {
+          setCallState("idle");
+          setFeedback({ kind: "err", msg: "Call failed" });
+        });
+        return;
+      }
+
+      const client = plivoRef.current?.client;
+      if (!client) return;
+      const { intent } = await registerTelephonyBrowserCallIntent({ toNumber: dest.trim(), callerId });
       setCallState("ringing");
-      // X-PH-* headers may reach sdk-answer; intent token is stateless across Render instances.
       client.call(dest.trim(), {
         "X-PH-callerId": callerId.replace(/\D/g, ""),
         "X-PH-intent": intent,
@@ -267,23 +318,29 @@ export default function Dialpad() {
     } finally {
       setPlacing(false);
     }
-  }, [dest, callerId]);
+  }, [dest, callerId, provider]);
 
   const hangup = useCallback(() => {
     try {
-      plivoRef.current?.client?.hangup?.();
+      if (provider === "twilio") {
+        twilioCallRef.current?.disconnect?.();
+        twilioDeviceRef.current?.disconnectAll?.();
+      } else {
+        plivoRef.current?.client?.hangup?.();
+      }
     } catch {
       /* ignore */
     }
+    twilioCallRef.current = null;
     setCallState("idle");
-  }, []);
+  }, [provider]);
 
   const handlePhoneCall = useCallback(async () => {
     setFeedback(null);
     localStorage.setItem(AGENT_PHONE_KEY, agentPhone.trim());
     setPlacing(true);
     try {
-      const res = await placePlivoCall({
+      const res = await placeTelephonyCall({
         toNumber: dest.trim(),
         agentPhone: agentPhone.trim(),
         callerId,
@@ -431,8 +488,10 @@ export default function Dialpad() {
 
             <p className="text-[0.7rem] leading-relaxed text-defaulttextcolor/55 dark:text-white/45">
               {mode === "browser"
-                ? "You talk through this browser (mic + speakers). The recipient sees your bought number. Calls are billed to the Plivo account."
-                : "Plivo rings your phone, then connects you to the dialed number. The recipient sees your bought number. Calls are billed to the Plivo account."}
+                ? "You talk through this browser (mic + speakers). The recipient sees your bought number. Calls are billed to the telephony account."
+                : provider === "twilio"
+                  ? "Your phone rings first, then connects to the dialed number. The recipient sees your bought number."
+                  : "Your phone rings first, then connects to the dialed number. The recipient sees your bought number."}
             </p>
           </div>
 

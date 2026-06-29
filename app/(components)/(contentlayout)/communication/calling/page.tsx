@@ -16,6 +16,7 @@ import CallRecordings from "./_components/CallRecordings";
 import Dialpad from "./_components/Dialpad";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
 
 type SourceFilter = "all" | "telephony" | "in_app";
@@ -180,7 +181,9 @@ function visiblePageIndices(current: number, total: number): (number | "gap")[] 
 }
 
 const Calling = () => {
-  const { isAdministrator: authIsAdministrator, isPlatformSuperUser } = useAuth();
+  const { isAdministrator: authIsAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
+  const authSubject = { permissions, isPlatformSuperUser, isAdministrator: authIsAdministrator };
+  const canManageCalls = hasPermission(authSubject, "manage_calls");
   const isAdministrator = isPlatformSuperUser || authIsAdministrator;
 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -205,6 +208,12 @@ const Calling = () => {
   /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
   const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
   const [showDialer, setShowDialer] = useState(false);
+
+  useEffect(() => {
+    if (permissionsLoaded && canManageCalls) {
+      setShowDialer(true);
+    }
+  }, [permissionsLoaded, canManageCalls]);
 
   const PANEL_TRANSITION_MS = 320;
 
@@ -489,7 +498,7 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
-      {showDialer ? (
+      {canManageCalls && showDialer ? (
         <div className="mt-5 sm:mt-6">
           <Dialpad />
         </div>
@@ -512,13 +521,12 @@ const Calling = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {/* ponytail: dialer hidden for dharwin main; flip to true to re-enable */}
-                {false && (
+                {canManageCalls ? (
                   <button
                     type="button"
                     onClick={() => setShowDialer((v) => !v)}
                     aria-pressed={showDialer}
-                    title="Toggle dialer"
+                    title="Browser softphone or click-to-call (requires telephony provider config)"
                     className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] ${
                       showDialer ? "ti-btn-success-full" : "ti-btn-light"
                     }`}
@@ -526,7 +534,7 @@ const Calling = () => {
                     <i className="ri-dial-pad-line align-middle me-1" />
                     Dialer
                   </button>
-                )}
+                ) : null}
                 <div className="relative">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
                   <input

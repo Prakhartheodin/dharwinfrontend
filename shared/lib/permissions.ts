@@ -81,6 +81,16 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     anyOf: ["view", "create", "edit", "delete"],
   },
 
+  // Communication / telephony (Calling dialer, Bolna call records)
+  view_calls: {
+    prefixes: ["communication.calling", "calls", "calling"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  manage_calls: {
+    prefixes: ["communication.calling", "calls", "calling"],
+    anyOf: ["create", "edit", "delete"],
+  },
+
   // Training categories (course assignment tab)
   // Cross-deps (backend): view loads GET /categories + GET /modules + GET /mentors + GET /modules/:id/employees.
   // Assign/remove employees on a module row needs training.modules:edit (modules.manage), not categories:edit alone.
