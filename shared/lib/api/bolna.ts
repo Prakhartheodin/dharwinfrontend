@@ -103,7 +103,53 @@ export type CallRecord = {
   displayName?: string | null;
   verification?: CallVerification;
   callQuality?: CallQuality;
+  /** Batch B — agent annotations. */
+  notes?: string;
+  tags?: string[];
+  relatedTo?: { entityType?: CallRelatedEntityType | null; entityId?: string | null };
 };
+
+/** Generic CRM call tags (mirror of backend CALL_TAGS). */
+export const CALL_TAGS = [
+  "sales",
+  "support",
+  "follow_up",
+  "complaint",
+  "demo",
+  "payment",
+  "other",
+] as const;
+export type CallTag = (typeof CALL_TAGS)[number];
+
+/** Entity types a call can be linked to (mirror of backend CALL_RELATED_ENTITY_TYPES). */
+export const CALL_RELATED_ENTITY_TYPES = [
+  "lead",
+  "client",
+  "customer",
+  "candidate",
+  "job",
+  "deal",
+  "ticket",
+  "project",
+] as const;
+export type CallRelatedEntityType = (typeof CALL_RELATED_ENTITY_TYPES)[number];
+
+export type PatchCallRecordPayload = {
+  notes?: string;
+  tags?: CallTag[];
+  relatedTo?: { entityType: CallRelatedEntityType | null; entityId: string | null };
+};
+
+export async function patchBolnaCallRecord(
+  id: string,
+  payload: PatchCallRecordPayload
+): Promise<{ success: boolean; record: CallRecord }> {
+  const { data } = await apiClient.patch<{ success: boolean; record: CallRecord }>(
+    `/bolna/call-records/${encodeURIComponent(id)}`,
+    payload
+  );
+  return data;
+}
 
 export type GetCallRecordsParams = {
   page?: number;

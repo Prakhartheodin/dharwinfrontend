@@ -13,6 +13,7 @@ import {
 } from "@/shared/lib/api/bolna";
 import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
+import CallAnnotations from "./_components/CallAnnotations";
 import Dialpad from "./_components/Dialpad";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -1192,6 +1193,16 @@ const Calling = () => {
                   {selectedCall.data.executionId ? (
                     <CallRecordings executionId={selectedCall.data.executionId} />
                   ) : null}
+                  <CallAnnotations
+                    record={selectedCall.data as CallRecord}
+                    onSaved={(updated) =>
+                      setSelectedCall((prev) =>
+                        prev?.source === "telephony"
+                          ? { ...prev, data: { ...prev.data, ...updated } }
+                          : prev
+                      )
+                    }
+                  />
                 </div>
               ) : (
                 <div className="space-y-4 text-[0.8125rem]">
