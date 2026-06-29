@@ -93,6 +93,35 @@ export async function getAssignableUsers(): Promise<AssignableUser[]> {
   return data.users;
 }
 
+export interface OffboardingBackdatedEntry {
+  date: string;
+  punchIn: string;
+  punchOut: string | null;
+  timezone: string | null;
+}
+
+export interface OffboardingBackdatedRequest {
+  id: string;
+  attendanceEntries: OffboardingBackdatedEntry[];
+  notes: string | null;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  adminComment: string | null;
+  requestedByName: string | null;
+  reviewedByName: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+}
+
+/** Backdated-attendance requests (pending + historical) for the departing employee. */
+export async function getOffboardingBackdatedRequests(
+  employeeId: string
+): Promise<OffboardingBackdatedRequest[]> {
+  const { data } = await apiClient.get<{ requests: OffboardingBackdatedRequest[] }>(
+    `/offboarding-sop/${employeeId}/backdated-requests`
+  );
+  return data.requests;
+}
+
 export async function getOffboardingStatus(employeeId: string): Promise<OffboardingStatus> {
   const { data } = await apiClient.get<OffboardingStatus>(`/offboarding-sop/${employeeId}/status`);
   return data;
@@ -101,7 +130,7 @@ export async function getOffboardingStatus(employeeId: string): Promise<Offboard
 export async function runOffboardingStep(
   employeeId: string,
   stepKey: OffboardingActionKey,
-  body?: { toUserIds?: string[] }
+  body?: { toUserIds?: string[]; assignments?: { taskId: string; toUserIds: string[] }[] }
 ): Promise<OffboardingStatus> {
   const { data } = await apiClient.post<OffboardingStatus>(
     `/offboarding-sop/${employeeId}/run/${stepKey}`,

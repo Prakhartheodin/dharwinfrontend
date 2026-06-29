@@ -3,20 +3,28 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { IBM_Plex_Sans } from "next/font/google";
+import Swal from "sweetalert2";
 import Seo from "@/shared/layout-components/seo/seo";
 import {
   getOffboardingConfig,
   saveOffboardingConfig,
   getOffboardingOverview,
   getOffboardingOpenTasks,
+  getOffboardingBackdatedRequests,
   getAssignableUsers,
   runOffboardingStep,
   type OffboardingStep,
   type OffboardingOverviewRow,
   type OffboardingActionKey,
   type OffboardingOpenTask,
+  type OffboardingBackdatedRequest,
   type AssignableUser,
 } from "@/shared/lib/api/offboardingSop";
+import {
+  approveBackdatedAttendanceRequest,
+  rejectBackdatedAttendanceRequest,
+  updateBackdatedAttendanceRequest,
+} from "@/shared/lib/api/backdated-attendance-requests";
 
 /** Mirrors the Employee (onboarding) SOP page typography. */
 const sopHeadline = IBM_Plex_Sans({ weight: ["600"], subsets: ["latin"], display: "swap" });
@@ -45,11 +53,13 @@ function ExitEmployeeCard({
   busyKey,
   onRun,
   onReassign,
+  onReviewAttendance,
 }: {
   row: OffboardingOverviewRow;
   busyKey: string;
   onRun: (employeeId: string, stepKey: OffboardingActionKey) => void;
   onReassign: (row: OffboardingOverviewRow) => void;
+  onReviewAttendance: (row: OffboardingOverviewRow) => void;
 }) {
   const pct = row.totalCount > 0 ? Math.round((100 * row.completedCount) / row.totalCount) : 0;
 
@@ -117,7 +127,15 @@ function ExitEmployeeCard({
                 <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{s.description}</p>
               ) : null}
             </div>
-            {!s.done && isAction(s.checkerKey) ? (
+            {!s.done && s.checkerKey === "attendance_complete" ? (
+              <button
+                type="button"
+                className="ti-btn shrink-0 bg-primary text-white !py-1.5 !px-3 !rounded-md text-xs font-semibold hover:bg-primary/90"
+                onClick={() => onReviewAttendance(row)}
+              >
+                Review…
+              </button>
+            ) : !s.done && isAction(s.checkerKey) ? (
               <button
                 type="button"
                 className="ti-btn shrink-0 bg-primary text-white !py-1.5 !px-3 !rounded-md text-xs font-semibold hover:bg-primary/90 disabled:opacity-60"
@@ -173,6 +191,8 @@ function ReassignModal({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [usersErr, setUsersErr] = useState("");
+  const [mode, setMode] = useState<"all" | "per">("all");
+  const [perTask, setPerTask] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let alive = true;
@@ -208,12 +228,18 @@ function ReassignModal({
 
   const target = users.find((u) => u.id === targetId) || null;
 
+  const perAssignments = (tasks ?? [])
+    .filter((t) => perTask[t.id])
+    .map((t) => ({ taskId: t.id, toUserIds: [perTask[t.id]] }));
+  const canSubmit = mode === "per" ? perAssignments.length > 0 : Boolean(targetId);
+
   const confirm = async () => {
-    if (!targetId) return;
+    if (!canSubmit) return;
     setBusy(true);
     setErr("");
     try {
-      await runOffboardingStep(row.employeeId, "tasks_reassigned", { toUserIds: [targetId] });
+      const body = mode === "per" ? { assignments: perAssignments } : { toUserIds: [targetId] };
+      await runOffboardingStep(row.employeeId, "tasks_reassigned", body);
       onDone();
     } catch {
       setErr("Reassignment failed.");
@@ -295,6 +321,22 @@ function ReassignModal({
                   {t.taskCode ? (
                     <span className="mt-0.5 block text-[11px] text-gray-400 dark:text-gray-500">{t.taskCode}</span>
                   ) : null}
+                  {mode === "per" ? (
+                    <select
+                      className="form-select mt-2 h-9 w-full rounded-md text-sm"
+                      style={{ colorScheme: "light" }}
+                      value={perTask[t.id] ?? ""}
+                      disabled={busy}
+                      onChange={(e) => setPerTask((p) => ({ ...p, [t.id]: e.target.value }))}
+                    >
+                      <option value="">Keep open (no reassign)</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {labelOf(u)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -303,14 +345,38 @@ function ReassignModal({
           {/* Target picker */}
           {tasks && tasks.length > 0 ? (
             <div className="mt-4">
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                Reassign all to
-              </label>
+              {/* Mode toggle: one assignee for everything, or per-task. */}
+              <div className="mb-3 inline-flex rounded-md border border-defaultborder/60 p-0.5 dark:border-defaultborder/25">
+                {(["all", "per"] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setMode(m)}
+                    className={`rounded px-3 py-1 text-xs font-medium transition ${
+                      mode === m
+                        ? "bg-primary text-white"
+                        : "text-gray-600 hover:text-primary dark:text-gray-300"
+                    }`}
+                  >
+                    {m === "all" ? "All tasks" : "Per task"}
+                  </button>
+                ))}
+              </div>
               {usersErr ? (
                 <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
                   {usersErr}
                 </div>
               ) : null}
+              {mode === "per" ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Pick an assignee for each task above. Leave a task on “Keep open” to skip it.
+                </p>
+              ) : null}
+              <div className={mode === "all" ? "" : "hidden"}>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Reassign all to
+              </label>
               <input
                 type="text"
                 className="form-control h-9 w-full rounded-md"
@@ -359,6 +425,7 @@ function ReassignModal({
                   </ul>
                 )}
               </div>
+              </div>
             </div>
           ) : null}
         </div>
@@ -377,9 +444,308 @@ function ReassignModal({
             type="button"
             className="ti-btn !rounded-md bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
             onClick={confirm}
-            disabled={busy || !targetId || !tasks || tasks.length === 0}
+            disabled={busy || !canSubmit || !tasks || tasks.length === 0}
           >
-            {busy ? "Reassigning…" : target ? `Reassign to ${labelOf(target)}` : "Reassign"}
+            {busy
+              ? "Reassigning…"
+              : mode === "per"
+                ? `Reassign ${perAssignments.length || ""} task${perAssignments.length === 1 ? "" : "s"}`.trim()
+                : target
+                  ? `Reassign to ${labelOf(target)}`
+                  : "Reassign"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const BD_STATUS: Record<string, { label: string; badge: string }> = {
+  pending: { label: "Pending", badge: "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/15 dark:text-amber-200 dark:border-amber-500/30" },
+  approved: { label: "Approved", badge: "bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-200 dark:border-emerald-500/30" },
+  rejected: { label: "Rejected", badge: "bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/15 dark:text-rose-200 dark:border-rose-500/30" },
+  cancelled: { label: "Cancelled", badge: "bg-gray-100 text-gray-600 border-gray-300 dark:bg-white/10 dark:text-gray-300 dark:border-white/20" },
+};
+
+const bdDate = (s: string | null | undefined) => {
+  if (!s) return "—";
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+};
+const bdTime = (s: string | null | undefined) => {
+  if (!s) return "—";
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+};
+
+/**
+ * Overlay: the departing employee's backdated-attendance requests. Approve / reject / update
+ * reuse the same endpoints as the Attendance → Backdated screen (gated by students.manage).
+ */
+function AttendanceModal({
+  row,
+  onClose,
+}: {
+  row: OffboardingOverviewRow;
+  onClose: (changed: boolean) => void;
+}) {
+  const [requests, setRequests] = useState<OffboardingBackdatedRequest[] | null>(null);
+  const [err, setErr] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [changed, setChanged] = useState(false);
+
+  const load = useCallback(() => {
+    getOffboardingBackdatedRequests(row.employeeId)
+      .then(setRequests)
+      .catch((e) => {
+        console.error("[offboarding] backdated-requests failed:", e);
+        setRequests([]);
+        setErr("Failed to load backdated-attendance requests.");
+      });
+  }, [row.employeeId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const errMsg = (e: unknown) =>
+    (e as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ??
+    (e as { message?: string })?.message ??
+    "Action failed.";
+
+  const approve = async (req: OffboardingBackdatedRequest) => {
+    const { value: comment } = await Swal.fire({
+      title: "Approve request",
+      input: "textarea",
+      inputPlaceholder: "Comment (optional)",
+      showCancelButton: true,
+      confirmButtonText: "Approve",
+      confirmButtonColor: "#16a34a",
+    });
+    if (comment === undefined) return;
+    setBusyId(req.id);
+    try {
+      await approveBackdatedAttendanceRequest(req.id, comment || undefined);
+      setChanged(true);
+      load();
+    } catch (e) {
+      await Swal.fire({ icon: "error", title: "Error", text: errMsg(e) });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const reject = async (req: OffboardingBackdatedRequest) => {
+    const { value: comment } = await Swal.fire({
+      title: "Reject request",
+      input: "textarea",
+      inputPlaceholder: "Reason (optional)",
+      showCancelButton: true,
+      confirmButtonText: "Reject",
+      confirmButtonColor: "#dc2626",
+    });
+    if (comment === undefined) return;
+    setBusyId(req.id);
+    try {
+      await rejectBackdatedAttendanceRequest(req.id, comment || undefined);
+      setChanged(true);
+      load();
+    } catch (e) {
+      await Swal.fire({ icon: "error", title: "Error", text: errMsg(e) });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const update = async (req: OffboardingBackdatedRequest) => {
+    const entries = req.attendanceEntries ?? [];
+    if (entries.length === 0) {
+      await Swal.fire({ icon: "error", title: "Error", text: "No attendance entries in this request." });
+      return;
+    }
+    const first = entries[0];
+    const last = entries[entries.length - 1];
+    const fromStr = new Date(first.date).toISOString().slice(0, 10);
+    const toStr = new Date(last.date).toISOString().slice(0, 10);
+    const pin = new Date(first.punchIn).toTimeString().slice(0, 5);
+    const pout = first.punchOut ? new Date(first.punchOut).toTimeString().slice(0, 5) : "";
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const { value: form } = await Swal.fire({
+      title: "Update request",
+      html: `
+        <div class="text-left text-xs text-gray-500 mb-2">Punch in/out apply to every working day in the range (weekends excluded).</div>
+        <label class="swal2-input-label">From</label>
+        <input id="bdFrom" type="date" value="${fromStr}" max="${todayStr}" class="swal2-input">
+        <label class="swal2-input-label">To</label>
+        <input id="bdTo" type="date" value="${toStr}" max="${todayStr}" class="swal2-input">
+        <input id="bdIn" type="time" value="${pin}" class="swal2-input">
+        <input id="bdOut" type="time" value="${pout}" class="swal2-input">
+        <input id="bdTz" type="text" value="${first.timezone || "UTC"}" class="swal2-input" placeholder="Timezone">
+        <textarea id="bdNotes" class="swal2-textarea" placeholder="Notes">${req.notes ?? ""}</textarea>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Update",
+      preConfirm: () => {
+        const g = (id: string) => (document.getElementById(id) as HTMLInputElement)?.value;
+        const fromDate = g("bdFrom"), toDate = g("bdTo"), punchIn = g("bdIn"), punchOut = g("bdOut");
+        if (!fromDate || !toDate || !punchIn || !punchOut) {
+          Swal.showValidationMessage("From, To, punch in, and punch out are required");
+          return false;
+        }
+        if (toDate < fromDate) {
+          Swal.showValidationMessage("To date must be on or after From date");
+          return false;
+        }
+        return { fromDate, toDate, punchIn, punchOut, timezone: g("bdTz"), notes: (document.getElementById("bdNotes") as HTMLTextAreaElement)?.value };
+      },
+    });
+    if (!form) return;
+    setBusyId(req.id);
+    try {
+      const n = (t: string) => (t.length === 5 && t.includes(":") ? t : `${t.padStart(2, "0")}:00`);
+      const pIn = n(form.punchIn), pOut = n(form.punchOut), tz = form.timezone || "UTC";
+      const pad = (x: number) => String(x).padStart(2, "0");
+      const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+      const built: Array<{ date: string; punchIn: string; punchOut: string; timezone: string }> = [];
+      const cur = new Date(form.fromDate);
+      cur.setHours(0, 0, 0, 0);
+      const end = new Date(form.toDate);
+      end.setHours(0, 0, 0, 0);
+      while (cur <= end) {
+        if (!isWeekend(cur)) {
+          const key = `${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`;
+          const inDt = new Date(`${key}T${pIn}`);
+          let outDt = new Date(`${key}T${pOut}`);
+          if (outDt <= inDt) outDt = new Date(outDt.getTime() + 86400000);
+          if (outDt.getTime() - inDt.getTime() > 8 * 3600 * 1000) throw new Error("Duration cannot exceed 8 hours");
+          built.push({ date: key, punchIn: inDt.toISOString(), punchOut: outDt.toISOString(), timezone: tz });
+        }
+        cur.setDate(cur.getDate() + 1);
+      }
+      if (built.length === 0) throw new Error("The selected date range has no working days (weekends excluded).");
+      await updateBackdatedAttendanceRequest(req.id, { attendanceEntries: built, notes: form.notes || undefined });
+      setChanged(true);
+      load();
+    } catch (e) {
+      await Swal.fire({ icon: "error", title: "Error", text: errMsg(e) });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Backdated attendance for ${row.fullName}`}
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={() => onClose(changed)} aria-hidden />
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-defaultborder/70 bg-white shadow-2xl dark:border-defaultborder/25 dark:bg-bodybg">
+        <div className="flex items-start justify-between gap-3 border-b border-defaultborder/50 px-5 py-4 dark:border-defaultborder/20">
+          <div className="min-w-0">
+            <h3 className={`${sopHeadline.className} text-base text-gray-900 dark:text-white`}>Backdated attendance</h3>
+            <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400">
+              {row.fullName}
+              {row.empCode ? ` · ${row.empCode}` : ""}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="shrink-0 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-gray-200"
+            onClick={() => onClose(changed)}
+            aria-label="Close"
+          >
+            <i className="ti ti-x text-lg" aria-hidden />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+          {err ? (
+            <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+              {err}
+            </div>
+          ) : null}
+
+          {requests === null ? (
+            <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">Loading requests…</p>
+          ) : requests.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-defaultborder/60 bg-gray-50/80 py-6 text-center text-sm text-gray-600 dark:border-defaultborder/25 dark:bg-white/[0.02] dark:text-gray-400">
+              No backdated-attendance requests for this employee.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {requests.map((req) => {
+                const st = BD_STATUS[req.status] ?? BD_STATUS.pending;
+                const busy = busyId === req.id;
+                return (
+                  <li
+                    key={req.id}
+                    className="rounded-lg border border-defaultborder/60 bg-gray-50/60 px-3 py-3 dark:border-defaultborder/20 dark:bg-white/[0.02]"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${st.badge}`}>{st.label}</span>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500">Requested {bdDate(req.createdAt)}</span>
+                    </div>
+                    <ul className="space-y-1">
+                      {req.attendanceEntries.map((e, i) => (
+                        <li key={i} className="flex flex-wrap items-center gap-x-3 text-xs text-gray-700 dark:text-gray-300">
+                          <span className="font-medium text-gray-900 dark:text-gray-100">{bdDate(e.date)}</span>
+                          <span>In: {bdTime(e.punchIn)}</span>
+                          <span>Out: {bdTime(e.punchOut)}</span>
+                          {e.timezone ? <span className="text-gray-400">{e.timezone}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                    {req.notes ? <p className="mt-1.5 text-xs italic text-gray-500 dark:text-gray-400">“{req.notes}”</p> : null}
+                    {req.adminComment ? (
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        Review note: {req.adminComment}
+                        {req.reviewedByName ? ` — ${req.reviewedByName}` : ""}
+                      </p>
+                    ) : null}
+                    {req.status === "pending" ? (
+                      <div className="mt-2.5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => approve(req)}
+                          className="ti-btn !rounded-md !py-1 !px-3 text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                        >
+                          {busy ? "…" : "Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => reject(req)}
+                          className="ti-btn !rounded-md !py-1 !px-3 text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-60"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => update(req)}
+                          className="ti-btn !rounded-md !py-1 !px-3 text-xs font-semibold border border-defaultborder/60 text-gray-700 hover:text-primary disabled:opacity-60 dark:text-gray-300"
+                        >
+                          Update
+                        </button>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-defaultborder/50 px-5 py-3.5 dark:border-defaultborder/20">
+          <button
+            type="button"
+            className="ti-btn !rounded-md border border-defaultborder/60 px-4 py-2 text-sm font-medium text-gray-600 hover:text-primary dark:text-gray-300"
+            onClick={() => onClose(changed)}
+          >
+            Done
           </button>
         </div>
       </div>
@@ -397,6 +763,7 @@ export default function OffboardingSopSettingsPage() {
   const [loadingRows, setLoadingRows] = useState(true);
   const [busyKey, setBusyKey] = useState("");
   const [reassignRow, setReassignRow] = useState<OffboardingOverviewRow | null>(null);
+  const [attendanceRow, setAttendanceRow] = useState<OffboardingOverviewRow | null>(null);
 
   useEffect(() => {
     getOffboardingConfig()
@@ -574,6 +941,7 @@ export default function OffboardingSopSettingsPage() {
                         busyKey={busyKey}
                         onRun={onRun}
                         onReassign={setReassignRow}
+                        onReviewAttendance={setAttendanceRow}
                       />
                     ))}
                   </ul>
@@ -591,6 +959,16 @@ export default function OffboardingSopSettingsPage() {
           onDone={() => {
             setReassignRow(null);
             loadOverview();
+          }}
+        />
+      ) : null}
+
+      {attendanceRow ? (
+        <AttendanceModal
+          row={attendanceRow}
+          onClose={(changed) => {
+            setAttendanceRow(null);
+            if (changed) loadOverview();
           }}
         />
       ) : null}
