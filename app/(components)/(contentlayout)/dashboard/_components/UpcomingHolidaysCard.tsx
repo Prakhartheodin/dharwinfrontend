@@ -35,6 +35,8 @@ type Props = {
   todayIsHoliday?: boolean;
   todayHolidayTitle?: string | null;
   holidays: AssignedHolidayItem[];
+  /** Show the "Manage" link — only staff who can manage holidays; hidden for plain employees. */
+  showManage?: boolean;
 };
 
 export default function UpcomingHolidaysCard({
@@ -42,6 +44,7 @@ export default function UpcomingHolidaysCard({
   todayIsHoliday = false,
   todayHolidayTitle,
   holidays,
+  showManage = false,
 }: Props) {
   return (
     <div className="box overflow-hidden border-0 shadow-sm bg-gradient-to-br from-primary/5 via-transparent to-warning/5 dark:from-primary/10 dark:to-warning/10">
@@ -55,12 +58,14 @@ export default function UpcomingHolidaysCard({
             <p className="text-[0.7rem] text-[#8c9097] dark:text-white/50 mb-0">Assigned to you</p>
           </div>
         </div>
-        <Link
-          href="/settings/attendance/holidays/"
-          className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50 hover:text-primary"
-        >
-          Manage
-        </Link>
+        {showManage && (
+          <Link
+            href="/settings/attendance/holidays/"
+            className="px-2 font-normal text-[0.75rem] text-[#8c9097] dark:text-white/50 hover:text-primary"
+          >
+            Manage
+          </Link>
+        )}
       </div>
       <div className="box-body !pt-3">
         {todayIsHoliday && (

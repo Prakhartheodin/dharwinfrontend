@@ -33,8 +33,11 @@ import {
   punchInAttendanceMe,
   punchOutAttendanceMe,
   getMyUpcomingHolidays,
+  getEmployeesOnLeaveToday,
   type PunchStatusResponse,
   type AssignedHolidayItem,
+  type OnLeaveTodayItem,
+  type OnLeaveScope,
 } from "@/shared/lib/api/attendance";
 import {
   listMeetings,
@@ -54,9 +57,11 @@ import {
   hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
 import { hasSalesAgentRole } from "@/shared/lib/roles";
+import { hasStaffAccess } from "@/shared/lib/persona";
 import SalesAgentDashboard from "./_components/SalesAgentDashboard";
 import CandidateDashboard from "./_components/CandidateDashboard";
 import UpcomingHolidaysCard from "./_components/UpcomingHolidaysCard";
+import OnLeaveTodayCard from "./_components/OnLeaveTodayCard";
 import { usePageCapabilities } from "@/shared/hooks/use-page-capabilities";
 import type { ApexOptions } from "apexcharts";
 import * as Projectdata from "@/shared/data/dashboards/projectsdata";
@@ -569,6 +574,9 @@ export default function DashboardPage() {
   const [todayHolidayTitle, setTodayHolidayTitle] = useState<string | null>(null);
   const [holidaysLoading, setHolidaysLoading] = useState(false);
 
+  const [onLeaveToday, setOnLeaveToday] = useState<OnLeaveTodayItem[]>([]);
+  const [onLeaveScope, setOnLeaveScope] = useState<OnLeaveScope>("self");
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -584,6 +592,14 @@ export default function DashboardPage() {
     permissionsLoaded &&
     hasPermissionForPath(permissions ?? [], ATTENDANCE_PERMISSION_PREFIX) &&
     attendanceStudent != null;
+
+  // Plain employees can't manage holidays — hide the "Manage" link for them.
+  const canManageHolidays = hasStaffAccess({
+    isAdministrator,
+    isPlatformSuperUser,
+    permissions: permissions ?? [],
+    roleNames,
+  });
 
   const punchBlockedByHoliday = todayIsHoliday;
 
@@ -754,6 +770,22 @@ export default function DashboardPage() {
   useEffect(() => {
     fetchDashboard();
   }, [fetchDashboard]);
+
+  /* Employees on leave today — server scopes by permission (all / referrals / self) */
+  useEffect(() => {
+    if (!permissionsLoaded) return;
+    let active = true;
+    getEmployeesOnLeaveToday()
+      .then((res) => {
+        if (!active) return;
+        setOnLeaveToday(res.results);
+        setOnLeaveScope(res.scope);
+      })
+      .catch(() => active && setOnLeaveToday([]));
+    return () => {
+      active = false;
+    };
+  }, [permissionsLoaded]);
 
   /* Fetch applicants when applicants modal is opened */
   useEffect(() => {
@@ -1449,7 +1481,13 @@ export default function DashboardPage() {
                   todayIsHoliday={todayIsHoliday}
                   todayHolidayTitle={todayHolidayTitle}
                   holidays={upcomingHolidays}
+                  showManage={canManageHolidays}
                 />
+              </div>
+            )}
+            {onLeaveToday.length > 0 && (
+              <div className="xxl:col-span-12 col-span-12 flex-shrink-0">
+                <OnLeaveTodayCard items={onLeaveToday} selfView={onLeaveScope === "self"} />
               </div>
             )}
             <div className="xxl:col-span-12 col-span-12 flex flex-col gap-1">

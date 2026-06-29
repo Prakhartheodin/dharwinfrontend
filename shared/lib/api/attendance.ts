@@ -218,6 +218,26 @@ export async function getMyUpcomingHolidays(params?: {
   return data.data;
 }
 
+export interface OnLeaveTodayItem {
+  employeeId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+}
+
+export type OnLeaveScope = "all" | "referrals" | "self";
+
+export interface OnLeaveTodayResponse {
+  scope: OnLeaveScope;
+  results: OnLeaveTodayItem[];
+}
+
+/** Employees on leave today, permission-scoped on the server (all / referrals / self). */
+export async function getEmployeesOnLeaveToday(): Promise<OnLeaveTodayResponse> {
+  const { data } = await apiClient.get<OnLeaveTodayResponse>("/training/attendance/on-leave-today");
+  return { scope: data.scope ?? "self", results: data.results ?? [] };
+}
+
 export async function listAttendance(
   studentId: string,
   params?: ListAttendanceParams
