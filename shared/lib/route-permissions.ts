@@ -102,6 +102,7 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/organization/scenarios": "organization.scenarios:",
   // Communication
   "/communication/calling": "communication.calling:",
+  "/communication/company-work-numbers": "communication.company-work-numbers:",
   // Training Management
   "/training/curriculum": "training.modules:",
   "/training/attendance": "training.attendance:",

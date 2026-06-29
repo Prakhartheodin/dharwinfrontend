@@ -76,6 +76,7 @@ export const PERMISSION_SECTIONS: {
       { id: "emails", label: "Emails" },
       { id: "chats", label: "Chats" },
       { id: "calling", label: "Calling" },
+      { id: "company-work-numbers", label: "Company work numbers" },
       { id: "meetings", label: "Meetings & Recordings" },
       { id: "files-storage", label: "Files Storage" },
     ],

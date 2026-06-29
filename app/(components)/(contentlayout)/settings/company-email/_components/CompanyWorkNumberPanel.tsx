@@ -47,7 +47,7 @@ function axiosMessage(e: unknown, fallback: string): string {
   return e instanceof Error ? e.message : fallback;
 }
 
-export default function CompanyWorkNumberPanel() {
+export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: () => void } = {}) {
   const { permissions, isPlatformSuperUser, isAdministrator, permissionsLoaded } = useAuth();
   const authSubject = { permissions, isPlatformSuperUser, isAdministrator };
   const canCreateCalls = hasPermission(authSubject, "create_call");
@@ -209,12 +209,13 @@ export default function CompanyWorkNumberPanel() {
       setPurchased((prev) => ({ ...prev, [num]: true }));
       showToast("success", res.message || `Purchased ${num}.`);
       void loadOwned();
+      onPurchased?.();
     } catch (err) {
       showToast("error", axiosMessage(err, `Failed to buy ${num}`));
     } finally {
       setBuyingNumber(null);
     }
-  }, [canCreateCalls, confirmNumber, showToast, loadOwned]);
+  }, [canCreateCalls, confirmNumber, showToast, loadOwned, onPurchased]);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">

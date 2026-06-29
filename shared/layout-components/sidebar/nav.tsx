@@ -317,6 +317,16 @@ export const MenuItems: any = [
       },
 
       {
+    icon: CallingIcon,
+    title: "Work Numbers",
+        type: "link",
+    path: "/communication/company-work-numbers",
+        active: false,
+        selected: false,
+        dirchange: false, 
+      },
+
+      {
     icon: RecordingsIcon,
     title: "Recordings",
         type: "link",

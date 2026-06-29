@@ -77,8 +77,12 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     anyOf: ["view", "create", "edit", "delete"],
   },
   view_company_number: {
-    prefixes: ["settings.company-number"],
+    prefixes: ["settings.company-number", "communication.company-work-numbers"],
     anyOf: ["view", "create", "edit", "delete"],
+  },
+  manage_company_number: {
+    prefixes: ["settings.company-number", "communication.company-work-numbers"],
+    anyOf: ["create", "edit", "delete"],
   },
 
   // Communication / telephony (Calling dialer, Bolna call records)

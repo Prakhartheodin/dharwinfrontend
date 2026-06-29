@@ -6,6 +6,7 @@ import * as candidatesApi from "@/shared/lib/api/candidates";
 import type { CandidateListItem, CompanyEmailAssignmentRow } from "@/shared/lib/api/candidates";
 import { AxiosError } from "axios";
 import CompanyWorkNumberPanel from "./_components/CompanyWorkNumberPanel";
+import CompanyWorkNumberAssignmentPanel from "./_components/CompanyWorkNumberAssignmentPanel";
 import pipelineStyles from "../../ats/ats-pipeline-list.module.css";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
@@ -79,6 +80,7 @@ export default function SettingsCompanyEmailPage() {
   const liveMsgRef = useRef<HTMLParagraphElement | null>(null);
   const flashTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const selectAllRef = useRef<HTMLInputElement | null>(null);
+  const [numberRegistryToken, setNumberRegistryToken] = useState(0);
 
   const flashSaved = useCallback((id: string) => {
     if (flashTimers.current[id]) clearTimeout(flashTimers.current[id]);
@@ -433,7 +435,10 @@ export default function SettingsCompanyEmailPage() {
         )}
 
         {activeView === "number" ? (
-          <CompanyWorkNumberPanel />
+          <div className="space-y-6">
+            <CompanyWorkNumberAssignmentPanel reloadToken={numberRegistryToken} />
+            <CompanyWorkNumberPanel onPurchased={() => setNumberRegistryToken((t) => t + 1)} />
+          </div>
         ) : (
         <>
         {error ? (
