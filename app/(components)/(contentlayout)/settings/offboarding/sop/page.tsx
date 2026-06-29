@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { IBM_Plex_Sans } from "next/font/google";
 import Swal from "sweetalert2";
 import Seo from "@/shared/layout-components/seo/seo";
@@ -25,6 +26,8 @@ import {
   rejectBackdatedAttendanceRequest,
   updateBackdatedAttendanceRequest,
 } from "@/shared/lib/api/backdated-attendance-requests";
+
+const Select = dynamic(() => import("react-select"), { ssr: false });
 
 /** Mirrors the Employee (onboarding) SOP page typography. */
 const sopHeadline = IBM_Plex_Sans({ weight: ["600"], subsets: ["latin"], display: "swap" });
@@ -226,6 +229,12 @@ function ReassignModal({
   }, [users, query]);
   const labelOf = (u: AssignableUser) => u.name ?? u.email ?? "Unknown";
 
+  // Searchable options for the per-task picker; email in the label makes it searchable by email too.
+  const userOptions = useMemo(
+    () => users.map((u) => ({ value: u.id, label: u.email ? `${labelOf(u)} — ${u.email}` : labelOf(u) })),
+    [users]
+  );
+
   const target = users.find((u) => u.id === targetId) || null;
 
   const perAssignments = (tasks ?? [])
@@ -322,20 +331,20 @@ function ReassignModal({
                     <span className="mt-0.5 block text-[11px] text-gray-400 dark:text-gray-500">{t.taskCode}</span>
                   ) : null}
                   {mode === "per" ? (
-                    <select
-                      className="form-select mt-2 h-9 w-full rounded-md text-sm"
-                      style={{ colorScheme: "light" }}
-                      value={perTask[t.id] ?? ""}
-                      disabled={busy}
-                      onChange={(e) => setPerTask((p) => ({ ...p, [t.id]: e.target.value }))}
-                    >
-                      <option value="">Keep open (no reassign)</option>
-                      {users.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {labelOf(u)}
-                        </option>
-                      ))}
-                    </select>
+                    <Select
+                      isClearable
+                      isDisabled={busy}
+                      options={userOptions}
+                      value={userOptions.find((o) => o.value === (perTask[t.id] ?? "")) ?? null}
+                      onChange={(opt: unknown) =>
+                        setPerTask((p) => ({ ...p, [t.id]: (opt as { value: string } | null)?.value ?? "" }))
+                      }
+                      placeholder="Keep open — search name or email…"
+                      className="mt-2 text-sm"
+                      classNamePrefix="rs"
+                      menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
+                      styles={{ menuPortal: (base: Record<string, unknown>) => ({ ...base, zIndex: 1100 }) }}
+                    />
                   ) : null}
                 </li>
               ))}
