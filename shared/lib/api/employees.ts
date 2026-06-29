@@ -22,6 +22,7 @@ export interface CandidateListItem {
   reportingManager?: string | { _id: string; name?: string; email?: string } | null;
   isActive?: boolean;
   isEmailVerified?: boolean;
+  ownerStatus?: "active" | "pending" | "disabled" | "deleted" | null;
   isProfileCompleted?: number;
   isCompleted?: boolean;
   createdAt?: string;
@@ -730,6 +731,7 @@ export function mapCandidateToDisplay(c: CandidateListItem) {
     experience: experienceYears,
     bio: c.shortBio ?? "",
     isEmailVerified: (c as any).isEmailVerified === true,
+    ownerStatus: (c as CandidateListItem).ownerStatus ?? null,
     isProfileCompleted: (c as any).isProfileCompleted ?? 0,
     isCompleted: (c as any).isCompleted ?? false,
     studentId: (c as CandidateListItem).studentId ?? null,

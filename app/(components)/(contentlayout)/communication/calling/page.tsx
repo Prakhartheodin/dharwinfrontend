@@ -63,15 +63,6 @@ function apiErrMsg(e: unknown, fallback: string): string {
   return msg || (e instanceof Error ? e.message : fallback);
 }
 
-function shouldShowVerificationPanel(record: CallRecord): boolean {
-  if (record.verification) return true;
-  if (readBolnaCallSummary(record.extractedData)) return true;
-  // Only treat needs_review as panel-worthy when there's actual summary data to review;
-  // pre-feature calls carry needs_review but have no verification/summary fields.
-  if (record.callQuality?.status === "needs_review" && hasReviewableSummary(record)) return true;
-  return purposeToCategory(record.purpose, record.displayCategory) === "Student/Candidate";
-}
-
 function purposeToCategory(purpose?: string | null, displayCategory?: string | null): "Job/Recruiter" | "Student/Candidate" | "Other" {
   if (displayCategory === "Job/Recruiter" || displayCategory === "Student/Candidate") return displayCategory;
   if (!purpose || !purpose.trim()) return "Other";
@@ -85,6 +76,15 @@ function purposeToCategory(purpose?: string | null, displayCategory?: string | n
   )
     return "Job/Recruiter";
   return "Other";
+}
+
+function shouldShowVerificationPanel(record: CallRecord): boolean {
+  if (record.verification) return true;
+  if (readBolnaCallSummary(record.extractedData)) return true;
+  // Only treat needs_review as panel-worthy when there's actual summary data to review;
+  // pre-feature calls carry needs_review but have no verification/summary fields.
+  if (record.callQuality?.status === "needs_review" && hasReviewableSummary(record)) return true;
+  return purposeToCategory(record.purpose, record.displayCategory) === "Student/Candidate";
 }
 
 function categoryMatchesPurposeFilter(
@@ -184,7 +184,9 @@ function visiblePageIndices(current: number, total: number): (number | "gap")[] 
 const Calling = () => {
   const { isAdministrator: authIsAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
   const authSubject = { permissions, isPlatformSuperUser, isAdministrator: authIsAdministrator };
-  const canManageCalls = hasPermission(authSubject, "manage_calls");
+  const canCreateCalls = hasPermission(authSubject, "create_call");
+  const canUpdateCalls = hasPermission(authSubject, "update_call");
+  const canDeleteCalls = hasPermission(authSubject, "delete_call");
   const isAdministrator = isPlatformSuperUser || authIsAdministrator;
 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -211,10 +213,10 @@ const Calling = () => {
   const [showDialer, setShowDialer] = useState(false);
 
   useEffect(() => {
-    if (permissionsLoaded && canManageCalls) {
+    if (permissionsLoaded && canCreateCalls) {
       setShowDialer(true);
     }
-  }, [permissionsLoaded, canManageCalls]);
+  }, [permissionsLoaded, canCreateCalls]);
 
   const PANEL_TRANSITION_MS = 320;
 
@@ -426,6 +428,7 @@ const Calling = () => {
   };
 
   const handleSync = async () => {
+    if (!canCreateCalls) return;
     setSyncing(true);
     try {
       await syncBolnaCallRecords();
@@ -438,6 +441,7 @@ const Calling = () => {
   };
 
   const handleSetupExtractions = async () => {
+    if (!canCreateCalls) return;
     setSettingUpExtractions(true);
     try {
       const result = await setupCandidateVerificationExtractions();
@@ -459,6 +463,7 @@ const Calling = () => {
   };
 
   const handleDelete = async (id: string, source: "telephony" | "in_app") => {
+    if (!canDeleteCalls) return;
     if (source !== "telephony") return;
     const ok = window.confirm("Delete this call record?");
     if (!ok) return;
@@ -499,7 +504,7 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
-      {canManageCalls && showDialer ? (
+      {canCreateCalls && showDialer ? (
         <div className="mt-5 sm:mt-6">
           <Dialpad />
         </div>
@@ -522,7 +527,7 @@ const Calling = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {canManageCalls ? (
+                {canCreateCalls ? (
                   <button
                     type="button"
                     onClick={() => setShowDialer((v) => !v)}
@@ -579,44 +584,48 @@ const Calling = () => {
                   <i className="ri-restart-line align-middle me-1" />
                   Refresh
                 </button>
-                <button
-                  type="button"
-                  onClick={handleSync}
-                  disabled={syncing}
-                  title="Pull latest call records from Bolna telephony"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {syncing ? (
-                    <>
-                      <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
-                      Syncing…
-                    </>
-                  ) : (
-                    <>
-                      <i className="ri-refresh-line font-semibold align-middle me-1" />
-                      Sync Telephony
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSetupExtractions}
-                  disabled={settingUpExtractions}
-                  title="Create Candidate Verification extractions on the Bolna agent (one-time)"
-                  className="ti-btn ti-btn-secondary-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {settingUpExtractions ? (
-                    <>
-                      <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
-                      Setting up…
-                    </>
-                  ) : (
-                    <>
-                      <i className="ri-list-check-2 font-semibold align-middle me-1" />
-                      Setup Extractions
-                    </>
-                  )}
-                </button>
+                {canCreateCalls ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleSync}
+                      disabled={syncing}
+                      title="Pull latest call records from Bolna telephony"
+                      className="ti-btn ti-btn-primary-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {syncing ? (
+                        <>
+                          <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
+                          Syncing…
+                        </>
+                      ) : (
+                        <>
+                          <i className="ri-refresh-line font-semibold align-middle me-1" />
+                          Sync Telephony
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSetupExtractions}
+                      disabled={settingUpExtractions}
+                      title="Create Candidate Verification extractions on the Bolna agent (one-time)"
+                      className="ti-btn ti-btn-secondary-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {settingUpExtractions ? (
+                        <>
+                          <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
+                          Setting up…
+                        </>
+                      ) : (
+                        <>
+                          <i className="ri-list-check-2 font-semibold align-middle me-1" />
+                          Setup Extractions
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : null}
               </div>
             </div>
 
@@ -951,7 +960,7 @@ const Calling = () => {
                                     >
                                       <i className="ri-eye-line" />
                                     </button>
-                                    {isTelephony && (
+                                    {isTelephony && canDeleteCalls && (
                                       <button
                                         type="button"
                                         className="ti-btn ti-btn-icon ti-btn-sm ti-btn-danger"
@@ -1195,6 +1204,7 @@ const Calling = () => {
                   ) : null}
                   <CallAnnotations
                     record={selectedCall.data as CallRecord}
+                    canEdit={canUpdateCalls}
                     onSaved={(updated) =>
                       setSelectedCall((prev) =>
                         prev?.source === "telephony"

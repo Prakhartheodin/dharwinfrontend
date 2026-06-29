@@ -207,6 +207,7 @@ export function OfferLetterGeneratorWorkspace({
   const jobUi = apiJobTypeToUi(letterForm.jobType)
   const isInternship = letterForm.jobType === 'INTERN_UNPAID'
   const isPaid = !isInternship
+  const compensationTagLabel = isPaid ? 'Paid' : 'Unpaid Internship'
   const [weeklyHoursOther, setWeeklyHoursOther] = useState(false)
   const [rolesAiLoading, setRolesAiLoading] = useState(false)
   const [trainingAiLoading, setTrainingAiLoading] = useState(false)
@@ -724,7 +725,16 @@ export function OfferLetterGeneratorWorkspace({
                 </datalist>
               </div>
               <div className={styles.field}>
-                <label htmlFor="olg-jobType">Job Type *</label>
+                <div className={styles.jobTypeHeader}>
+                  <label htmlFor="olg-jobType">Job Type *</label>
+                  <span
+                    className={`${styles.compensationTag} ${
+                      isPaid ? styles.compensationTagPaid : styles.compensationTagUnpaid
+                    }`}
+                  >
+                    {compensationTagLabel}
+                  </span>
+                </div>
                 <select
                   id="olg-jobType"
                   className={styles.select}

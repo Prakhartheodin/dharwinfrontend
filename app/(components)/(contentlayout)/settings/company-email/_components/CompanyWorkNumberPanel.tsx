@@ -50,7 +50,7 @@ function axiosMessage(e: unknown, fallback: string): string {
 export default function CompanyWorkNumberPanel() {
   const { permissions, isPlatformSuperUser, isAdministrator, permissionsLoaded } = useAuth();
   const authSubject = { permissions, isPlatformSuperUser, isAdministrator };
-  const canManageCalls = hasPermission(authSubject, "manage_calls");
+  const canCreateCalls = hasPermission(authSubject, "create_call");
 
   const [countryIso, setCountryIso] = useState("US");
   const [type, setType] = useState<TelephonyNumberType>("local");
@@ -199,7 +199,7 @@ export default function CompanyWorkNumberPanel() {
   }, []);
 
   const handleConfirmBuy = useCallback(async () => {
-    if (!canManageCalls) return;
+    if (!canCreateCalls) return;
     if (!confirmNumber) return;
     const num = confirmNumber.number;
     setConfirmNumber(null);
@@ -214,7 +214,7 @@ export default function CompanyWorkNumberPanel() {
     } finally {
       setBuyingNumber(null);
     }
-  }, [confirmNumber, showToast, loadOwned]);
+  }, [canCreateCalls, confirmNumber, showToast, loadOwned]);
 
   return (
     <div className="min-w-0 max-w-full space-y-5 overflow-x-hidden">
@@ -338,9 +338,9 @@ export default function CompanyWorkNumberPanel() {
               Buying a number is a real, paid action
             </span>{" "}
             billed to the connected telephony account.
-            {!canManageCalls && permissionsLoaded ? (
+            {!canCreateCalls && permissionsLoaded ? (
               <span className="mt-1 block text-amber-700 dark:text-amber-400">
-                Read-only: you need call manage permission to buy numbers.
+              Read-only: you need call create permission to buy numbers.
               </span>
             ) : null}
           </p>
@@ -609,7 +609,7 @@ export default function CompanyWorkNumberPanel() {
                           ) : (
                             <button
                               type="button"
-                              disabled={isBuying || !canManageCalls}
+                              disabled={isBuying || !canCreateCalls}
                               onClick={() => setConfirmNumber(n)}
                               className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 px-3 py-1 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed disabled:opacity-60"
                             >

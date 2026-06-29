@@ -34,9 +34,11 @@ function apiErr(e: unknown, fallback: string): string {
  */
 export default function CallAnnotations({
   record,
+  canEdit = false,
   onSaved,
 }: {
   record: CallRecord;
+  canEdit?: boolean;
   onSaved?: (updated: CallRecord) => void;
 }) {
   const id = record._id || record.id || "";
@@ -65,6 +67,7 @@ export default function CallAnnotations({
     setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
 
   const save = async () => {
+    if (!canEdit) return;
     if (!id) return;
     setSaving(true);
     setFeedback(null);
@@ -96,6 +99,7 @@ export default function CallAnnotations({
       <textarea
         rows={3}
         value={notes}
+        disabled={!canEdit}
         onChange={(e) => setNotes(e.target.value)}
         maxLength={2000}
         placeholder="Add a note about this call…"
@@ -109,6 +113,7 @@ export default function CallAnnotations({
             <button
               key={t}
               type="button"
+              disabled={!canEdit}
               onClick={() => toggleTag(t)}
               className={`rounded-full border px-2.5 py-1 text-[0.7rem] font-semibold transition-colors ${
                 on
@@ -125,6 +130,7 @@ export default function CallAnnotations({
       <div className="flex items-center gap-2">
         <select
           value={entityType}
+          disabled={!canEdit}
           onChange={(e) => setEntityType(e.target.value as CallRelatedEntityType | "")}
           className="shrink-0 rounded-lg border border-defaultborder/70 bg-white px-2 py-2 text-[0.75rem] dark:border-white/10 dark:bg-black/20 dark:text-white"
           aria-label="Link to entity type"
@@ -139,7 +145,7 @@ export default function CallAnnotations({
         <input
           type="text"
           value={entityId}
-          disabled={!entityType}
+          disabled={!canEdit || !entityType}
           onChange={(e) => setEntityId(e.target.value)}
           placeholder={entityType ? `${entityType} id` : "select a type first"}
           className="w-full rounded-lg border border-defaultborder/70 bg-white px-2 py-2 font-mono text-[0.75rem] focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-black/20 dark:text-white"
@@ -150,11 +156,16 @@ export default function CallAnnotations({
         <button
           type="button"
           onClick={save}
-          disabled={!dirty || saving || !id}
+          disabled={!canEdit || !dirty || saving || !id}
           className="rounded-lg bg-primary px-4 py-2 text-[0.8rem] font-semibold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
+        {!canEdit ? (
+          <span className="text-[0.75rem] text-defaulttextcolor/50 dark:text-white/40">
+            Read-only
+          </span>
+        ) : null}
         {feedback ? (
           <span
             className={`text-[0.75rem] ${

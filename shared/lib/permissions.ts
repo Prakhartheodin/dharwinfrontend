@@ -86,6 +86,18 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     prefixes: ["communication.calling", "calls", "calling"],
     anyOf: ["view", "create", "edit", "delete"],
   },
+  create_call: {
+    prefixes: ["communication.calling", "calls", "calling"],
+    anyOf: ["create"],
+  },
+  update_call: {
+    prefixes: ["communication.calling", "calls", "calling"],
+    anyOf: ["edit"],
+  },
+  delete_call: {
+    prefixes: ["communication.calling", "calls", "calling"],
+    anyOf: ["delete"],
+  },
   manage_calls: {
     prefixes: ["communication.calling", "calls", "calling"],
     anyOf: ["create", "edit", "delete"],
@@ -156,7 +168,6 @@ export function hasPermission(
   const rule = ACTION_PERMISSIONS[action];
   if (!rule) {
     if (typeof console !== "undefined") {
-      // eslint-disable-next-line no-console
       console.warn(`hasPermission: unknown action "${action}"`);
     }
     return false;
