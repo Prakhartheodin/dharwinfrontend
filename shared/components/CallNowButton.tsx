@@ -47,7 +47,7 @@ function CallOverlay({
     >
       <div
         ref={containerRef}
-        className="my-8 w-full max-w-md rounded-2xl bg-bodybg shadow-2xl dark:bg-bodybg2"
+        className="my-8 w-full max-w-md overflow-hidden rounded-2xl bg-bodybg shadow-2xl dark:bg-bodybg2"
       >
         <div className="flex items-center gap-3 border-b border-defaultborder/70 px-5 py-3 dark:border-white/10">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600/10 text-emerald-600">
@@ -66,8 +66,14 @@ function CallOverlay({
           </button>
         </div>
         <div className="p-4">
-          {/* Dialpad carries both modes (Browser / My phone) + caller-ID select. */}
-          <Dialpad defaultTo={defaultTo} embedded />
+          {/* Dialpad carries both modes (Browser / My phone) + caller-ID select.
+              Bridge mode is terminal (call rings your phone), so close shortly
+              after it's placed; browser mode never fires this (live in-overlay call). */}
+          <Dialpad
+            defaultTo={defaultTo}
+            embedded
+            onCallPlaced={() => window.setTimeout(onClose, 2200)}
+          />
         </div>
       </div>
     </div>

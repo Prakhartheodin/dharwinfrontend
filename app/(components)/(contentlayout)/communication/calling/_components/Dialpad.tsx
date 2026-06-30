@@ -75,7 +75,8 @@ function getTwilioCallParam(call: TwilioCall, key: string): string {
 export default function Dialpad({
   defaultTo,
   embedded = false,
-}: { defaultTo?: string; embedded?: boolean } = {}) {
+  onCallPlaced,
+}: { defaultTo?: string; embedded?: boolean; onCallPlaced?: () => void } = {}) {
   const [mode, setMode] = useState<Mode>("browser");
   const [provider, setProvider] = useState<TelephonyProvider>("plivo");
 
@@ -87,6 +88,7 @@ export default function Dialpad({
   const [dest, setDest] = useState("+1");
   const [agentCountry, setAgentCountry] = useState("US");
   const [placing, setPlacing] = useState(false);
+  const [placed, setPlaced] = useState(false); // bridge call accepted — lock the button
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   // WebRTC softphone state.
@@ -498,12 +500,19 @@ export default function Dialpad({
         callerId,
       });
       setFeedback({ kind: "ok", msg: res.message || "Call initiated — your phone will ring." });
+      setPlaced(true);
+      onCallPlaced?.();
     } catch (e) {
       setFeedback({ kind: "err", msg: apiErr(e, "Failed to place call") });
     } finally {
       setPlacing(false);
     }
-  }, [dest, agentPhone, callerId]);
+  }, [dest, agentPhone, callerId, onCallPlaced]);
+
+  // A fresh edit means a new call — unlock the button.
+  useEffect(() => {
+    setPlaced(false);
+  }, [dest, callerId, agentPhone, mode]);
 
   const onCall = mode === "browser" ? () => void handleBrowserCall() : () => void handlePhoneCall();
   const inCall = mode === "browser" && callState !== "idle";
@@ -601,7 +610,7 @@ export default function Dialpad({
                     type="tel"
                     inputMode="tel"
                     placeholder="+14155550100"
-                    className="w-full bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
+                    className="w-full min-w-0 bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
                     value={agentPhone}
                     onChange={(e) => setAgentPhone(e.target.value)}
                   />
@@ -680,7 +689,7 @@ export default function Dialpad({
               <input
                 type="tel"
                 inputMode="tel"
-                className="w-full bg-transparent text-lg font-mono tracking-wide text-defaulttextcolor focus:outline-none dark:text-white"
+                className="w-full min-w-0 bg-transparent text-lg font-mono tracking-wide text-defaulttextcolor focus:outline-none dark:text-white"
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
                 aria-label="Number to dial"
@@ -780,12 +789,12 @@ export default function Dialpad({
             ) : (
               <button
                 type="button"
-                disabled={!canCall}
+                disabled={!canCall || placed}
                 onClick={onCall}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <i className={placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"} />
-                {placing ? "Calling…" : "Call"}
+                <i className={placed ? "ri-check-line" : placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"} />
+                {placed ? "Call placed" : placing ? "Calling…" : "Call"}
               </button>
             )}
 
