@@ -12,6 +12,10 @@ import { listStudents, type Student } from "@/shared/lib/api/students";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import {
+  formatUtcCalendarDates,
+  uniqueSortedUtcCalendarDates,
+} from "@/shared/lib/attendance-display";
 
 function getStudentName(request: LeaveRequest, studentsList: Student[] = []): string {
   const s = request.student;
@@ -136,7 +140,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const formatDate = (dateString: string | undefined | null) => {
+  const formatTimestamp = (dateString: string | undefined | null) => {
     if (dateString == null || dateString === "") return "—";
     try {
       const d = new Date(dateString);
@@ -147,7 +151,8 @@ export default function SettingsAttendanceLeaveRequestsPage() {
     }
   };
 
-  const formatDates = (dates: string[]) => dates.map(formatDate).join(", ");
+  const leaveDayCount = (dates: string[]) => uniqueSortedUtcCalendarDates(dates).length;
+  const formatLeaveDates = (dates: string[]) => formatUtcCalendarDates(dates);
 
   const handleApprove = async (request: LeaveRequest) => {
     const requestId = request._id ?? (request as { id?: string }).id;
@@ -161,8 +166,8 @@ export default function SettingsAttendanceLeaveRequestsPage() {
         <div class="text-left mb-4">
           <p><strong>Student:</strong> ${getStudentName(request, students)}</p>
           <p><strong>Leave Type:</strong> ${request.leaveType === "casual" ? "Casual Leave" : request.leaveType === "sick" ? "Sick Leave" : "Unpaid Leave"}</p>
-          <p><strong>Dates:</strong> ${formatDates(request.dates)}</p>
-          <p><strong>Total Days:</strong> ${request.dates.length}</p>
+          <p><strong>Dates:</strong> ${formatLeaveDates(request.dates)}</p>
+          <p><strong>Total Days:</strong> ${leaveDayCount(request.dates)}</p>
         </div>
         <textarea id="adminComment" class="swal2-textarea" placeholder="Add a comment (optional)" maxlength="1000"></textarea>
       `,
@@ -209,7 +214,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
         <div class="text-left mb-4">
           <p><strong>Student:</strong> ${getStudentName(request, students)}</p>
           <p><strong>Leave Type:</strong> ${request.leaveType === "casual" ? "Casual Leave" : request.leaveType === "sick" ? "Sick Leave" : "Unpaid Leave"}</p>
-          <p><strong>Dates:</strong> ${formatDates(request.dates)}</p>
+          <p><strong>Dates:</strong> ${formatLeaveDates(request.dates)}</p>
         </div>
         <textarea id="adminComment" class="swal2-textarea" placeholder="Reason for rejection (optional)" maxlength="1000"></textarea>
       `,
@@ -525,6 +530,7 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                     const typeConfig = getLeaveTypeConfig(request.leaveType);
                     const reqId = request._id ?? (request as { id?: string }).id;
                     const isProcessing = processingId === reqId;
+                    const dayCount = leaveDayCount(request.dates);
                     return (
                       <article
                         key={reqId}
@@ -548,9 +554,9 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${typeConfig.badge}`}>
                                   {typeConfig.label}
                                 </span>
-                                {request.dates.length > 1 && (
+                                {dayCount > 1 && (
                                   <span className="text-xs text-defaulttextcolor/60 font-medium">
-                                    {request.dates.length} days
+                                    {dayCount} days
                                   </span>
                                 )}
                               </div>
@@ -567,12 +573,12 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                                   <div className="px-4 py-3 sm:grid sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-1">
                                     <dt className="text-xs font-medium text-defaulttextcolor/70 mt-1 sm:mt-0">Dates</dt>
                                     <dd className="text-sm text-defaulttextcolor mt-0.5 sm:mt-0">
-                                      {formatDates(request.dates)}
+                                      {formatLeaveDates(request.dates)}
                                     </dd>
                                   </div>
                                   <div className="px-4 py-3 sm:grid sm:grid-cols-[auto_1fr] sm:gap-x-4 sm:gap-y-1">
                                     <dt className="text-xs font-medium text-defaulttextcolor/70 mt-1 sm:mt-0">Total</dt>
-                                    <dd className="text-sm text-defaulttextcolor mt-0.5 sm:mt-0">{request.dates.length} day{request.dates.length !== 1 ? "s" : ""}</dd>
+                                    <dd className="text-sm text-defaulttextcolor mt-0.5 sm:mt-0">{dayCount} day{dayCount !== 1 ? "s" : ""}</dd>
                                   </div>
                                 </dl>
                               </div>
@@ -591,12 +597,12 @@ export default function SettingsAttendanceLeaveRequestsPage() {
                               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-defaulttextcolor/50">
                                 <span className="inline-flex items-center gap-1">
                                   <i className="ri-calendar-line" />
-                                  Requested {formatDate(request.createdAt)}
+                                  Requested {formatTimestamp(request.createdAt)}
                                 </span>
                                 {request.reviewedAt && (
                                   <span className="inline-flex items-center gap-1">
                                     <i className="ri-time-line" />
-                                    Reviewed {formatDate(request.reviewedAt)}
+                                    Reviewed {formatTimestamp(request.reviewedAt)}
                                   </span>
                                 )}
                                 {request.reviewedBy?.name && (

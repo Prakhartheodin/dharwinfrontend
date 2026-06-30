@@ -18,6 +18,7 @@ import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-ac
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
+import { formatUtcCalendarDate } from "@/shared/lib/attendance-display";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -74,7 +75,11 @@ export default function SettingsAttendanceAssignLeavePage() {
       Swal.fire({ icon: "warning", title: "Select a date first", confirmButtonText: "OK" });
       return;
     }
-    const iso = new Date(dateInput).toISOString().slice(0, 10);
+    const iso = dateInput.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      Swal.fire({ icon: "warning", title: "Invalid date", confirmButtonText: "OK" });
+      return;
+    }
     if (!selectedDates.includes(iso)) {
       setSelectedDates((prev) => [...prev, iso].sort());
     }
@@ -158,13 +163,7 @@ export default function SettingsAttendanceAssignLeavePage() {
     }
   };
 
-  const formatDate = (d: string) => {
-    try {
-      return new Date(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
-    } catch {
-      return d;
-    }
-  };
+  const formatDate = (d: string) => formatUtcCalendarDate(d);
 
   if (isAdmin === null) {
     return (

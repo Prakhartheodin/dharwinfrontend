@@ -47,3 +47,53 @@ export function sessionDurationMsForDisplay(r: AttendanceRecordLike): number {
   if (ms == null || ms <= 0 || !Number.isFinite(ms)) return 0;
   return capSessionMs(ms);
 }
+
+/** YYYY-MM-DD from a UTC-midnight leave/attendance date (backend convention). */
+export function getUtcCalendarDateKey(isoDateStr: string | null | undefined): string {
+  if (isoDateStr == null || isoDateStr === "") return "";
+  const trimmed = String(isoDateStr).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + 1;
+  const day = d.getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Unique sorted calendar keys for leave/attendance date arrays. */
+export function uniqueSortedUtcCalendarDates(dates: string[]): string[] {
+  const keys = new Set<string>();
+  for (const raw of dates) {
+    const key = getUtcCalendarDateKey(raw);
+    if (key) keys.add(key);
+  }
+  return [...keys].sort();
+}
+
+/** Render UTC calendar dates for display (matches attendance tracking pages). */
+export function formatUtcCalendarDate(
+  isoDateStr: string | null | undefined,
+  locale = "en-US"
+): string {
+  const key = getUtcCalendarDateKey(isoDateStr);
+  if (!key) return "—";
+  const d = new Date(`${key}T00:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return d.toLocaleDateString(locale, {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return key;
+  }
+}
+
+export function formatUtcCalendarDates(dates: string[], locale = "en-US"): string {
+  return uniqueSortedUtcCalendarDates(dates)
+    .map((key) => formatUtcCalendarDate(key, locale))
+    .join(", ");
+}
