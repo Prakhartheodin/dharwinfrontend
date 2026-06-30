@@ -17,7 +17,6 @@ import {
   isInternalRelayEmail,
   pickPublicEmail,
   resolveApplicantEmail,
-  dedupeApplicants,
 } from "@/shared/lib/ats/applicant-email";
 
 const PIPELINE_STATUSES: JobApplicationStatus[] = [
@@ -322,7 +321,8 @@ export default function ApplicationsPage() {
 
     listJobApplications(params)
       .then((res) => {
-        setRows(dedupeApplicants((res.results ?? []) as ApplicationWithDocs[]));
+        // Backend dedupes per (job, applicant). Do not collapse the same person across jobs here.
+        setRows((res.results ?? []) as ApplicationWithDocs[]);
         setTotalResults(res.totalResults ?? 0);
         setTotalPages(res.totalPages ?? 1);
       })
