@@ -178,7 +178,7 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
     try {
       const [stuRes, candRes] = await Promise.all([
         listStudents({ limit: 1000, sortBy: "user.name:asc" }),
-        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "all", sortBy: "fullName:asc" }),
       ]);
       setPeople(buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? []));
     } catch {
@@ -282,7 +282,7 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
       title: "Delete Holiday Group",
       html: `Delete <strong>${group.name}</strong>?${
         count > 0
-          ? `<br/><span class="text-sm text-gray-600">${count} holiday date(s) will be ungrouped (not deleted). Members are not affected.</span>`
+          ? `<br/><span class="text-sm text-gray-600">${count} holiday date(s) will be ungrouped (not deleted). Assigned members will have these dates removed from their dashboard and attendance.</span>`
           : ""
       }`,
       showCancelButton: true,

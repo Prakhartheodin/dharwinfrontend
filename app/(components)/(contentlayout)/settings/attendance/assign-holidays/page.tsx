@@ -65,7 +65,7 @@ export default function SettingsAttendanceAssignHolidaysPage() {
     try {
       const [stuRes, candRes] = await Promise.all([
         listStudents({ limit: 1000, sortBy: "user.name:asc" }),
-        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "all", sortBy: "fullName:asc" }),
       ]);
       setPeople(buildMergedAssignPeopleOptions(stuRes.results ?? [], candRes.results ?? []));
     } catch (err: unknown) {

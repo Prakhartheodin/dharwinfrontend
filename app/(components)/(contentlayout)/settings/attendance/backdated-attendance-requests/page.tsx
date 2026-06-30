@@ -136,7 +136,7 @@ export default function SettingsAttendanceBackdatedPage() {
     try {
       const [stuRes, candRes] = await Promise.all([
         listStudents({ limit: 1000, sortBy: "user.name:asc" }),
-        listCandidates({ limit: 1000, employmentStatus: "current", sortBy: "fullName:asc" }),
+        listCandidates({ limit: 1000, employmentStatus: "all", sortBy: "fullName:asc" }),
       ]);
       const list = stuRes.results ?? [];
       setStudents(list);

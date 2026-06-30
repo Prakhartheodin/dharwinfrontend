@@ -43,7 +43,12 @@ export default function SettingsAttendanceStudentGroupsPage() {
 
   const fetchStudents = useCallback(async () => {
     try {
-      const res = await listStudents({ limit: 1000, sortBy: "user.name:asc" });
+      const res = await listStudents({
+        limit: 1000,
+        sortBy: "user.name:asc",
+        employeeRoleOnly: true,
+        excludeResignedEmployed: true,
+      });
       const list = res.results ?? [];
       setAllStudents(
         list.map((s) => ({

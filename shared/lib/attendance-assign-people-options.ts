@@ -74,6 +74,29 @@ function textIncludesI(hay: string, needle: string): boolean {
   return hay.toLowerCase().includes(needle.toLowerCase());
 }
 
+/** Mirrors backend employmentStatus=current vs resigned (past resignDate). */
+export function isResignedForAttendanceAssign(c: CandidateListItem): boolean {
+  const rps = (c as { referralPipelineStatus?: string }).referralPipelineStatus;
+  if (rps === "resigned") return true;
+  if (!c.resignDate) return false;
+  const rd = new Date(c.resignDate);
+  if (Number.isNaN(rd.getTime())) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  rd.setHours(0, 0, 0, 0);
+  return rd.getTime() <= today.getTime();
+}
+
+function buildResignedOwnerUserIds(candidates: CandidateListItem[]): Set<string> {
+  const s = new Set<string>();
+  for (const c of candidates) {
+    if (!isResignedForAttendanceAssign(c)) continue;
+    const oid = ownerUserIdFromListCandidate(c);
+    if (oid) s.add(normId(oid));
+  }
+  return s;
+}
+
 /**
  * For react-select "Select people" (shift / week-off / holidays). Searches by label, full name, email, and employee ID.
  */
@@ -115,6 +138,7 @@ export function buildMergedAssignPeopleOptions(
   candidates: CandidateListItem[]
 ): AssignPersonRow[] {
   const ownerToEmployeeId = buildOwnerUserIdToEmployeeId(candidates);
+  const resignedOwnerUserIds = buildResignedOwnerUserIds(candidates);
 
   const studentRows: AssignPersonRow[] = students
     .map((s) => {
@@ -133,7 +157,12 @@ export function buildMergedAssignPeopleOptions(
         employeeId,
       };
     })
-    .filter((o) => o.value);
+    .filter((o) => {
+      if (!o.value) return false;
+      const uid = userIdNormFromStudent(o.student);
+      if (uid && resignedOwnerUserIds.has(uid)) return false;
+      return true;
+    });
 
   const studentIds = new Set(studentRows.map((r) => normId(r.value)).filter(Boolean));
   const ownerUserIds = new Set<string>();
@@ -156,8 +185,7 @@ export function buildMergedAssignPeopleOptions(
 
   const candidateRows: AssignPersonRow[] = [];
   for (const c of candidates) {
-    if (c.isActive === false) continue;
-    if (c.resignDate) continue;
+    if (isResignedForAttendanceAssign(c)) continue;
     if (hasTrainingRow(c)) continue;
     const cid = String(c._id ?? c.id ?? "").trim();
     const oid = ownerUserIdFromListCandidate(c);

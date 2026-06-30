@@ -121,6 +121,10 @@ export interface ListStudentsParams {
   sortBy?: string;
   limit?: number;
   page?: number;
+  /** Only users with the Employee RBAC role (for group pickers; excludes agents/candidates). */
+  employeeRoleOnly?: boolean | "true" | "false" | "1" | "0";
+  /** Exclude owners linked to resigned employee records. */
+  excludeResignedEmployed?: boolean | "true" | "false" | "1" | "0";
 }
 
 export async function listStudents(params?: ListStudentsParams): Promise<StudentsListResponse> {
