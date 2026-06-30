@@ -3,6 +3,7 @@
 import React, { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Seo from "@/shared/layout-components/seo/seo";
+import CallNowButton from "@/shared/components/CallNowButton";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { ROUTES } from "@/shared/lib/constants";
 import * as usersApi from "@/shared/lib/api/users";
@@ -700,6 +701,13 @@ export default function SettingsUsersPage() {
                           >
                             <i className="ri-eye-line text-[1rem]" />
                           </button>
+                          {(user as { phoneNumber?: string }).phoneNumber ? (
+                            <CallNowButton
+                              phone={(user as { phoneNumber?: string }).phoneNumber}
+                              name={user.name ?? user.email}
+                              title="Call"
+                            />
+                          ) : null}
                           {canImpersonate &&
                             currentUser?.id !== user.id &&
                             user.status === "active" && (

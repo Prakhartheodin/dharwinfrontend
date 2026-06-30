@@ -9,6 +9,7 @@ import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table
 import Link from 'next/link'
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
 import CallButton from '@/shared/components/CallButton'
+import CallNowButton from '@/shared/components/CallNowButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
   listCandidates,
@@ -1893,6 +1894,17 @@ const Candidates = () => {
                   <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">View Details</span>
                 </button>
               </div>
+              {c.phone ? (
+                <div className="hs-tooltip ti-main-tooltip">
+                  <CallNowButton
+                    phone={c.phone}
+                    name={c.name}
+                    className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-emerald-500/10 text-emerald-600 hover:bg-emerald-600 hover:text-white"
+                    title="Call employee"
+                  />
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Call</span>
+                </div>
+              ) : null}
               {canImpersonate && c.ownerUserId && authUser?.id && String(authUser.id) !== String(c.ownerUserId) && (
                 <div className="hs-tooltip ti-main-tooltip">
                   <button

@@ -72,7 +72,10 @@ function getTwilioCallParam(call: TwilioCall, key: string): string {
  *  - browser  : WebRTC softphone (browser mic/speakers).
  *  - phone    : click-to-call bridge — rings your phone, then connects to the target.
  */
-export default function Dialpad() {
+export default function Dialpad({
+  defaultTo,
+  embedded = false,
+}: { defaultTo?: string; embedded?: boolean } = {}) {
   const [mode, setMode] = useState<Mode>("browser");
   const [provider, setProvider] = useState<TelephonyProvider>("plivo");
 
@@ -156,14 +159,21 @@ export default function Dialpad() {
   const prefilledRef = useRef(false);
   useEffect(() => {
     if (prefilledRef.current) return;
-    const raw = searchParams.get("to");
+    const raw = defaultTo ?? searchParams.get("to");
     if (!raw) return;
     const e164 = toE164(raw.trim());
     if (isE164(e164)) {
       setDest(e164);
+      // Sync the country dropdown to the number's dial code (longest prefix
+      // wins, so +91 → IN not a shorter match). Without this the selector
+      // stays on its default and swapDial would strip the wrong prefix.
+      const match = DIAL_OPTIONS.filter((o) => o.dialCode && e164.startsWith(o.dialCode)).sort(
+        (a, b) => b.dialCode.length - a.dialCode.length
+      )[0];
+      if (match) setCountry(match.code);
       prefilledRef.current = true;
     }
-  }, [searchParams]);
+  }, [searchParams, defaultTo]);
 
   const press = useCallback((k: string) => {
     setDest((prev) => (prev === "+" && k !== "+" ? `+${k}` : prev + k));
@@ -345,7 +355,7 @@ export default function Dialpad() {
   const retrySoftphone = useCallback(() => {
     try {
       plivoRef.current?.client?.logout?.();
-      twilioDeviceRef.current?.unregister?.();
+      twilioDeviceRef.current?.destroy?.();
     } catch {
       /* ignore */
     }
@@ -364,7 +374,7 @@ export default function Dialpad() {
     return () => {
       try {
         plivoRef.current?.client?.logout?.();
-        twilioDeviceRef.current?.unregister?.();
+        twilioDeviceRef.current?.destroy?.();
       } catch {
         /* ignore */
       }
@@ -499,12 +509,20 @@ export default function Dialpad() {
   const inCall = mode === "browser" && callState !== "idle";
 
   return (
-    <div className="box custom-box mb-5">
-      <div className="box-header flex items-center justify-between gap-3">
-        <div className="box-title flex items-center gap-2">
-          <i className="ri-dial-pad-line text-primary" />
-          Dialer
-        </div>
+    <div className={embedded ? "" : "box custom-box mb-5"}>
+      <div
+        className={
+          embedded
+            ? "mb-4 flex items-center justify-end gap-3"
+            : "box-header flex items-center justify-between gap-3"
+        }
+      >
+        {!embedded && (
+          <div className="box-title flex items-center gap-2">
+            <i className="ri-dial-pad-line text-primary" />
+            Dialer
+          </div>
+        )}
         {/* Mode toggle: browser audio vs ring-my-phone */}
         <div className="inline-flex rounded-lg border border-defaultborder/70 p-0.5 dark:border-white/10">
           {(["browser", "phone"] as Mode[]).map((m) => (
@@ -525,8 +543,8 @@ export default function Dialpad() {
           ))}
         </div>
       </div>
-      <div className="box-body">
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <div className={embedded ? "" : "box-body"}>
+        <div className={embedded ? "space-y-4" : "grid grid-cols-1 gap-5 md:grid-cols-2"}>
           {/* Left: setup */}
           <div className="space-y-4">
             <label className="block">
@@ -639,6 +657,11 @@ export default function Dialpad() {
 
           {/* Right: keypad */}
           <div className="space-y-3">
+            {embedded && (
+              <span className="block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
+                To (number to call)
+              </span>
+            )}
             <div className="flex items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 py-2 dark:border-white/10 dark:bg-black/20">
               <select
                 className="shrink-0 rounded-md border-0 bg-transparent text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
@@ -672,18 +695,20 @@ export default function Dialpad() {
               </button>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              {KEYS.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => press(k)}
-                  className="rounded-lg border border-defaultborder/70 py-3 text-lg font-semibold text-defaulttextcolor transition-colors hover:bg-primary/10 hover:border-primary/40 dark:text-white dark:hover:bg-white/5"
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
+            {!embedded && (
+              <div className="grid grid-cols-3 gap-2">
+                {KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => press(k)}
+                    className="rounded-lg border border-defaultborder/70 py-3 text-lg font-semibold text-defaulttextcolor transition-colors hover:bg-primary/10 hover:border-primary/40 dark:text-white dark:hover:bg-white/5"
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {incomingCall ? (
               <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-3">
