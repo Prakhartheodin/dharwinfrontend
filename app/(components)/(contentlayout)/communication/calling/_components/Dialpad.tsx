@@ -8,6 +8,7 @@ import {
   placeTelephonyCall,
   getTelephonySdkToken,
   registerTelephonyBrowserCallIntent,
+  setTelephonyRecording,
   type OwnedTelephonyNumber,
   type TelephonyProvider,
 } from "@/shared/lib/api/telephony";
@@ -40,6 +41,15 @@ function isE164(v: string): boolean {
 function toE164(v: string): string {
   const t = (v || "").trim();
   return t.startsWith("+") ? t : `+${t}`;
+}
+
+// Initials for the call-screen avatar fallback. A phone number → "#".
+function initials(s: string): string {
+  const t = (s || "").trim();
+  if (!t) return "?";
+  if (t.startsWith("+") || /^\d/.test(t)) return "#";
+  const parts = t.split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase() || "").join("") || "?";
 }
 
 function fmtElapsed(total: number): string {
@@ -76,7 +86,15 @@ export default function Dialpad({
   defaultTo,
   embedded = false,
   onCallPlaced,
-}: { defaultTo?: string; embedded?: boolean; onCallPlaced?: () => void } = {}) {
+  contactName,
+  contactAvatar,
+}: {
+  defaultTo?: string;
+  embedded?: boolean;
+  onCallPlaced?: () => void;
+  contactName?: string;
+  contactAvatar?: string;
+} = {}) {
   const [mode, setMode] = useState<Mode>("browser");
   const [provider, setProvider] = useState<TelephonyProvider>("plivo");
 
@@ -101,6 +119,11 @@ export default function Dialpad({
   const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
   const [elapsed, setElapsed] = useState(0); // seconds since the call connected
   const [muted, setMuted] = useState(false);
+  const [callSid, setCallSid] = useState(""); // Twilio call SID — needed to record
+  const [held, setHeld] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingBusy, setRecordingBusy] = useState(false);
+  const [showDtmf, setShowDtmf] = useState(false); // in-call DTMF keypad panel
 
   // ponytail: toll-free numbers are inbound-only — Plivo rejects them as an outbound
   // caller ID, surfacing as "Busy" with no CDR. Keep them out of originating options.
@@ -205,6 +228,7 @@ export default function Dialpad({
           setIncomingCall(null);
         }
         setMuted(false);
+        setCallSid(getTwilioCallParam(call, "CallSid"));
         setCallState("connected");
       });
       call.on("disconnect", () => resetTwilioCallState(call));
@@ -489,6 +513,71 @@ export default function Dialpad({
     }
   }, [muted, provider]);
 
+  // Hold: pause both directions locally. Twilio exposes the remote stream so we
+  // can silence it and mute the mic; the other party hears silence (no hold
+  // music — that would need a server-side conference). Plivo: mic mute only.
+  const toggleHold = useCallback(() => {
+    const next = !held;
+    try {
+      if (provider === "twilio") {
+        const call = twilioCallRef.current;
+        call?.mute?.(next ? true : muted);
+        const stream = (call as unknown as { getRemoteStream?: () => MediaStream | null })?.getRemoteStream?.();
+        stream?.getAudioTracks?.().forEach((t) => {
+          t.enabled = !next;
+        });
+      } else if (next) {
+        plivoRef.current?.client?.mute?.();
+      } else if (!muted) {
+        plivoRef.current?.client?.unmute?.();
+      }
+      setHeld(next);
+    } catch {
+      /* ignore */
+    }
+  }, [held, muted, provider]);
+
+  // Record: toggle live recording on the Twilio call (server REST via backend).
+  const toggleRecord = useCallback(async () => {
+    if (!callSid) {
+      setFeedback({ kind: "err", msg: "Recording needs an active Twilio call." });
+      return;
+    }
+    const next = !recording;
+    setRecordingBusy(true);
+    try {
+      await setTelephonyRecording({ callSid, recording: next });
+      setRecording(next);
+    } catch (e) {
+      setFeedback({ kind: "err", msg: apiErr(e, "Could not toggle recording") });
+    } finally {
+      setRecordingBusy(false);
+    }
+  }, [callSid, recording]);
+
+  // Send a DTMF tone on the live call (IVR menus, extensions).
+  const sendDigit = useCallback(
+    (d: string) => {
+      try {
+        if (provider === "twilio") twilioCallRef.current?.sendDigits?.(d);
+        else plivoRef.current?.client?.sendDtmf?.(d);
+      } catch {
+        /* ignore */
+      }
+    },
+    [provider]
+  );
+
+  // Clear per-call control state whenever the call ends.
+  useEffect(() => {
+    if (callState === "idle") {
+      setHeld(false);
+      setRecording(false);
+      setShowDtmf(false);
+      setCallSid("");
+    }
+  }, [callState]);
+
   const handlePhoneCall = useCallback(async () => {
     setFeedback(null);
     localStorage.setItem(AGENT_PHONE_KEY, agentPhone.trim());
@@ -516,6 +605,9 @@ export default function Dialpad({
 
   const onCall = mode === "browser" ? () => void handleBrowserCall() : () => void handlePhoneCall();
   const inCall = mode === "browser" && callState !== "idle";
+  // Full call screen takes over for an active browser (WebRTC) call.
+  const browserInCall = inCall && !incomingCall;
+  const callTitle = contactName || dest;
 
   return (
     <div className={embedded ? "" : "box custom-box mb-5"}>
@@ -553,6 +645,127 @@ export default function Dialpad({
         </div>
       </div>
       <div className={embedded ? "" : "box-body"}>
+        {browserInCall ? (
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            {/* Avatar */}
+            {contactAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={contactAvatar}
+                alt=""
+                className="mt-1 h-24 w-24 rounded-full object-cover ring-4 ring-emerald-500/15"
+              />
+            ) : (
+              <div className="mt-1 flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 text-2xl font-semibold text-primary ring-4 ring-emerald-500/15">
+                {initials(callTitle)}
+              </div>
+            )}
+
+            {/* Name + number */}
+            <div className="min-w-0">
+              <p className="mb-0 truncate text-lg font-semibold text-defaulttextcolor dark:text-white">
+                {callTitle}
+              </p>
+              {contactName ? (
+                <p className="mb-0 truncate text-sm text-defaulttextcolor/55 dark:text-white/45">{dest}</p>
+              ) : null}
+            </div>
+
+            {/* Status */}
+            <div className="flex flex-wrap items-center justify-center gap-3 text-sm">
+              {callState === "ringing" ? (
+                <span className="inline-flex items-center gap-1.5 font-medium text-amber-600 dark:text-amber-400">
+                  <i className="ri-loader-4-line animate-spin" /> Ringing…
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 font-mono font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" /> {fmtElapsed(elapsed)}
+                </span>
+              )}
+              {recording ? (
+                <span className="inline-flex items-center gap-1 font-semibold text-danger">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-danger" /> REC
+                </span>
+              ) : null}
+              {held ? <span className="font-semibold text-amber-600 dark:text-amber-400">On hold</span> : null}
+            </div>
+
+            {/* In-call DTMF keypad */}
+            {showDtmf && callState === "connected" ? (
+              <div className="grid w-full max-w-[15rem] grid-cols-3 gap-2">
+                {KEYS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => sendDigit(k)}
+                    className="rounded-lg border border-defaultborder/70 py-2.5 text-base font-semibold text-defaulttextcolor transition-colors hover:border-primary/40 hover:bg-primary/10 dark:text-white dark:hover:bg-white/5"
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Controls — available once connected */}
+            {callState === "connected" ? (
+              <div className="flex items-end justify-center gap-3">
+                {[
+                  { key: "mute", label: muted ? "Unmute" : "Mute", icon: muted ? "ri-mic-off-line" : "ri-mic-line", active: muted, disabled: false, danger: false, onClick: toggleMute },
+                  { key: "hold", label: held ? "Resume" : "Hold", icon: held ? "ri-play-line" : "ri-pause-line", active: held, disabled: false, danger: false, onClick: toggleHold },
+                  { key: "rec", label: "Record", icon: recordingBusy ? "ri-loader-4-line animate-spin" : "ri-record-circle-line", active: recording, disabled: recordingBusy || !callSid, danger: true, onClick: () => void toggleRecord() },
+                  { key: "dtmf", label: "Keypad", icon: "ri-grid-fill", active: showDtmf, disabled: false, danger: false, onClick: () => setShowDtmf((v) => !v) },
+                ].map((c) => (
+                  <div key={c.key} className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={c.onClick}
+                      disabled={c.disabled}
+                      aria-pressed={c.active}
+                      title={c.label}
+                      className={`flex h-12 w-12 items-center justify-center rounded-full border text-lg transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                        c.active
+                          ? c.danger
+                            ? "border-danger bg-danger/10 text-danger"
+                            : "border-primary bg-primary/10 text-primary"
+                          : "border-defaultborder/70 text-defaulttextcolor/75 hover:bg-black/[0.03] dark:text-white/70 dark:hover:bg-white/5"
+                      }`}
+                    >
+                      <i className={c.icon} />
+                    </button>
+                    <span className="text-[0.65rem] font-medium text-defaulttextcolor/60 dark:text-white/50">
+                      {c.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {/* Hang up */}
+            <button
+              type="button"
+              onClick={hangup}
+              title="Hang up"
+              aria-label="Hang up"
+              className="mt-1 flex h-14 w-14 items-center justify-center rounded-full bg-danger text-white shadow-lg shadow-danger/30 transition-colors hover:bg-danger/90"
+            >
+              <i className="ri-phone-fill rotate-[135deg] text-xl" />
+            </button>
+
+            {feedback ? (
+              <div
+                className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+                  feedback.kind === "ok"
+                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                    : "bg-danger/10 text-danger"
+                }`}
+                role="status"
+              >
+                <i className={`mt-0.5 ${feedback.kind === "ok" ? "ri-check-line" : "ri-error-warning-line"}`} />
+                <span>{feedback.msg}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : (
         <div className={embedded ? "space-y-4" : "grid grid-cols-1 gap-5 md:grid-cols-2"}>
           {/* Left: setup */}
           <div className="space-y-4">
@@ -815,6 +1028,7 @@ export default function Dialpad({
             ) : null}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

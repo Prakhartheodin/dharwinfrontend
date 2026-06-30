@@ -1899,6 +1899,7 @@ const Candidates = () => {
                   <CallNowButton
                     phone={c.phone}
                     name={c.name}
+                    avatar={c.displayPicture}
                     className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-emerald-500/10 text-emerald-600 hover:bg-emerald-600 hover:text-white"
                     title="Call employee"
                   />

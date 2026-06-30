@@ -777,6 +777,9 @@ const Calling = () => {
                             const id = getUnifiedId(u);
                             const isTelephony = u.source === "telephony";
                             const r = isTelephony ? (u.data as CallRecord) : (u.data as ChatCall);
+                            // Twilio click-to-call / softphone calls = "Dialer" source.
+                            const isDialer =
+                              isTelephony && (r as CallRecord).telephonyData?.provider === "twilio";
                             const telephonyCategory = isTelephony
                               ? purposeToCategory((r as CallRecord).purpose, (r as CallRecord).displayCategory)
                               : "–";
@@ -800,17 +803,23 @@ const Calling = () => {
                                 <td className="!text-[0.8125rem] align-middle">
                                   <span
                                     className={`inline-flex items-center gap-1 border px-2 py-0.5 rounded-md text-[0.7rem] font-medium ${
-                                      isTelephony
-                                        ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
-                                        : "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30"
+                                      isDialer
+                                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30"
+                                        : isTelephony
+                                          ? "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30"
+                                          : "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/30"
                                     }`}
                                   >
                                     <i
                                       className={`${
-                                        isTelephony ? "ri-phone-line" : "ri-chat-voice-line"
+                                        isDialer
+                                          ? "ri-dial-pad-line"
+                                          : isTelephony
+                                            ? "ri-phone-line"
+                                            : "ri-chat-voice-line"
                                       } text-[0.8rem]`}
                                     />
-                                    {isTelephony ? "Telephony" : "In-App"}
+                                    {isDialer ? "Dialer" : isTelephony ? "Telephony" : "In-App"}
                                   </span>
                                 </td>
                                 {(sourceFilter === "telephony" || sourceFilter === "all") && (

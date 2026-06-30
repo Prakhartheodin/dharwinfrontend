@@ -94,6 +94,8 @@ export type CallRecord = {
   errorMessage?: string | null;
   completedAt?: string | null;
   extractedData?: unknown;
+  /** Telephony provider metadata; provider="twilio" marks a Dialer call. */
+  telephonyData?: { provider?: string; direction?: string } | null;
   purpose?: string | null;
   job?: string;
   candidate?: string;

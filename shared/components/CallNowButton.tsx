@@ -28,11 +28,13 @@ function CallOverlay({
   onClose,
   defaultTo,
   name,
+  avatar,
 }: {
   isOpen: boolean;
   onClose: () => void;
   defaultTo: string;
   name?: string;
+  avatar?: string | null;
 }) {
   const { containerRef, backdropProps } = useModalBehavior({ isOpen, onClose });
   if (!isOpen) return null;
@@ -72,6 +74,8 @@ function CallOverlay({
           <Dialpad
             defaultTo={defaultTo}
             embedded
+            contactName={name}
+            contactAvatar={avatar ?? undefined}
             onCallPlaced={() => window.setTimeout(onClose, 2200)}
           />
         </div>
@@ -88,11 +92,13 @@ function CallOverlay({
 export default function CallNowButton({
   phone,
   name,
+  avatar,
   className = "",
   title = "Call",
 }: {
   phone?: string | null;
   name?: string;
+  avatar?: string | null;
   className?: string;
   title?: string;
 }) {
@@ -115,7 +121,13 @@ export default function CallNowButton({
       >
         <i className="ri-phone-line text-[1rem]" />
       </button>
-      <CallOverlay isOpen={open} onClose={() => setOpen(false)} defaultTo={e164} name={name} />
+      <CallOverlay
+        isOpen={open}
+        onClose={() => setOpen(false)}
+        defaultTo={e164}
+        name={name}
+        avatar={avatar}
+      />
     </>
   );
 }

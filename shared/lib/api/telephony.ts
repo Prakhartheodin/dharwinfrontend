@@ -116,6 +116,25 @@ export async function placeTelephonyCall(
   return res.data;
 }
 
+export type SetTelephonyRecordingParams = {
+  callSid: string;
+  recording: boolean;
+};
+
+export type SetTelephonyRecordingResponse = {
+  success: boolean;
+  recording: boolean;
+  recordingSid?: string;
+};
+
+/** Toggle live recording on an in-progress browser call (Twilio). */
+export async function setTelephonyRecording(
+  params: SetTelephonyRecordingParams
+): Promise<SetTelephonyRecordingResponse> {
+  const res = await apiClient.post<SetTelephonyRecordingResponse>("/plivo/recording", params);
+  return res.data;
+}
+
 export type TelephonySdkTokenResponse = {
   success: boolean;
   token: string;

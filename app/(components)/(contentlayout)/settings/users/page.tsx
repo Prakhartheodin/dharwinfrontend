@@ -705,6 +705,7 @@ export default function SettingsUsersPage() {
                             <CallNowButton
                               phone={(user as { phoneNumber?: string }).phoneNumber}
                               name={user.name ?? user.email}
+                              avatar={user.profilePicture?.url}
                               title="Call"
                             />
                           ) : null}
