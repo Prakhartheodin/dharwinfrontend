@@ -79,6 +79,8 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/logs/logs-activity": "logs.activity:",
   // ATS
   "/ats/jobs": "ats.jobs:",
+  /** Recruiter-facing all-applications view; backend GET /job-applications gates on candidates.read. */
+  "/ats/applications": "ats.candidates:",
   "/ats/employees": "ats.employees:",
   "/ats/referral-leads": "ats.referralLeads:",
   /** Legacy path (Next redirects to /ats/employees); keep for any client-side guard before redirect. */

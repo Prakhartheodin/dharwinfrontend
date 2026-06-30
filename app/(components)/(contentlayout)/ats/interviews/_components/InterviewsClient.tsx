@@ -7,7 +7,7 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, exportInterviewsExcel, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
@@ -734,24 +734,110 @@ export default function InterviewsClient() {
     ;(window as any).HSOverlay?.close(document.querySelector('#interview-result-modal'))
   }, [])
 
+  // Internal mobility: move a self-applied EXISTING employee into the new role (no offer/placement).
+  // Backend authoritatively decides eligibility — it rejects non-employees and resigned employees.
+  // doInternalTransfer = the API call + result dialogs (no leading confirm), so it can be invoked both
+  // from the row action (after its own confirm) and inline from the "already an employee" prompt.
+  const doInternalTransfer = useCallback(async (row: InterviewTableRow) => {
+    if (!row.id) return
+    try {
+      await internalTransferEmployee(row.id)
+      await fetchMeetings()
+      await confirm({
+        title: 'Employee transferred',
+        message: (
+          <>
+            <strong>{row.candidate?.name || 'The employee'}</strong> has been moved into the interviewed role.
+            Their employee record was updated — no new offer or placement was created, and their employee ID is unchanged.
+          </>
+        ),
+        confirmLabel: 'Done',
+        tone: 'success',
+        hideCancel: true,
+      })
+    } catch (err: any) {
+      await confirm({
+        title: 'Transfer failed',
+        message: err?.response?.data?.message || err?.message || 'Could not transfer the employee. Please try again.',
+        confirmLabel: 'Close',
+        tone: 'danger',
+        hideCancel: true,
+      })
+    }
+  }, [confirm, fetchMeetings])
+
+  const handleInternalTransfer = useCallback(async (row: InterviewTableRow) => {
+    if (!row.id) return
+    const ok = await confirm({
+      title: 'Internal transfer?',
+      message: (
+        <>
+          Transfer <strong>{row.candidate?.name || 'this employee'}</strong> into the interviewed role?
+          This updates their existing employee record (designation &amp; department) — no new offer or
+          placement is created, and their employee ID stays the same. Only valid for current employees.
+        </>
+      ),
+      confirmLabel: 'Transfer employee',
+      cancelLabel: 'Cancel',
+    })
+    if (!ok) return
+    await doInternalTransfer(row)
+  }, [confirm, doInternalTransfer])
+
   const handleSaveInterviewResult = useCallback(async () => {
     if (!resultModalInterview || !resultModalInterview.id) return
+    const interview = resultModalInterview
     setResultUpdating(true)
     try {
-      const updated = await updateMeeting(resultModalInterview.id, { interviewResult: resultModalSelected })
+      const updated = await updateMeeting(interview.id, { interviewResult: resultModalSelected })
       await fetchMeetings()
       closeResultModal()
       if (resultModalSelected === 'selected' && updated.moveToPreboardingError) {
-        alert(
-          `Interview marked as Selected, but moving to Offers & placement did not complete:\n\n${updated.moveToPreboardingError}\n\nYou can retry with the row action "Re-trigger offer & placement" after fixing the issue above.`
-        )
+        const errMsg = updated.moveToPreboardingError
+        // The candidate is already an employee → offer the correct action inline instead of a dead-end.
+        if (/internal transfer/i.test(errMsg)) {
+          const go = await confirm({
+            title: 'Candidate is already an employee',
+            message: (
+              <>
+                Internal moves don&apos;t create a new offer or placement. Transfer{' '}
+                <strong>{interview.candidate?.name || 'them'}</strong> into the interviewed role instead —
+                their existing employee record is updated and their employee ID stays the same.
+              </>
+            ),
+            confirmLabel: 'Transfer employee',
+            cancelLabel: 'Not now',
+          })
+          if (go) await doInternalTransfer(interview)
+        } else {
+          await confirm({
+            title: 'Marked Selected — next step needs attention',
+            message: (
+              <>
+                {errMsg}
+                <span className="mt-2 block text-xs text-defaulttextcolor/60 dark:text-white/50">
+                  Fix the issue above, then use the row action “Re-trigger offer &amp; placement”.
+                </span>
+              </>
+            ),
+            confirmLabel: 'Got it',
+            tone: 'danger',
+            hideCancel: true,
+          })
+        }
       }
     } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update result')
+      await confirm({
+        title: 'Could not update result',
+        message: err?.response?.data?.message || err?.message || 'Something went wrong updating the interview result.',
+        confirmLabel: 'Close',
+        tone: 'danger',
+        hideCancel: true,
+      })
     } finally {
       setResultUpdating(false)
     }
-  }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal])
+  }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal, confirm, doInternalTransfer])
 
   const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -1454,6 +1540,24 @@ export default function InterviewsClient() {
                 </button>
               </div>
             )}
+            {/* Internal transfer — for an existing employee who self-applied. Backend rejects non-employees. */}
+            {canEdit && row.original.interviewResult === 'selected' && (
+              <div className="hs-tooltip ti-main-tooltip">
+                <button
+                  type="button"
+                  className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm ti-btn-secondary"
+                  title="Internal transfer (existing employee)"
+                  onClick={() => handleInternalTransfer(row.original)}
+                >
+                  <i className="ri-user-shared-line"></i>
+                  <span
+                    className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white shadow-sm dark:bg-slate-700"
+                    role="tooltip">
+                    Internal transfer
+                  </span>
+                </button>
+              </div>
+            )}
             {canEdit && (
             <div className="hs-tooltip ti-main-tooltip">
               <button
@@ -1975,6 +2079,17 @@ export default function InterviewsClient() {
                                   <i className="ri-checkbox-circle-line"></i>
                                 </button>
                               )}
+                              {canEdit && interview.interviewResult === 'selected' && (
+                                <button
+                                  type="button"
+                                  className="ti-btn ti-btn-icon ti-btn-sm ti-btn-secondary"
+                                  title="Internal transfer (existing employee)"
+                                  aria-label="Internal transfer"
+                                  onClick={() => handleInternalTransfer(interview)}
+                                >
+                                  <i className="ri-user-shared-line"></i>
+                                </button>
+                              )}
                               {canEdit && (
                                 <button
                                   type="button"
@@ -2159,6 +2274,17 @@ export default function InterviewsClient() {
                             onClick={() => openResultModal(interview)}
                           >
                             <i className="ri-checkbox-circle-line" />
+                          </button>
+                        )}
+                        {canEdit && interview.interviewResult === 'selected' && (
+                          <button
+                            type="button"
+                            className="ti-btn ti-btn-icon ti-btn-sm ti-btn-secondary"
+                            title="Internal transfer (existing employee)"
+                            aria-label="Internal transfer"
+                            onClick={() => handleInternalTransfer(interview)}
+                          >
+                            <i className="ri-user-shared-line" />
                           </button>
                         )}
                         {canEdit && (

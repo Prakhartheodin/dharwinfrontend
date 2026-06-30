@@ -95,7 +95,16 @@ export const MenuItems: any = [
     path: "/ats/jobs",
         active: false,
         selected: false,
-        dirchange: false, 
+        dirchange: false,
+      },
+      {
+    icon: MyApplicationsIcon,
+        title: "Applications",
+        type: "link",
+    path: "/ats/applications",
+        active: false,
+        selected: false,
+        dirchange: false,
       },
       {
     icon: ExternalJobsIcon,

@@ -12,8 +12,6 @@ import {
   type JobApplicationStatus,
 } from "@/shared/lib/api/jobApplications";
 import { listJobs, type Job } from "@/shared/lib/api/jobs";
-import { listRecruiters } from "@/shared/lib/api/users";
-import type { User } from "@/shared/lib/types";
 import {
   isPublicEmail,
   isInternalRelayEmail,
@@ -31,6 +29,20 @@ const PIPELINE_STATUSES: JobApplicationStatus[] = [
   "Hired",
   "Rejected",
 ];
+
+// Manual transition graph — mirrors backend atsPipeline ALLOWED_TRANSITIONS.application, EXCEPT
+// "Interview" is omitted as a target everywhere: it is set ONLY by scheduling an interview
+// (Schedule Interview action). Terminal states (Hired/Rejected) and Interview-as-current still
+// render as the locked current value. Backend re-validates; this only shapes the dropdown.
+const MANUAL_NEXT_STATUSES: Record<JobApplicationStatus, JobApplicationStatus[]> = {
+  Applied: ["Screening", "Rejected"],
+  Screening: ["Shortlisted", "Rejected"],
+  Interview: ["Shortlisted", "Offered", "Rejected"],
+  Shortlisted: ["Offered", "Rejected"],
+  Offered: ["Hired", "Rejected"],
+  Hired: [],
+  Rejected: [],
+};
 
 const STATUS_STYLE: Record<JobApplicationStatus, string> = {
   Applied: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20",
@@ -65,6 +77,8 @@ type ApplicationWithDocs = JobApplication & {
     department?: string | null;
     documents?: Array<{ type?: string; url?: string }>;
     profilePicture?: { url?: string };
+    employeeId?: string | null;
+    referralPipelineStatus?: string | null;
   };
 };
 
@@ -83,11 +97,11 @@ type ApplicationRowMeta = {
   jobTitle: string;
   orgName?: string;
   dept: string;
-  recruiterName: string;
   resumeUrl: string | null;
   profileHref: string;
   jobId: string;
   appliedAt?: string | null;
+  isEmployee: boolean;
 };
 
 function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
@@ -123,26 +137,30 @@ function getApplicationRowMeta(app: ApplicationWithDocs): ApplicationRowMeta {
     jobTitle: j.title ?? "—",
     orgName: j.organisation?.name,
     dept: c.department ?? "—",
-    recruiterName: app.appliedBy?.name ?? app.appliedBy?.email ?? "—",
     resumeUrl: getResumeUrl(app),
     profileHref: candidateId ? `/ats/employees/edit?id=${candidateId}` : "#",
     jobId: String(j._id ?? j.id ?? ""),
-    appliedAt: app.createdAt,
+    appliedAt: app.appliedAt ?? app.createdAt,
+    // Employee = already on staff (permanent DBS employeeId) or fully converted in the
+    // referral pipeline. Distinguishes internal-mobility applicants from outside candidates.
+    isEmployee:
+      Boolean(c.employeeId && String(c.employeeId).trim()) ||
+      ["employee", "joined", "resigned"].includes(String(c.referralPipelineStatus ?? "")),
   };
 }
 
-// Internal = a logged-in user applied as themselves (JobApplication.applicantUser set);
-// external = public applicant / recruiter-added (applicantUser null).
-function ApplicantTypeBadge({ internal }: { internal: boolean }) {
+// Employee = applicant is already staff (permanent DBS employeeId / converted in pipeline)
+// applying internally; Candidate = not yet an employee.
+function ApplicantTypeBadge({ isEmployee }: { isEmployee: boolean }) {
   return (
     <span
       className={`mt-0.5 inline-block text-[0.625rem] font-semibold px-1.5 py-0.5 rounded-full ${
-        internal
+        isEmployee
           ? "bg-primary/10 text-primary"
           : "bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-white/60"
       }`}
     >
-      {internal ? "Internal Applicant" : "External Applicant"}
+      {isEmployee ? "Employee" : "Candidate"}
     </span>
   );
 }
@@ -160,16 +178,20 @@ function ApplicationStatusSelect({
   onChange: (next: JobApplicationStatus) => void;
   fullWidth?: boolean;
 }) {
+  // Only the current status + its legal manual next stages. Terminal states have no next →
+  // the select shows just the current value and is locked.
+  const options: JobApplicationStatus[] = [value, ...MANUAL_NEXT_STATUSES[value]];
+  const locked = MANUAL_NEXT_STATUSES[value].length === 0;
   return (
     <div className="flex items-center gap-2 min-w-0 w-full">
       <select
         aria-label={`Change stage for ${applicantName}`}
         value={value}
-        disabled={disabled}
+        disabled={disabled || locked}
         onChange={(e) => onChange(e.target.value as JobApplicationStatus)}
         className={`ti-form-select form-select-sm w-full min-w-[9rem] ${fullWidth ? "max-w-none" : "max-w-[12rem]"} text-sm sm:text-xs font-semibold rounded-full py-2.5 sm:py-1.5 min-h-[2.75rem] sm:min-h-0 ps-3 pe-8 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${STATUS_STYLE[value]}`}
       >
-        {PIPELINE_STATUSES.map((s) => (
+        {options.map((s) => (
           <option key={s} value={s}>
             {s}
           </option>
@@ -252,7 +274,6 @@ export default function ApplicationsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<JobApplicationStatus | "">("");
   const [jobFilter, setJobFilter] = useState("");
-  const [recruiterFilter, setRecruiterFilter] = useState("");
   const [departmentFilter, setDepartmentFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -263,7 +284,6 @@ export default function ApplicationsPage() {
   const pageSize = 20;
 
   const [jobOptions, setJobOptions] = useState<Job[]>([]);
-  const [recruiterOptions, setRecruiterOptions] = useState<User[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -277,9 +297,6 @@ export default function ApplicationsPage() {
     listJobs({ limit: 500 })
       .then((res) => setJobOptions(res.results ?? []))
       .catch(() => setJobOptions([]));
-    listRecruiters({ limit: 500 })
-      .then((res) => setRecruiterOptions(res.results ?? []))
-      .catch(() => setRecruiterOptions([]));
   }, []);
 
   const fetchApplications = useCallback(() => {
@@ -295,7 +312,6 @@ export default function ApplicationsPage() {
     if (debouncedSearch) params.q = debouncedSearch;
     if (statusFilter) params.status = statusFilter;
     if (jobFilter) params.jobId = jobFilter;
-    if (recruiterFilter) params.recruiterId = recruiterFilter;
     if (departmentFilter.trim()) params.department = departmentFilter.trim();
     if (dateFrom) params.dateFrom = new Date(dateFrom).toISOString();
     if (dateTo) {
@@ -323,7 +339,7 @@ export default function ApplicationsPage() {
         setTotalPages(1);
       })
       .finally(() => setLoading(false));
-  }, [page, sortBy, debouncedSearch, statusFilter, jobFilter, recruiterFilter, departmentFilter, dateFrom, dateTo]);
+  }, [page, sortBy, debouncedSearch, statusFilter, jobFilter, departmentFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     if (!user) {
@@ -371,7 +387,6 @@ export default function ApplicationsPage() {
     setSearch("");
     setStatusFilter("");
     setJobFilter("");
-    setRecruiterFilter("");
     setDepartmentFilter("");
     setDateFrom("");
     setDateTo("");
@@ -382,7 +397,6 @@ export default function ApplicationsPage() {
     (search ? 1 : 0) +
     (statusFilter ? 1 : 0) +
     (jobFilter ? 1 : 0) +
-    (recruiterFilter ? 1 : 0) +
     (departmentFilter ? 1 : 0) +
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0);
@@ -556,31 +570,6 @@ export default function ApplicationsPage() {
 
               <div>
                 <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
-                  Recruiter
-                </label>
-                <select
-                  value={recruiterFilter}
-                  onChange={(e) => {
-                    setRecruiterFilter(e.target.value);
-                    setPage(1);
-                  }}
-                  className="ti-form-select form-select-sm w-full min-h-[2.75rem] sm:min-h-[2.125rem]"
-                  aria-label="Filter by recruiter"
-                >
-                  <option value="">All recruiters</option>
-                  {recruiterOptions.map((r) => {
-                    const id = String(r.id ?? "");
-                    return (
-                      <option key={id} value={id}>
-                        {r.name ?? r.email ?? "Unnamed"}
-                      </option>
-                    );
-                  })}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block">
                   Department
                 </label>
                 <input
@@ -734,7 +723,7 @@ export default function ApplicationsPage() {
                             <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 block truncate">
                               {meta.emailDisplay}
                             </span>
-                            <ApplicantTypeBadge internal={!!app.applicantUser} />
+                            <ApplicantTypeBadge isEmployee={meta.isEmployee} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
@@ -754,10 +743,6 @@ export default function ApplicationsPage() {
                           <div>
                             <span className="text-[#8c9097] dark:text-white/50 block">Applied</span>
                             <span className="text-defaulttextcolor dark:text-white/80">{formatDate(meta.appliedAt)}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#8c9097] dark:text-white/50 block">Recruiter</span>
-                            <span className="text-defaulttextcolor dark:text-white/80 truncate block">{meta.recruiterName}</span>
                           </div>
                         </div>
                         <div>
@@ -807,7 +792,6 @@ export default function ApplicationsPage() {
                         <th scope="col" className="!text-start min-w-[8rem]">Department</th>
                         <th scope="col" className="!text-start min-w-[11rem]">Status</th>
                         <th scope="col" className="!text-start whitespace-nowrap">Applied Date</th>
-                        <th scope="col" className="!text-start min-w-[8rem]">Recruiter</th>
                         <th scope="col" className="!text-start whitespace-nowrap">Resume</th>
                         <th scope="col" className="!text-end min-w-[11rem]">Actions</th>
                       </tr>
@@ -836,7 +820,7 @@ export default function ApplicationsPage() {
                                   <span className="text-[0.6875rem] text-[#8c9097] dark:text-white/50 truncate block max-w-[14rem]">
                                     {meta.emailDisplay}
                                   </span>
-                                  <ApplicantTypeBadge internal={!!app.applicantUser} />
+                                  <ApplicantTypeBadge isEmployee={meta.isEmployee} />
                                 </div>
                               </div>
                             </td>
@@ -863,9 +847,6 @@ export default function ApplicationsPage() {
                             </td>
                             <td className="align-middle whitespace-nowrap">
                               <span title={meta.appliedAt ?? ""}>{formatDate(meta.appliedAt)}</span>
-                            </td>
-                            <td className="align-middle whitespace-nowrap">
-                              <span className="text-[#8c9097] dark:text-white/70">{meta.recruiterName}</span>
                             </td>
                             <td className="align-middle whitespace-nowrap">
                               {meta.resumeUrl ? (

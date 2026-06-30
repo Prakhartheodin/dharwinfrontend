@@ -39,6 +39,8 @@ export interface JobApplication {
   notes?: string | null;
   createdAt?: string;
   updatedAt?: string;
+  /** Virtual mirror of createdAt (toJSON strips raw createdAt); use this for the application date. */
+  appliedAt?: string;
 }
 
 export interface JobApplicationsListParams {

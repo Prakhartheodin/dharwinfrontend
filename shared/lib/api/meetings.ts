@@ -147,6 +147,22 @@ export async function moveMeetingToPreboarding(id: string): Promise<{ moved: boo
   return data;
 }
 
+/**
+ * Internal transfer for a self-applied EXISTING employee after a selected interview. Updates the same
+ * employee record (designation/department), no new offer/placement, keeps employeeId. Backend rejects
+ * non-employees and resigned employees (use the hire/rehire flow instead).
+ */
+export async function internalTransferEmployee(
+  id: string,
+  body: { designation?: string; departmentId?: string; effectiveDate?: string } = {}
+): Promise<{ transferred: boolean; message: string; transferId: string }> {
+  const { data } = await apiClient.post<{ transferred: boolean; message: string; transferId: string }>(
+    `/meetings/${id}/internal-transfer`,
+    body
+  );
+  return data;
+}
+
 export interface MeetingRecording {
   id: string;
   meetingId: string;

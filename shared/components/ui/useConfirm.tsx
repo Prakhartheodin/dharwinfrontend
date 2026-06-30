@@ -6,7 +6,9 @@ export interface ConfirmOptions {
   message: React.ReactNode
   confirmLabel?: string
   cancelLabel?: string
-  tone?: 'danger' | 'primary'
+  tone?: 'danger' | 'primary' | 'success'
+  /** Single-button mode — hides the cancel button. Use for info / success acknowledgements. */
+  hideCancel?: boolean
 }
 
 /**
@@ -62,8 +64,16 @@ function ConfirmDialog({
     confirmLabel = 'Confirm',
     cancelLabel = 'Cancel',
     tone = 'primary',
+    hideCancel = false,
   } = options
   const confirmRef = useRef<HTMLButtonElement>(null)
+
+  const toneMap = {
+    primary: { wrap: 'bg-primary/10 text-primary', icon: 'ri-question-line', btn: 'ti-btn-primary' },
+    danger: { wrap: 'bg-danger/10 text-danger', icon: 'ri-error-warning-line', btn: 'ti-btn-danger' },
+    success: { wrap: 'bg-success/10 text-success', icon: 'ri-checkbox-circle-line', btn: 'ti-btn-success' },
+  } as const
+  const t = toneMap[tone]
 
   useEffect(() => {
     confirmRef.current?.focus()
@@ -87,11 +97,9 @@ function ConfirmDialog({
       <div className="w-full max-w-md overflow-hidden rounded-xl border border-defaultborder bg-white shadow-xl dark:border-defaultborder/10 dark:bg-bodybg">
         <div className="flex items-start gap-3 border-b border-defaultborder/70 px-5 py-4 dark:border-defaultborder/10">
           <span
-            className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-              tone === 'danger' ? 'bg-danger/10 text-danger' : 'bg-primary/10 text-primary'
-            }`}
+            className={`mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${t.wrap}`}
           >
-            <i className={`${tone === 'danger' ? 'ri-error-warning-line' : 'ri-question-line'} text-lg`} aria-hidden />
+            <i className={`${t.icon} text-lg`} aria-hidden />
           </span>
           <div className="min-w-0">
             <h3 id="confirm-dialog-title" className="text-base font-semibold text-defaulttextcolor dark:text-white">
@@ -101,19 +109,19 @@ function ConfirmDialog({
           </div>
         </div>
         <div className="flex justify-end gap-2 bg-light/30 px-5 py-3.5 dark:bg-white/[0.02]">
-          <button
-            type="button"
-            className="ti-btn ti-btn-light !min-h-[44px] !py-2 !px-4 !text-sm font-medium"
-            onClick={onCancel}
-          >
-            {cancelLabel}
-          </button>
+          {!hideCancel && (
+            <button
+              type="button"
+              className="ti-btn ti-btn-light !min-h-[44px] !py-2 !px-4 !text-sm font-medium"
+              onClick={onCancel}
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             ref={confirmRef}
             type="button"
-            className={`ti-btn !min-h-[44px] !py-2 !px-4 !text-sm font-medium ${
-              tone === 'danger' ? 'ti-btn-danger' : 'ti-btn-primary'
-            }`}
+            className={`ti-btn !min-h-[44px] !py-2 !px-4 !text-sm font-medium ${t.btn}`}
             onClick={onConfirm}
           >
             {confirmLabel}
