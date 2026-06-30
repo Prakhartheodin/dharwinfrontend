@@ -16,6 +16,7 @@ import CallRecordings from "./_components/CallRecordings";
 import CallAnnotations from "./_components/CallAnnotations";
 import Dialpad from "./_components/Dialpad";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
+import { backfillTwilioDialerCalls } from "@/shared/lib/api/telephony";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
 import { useChatSocket, type CallUpdateData } from "@/shared/contexts/ChatSocketContext";
@@ -205,6 +206,7 @@ const Calling = () => {
   const [chatTotal, setChatTotal] = useState(0);
   const [chatPages, setChatPages] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
   const [settingUpExtractions, setSettingUpExtractions] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
@@ -440,6 +442,19 @@ const Calling = () => {
     }
   };
 
+  const handleBackfillDialer = async () => {
+    if (!canCreateCalls) return;
+    setBackfilling(true);
+    try {
+      await backfillTwilioDialerCalls({ limit: 500 });
+      await fetchRecords();
+    } catch (e) {
+      setError(apiErrMsg(e, "Dialer backfill failed"));
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
   const handleSetupExtractions = async () => {
     if (!canCreateCalls) return;
     setSettingUpExtractions(true);
@@ -602,6 +617,25 @@ const Calling = () => {
                         <>
                           <i className="ri-refresh-line font-semibold align-middle me-1" />
                           Sync Telephony
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleBackfillDialer}
+                      disabled={backfilling}
+                      title="Import historical Twilio dialer call logs + recordings"
+                      className="ti-btn ti-btn-success-full !py-1 !px-2.5 !text-[0.75rem] disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {backfilling ? (
+                        <>
+                          <span className="animate-spin inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full me-1.5" />
+                          Importing…
+                        </>
+                      ) : (
+                        <>
+                          <i className="ri-dial-pad-line font-semibold align-middle me-1" />
+                          Sync Dialer
                         </>
                       )}
                     </button>

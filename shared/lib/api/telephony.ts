@@ -135,6 +135,22 @@ export async function setTelephonyRecording(
   return res.data;
 }
 
+export type BackfillTwilioResponse = {
+  success: boolean;
+  scanned: number;
+  upserted: number;
+  archived: number;
+  errors: number;
+};
+
+/** Pull historical Twilio call logs + recordings into CRM call records. */
+export async function backfillTwilioDialerCalls(
+  params: { limit?: number; force?: boolean } = {}
+): Promise<BackfillTwilioResponse> {
+  const res = await apiClient.post<BackfillTwilioResponse>("/plivo/backfill-twilio", params);
+  return res.data;
+}
+
 export type TelephonySdkTokenResponse = {
   success: boolean;
   token: string;
