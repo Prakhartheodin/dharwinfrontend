@@ -107,6 +107,24 @@ export const ACTION_PERMISSIONS: Record<string, ActionRule> = Object.freeze({
     anyOf: ["create", "edit", "delete"],
   },
 
+  // Granular call sub-features (separate role toggles under Communication)
+  toggle_call_recording: {
+    prefixes: ["communication.call-recording", "call-recording"],
+    anyOf: ["create", "edit"],
+  },
+  view_call_transcripts: {
+    prefixes: ["communication.call-transcripts", "call-transcripts"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  view_call_ai: {
+    prefixes: ["communication.call-ai", "call-ai"],
+    anyOf: ["view", "create", "edit", "delete"],
+  },
+  manage_call_ai: {
+    prefixes: ["communication.call-ai", "call-ai"],
+    anyOf: ["create", "edit", "delete"],
+  },
+
   // Training categories (course assignment tab)
   // Cross-deps (backend): view loads GET /categories + GET /modules + GET /mentors + GET /modules/:id/employees.
   // Assign/remove employees on a module row needs training.modules:edit (modules.manage), not categories:edit alone.

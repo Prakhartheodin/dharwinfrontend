@@ -28,6 +28,17 @@ const TYPE_OPTIONS: { value: TelephonyNumberType; label: string }[] = [
   { value: "mobile", label: "Mobile" },
 ];
 
+function formatNumberType(t: string): string {
+  return TYPE_OPTIONS.find((o) => o.value === t)?.label ?? (t || "—");
+}
+
+// Region/city is empty for non-geographic (toll-free) numbers — label it clearly.
+function formatRegionCity(region: string, city: string, type: string): string {
+  const geo = [region, city].filter(Boolean).join(" · ");
+  if (geo) return geo;
+  return type === "tollfree" ? "Nationwide" : "—";
+}
+
 function formatRate(rate: string | number | null): string {
   if (rate == null || rate === "") return "—";
   const n = Number(rate);
@@ -45,6 +56,30 @@ function axiosMessage(e: unknown, fallback: string): string {
     return (e.response?.data as { message?: string })?.message ?? e.message ?? fallback;
   }
   return e instanceof Error ? e.message : fallback;
+}
+
+// Turn provider/API errors into an actionable message + hint. Hides raw internal
+// paths (e.g. the Twilio ".../AvailablePhoneNumbers/IN/Local.json was not found" 404,
+// which really means the country/type combo has no catalogue).
+function humanizeSearchError(
+  raw: string,
+  countryLabel: string,
+  typeLabel: string
+): { title: string; hint: string; raw?: string } {
+  const r = raw.toLowerCase();
+  if (r.includes("availablephonenumbers") && (r.includes("not found") || r.includes("404"))) {
+    return {
+      title: `No ${typeLabel.toLowerCase()} numbers available for ${countryLabel}`,
+      hint: "This country and number-type combination isn't in the telephony catalogue. Try a different number type or country.",
+    };
+  }
+  if (r.includes("authenticate") || r.includes("401") || r.includes("credentials")) {
+    return {
+      title: "Telephony account not connected",
+      hint: "The connected telephony credentials were rejected. Check the account configuration and try again.",
+    };
+  }
+  return { title: "Couldn't search numbers", hint: raw };
 }
 
 export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: () => void } = {}) {
@@ -104,6 +139,26 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
   useEffect(() => {
     void loadOwned();
   }, [loadOwned]);
+
+  const countryLabel = useMemo(
+    () => COUNTRY_OPTIONS.find((c) => c.value === countryIso)?.label ?? countryIso,
+    [countryIso]
+  );
+  const typeLabel = useMemo(
+    () => TYPE_OPTIONS.find((t) => t.value === type)?.label ?? type,
+    [type]
+  );
+
+  // Twilio's number search omits setup + usage rates; hide those columns when no
+  // row carries the data so the table doesn't read as a wall of "—".
+  const anySetup = useMemo(
+    () => results.some((n) => n.setupRate != null && n.setupRate !== ""),
+    [results]
+  );
+  const anyUsage = useMemo(
+    () => results.some((n) => n.voiceRate != null || n.smsRate != null),
+    [results]
+  );
 
   const services = useMemo(() => {
     const parts: string[] = [];
@@ -501,13 +556,40 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
         </div>
       </form>
 
-      {error ? (
-        <div
-          className="flex gap-3 rounded-xl border border-danger/25 bg-danger/[0.07] px-4 py-3 text-sm text-danger dark:bg-danger/10"
-          role="alert"
-        >
-          <i className="ri-error-warning-line mt-0.5 shrink-0 text-lg" aria-hidden />
-          <span>{error}</span>
+      {error
+        ? (() => {
+            const e = humanizeSearchError(error, countryLabel, typeLabel);
+            return (
+              <div
+                className="flex gap-3 rounded-xl border border-danger/25 bg-danger/[0.06] px-4 py-3.5 dark:bg-danger/10"
+                role="alert"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger/10 text-danger">
+                  <i className="ri-error-warning-line text-lg" aria-hidden />
+                </span>
+                <div className="min-w-0 pt-0.5">
+                  <p className="mb-0.5 text-sm font-semibold text-danger">{e.title}</p>
+                  <p className="mb-0 break-words text-xs leading-relaxed text-danger/80">{e.hint}</p>
+                </div>
+              </div>
+            );
+          })()
+        : null}
+
+      {/* Searching skeleton */}
+      {searching ? (
+        <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/60 dark:border-white/10 dark:bg-white/[0.03]">
+          <div className="flex items-center gap-2 border-b border-defaultborder/50 px-4 py-3 text-xs font-medium text-defaulttextcolor/55 dark:border-white/10 dark:text-white/45" role="status">
+            <i className="ri-loader-4-line animate-spin text-sm" aria-hidden />
+            Searching {typeLabel.toLowerCase()} numbers in {countryLabel}…
+          </div>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={`sk-${i}`} className="flex items-center gap-4 border-b border-defaultborder/40 px-4 py-3.5 last:border-0 dark:border-white/5">
+              <div className="h-3 w-36 animate-pulse rounded bg-defaultborder/50 dark:bg-white/10" />
+              <div className="h-3 w-16 animate-pulse rounded bg-defaultborder/40 dark:bg-white/[0.07]" />
+              <div className="ml-auto h-6 w-16 animate-pulse rounded-full bg-defaultborder/40 dark:bg-white/[0.07]" />
+            </div>
+          ))}
         </div>
       ) : null}
 
@@ -531,8 +613,8 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
                     <th className="px-4 py-3 font-semibold">Type</th>
                     <th className="px-4 py-3 font-semibold">Region / City</th>
                     <th className="px-4 py-3 font-semibold">Monthly</th>
-                    <th className="px-4 py-3 font-semibold">Setup</th>
-                    <th className="px-4 py-3 font-semibold">Usage rates</th>
+                    {anySetup ? <th className="px-4 py-3 font-semibold">Setup</th> : null}
+                    {anyUsage ? <th className="px-4 py-3 font-semibold">Usage rates</th> : null}
                     <th className="px-4 py-3 font-semibold">Capabilities</th>
                     <th className="px-4 py-3 text-right font-semibold">Action</th>
                   </tr>
@@ -544,9 +626,9 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
                     return (
                       <tr
                         key={n.number}
-                        className="border-b border-defaultborder/40 last:border-0 dark:border-white/5"
+                        className="border-b border-defaultborder/40 transition-colors last:border-0 hover:bg-defaultbackground/40 dark:border-white/5 dark:hover:bg-white/[0.02]"
                       >
-                        <td className="px-4 py-3 font-medium text-defaulttextcolor dark:text-white">
+                        <td className="px-4 py-3 font-mono font-medium tabular-nums text-defaulttextcolor dark:text-white">
                           {n.number}
                           {n.restriction || n.restrictionText ? (
                             <span
@@ -558,27 +640,31 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
                             </span>
                           ) : null}
                         </td>
-                        <td className="px-4 py-3 capitalize text-defaulttextcolor/75 dark:text-white/65">
-                          {n.type || "—"}
+                        <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">
+                          {formatNumberType(n.type)}
                         </td>
                         <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">
-                          {[n.region, n.city].filter(Boolean).join(" · ") || "—"}
+                          {formatRegionCity(n.region, n.city, n.type)}
                         </td>
-                        <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">
+                        <td className="px-4 py-3 tabular-nums text-defaulttextcolor/75 dark:text-white/65">
                           {formatRate(n.monthlyRentalRate)}
                         </td>
-                        <td className="px-4 py-3 text-defaulttextcolor/75 dark:text-white/65">
-                          {formatRate(n.setupRate)}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-defaulttextcolor/65 dark:text-white/55">
-                          <div className="flex flex-col gap-0.5">
-                            {n.voiceRate != null ? <span>Voice {formatRate(n.voiceRate)}/min</span> : null}
-                            {n.smsRate != null ? <span>SMS {formatRate(n.smsRate)}/msg</span> : null}
-                            {n.voiceRate == null && n.smsRate == null ? (
-                              <span className="text-defaulttextcolor/40">—</span>
-                            ) : null}
-                          </div>
-                        </td>
+                        {anySetup ? (
+                          <td className="px-4 py-3 tabular-nums text-defaulttextcolor/75 dark:text-white/65">
+                            {formatRate(n.setupRate)}
+                          </td>
+                        ) : null}
+                        {anyUsage ? (
+                          <td className="px-4 py-3 text-xs tabular-nums text-defaulttextcolor/65 dark:text-white/55">
+                            <div className="flex flex-col gap-0.5">
+                              {n.voiceRate != null ? <span>Voice {formatRate(n.voiceRate)}/min</span> : null}
+                              {n.smsRate != null ? <span>SMS {formatRate(n.smsRate)}/msg</span> : null}
+                              {n.voiceRate == null && n.smsRate == null ? (
+                                <span className="text-defaulttextcolor/40">—</span>
+                              ) : null}
+                            </div>
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {n.voiceEnabled ? (
@@ -652,24 +738,76 @@ export default function CompanyWorkNumberPanel({ onPurchased }: { onPurchased?: 
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
           role="dialog"
           aria-modal="true"
+          aria-labelledby="buy-confirm-title"
+          onClick={() => setConfirmNumber(null)}
         >
-          <div className="w-full max-w-md rounded-2xl border border-defaultborder/70 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-bodybg">
-            <div className="mb-3 flex items-center gap-3">
+          <div
+            className="w-full max-w-md rounded-2xl border border-defaultborder/70 bg-white p-6 shadow-xl dark:border-white/10 dark:bg-bodybg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
                 <i className="ri-alert-line text-xl" aria-hidden />
               </span>
-              <h6 className="text-base font-semibold text-defaulttextcolor dark:text-white">Confirm purchase</h6>
+              <h6 id="buy-confirm-title" className="text-base font-semibold text-defaulttextcolor dark:text-white">
+                Confirm purchase
+              </h6>
             </div>
-            <p className="mb-4 text-sm leading-relaxed text-defaulttextcolor/70 dark:text-white/60">
-              You are about to buy{" "}
-              <span className="font-semibold text-defaulttextcolor dark:text-white">{confirmNumber.number}</span> for{" "}
-              <span className="font-semibold">{formatRate(confirmNumber.monthlyRentalRate)}/mo</span>
-              {confirmNumber.setupRate != null ? (
-                <> plus a {formatRate(confirmNumber.setupRate)} setup fee</>
-              ) : null}
-              . This is a <span className="font-semibold text-danger">real, paid action</span> charged to the telephony
-              account and cannot be undone here.
+
+            <div className="mb-4 rounded-xl border border-defaultborder/60 bg-defaultbackground/40 p-4 dark:border-white/10 dark:bg-white/[0.03]">
+              <p className="mb-3 font-mono text-lg font-semibold tabular-nums text-defaulttextcolor dark:text-white">
+                {confirmNumber.number}
+              </p>
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                <dt className="text-defaulttextcolor/55 dark:text-white/45">Type</dt>
+                <dd className="text-right font-medium text-defaulttextcolor dark:text-white">
+                  {formatNumberType(confirmNumber.type)}
+                </dd>
+                <dt className="text-defaulttextcolor/55 dark:text-white/45">Region / City</dt>
+                <dd className="text-right font-medium text-defaulttextcolor dark:text-white">
+                  {formatRegionCity(confirmNumber.region, confirmNumber.city, confirmNumber.type)}
+                </dd>
+                <dt className="text-defaulttextcolor/55 dark:text-white/45">Monthly</dt>
+                <dd className="text-right font-semibold tabular-nums text-defaulttextcolor dark:text-white">
+                  {formatRate(confirmNumber.monthlyRentalRate)}/mo
+                </dd>
+                {confirmNumber.setupRate != null ? (
+                  <>
+                    <dt className="text-defaulttextcolor/55 dark:text-white/45">Setup fee</dt>
+                    <dd className="text-right font-semibold tabular-nums text-defaulttextcolor dark:text-white">
+                      {formatRate(confirmNumber.setupRate)}
+                    </dd>
+                  </>
+                ) : null}
+                <dt className="text-defaulttextcolor/55 dark:text-white/45">Capabilities</dt>
+                <dd className="flex flex-wrap justify-end gap-1">
+                  {confirmNumber.voiceEnabled ? (
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-emerald-700 dark:text-emerald-300">
+                      Voice
+                    </span>
+                  ) : null}
+                  {confirmNumber.smsEnabled ? (
+                    <span className="rounded-full bg-sky-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-sky-700 dark:text-sky-300">
+                      SMS
+                    </span>
+                  ) : null}
+                  {confirmNumber.mmsEnabled ? (
+                    <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[0.6875rem] font-medium text-violet-700 dark:text-violet-300">
+                      MMS
+                    </span>
+                  ) : null}
+                  {!confirmNumber.voiceEnabled && !confirmNumber.smsEnabled && !confirmNumber.mmsEnabled ? (
+                    <span className="text-defaulttextcolor/40">—</span>
+                  ) : null}
+                </dd>
+              </dl>
+            </div>
+
+            <p className="mb-4 text-xs leading-relaxed text-defaulttextcolor/60 dark:text-white/50">
+              This is a <span className="font-semibold text-danger">real, paid action</span> charged to the connected
+              telephony account and cannot be undone here.
             </p>
+
             <div className="flex justify-end gap-2">
               <button
                 type="button"

@@ -56,6 +56,7 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [showUnassignedOnly, setShowUnassignedOnly] = useState(false);
+  const [rosterOpen, setRosterOpen] = useState(false);
   const [draftByUserId, setDraftByUserId] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [rowFlash, setRowFlash] = useState<Record<string, "saved" | null>>({});
@@ -236,30 +237,50 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
 
       <div className="min-w-0 overflow-hidden rounded-2xl border border-defaultborder/70 bg-white shadow-sm dark:border-white/10 dark:bg-bodybg">
         <div className="flex flex-col gap-2 border-b border-defaultborder/60 px-3 py-3 dark:border-white/10 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
-          <h6 className="mb-0 font-semibold text-defaulttextcolor dark:text-white">User roster</h6>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              type="search"
-              className="form-control form-control-sm !w-44 !rounded-lg"
-              placeholder="Search users…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
-                showUnassignedOnly
-                  ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
-                  : "border-defaultborder/60 text-defaulttextcolor/70"
+          <button
+            type="button"
+            className="group -mx-1 flex min-w-0 items-center gap-2 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-defaultbackground/60 dark:hover:bg-white/[0.04]"
+            onClick={() => setRosterOpen((v) => !v)}
+            aria-expanded={rosterOpen}
+            aria-controls="user-roster-table"
+          >
+            <i
+              className={`ri-arrow-right-s-line text-lg text-defaulttextcolor/60 transition-transform duration-200 dark:text-white/60 ${
+                rosterOpen ? "rotate-90" : ""
               }`}
-              onClick={() => setShowUnassignedOnly((v) => !v)}
-            >
-              {showUnassignedOnly ? `Missing only · ${unassignedCount}` : `Show missing · ${unassignedCount}`}
-            </button>
-          </div>
+              aria-hidden
+            />
+            <h6 className="mb-0 font-semibold text-defaulttextcolor dark:text-white">User roster</h6>
+            <span className="rounded-full bg-defaultbackground/70 px-2 py-0.5 text-xs font-medium text-defaulttextcolor/60 dark:bg-white/[0.06] dark:text-white/50">
+              {users.length}
+            </span>
+          </button>
+          {rosterOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                className="form-control form-control-sm !w-44 !rounded-lg"
+                placeholder="Search users…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              <button
+                type="button"
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${
+                  showUnassignedOnly
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                    : "border-defaultborder/60 text-defaulttextcolor/70"
+                }`}
+                onClick={() => setShowUnassignedOnly((v) => !v)}
+              >
+                {showUnassignedOnly ? `Missing only · ${unassignedCount}` : `Show missing · ${unassignedCount}`}
+              </button>
+            </div>
+          ) : null}
         </div>
 
-        <div className={`${pipelineStyles.tableWrap} overflow-x-auto`}>
+        {rosterOpen ? (
+        <div id="user-roster-table" className={`${pipelineStyles.tableWrap} overflow-x-auto`}>
           <table className={`ti-custom-table full-width text-left text-sm ${pipelineStyles.tableWide}`}>
             <thead className="bg-defaultbackground/50 text-[0.6875rem] font-semibold uppercase tracking-wide text-defaulttextcolor/55 dark:bg-white/[0.04] dark:text-white/45">
               <tr>
@@ -373,6 +394,7 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
             </tbody>
           </table>
         </div>
+        ) : null}
       </div>
     </div>
   );

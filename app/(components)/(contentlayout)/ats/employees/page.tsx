@@ -8,7 +8,6 @@ import { createPortal } from 'react-dom'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import Link from 'next/link'
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
-import CallButton from '@/shared/components/CallButton'
 import CallNowButton from '@/shared/components/CallNowButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
 import {
@@ -3434,7 +3433,6 @@ const Candidates = () => {
                         <i className="ri-phone-line"></i>
                         {candidateDetails.phone}
                       </span>
-                      <CallButton phone={candidateDetails.phone} />
                     </div>
                   </div>
                 ) : null

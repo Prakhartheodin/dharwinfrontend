@@ -14,7 +14,6 @@ import {
 import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
 import CallAnnotations from "./_components/CallAnnotations";
-import Dialpad from "./_components/Dialpad";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { backfillTwilioDialerCalls } from "@/shared/lib/api/telephony";
 import { useAuth } from "@/shared/contexts/auth-context";
@@ -183,11 +182,14 @@ function visiblePageIndices(current: number, total: number): (number | "gap")[] 
 }
 
 const Calling = () => {
-  const { isAdministrator: authIsAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
+  const { isAdministrator: authIsAdministrator, isPlatformSuperUser, permissions } = useAuth();
   const authSubject = { permissions, isPlatformSuperUser, isAdministrator: authIsAdministrator };
   const canCreateCalls = hasPermission(authSubject, "create_call");
   const canUpdateCalls = hasPermission(authSubject, "update_call");
   const canDeleteCalls = hasPermission(authSubject, "delete_call");
+  const canViewTranscripts = hasPermission(authSubject, "view_call_transcripts");
+  const canViewAi = hasPermission(authSubject, "view_call_ai");
+  const canManageAi = hasPermission(authSubject, "manage_call_ai");
   const isAdministrator = isPlatformSuperUser || authIsAdministrator;
 
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -212,13 +214,6 @@ const Calling = () => {
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
   /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
   const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
-  const [showDialer, setShowDialer] = useState(false);
-
-  useEffect(() => {
-    if (permissionsLoaded && canCreateCalls) {
-      setShowDialer(true);
-    }
-  }, [permissionsLoaded, canCreateCalls]);
 
   const PANEL_TRANSITION_MS = 320;
 
@@ -519,11 +514,6 @@ const Calling = () => {
   return (
     <Fragment>
       <Seo title={"Calling"} />
-      {canCreateCalls && showDialer ? (
-        <div className="mt-5 sm:mt-6">
-          <Dialpad />
-        </div>
-      ) : null}
       {/*
         Desktop (xl+): flex row — details column animates width 0→28rem so the main table eases into
         the freed space (no overlap). Mobile: main stays full width; details stays fixed slide-over.
@@ -542,20 +532,6 @@ const Calling = () => {
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {canCreateCalls ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowDialer((v) => !v)}
-                    aria-pressed={showDialer}
-                    title="Browser softphone or click-to-call (requires telephony provider config)"
-                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] ${
-                      showDialer ? "ti-btn-success-full" : "ti-btn-light"
-                    }`}
-                  >
-                    <i className="ri-dial-pad-line align-middle me-1" />
-                    Dialer
-                  </button>
-                ) : null}
                 <div className="relative">
                   <i className="ri-search-line absolute left-2.5 top-1/2 -translate-y-1/2 text-[0.85rem] text-defaulttextcolor/50 pointer-events-none" />
                   <input
@@ -639,6 +615,7 @@ const Calling = () => {
                         </>
                       )}
                     </button>
+                    {canManageAi ? (
                     <button
                       type="button"
                       onClick={handleSetupExtractions}
@@ -658,6 +635,7 @@ const Calling = () => {
                         </>
                       )}
                     </button>
+                    ) : null}
                   </>
                 ) : null}
               </div>
@@ -1210,18 +1188,21 @@ const Calling = () => {
                       {selectedCall.data.executionId || "–"}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/60 mb-1.5 flex items-center gap-1">
-                      <i className="ri-quill-pen-line text-info" />
-                      Transcript
-                    </p>
-                    <div className="p-3 rounded-lg border border-defaultborder/60 dark:border-white/10 bg-light/50 dark:bg-black/20 max-h-64 overflow-auto whitespace-pre-wrap text-[0.8rem] leading-relaxed">
-                      {selectedCall.data.transcript ||
-                        selectedCall.data.conversationTranscript ||
-                        <span className="text-defaulttextcolor/50 italic">No transcript available</span>}
+                  {canViewTranscripts ? (
+                    <div>
+                      <p className="text-[0.7rem] uppercase tracking-wide text-defaulttextcolor/60 mb-1.5 flex items-center gap-1">
+                        <i className="ri-quill-pen-line text-info" />
+                        Transcript
+                      </p>
+                      <div className="p-3 rounded-lg border border-defaultborder/60 dark:border-white/10 bg-light/50 dark:bg-black/20 max-h-64 overflow-auto whitespace-pre-wrap text-[0.8rem] leading-relaxed">
+                        {selectedCall.data.transcript ||
+                          selectedCall.data.conversationTranscript ||
+                          <span className="text-defaulttextcolor/50 italic">No transcript available</span>}
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
                   {(() => {
+                    if (!canViewAi) return null;
                     const rec = selectedCall.data as CallRecord;
                     const known = shouldShowVerificationPanel(rec);
                     // Mount for any telephony call with an executionId: the panel refreshes

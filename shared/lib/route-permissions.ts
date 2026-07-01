@@ -36,6 +36,8 @@ const PATH_ACCESS_ACTIONS: Record<string, PathAccessRule> = {
   "/ats/offers-placement": { permissionPrefixes: ["ats.offers:"], anyOf: ["view"] },
   "/ats/pre-boarding": { permissionPrefixes: ["ats.pre-boarding:"], anyOf: ["view"] },
   "/ats/onboarding": { permissionPrefixes: ["ats.onboarding:"], anyOf: ["view"] },
+  /** Dialer (softphone) page: placing calls needs the create action, not just view. */
+  "/communication/dialer": { permissionPrefixes: ["communication.calling:"], anyOf: ["create"] },
   "/ats/employees": {
     permissionPrefixes: EMPLOYEES_PATH_PREFIXES,
     anyOf: ["view", "create", "edit", "delete"],
@@ -104,7 +106,11 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/organization/scenarios": "organization.scenarios:",
   // Communication
   "/communication/calling": "communication.calling:",
-  "/communication/company-work-numbers": "communication.company-work-numbers:",
+  "/communication/dialer": "communication.calling:",
+  /** Work Numbers page is gated by the single Settings "Company work number" toggle
+   *  (the duplicate Communication matrix row was removed). Legacy roles that still hold
+   *  communication.company-work-numbers:* keep access via the alias below. */
+  "/communication/company-work-numbers": "settings.company-number:",
   // Training Management
   "/training/curriculum": "training.modules:",
   "/training/attendance": "training.attendance:",
@@ -143,6 +149,8 @@ const PERMISSION_PREFIX_ALIASES: Record<string, string[]> = {
   "ats.employees:": ["ats.candidates:"],
   /** Kanban board: backend grants tasks.read → kanban.read, so any role with project.tasks:* can render the page. */
   "project.kanban:": ["project.tasks:"],
+  /** Work Numbers page: Settings toggle is canonical; legacy roles kept the old Communication row string. */
+  "settings.company-number:": ["communication.company-work-numbers:"],
   ...ORGANIZATION_ROUTE_PREFIX_ALIASES,
 };
 

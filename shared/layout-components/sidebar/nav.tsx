@@ -27,6 +27,7 @@ const EmailIcon = <i className="bx bx-envelope side-menu__icon"></i>;
 const ChatsIcon = <i className="bx bx-message-rounded-dots side-menu__icon"></i>;
 const MeetingsCommIcon = <i className="bx bx-calendar side-menu__icon"></i>;
 const CallingIcon = <i className="bx bx-phone-call side-menu__icon"></i>;
+const DialerIcon = <i className="bx bx-grid-alt side-menu__icon"></i>;
 const RecordingsIcon = <i className="bx bx-video-recording side-menu__icon"></i>;
 const FilesStorageIcon = <i className="bx bx-folder side-menu__icon"></i>;
 
@@ -316,23 +317,23 @@ export const MenuItems: any = [
   },
 
       {
-    icon: CallingIcon,
-    title: "Calling",
+    icon: DialerIcon,
+    title: "Dialer",
         type: "link",
-    path: "/communication/calling",
+    path: "/communication/dialer",
         active: false,
         selected: false,
-        dirchange: false, 
+        dirchange: false,
       },
 
       {
     icon: CallingIcon,
-    title: "Work Numbers",
+    title: "Call Records",
         type: "link",
-    path: "/communication/company-work-numbers",
+    path: "/communication/calling",
         active: false,
         selected: false,
-        dirchange: false, 
+        dirchange: false,
       },
 
       {

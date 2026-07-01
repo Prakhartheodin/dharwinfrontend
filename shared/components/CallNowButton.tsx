@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Dialpad from "@/app/(components)/(contentlayout)/communication/calling/_components/Dialpad";
 import { useModalBehavior } from "@/shared/hooks/useModalBehavior";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 // Bare 10-digit → India (+91), matching CallButton / backend normalizePhone.
 // The dialer field stays editable so a wrong guess can be corrected.
@@ -102,7 +104,12 @@ export default function CallNowButton({
   className?: string;
   title?: string;
 }) {
+  const { permissions, isPlatformSuperUser, isAdministrator } = useAuth();
   const [open, setOpen] = useState(false);
+  // Only users who can place calls get the click-to-call action.
+  if (!hasPermission({ permissions, isPlatformSuperUser, isAdministrator }, "create_call")) {
+    return null;
+  }
   const e164 = toE164(phone || "");
   return (
     <>
