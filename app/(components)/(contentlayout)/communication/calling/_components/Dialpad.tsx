@@ -88,12 +88,14 @@ export default function Dialpad({
   onCallPlaced,
   contactName,
   contactAvatar,
+  dialTarget,
 }: {
   defaultTo?: string;
   embedded?: boolean;
   onCallPlaced?: () => void;
   contactName?: string;
   contactAvatar?: string;
+  dialTarget?: string;
 } = {}) {
   const [mode, setMode] = useState<Mode>("browser");
   const [provider, setProvider] = useState<TelephonyProvider>("plivo");
@@ -178,6 +180,22 @@ export default function Dialpad({
     [agentCountry, swapDial]
   );
 
+  // Normalize a raw number to E.164, set the dial field, and sync the country
+  // dropdown by longest dial-code prefix. Shared by ?to= prefill and dialTarget.
+  const applyDialNumber = useCallback((raw: string) => {
+    const e164 = toE164(raw.trim());
+    if (!isE164(e164)) return false;
+    setDest(e164);
+    // Sync the country dropdown to the number's dial code (longest prefix
+    // wins, so +91 → IN not a shorter match). Without this the selector
+    // stays on its default and swapDial would strip the wrong prefix.
+    const match = DIAL_OPTIONS.filter((o) => o.dialCode && e164.startsWith(o.dialCode)).sort(
+      (a, b) => b.dialCode.length - a.dialCode.length
+    )[0];
+    if (match) setCountry(match.code);
+    return true;
+  }, []);
+
   // Prefill the dial field from a ?to= deep link (profile click-to-call). Applied
   // once on mount so the user can still edit/clear it afterwards.
   const searchParams = useSearchParams();
@@ -186,19 +204,15 @@ export default function Dialpad({
     if (prefilledRef.current) return;
     const raw = defaultTo ?? searchParams.get("to");
     if (!raw) return;
-    const e164 = toE164(raw.trim());
-    if (isE164(e164)) {
-      setDest(e164);
-      // Sync the country dropdown to the number's dial code (longest prefix
-      // wins, so +91 → IN not a shorter match). Without this the selector
-      // stays on its default and swapDial would strip the wrong prefix.
-      const match = DIAL_OPTIONS.filter((o) => o.dialCode && e164.startsWith(o.dialCode)).sort(
-        (a, b) => b.dialCode.length - a.dialCode.length
-      )[0];
-      if (match) setCountry(match.code);
-      prefilledRef.current = true;
-    }
-  }, [searchParams, defaultTo]);
+    if (applyDialNumber(raw)) prefilledRef.current = true;
+  }, [searchParams, defaultTo, applyDialNumber]);
+
+  // External dial target (e.g. clicking a recent call). Idle-only so it never
+  // clobbers a live call's number. Reuses the same E.164 + country normalization.
+  useEffect(() => {
+    if (!dialTarget || callState !== "idle") return;
+    applyDialNumber(dialTarget);
+  }, [dialTarget, callState, applyDialNumber]);
 
   const press = useCallback((k: string) => {
     setDest((prev) => (prev === "+" && k !== "+" ? `+${k}` : prev + k));
