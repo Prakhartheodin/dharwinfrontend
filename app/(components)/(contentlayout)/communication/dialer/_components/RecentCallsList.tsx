@@ -31,22 +31,34 @@ export default function RecentCallsList({ activeView, selectedCallId, onSelectCa
   const [pins, setPins] = useState<string[]>([]);
   const { onCallUpdate } = useChatSocket();
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null); setForbidden(false);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) { setLoading(true); setError(null); setForbidden(false); }
     try {
       // P2: replace with a virtualized list if this grows beyond ~200 records.
-      const res = await getBolnaCallRecords({ limit: 50, sortBy: "createdAt", order: "desc" });
+      // channel:"dialer" → only this user's own dialer-placed calls (no candidate/job calls).
+      const res = await getBolnaCallRecords({ limit: 50, sortBy: "createdAt", order: "desc", channel: "dialer" });
       setRecords(res.records || []);
     } catch (e) {
+      if (silent) return; // transient poll/socket blip: keep showing the existing calls
       const status = (e as { response?: { status?: number } })?.response?.status;
       if (status === 401 || status === 403) setForbidden(true);
       else setError(e instanceof Error ? e.message : "Failed to load calls");
-    } finally { setLoading(false); }
+    } finally { if (!silent) setLoading(false); }
   }, []);
 
   useEffect(() => { setPins(loadPins()); void load(); }, [load]);
   // Live refresh: backend callSync emits call:update as calls complete/record.
-  useEffect(() => onCallUpdate(() => void load()), [onCallUpdate, load]);
+  useEffect(() => onCallUpdate(() => void load(true)), [onCallUpdate, load]);
+  // Fallback poll: dialer calls finalize via HMAC-gated Plivo webhooks that don't emit
+  // call:update, so the socket alone misses them. Silently refresh every 20s while the
+  // tab is visible (and immediately on re-focus). ponytail: swap for a socket emit on the
+  // dialer webhook path if the poll load ever matters.
+  useEffect(() => {
+    const tick = () => { if (!document.hidden) void load(true); };
+    const id = setInterval(tick, 20000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, [load]);
 
   const togglePin = useCallback((id: string) => {
     setPins((prev) => {

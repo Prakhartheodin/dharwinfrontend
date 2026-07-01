@@ -161,6 +161,7 @@ export type GetCallRecordsParams = {
   language?: string;
   sortBy?: "date" | "createdAt";
   order?: "asc" | "desc";
+  channel?: "dialer";
 };
 
 export type GetCallRecordsResponse = {
