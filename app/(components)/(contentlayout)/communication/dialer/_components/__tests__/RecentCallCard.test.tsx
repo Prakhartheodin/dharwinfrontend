@@ -1,7 +1,9 @@
-import { it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import RecentCallCard from "../RecentCallCard";
 import type { CallRecord } from "@/shared/lib/api/bolna";
+
+afterEach(cleanup);
 
 const rec: CallRecord = {
   _id: "1", displayName: "John Doe", toPhoneNumber: "+919876543210",
@@ -20,4 +22,13 @@ it("renders name and number and fires callbacks", () => {
   expect(onSelect).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByLabelText("Dial"));
   expect(onDial).toHaveBeenCalledOnce();
+});
+
+it("shows a recording icon only when the call has a recording", () => {
+  const { rerender } = render(<RecentCallCard record={rec} selected={false} pinned={false}
+    onSelect={noop} onDial={noop} onTogglePin={noop} />);
+  expect(screen.queryByLabelText("has recording")).not.toBeInTheDocument();
+  rerender(<RecentCallCard record={{ ...rec, recordingUrl: "https://x/rec.mp3" }} selected={false} pinned={false}
+    onSelect={noop} onDial={noop} onTogglePin={noop} />);
+  expect(screen.getByLabelText("has recording")).toBeInTheDocument();
 });

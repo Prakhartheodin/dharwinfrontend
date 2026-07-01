@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import type { CallRecord } from "@/shared/lib/api/bolna";
-import { callName, callNumber, callDirection, isMissed, fmtDuration } from "../_lib/recentCalls";
+import { callName, callNumber, callDirection, isMissed, fmtDuration, hasRecording } from "../_lib/recentCalls";
 
 function initials(name: string): string {
   const t = name.trim();
@@ -24,6 +24,7 @@ export default function RecentCallCard({ record, selected, pinned, onSelect, onD
   const dir = callDirection(record);
   const missed = isMissed(record);
   const meta = [fmtTime(record.createdAt), fmtDuration(record.duration)].filter(Boolean).join(" · ");
+  const recorded = hasRecording(record);
   return (
     <div
       onDoubleClick={onDial}
@@ -46,6 +47,7 @@ export default function RecentCallCard({ record, selected, pinned, onSelect, onD
           <span className="flex items-center gap-1.5">
             <i className={`text-xs ${dir === "inbound" ? "ri-arrow-left-down-line text-emerald-600" : dir === "outbound" ? "ri-arrow-right-up-line text-primary" : "ri-phone-line text-defaulttextcolor/40"}`} aria-hidden />
             <span className={`truncate text-sm font-medium ${missed ? "text-danger" : "text-defaulttextcolor dark:text-white"}`}>{name}</span>
+            {recorded ? <i className="ri-play-circle-fill shrink-0 text-[0.85rem] text-primary" aria-label="has recording" title="Recording available" /> : null}
           </span>
           <span className="block truncate text-[0.72rem] text-defaulttextcolor/55 dark:text-white/45">{callNumber(record)}</span>
           {meta ? <span className="block truncate text-[0.66rem] tabular-nums text-defaulttextcolor/40 dark:text-white/35">{meta}</span> : null}
