@@ -4,7 +4,10 @@ import type { CallRecord } from "@/shared/lib/api/bolna";
 import { callName, callNumber, callDirection, fmtDuration } from "../_lib/recentCalls";
 import CallRecordings from "../../calling/_components/CallRecordings";
 
-export default function CallContextPanel({ record, onCall }: { record: CallRecord | null; onCall: (n: string) => void }) {
+export default function CallContextPanel(
+  { record, onCall, onSaveAsContact }:
+  { record: CallRecord | null; onCall: (n: string) => void; onSaveAsContact?: (record: CallRecord) => void }
+) {
   if (!record) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -55,9 +58,9 @@ export default function CallContextPanel({ record, onCall }: { record: CallRecor
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/25 hover:bg-emerald-700">
           <i className="ri-phone-line" /> Call
         </button>
-        <button type="button" disabled title="Coming soon"
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-defaultborder/70 py-2.5 text-sm font-semibold text-defaulttextcolor/50 disabled:cursor-not-allowed">
-          <i className="ri-user-add-line" /> Save as contact <span className="rounded-full bg-defaultborder/60 px-1.5 text-[0.6rem]">Soon</span>
+        <button type="button" onClick={() => record && onSaveAsContact?.(record)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-defaultborder/70 py-2.5 text-sm font-semibold text-defaulttextcolor/70 hover:bg-black/[0.03] dark:hover:bg-white/5">
+          <i className="ri-user-add-line" /> Save as contact
         </button>
       </div>
     </div>

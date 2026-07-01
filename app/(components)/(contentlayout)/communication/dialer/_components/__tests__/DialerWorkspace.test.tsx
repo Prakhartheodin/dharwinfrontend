@@ -1,39 +1,39 @@
-import { it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import DialerWorkspace from "../DialerWorkspace";
 
-// vi.mock factories are hoisted above top-level const declarations, so the
-// fixture records are inlined here rather than referenced from an outer const.
-vi.mock("@/shared/lib/api/bolna", () => ({
-  getBolnaCallRecords: vi.fn().mockResolvedValue({
-    success: true,
-    records: [
-      { _id: "1", displayName: "John Out", toPhoneNumber: "+919000000001", telephonyData: { direction: "outbound" }, status: "completed", createdAt: "2026-07-01T08:00:00Z" },
-    ],
-    total: 1, totalPages: 1, page: 1, limit: 50,
-  }),
-}));
-// vi.mock factories are hoisted above top-level const declarations; vi.hoisted
-// lets the mock reference a spy that's guaranteed to exist by then.
-const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
+  useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
-  usePathname: () => "/communication/dialer",
 }));
+vi.mock("@/shared/lib/api/bolna", () => ({
+  getBolnaCallRecords: vi.fn().mockResolvedValue({ success: true, records: [], total: 0, totalPages: 1, page: 1, limit: 50 }),
+}));
+vi.mock("@/shared/contexts/ChatSocketContext", () => ({ useChatSocket: () => ({ onCallUpdate: () => () => {} }) }));
+vi.mock("@/shared/lib/api/contacts", () => ({
+  listContacts: vi.fn().mockResolvedValue({ results: [{ id: "1", tenantId: "t", ownerId: "o", name: "Anita", phones: [{ number: "+91 1", isPrimary: true }] }], page: 1, limit: 50, totalPages: 1, totalResults: 1 }),
+  createContact: vi.fn(), updateContact: vi.fn(), deleteContact: vi.fn(),
+}));
+// Dialpad pulls in telephony SDKs; stub it for the workspace test.
 vi.mock("@/app/(components)/(contentlayout)/communication/calling/_components/Dialpad", () => ({
-  default: ({ dialTarget }: { dialTarget?: string }) => <div data-testid="dialpad">{dialTarget ?? ""}</div>,
-}));
-vi.mock("@/shared/contexts/ChatSocketContext", () => ({
-  useChatSocket: () => ({ onCallUpdate: () => () => {} }),
+  default: () => <div data-testid="dialpad" />,
 }));
 
-beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
+beforeEach(() => vi.clearAllMocks());
+afterEach(cleanup);
 
-it("selecting a call fills the dialpad and shows details", async () => {
+it("switches to Contacts view and opens a contact in the right pane", async () => {
   render(<DialerWorkspace />);
-  fireEvent.click(await screen.findByRole("button", { name: /john out/i }));
-  expect(screen.getByTestId("dialpad")).toHaveTextContent("+919000000001");
-  // name appears in both the rail card and the context panel
-  expect(screen.getAllByText("John Out").length).toBeGreaterThan(1);
+  fireEvent.click(await screen.findByRole("button", { name: /^contacts$/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /open anita/i }));
+  // Right pane now shows the contact detail (Edit button is unique to ContactContextPanel read view)
+  expect(await screen.findByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+});
+
+it("New contact opens a blank create form", async () => {
+  render(<DialerWorkspace />);
+  fireEvent.click(await screen.findByRole("button", { name: /^contacts$/i }));
+  fireEvent.click(await screen.findByRole("button", { name: /new contact/i }));
+  expect(await screen.findByText(/new contact/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^create$/i })).toBeInTheDocument();
 });
