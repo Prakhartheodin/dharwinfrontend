@@ -7,26 +7,21 @@ import { callId, matchesSearch, filterRecents, isMissed, missedCount, sortWithPi
 
 const PIN_KEY = "dialer_pinned_recents";
 const CHIPS: RecentFilter[] = ["all", "inbound", "outbound", "recorded"];
-const SOON = [
-  { key: "contacts", label: "Contacts", icon: "ri-user-3-line" },
-  { key: "favorites", label: "Favorites", icon: "ri-star-line" },
-  { key: "voicemail", label: "Voicemail", icon: "ri-voiceprint-line" },
-];
 
 type Props = {
   activeView: "recent" | "missed";
-  onViewChange: (v: "recent" | "missed") => void;
   selectedCallId: string | null;
   onSelectCall: (r: CallRecord) => void;
   onDialCall: (r: CallRecord) => void;
   searchRef: React.Ref<HTMLInputElement>;
+  onMissedCount: (n: number) => void;
 };
 
 function loadPins(): string[] {
   try { return JSON.parse(localStorage.getItem(PIN_KEY) || "[]"); } catch { return []; }
 }
 
-export default function RecentCallsRail({ activeView, onViewChange, selectedCallId, onSelectCall, onDialCall, searchRef }: Props) {
+export default function RecentCallsList({ activeView, selectedCallId, onSelectCall, onDialCall, searchRef, onMissedCount }: Props) {
   const [records, setRecords] = useState<CallRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +57,7 @@ export default function RecentCallsRail({ activeView, onViewChange, selectedCall
   }, []);
 
   const missed = useMemo(() => missedCount(records), [records]);
+  useEffect(() => { onMissedCount(missed); }, [missed, onMissedCount]);
 
   const visible = useMemo(() => {
     const base = activeView === "missed" ? records.filter(isMissed) : filterRecents(records, filter);
@@ -90,25 +86,6 @@ export default function RecentCallsRail({ activeView, onViewChange, selectedCall
             className="w-full min-w-0 bg-transparent text-sm focus:outline-none dark:text-white" />
         </div>
       </div>
-      <nav className="px-3 pb-2">
-        {(["recent", "missed"] as const).map((v) => (
-          <button key={v} type="button" onClick={() => onViewChange(v)}
-            className={`mb-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-              activeView === v ? "bg-primary/10 text-primary" : "text-defaulttextcolor/70 hover:bg-black/[0.03] dark:text-white/70 dark:hover:bg-white/5"
-            }`}>
-            <i className={v === "recent" ? "ri-time-line" : "ri-phone-lock-line"} aria-hidden />
-            {v === "recent" ? "Recent" : `Missed (${missed})`}
-          </button>
-        ))}
-        {SOON.map((s) => (
-          <span key={s.key} title="Coming soon"
-            className="mb-1 flex w-full cursor-not-allowed items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-defaulttextcolor/35 dark:text-white/25">
-            <i className={s.icon} aria-hidden /> {s.label}
-            <span className="ms-auto rounded-full bg-defaultborder/50 px-1.5 text-[0.6rem] font-semibold uppercase">Soon</span>
-          </span>
-        ))}
-      </nav>
-
       {activeView === "recent" ? (
         <div className="flex flex-wrap gap-1.5 px-3 pb-2">
           {CHIPS.map((c) => (

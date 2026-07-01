@@ -1,10 +1,7 @@
 import { it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import RecentCallsRail from "../RecentCallsRail";
+import RecentCallsList from "../RecentCallsList";
 
-// vi.mock factories are hoisted above top-level const declarations, so the
-// fixture records are inlined here rather than referenced from an outer const
-// (referencing one throws "Cannot access before initialization").
 vi.mock("@/shared/lib/api/bolna", () => ({
   getBolnaCallRecords: vi.fn().mockResolvedValue({
     success: true,
@@ -16,18 +13,19 @@ vi.mock("@/shared/lib/api/bolna", () => ({
   }),
 }));
 vi.mock("@/shared/contexts/ChatSocketContext", () => ({
-  useChatSocket: () => ({ onCallUpdate: () => () => {} }), // returns an unsubscribe fn
+  useChatSocket: () => ({ onCallUpdate: () => () => {} }),
 }));
 
 beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 
-it("loads, shows missed count, filters by outbound", async () => {
-  const onSelect = vi.fn();
-  render(<RecentCallsRail activeView="recent" onViewChange={() => {}}
-    selectedCallId={null} onSelectCall={onSelect} onDialCall={() => {}} searchRef={null} />);
+it("loads, reports missed count, filters by outbound", async () => {
+  const onSelect = vi.fn(); const onMissed = vi.fn();
+  render(<RecentCallsList activeView="recent"
+    selectedCallId={null} onSelectCall={onSelect} onDialCall={() => {}} searchRef={null}
+    onMissedCount={onMissed} />);
   expect(await screen.findByText("John Out")).toBeInTheDocument();
   expect(screen.getByText("Sara In")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /missed \(1\)/i })).toBeInTheDocument();
+  await waitFor(() => expect(onMissed).toHaveBeenCalledWith(1));
   fireEvent.click(screen.getByRole("button", { name: /^outbound$/i }));
   await waitFor(() => expect(screen.queryByText("Sara In")).not.toBeInTheDocument());
   expect(screen.getByText("John Out")).toBeInTheDocument();
