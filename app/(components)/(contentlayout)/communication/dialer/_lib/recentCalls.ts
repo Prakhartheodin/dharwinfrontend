@@ -54,3 +54,37 @@ export function sortWithPins(
   const rest = records.filter((r) => !pinnedSet.has(callId(r)));
   return { pinned, rest };
 }
+
+export type DateGroup = "Today" | "Yesterday" | "This week" | "Older";
+const ORDER: DateGroup[] = ["Today", "Yesterday", "This week", "Older"];
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+export function dateGroup(createdAt: string | undefined, now: Date): DateGroup {
+  if (!createdAt) return "Older";
+  const t = new Date(createdAt);
+  if (Number.isNaN(t.getTime())) return "Older";
+  const today = startOfDay(now);
+  const day = startOfDay(t);
+  const diffDays = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return "This week";
+  return "Older";
+}
+
+export function groupByDate(
+  records: CallRecord[],
+  now: Date
+): { group: DateGroup; records: CallRecord[] }[] {
+  const buckets = new Map<DateGroup, CallRecord[]>();
+  for (const r of records) {
+    const g = dateGroup(r.createdAt, now);
+    const arr = buckets.get(g) ?? [];
+    arr.push(r);
+    buckets.set(g, arr);
+  }
+  return ORDER.filter((g) => buckets.has(g)).map((g) => ({ group: g, records: buckets.get(g)! }));
+}
