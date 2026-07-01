@@ -49,6 +49,7 @@ export async function listContacts(params?: {
   sortBy?: string;
   limit?: number;
   page?: number;
+  favorite?: boolean;
 }): Promise<ListContactsResponse> {
   const { data } = await apiClient.get<ListContactsResponse>("/contacts", { params });
   return data;
