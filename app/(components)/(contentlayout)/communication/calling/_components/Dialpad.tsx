@@ -13,10 +13,17 @@ import {
   type TelephonyProvider,
 } from "@/shared/lib/api/telephony";
 import { COUNTRY_PHONE_RULES } from "@/shared/lib/country-phone";
+import { useAuth } from "@/shared/contexts/auth-context";
+import { hasPermission } from "@/shared/lib/permissions";
 
 const AGENT_PHONE_KEY = "telephony_agent_phone";
 const LEGACY_AGENT_PHONE_KEY = "plivo_agent_phone";
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "*", "0", "#"];
+// Phone-keypad letter hints (blank for 1/*/#; 0 shows +).
+const KEY_LETTERS: Record<string, string> = {
+  "2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO",
+  "7": "PQRS", "8": "TUV", "9": "WXYZ", "0": "+",
+};
 
 // Country dial codes, A–Z; "OTHER" has no usable dial code so it's dropped.
 const DIAL_OPTIONS = COUNTRY_PHONE_RULES.filter((c) => c.code !== "OTHER")
@@ -125,6 +132,9 @@ export default function Dialpad({
   const [held, setHeld] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingBusy, setRecordingBusy] = useState(false);
+  const { permissions, isPlatformSuperUser, isAdministrator } = useAuth();
+  // Recording is a separate role toggle (Call Recording), independent of place-call.
+  const canRecord = hasPermission({ permissions, isPlatformSuperUser, isAdministrator }, "toggle_call_recording");
   const [showDtmf, setShowDtmf] = useState(false); // in-call DTMF keypad panel
 
   // ponytail: toll-free numbers are inbound-only — Plivo rejects them as an outbound
@@ -633,9 +643,16 @@ export default function Dialpad({
         }
       >
         {!embedded && (
-          <div className="box-title flex items-center gap-2">
-            <i className="ri-dial-pad-line text-primary" />
-            Dialer
+          <div className="flex items-center gap-3">
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <i className="ri-dial-pad-line text-xl" />
+            </span>
+            <div className="leading-tight">
+              <div className="box-title mb-0">Dialer</div>
+              <p className="mb-0 text-[0.7rem] text-defaulttextcolor/55 dark:text-white/45">
+                Place calls from your work number
+              </p>
+            </div>
           </div>
         )}
         {/* Mode toggle: browser audio vs ring-my-phone */}
@@ -726,7 +743,9 @@ export default function Dialpad({
                 {[
                   { key: "mute", label: muted ? "Unmute" : "Mute", icon: muted ? "ri-mic-off-line" : "ri-mic-line", active: muted, disabled: false, danger: false, onClick: toggleMute },
                   { key: "hold", label: held ? "Resume" : "Hold", icon: held ? "ri-play-line" : "ri-pause-line", active: held, disabled: false, danger: false, onClick: toggleHold },
-                  { key: "rec", label: "Record", icon: recordingBusy ? "ri-loader-4-line animate-spin" : "ri-record-circle-line", active: recording, disabled: recordingBusy || !callSid, danger: true, onClick: () => void toggleRecord() },
+                  ...(canRecord
+                    ? [{ key: "rec", label: "Record", icon: recordingBusy ? "ri-loader-4-line animate-spin" : "ri-record-circle-line", active: recording, disabled: recordingBusy || !callSid, danger: true, onClick: () => void toggleRecord() }]
+                    : []),
                   { key: "dtmf", label: "Keypad", icon: "ri-grid-fill", active: showDtmf, disabled: false, danger: false, onClick: () => setShowDtmf((v) => !v) },
                 ].map((c) => (
                   <div key={c.key} className="flex flex-col items-center gap-1.5">
@@ -780,7 +799,7 @@ export default function Dialpad({
             ) : null}
           </div>
         ) : (
-        <div className={embedded ? "space-y-4" : "grid grid-cols-1 gap-5 md:grid-cols-2"}>
+        <div className={embedded ? "space-y-4" : "grid grid-cols-1 items-start gap-6 md:grid-cols-2 md:gap-8 lg:gap-12"}>
           {/* Left: setup */}
           <div className="space-y-4">
             <label className="block">
@@ -882,13 +901,14 @@ export default function Dialpad({
               </div>
             )}
 
-            <p className="text-[0.7rem] leading-relaxed text-defaulttextcolor/55 dark:text-white/45">
-              {mode === "browser"
-                ? "You talk through this browser (mic + speakers). The recipient sees your bought number. Calls are billed to the telephony account."
-                : provider === "twilio"
-                  ? "Your phone rings first, then connects to the dialed number. The recipient sees your bought number."
+            <div className="flex items-start gap-2.5 rounded-xl border border-defaultborder/60 bg-black/[0.015] px-3.5 py-3 dark:border-white/10 dark:bg-white/[0.03]">
+              <i className="ri-information-line mt-0.5 shrink-0 text-primary/80" />
+              <p className="mb-0 text-[0.72rem] leading-relaxed text-defaulttextcolor/60 dark:text-white/50">
+                {mode === "browser"
+                  ? "You talk through this browser (mic + speakers). The recipient sees your bought number. Calls are billed to the telephony account."
                   : "Your phone rings first, then connects to the dialed number. The recipient sees your bought number."}
-            </p>
+              </p>
+            </div>
           </div>
 
           {/* Right: keypad */}
@@ -898,7 +918,7 @@ export default function Dialpad({
                 To (number to call)
               </span>
             )}
-            <div className="flex items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 py-2 dark:border-white/10 dark:bg-black/20">
+            <div className={`flex items-center gap-2 rounded-xl border border-defaultborder/70 bg-white px-2.5 dark:border-white/10 dark:bg-black/20 ${embedded ? "py-2" : "py-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15"}`}>
               <select
                 className="shrink-0 rounded-md border-0 bg-transparent text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
                 value={country}
@@ -916,7 +936,7 @@ export default function Dialpad({
               <input
                 type="tel"
                 inputMode="tel"
-                className="w-full min-w-0 bg-transparent text-lg font-mono tracking-wide text-defaulttextcolor focus:outline-none dark:text-white"
+                className={`w-full min-w-0 bg-transparent font-mono tracking-wide text-defaulttextcolor focus:outline-none dark:text-white ${embedded ? "text-lg" : "text-center text-2xl font-medium tabular-nums"}`}
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
                 aria-label="Number to dial"
@@ -932,15 +952,20 @@ export default function Dialpad({
             </div>
 
             {!embedded && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
                 {KEYS.map((k) => (
                   <button
                     key={k}
                     type="button"
                     onClick={() => press(k)}
-                    className="rounded-lg border border-defaultborder/70 py-3 text-lg font-semibold text-defaulttextcolor transition-colors hover:bg-primary/10 hover:border-primary/40 dark:text-white dark:hover:bg-white/5"
+                    className="group flex aspect-[5/4] flex-col items-center justify-center rounded-2xl border border-defaultborder/70 bg-white text-defaulttextcolor shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/50 hover:bg-primary/[0.06] hover:shadow active:translate-y-0 active:scale-[0.97] dark:bg-black/20 dark:text-white dark:hover:bg-white/5"
                   >
-                    {k}
+                    <span className="text-2xl font-semibold leading-none">{k}</span>
+                    {KEY_LETTERS[k] ? (
+                      <span className="mt-1 text-[0.6rem] font-medium tracking-[0.12em] text-defaulttextcolor/45 group-hover:text-primary/70 dark:text-white/40">
+                        {KEY_LETTERS[k]}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>
@@ -1018,9 +1043,9 @@ export default function Dialpad({
                 type="button"
                 disabled={!canCall || placed}
                 onClick={onCall}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className={`flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 font-semibold text-white shadow-lg shadow-emerald-600/25 transition-all hover:bg-emerald-700 hover:shadow-emerald-600/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-emerald-600/40 disabled:shadow-none ${embedded ? "py-3 text-sm" : "py-3.5 text-base"}`}
               >
-                <i className={placed ? "ri-check-line" : placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"} />
+                <i className={`text-lg ${placed ? "ri-check-line" : placing ? "ri-loader-4-line animate-spin" : "ri-phone-line"}`} />
                 {placed ? "Call placed" : placing ? "Calling…" : "Call"}
               </button>
             )}
