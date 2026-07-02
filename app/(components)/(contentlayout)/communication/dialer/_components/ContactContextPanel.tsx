@@ -61,32 +61,36 @@ function ReadView({ contact, onCall, onEdit, onDeleted, onDirtyChange }: Props &
   };
 
   const linked = linkedType(contact.linkedTo);
+  const initials = contact.name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   return (
     <div className="flex h-full flex-col p-5">
-      <div className="mb-4 flex items-start gap-2">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary">
+          {initials || <i className="ri-user-3-line text-xl" />}
+        </span>
         <div className="min-w-0 flex-1">
-          <p className="mb-0 flex items-center gap-2 text-lg font-semibold text-defaulttextcolor dark:text-white">
-            <span className="truncate">{contact.name}</span>
-            {contact.doNotCall ? <span className="rounded bg-danger/15 px-1.5 text-[0.6rem] font-semibold uppercase text-danger">DNC</span> : null}
-          </p>
-          {contact.company ? <p className="mb-0 text-sm text-defaulttextcolor/60 dark:text-white/50">{contact.company}</p> : null}
+          <p className="mb-0 truncate text-lg font-semibold text-defaulttextcolor dark:text-white">{contact.name}</p>
+          {contact.company ? <p className="mb-0 truncate text-sm text-defaulttextcolor/60 dark:text-white/50">{contact.company}</p> : null}
         </div>
         <button type="button" onClick={toggleFav} aria-label="Toggle favorite"
-          className="grid h-8 w-8 place-items-center rounded-lg hover:bg-black/[0.05] dark:hover:bg-white/10">
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors hover:bg-black/[0.05] dark:hover:bg-white/10">
           <i className={fav ? "ri-star-fill text-amber-400" : "ri-star-line text-defaulttextcolor/40"} />
         </button>
       </div>
 
       <div className="mb-4">
         <p className={LABEL}>Phones</p>
-        <div className="space-y-1">
+        <div className="space-y-2">
           {(contact.phones ?? []).map((p, i) => (
             <button key={i} type="button" onClick={() => onCall(p.number)}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-emerald-600/10">
-              <i className="ri-phone-line text-emerald-600" />
-              <span className="text-[0.72rem] uppercase text-defaulttextcolor/45">{p.label ?? "mobile"}</span>
-              <span className="font-mono text-sm text-defaulttextcolor/80 dark:text-white/70">{p.number}</span>
-              {p.isPrimary ? <span className="ms-auto text-[0.65rem] text-primary">primary</span> : null}
+              className="group flex w-full items-center gap-3 rounded-xl border border-defaultborder/60 px-3 py-2.5 text-left transition-colors hover:border-emerald-600/40 hover:bg-emerald-600/[0.06] dark:border-white/10">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-600/10 text-emerald-600"><i className="ri-phone-line" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[0.65rem] font-medium uppercase tracking-wide text-defaulttextcolor/45">{p.label ?? "mobile"}</span>
+                <span className="block truncate font-mono text-sm text-defaulttextcolor/80 dark:text-white/70">{p.number}</span>
+              </span>
+              {p.isPrimary ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[0.6rem] font-semibold uppercase text-primary">primary</span> : null}
+              <i className="ri-phone-fill text-defaulttextcolor/0 transition-colors group-hover:text-emerald-600" aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -103,7 +107,7 @@ function ReadView({ contact, onCall, onEdit, onDeleted, onDirtyChange }: Props &
       {contact.notes ? <Section label="Notes"><p className="mb-0 text-sm text-defaulttextcolor/70 dark:text-white/55">{contact.notes}</p></Section> : null}
       {linked ? <Section label="Linked"><span className="text-sm capitalize">{linked}</span></Section> : null}
 
-      <div className="mt-auto space-y-2">
+      <div className="mt-auto space-y-2 border-t border-defaultborder/60 pt-4 dark:border-white/10">
         <button type="button" onClick={() => onCall(primaryPhone(contact))}
           className={`flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white shadow-lg ${
             contact.doNotCall ? "bg-amber-500 shadow-amber-500/25 hover:bg-amber-600" : "bg-emerald-600 shadow-emerald-600/25 hover:bg-emerald-700"}`}>
@@ -265,7 +269,6 @@ function FormView({ mode, contact, initialDraft, visibleNumbers, onCancel, onSav
 
       <div className="mb-4 flex gap-4 text-sm">
         <label className="flex items-center gap-2"><input type="checkbox" checked={draft.favorite} onChange={(e) => patch("favorite", e.target.checked)} /> Favorite</label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={draft.doNotCall} onChange={(e) => patch("doNotCall", e.target.checked)} /> Do not call</label>
       </div>
 
       <div className="mt-auto flex gap-2 pt-2">

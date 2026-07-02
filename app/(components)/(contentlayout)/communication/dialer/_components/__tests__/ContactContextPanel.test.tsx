@@ -26,13 +26,12 @@ const base = {
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup); // repo has no global cleanup; multi-render files must unmount between tests
 
-it("read mode renders detail, DNC, linked, dials primary", () => {
+it("read mode renders detail, linked, dials primary", () => {
   const onCall = vi.fn();
   render(<ContactContextPanel {...base} mode="read" onCall={onCall} />);
   expect(screen.getByText("Anita")).toBeInTheDocument();
   expect(screen.getByText("Lead")).toBeInTheDocument();
   expect(screen.getByText(/candidate/)).toBeInTheDocument();       // linked label
-  expect(screen.getByText("DNC")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: /^call$/i }));
   expect(onCall).toHaveBeenCalledWith("+91 98765 43210");
 });

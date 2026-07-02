@@ -24,7 +24,6 @@ export default function ContactCard({ contact, selected, onSelect, onDial, onEdi
           <span className="flex items-center gap-1.5">
             <span className="truncate text-sm font-semibold text-defaulttextcolor dark:text-white">{contact.name}</span>
             {contact.favorite ? <i className="ri-star-fill text-[0.8rem] text-amber-400" aria-label="favorite" /> : null}
-            {contact.doNotCall ? <span className="rounded bg-danger/15 px-1 text-[0.6rem] font-semibold uppercase text-danger">DNC</span> : null}
           </span>
           <span className="block truncate font-mono text-[0.72rem] text-defaulttextcolor/60 dark:text-white/50">{number}</span>
           {contact.company ? <span className="block truncate text-[0.72rem] text-defaulttextcolor/45">{contact.company}</span> : null}

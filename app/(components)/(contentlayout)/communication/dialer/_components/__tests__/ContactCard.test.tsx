@@ -9,12 +9,11 @@ const contact: Contact = {
   phones: [{ number: "+91 98765 43210", isPrimary: true }],
 };
 
-it("renders name, number, star, DNC; fires select/dial/edit", () => {
+it("renders name, number, star; fires select/dial/edit", () => {
   const onSelect = vi.fn(), onDial = vi.fn(), onEdit = vi.fn();
   render(<ContactCard contact={contact} selected={false} onSelect={onSelect} onDial={onDial} onEdit={onEdit} />);
   expect(screen.getByText("Anita Sharma")).toBeInTheDocument();
   expect(screen.getByText("+91 98765 43210")).toBeInTheDocument();
-  expect(screen.getByText("DNC")).toBeInTheDocument();
   expect(screen.getByLabelText(/favorite/i)).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: /open anita sharma/i }));
