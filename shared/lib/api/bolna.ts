@@ -230,6 +230,7 @@ export type CallRecordingsResponse = {
   recordings: {
     bolna: { available: boolean; channel?: string; streamUrl?: string; reason?: string };
     plivo: { available: boolean; channel?: string; durationMs?: number | null; streamUrl?: string; reason?: string };
+    twilio?: { available: boolean; channel?: string; streamUrl?: string; reason?: string };
   };
 };
 

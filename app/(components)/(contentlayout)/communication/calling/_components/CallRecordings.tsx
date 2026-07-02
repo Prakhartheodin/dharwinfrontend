@@ -73,10 +73,20 @@ function RecordingsSkeleton() {
   );
 }
 
-type Channel = { streamUrl?: string; reason?: string };
+type Channel = { available?: boolean; streamUrl?: string; reason?: string };
+
+// Friendly labels + display order. Twilio = browser/bridge dialer calls; Plivo/Bolna
+// = candidate-verification legs. A call only records on one provider, so we show the
+// channel(s) that actually have audio and drop the empty ones.
+const CHANNEL_LABELS: Record<string, string> = {
+  twilio: "Call recording",
+  plivo: "Full call (Plivo)",
+  bolna: "Agent leg (Bolna)",
+};
+const CHANNEL_ORDER = ["twilio", "plivo", "bolna"];
 
 export default function CallRecordings({ executionId }: { executionId: string }) {
-  const [recs, setRecs] = useState<{ bolna: Channel; plivo: Channel } | null>(null);
+  const [recs, setRecs] = useState<Record<string, Channel> | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,16 +95,7 @@ export default function CallRecordings({ executionId }: { executionId: string })
       try {
         const { recordings } = await getCallRecordings(executionId);
         if (cancelled) return;
-        setRecs({
-          bolna: {
-            streamUrl: recordings.bolna.available ? recordings.bolna.streamUrl : undefined,
-            reason: recordings.bolna.reason,
-          },
-          plivo: {
-            streamUrl: recordings.plivo.available ? recordings.plivo.streamUrl : undefined,
-            reason: recordings.plivo.reason,
-          },
-        });
+        setRecs(recordings as Record<string, Channel>);
       } catch {
         if (!cancelled) setError("Could not load recordings");
       }
@@ -105,10 +106,18 @@ export default function CallRecordings({ executionId }: { executionId: string })
   if (error) return <p className="text-xs text-defaulttextcolor/60">{error}</p>;
   if (!recs) return <RecordingsSkeleton />;
 
+  const playable = CHANNEL_ORDER.filter((k) => recs[k]?.streamUrl);
+  if (playable.length === 0) {
+    return <p className="text-xs text-defaulttextcolor/60">No recording available for this call yet.</p>;
+  }
+
   return (
     <div className="space-y-2 text-sm">
-      <Recording label="Bolna" streamUrl={recs.bolna.streamUrl} reason={recs.bolna.reason} />
-      <Recording label="Plivo" streamUrl={recs.plivo.streamUrl} reason={recs.plivo.reason} />
+      {/* key includes executionId: switching calls remounts each player so its
+          cached blob URL resets instead of replaying the previous call's audio */}
+      {playable.map((k) => (
+        <Recording key={`${executionId}-${k}`} label={CHANNEL_LABELS[k] ?? k} streamUrl={recs[k]?.streamUrl} reason={recs[k]?.reason} />
+      ))}
     </div>
   );
 }
