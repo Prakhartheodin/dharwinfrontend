@@ -1362,6 +1362,24 @@ function PublicRoomContent({
     return () => clearInterval(timer);
   }, []);
 
+  // The built-in LiveKit "Leave" button calls room.disconnect() directly, which
+  // emits Disconnected(CLIENT_INITIATED). The disconnect handlers below treat
+  // CLIENT_INITIATED as StrictMode/duplicate churn and no-op — so without this,
+  // clicking Leave leaves the user stuck on the "Disconnected" screen (or races
+  // into an auto-reconnect). Arm the manual-leave flag in the capture phase, i.e.
+  // BEFORE LiveKit's own onClick fires disconnect, so the ensuing CLIENT_INITIATED
+  // is recognised as an intentional leave, and navigate away via onLeave.
+  useEffect(() => {
+    const onLeaveClickCapture = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest(".lk-disconnect-button")) return;
+      isManuallyLeavingRef.current = true;
+      onLeave();
+    };
+    document.addEventListener("click", onLeaveClickCapture, true);
+    return () => document.removeEventListener("click", onLeaveClickCapture, true);
+  }, [onLeave]);
+
   // Recording started toast (auto-dismiss)
   useEffect(() => {
     if (!recordingToast) return;
