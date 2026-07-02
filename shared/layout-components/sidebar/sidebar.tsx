@@ -182,11 +182,8 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	const toggleSection = (title: string) => {
 		setCollapsedSections((prev) => {
-			const isOpen = prev[title] === false;
-			// Accordion: collapse every section, then open the clicked one (unless it was already open).
-			const next: Record<string, boolean> = {};
-			for (const section of menuSections) next[section.title] = true;
-			next[title] = isOpen ? true : false;
+			// Independent sections: flip only the clicked one, leave the rest as-is.
+			const next: Record<string, boolean> = { ...prev, [title]: prev[title] === false ? true : false };
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
@@ -202,9 +199,8 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		if (!match) return;
 		setCollapsedSections((prev) => {
 			if (prev[match.title] === false) return prev; // already open
-			const next: Record<string, boolean> = {};
-			for (const section of menuSections) next[section.title] = true;
-			next[match.title] = false;
+			// Open the section owning the current route; leave other sections untouched.
+			const next: Record<string, boolean> = { ...prev, [match.title]: false };
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
@@ -829,6 +825,18 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		event.preventDefault(); // Prevents the default anchor behavior (navigation)
 		// ... other logic you want to perform on click
 	};
+
+	// Section accordion only applies to the expanded vertical menu. In horizontal / doublemenu /
+	// icon-collapsed rails the section headers are CSS-hidden and items must all stay visible,
+	// so render items flat (original DOM) and ignore per-section collapse in those modes.
+	const toggledState = local_varaiable?.dataToggled || "";
+	const forceExpandAll =
+		local_varaiable?.dataNavLayout === "horizontal" ||
+		local_varaiable?.dataVerticalStyle === "doublemenu" ||
+		toggledState === "icon-overlay-close" ||
+		toggledState === "icon-text-close" ||
+		toggledState === "close-menu-close";
+
 	return (
 
 		<Fragment>
@@ -858,31 +866,12 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 							<ul className="main-menu" onClick={() => Sideclick()}>
 								{menuSections.map((section) => {
-									const isCollapsed = collapsedSections[section.title] !== false;
+									const isCollapsed = !forceExpandAll && collapsedSections[section.title] !== false;
 									const currentNavPath = path?.endsWith("/") ? path.slice(0, -1) : path;
 									const sectionHasActive = section.items.some((item) =>
 										menuItemMatchesPath(item, currentNavPath)
 									);
-									return (
-										<Fragment key={section.title}>
-											<li className="slide__category nav-module-section">
-												<button
-													type="button"
-													className={`category-name category-name--toggle flex w-full items-center justify-between cursor-pointer bg-transparent border-0 p-0 text-inherit uppercase rounded-md transition-colors duration-150 hover:bg-white/[0.04]${isCollapsed ? "" : " is-open"}`}
-													onClick={() => toggleSection(section.title)}
-													aria-expanded={!isCollapsed}
-												>
-													<span className="flex items-center gap-2">
-														{section.title}
-														{isCollapsed && sectionHasActive && (
-															<span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-														)}
-													</span>
-													<i className={`fe fe-chevron-right side-menu__angle text-[0.75rem] opacity-70 transition-transform duration-200 ms-2${isCollapsed ? "" : " rotate-90"}`} aria-hidden="true" />
-												</button>
-											</li>
-											{!isCollapsed &&
-												section.items.map((levelone: any, index: any) => (
+									const itemsJsx = section.items.map((levelone: any, index: any) => (
 													<Fragment key={`${section.title}-${index}`}>
 														<li
 															className={`${levelone.type === "link" ? "slide" : ""}
@@ -953,7 +942,38 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 															)}
 														</li>
 													</Fragment>
-												))}
+												));
+
+									return (
+										<Fragment key={section.title}>
+											<li className={`slide__category nav-module-section transition-opacity hover:!opacity-100${sectionHasActive ? " !opacity-100" : ""}`}>
+												<button
+													type="button"
+													className={`category-name category-name--toggle flex w-full items-center justify-between cursor-pointer bg-transparent border-0 p-0 text-inherit uppercase rounded-md transition-colors duration-150 hover:bg-white/[0.06]${isCollapsed ? "" : " is-open"}`}
+													onClick={() => toggleSection(section.title)}
+													aria-expanded={!isCollapsed}
+												>
+													<span className="flex items-center gap-2">
+														{section.title}
+														{sectionHasActive && (
+															<span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+														)}
+													</span>
+													<i className={`fe fe-chevron-right side-menu__angle text-[0.75rem] opacity-70 transition-transform duration-200 ms-2${isCollapsed ? "" : " rotate-90"}`} aria-hidden="true" />
+												</button>
+											</li>
+											{forceExpandAll ? (
+												itemsJsx
+											) : (
+												<li
+													className={`section-group grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${isCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}
+													aria-hidden={isCollapsed}
+												>
+													<ul className="m-0 min-h-0 list-none overflow-hidden p-0">
+														{itemsJsx}
+													</ul>
+												</li>
+											)}
 										</Fragment>
 									);
 								})}
