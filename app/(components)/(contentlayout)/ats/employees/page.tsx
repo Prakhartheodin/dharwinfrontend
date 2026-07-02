@@ -896,14 +896,17 @@ const Candidates = () => {
     [openHsOverlay]
   )
 
-  // Generate public URL for candidate
+  // Generate the public shared-profile URL. Keep query string tiny so WhatsApp detects the whole link.
   const getCandidatePublicUrl = (candidateId: string) => {
-    if (typeof window !== 'undefined') {
-      return `${window.location.origin}/ats/employees/${candidateId}`
-    }
-    // B19 fix: SSR-safe fallback uses configured app URL, avoiding the placeholder example.com.
-    const base = (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
-    return `${base}/ats/employees/${candidateId}`
+    const base = typeof window !== 'undefined'
+      ? window.location.origin
+      : (process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/+$/, '')
+    const token = typeof crypto !== 'undefined' && crypto.getRandomValues
+      ? Array.from(crypto.getRandomValues(new Uint8Array(6)))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('')
+      : `${Math.random().toString(16).slice(2, 8)}${Math.random().toString(16).slice(2, 8)}`
+    return `${base}/public-employee/${candidateId}?token=${token}&withDoc=${shareWithDoc ? '1' : '0'}`
   }
 
   const [exportCandidate, setExportCandidate] = useState<CandidateDisplay | null>(null)
@@ -1279,7 +1282,14 @@ const Candidates = () => {
   // Share on WhatsApp – use shareable link with token when available
   const handleShareWhatsApp = (candidate: any) => {
     const url = (sharedPublicUrl && sharedPublicUrlForId === candidate.id) ? sharedPublicUrl : getCandidatePublicUrl(candidate.id)
-    const text = `Check out this employee: ${candidate.name} - ${url}`
+    // WhatsApp markdown: *bold*, line breaks for a scannable message instead of one run-on line.
+    const text = [
+      `*${candidate.name}*`,
+      `Employee profile — shared via Dharwin`,
+      ``,
+      `View the full profile (view-only):`,
+      url,
+    ].join('\n')
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(text)}`
     window.open(whatsappUrl, '_blank')
   }

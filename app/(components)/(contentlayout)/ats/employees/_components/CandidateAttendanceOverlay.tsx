@@ -645,15 +645,15 @@ export default function CandidateAttendanceOverlay({
                   Training · punch &amp; policy
                 </p>
                 {joiningDateStart && (
-                  <p className="mt-1.5 text-[0.75rem] text-[#64748b] dark:text-white/50">
+                  <p className="mt-1.5 flex items-center text-xs leading-5 text-[#475569] dark:text-white/60">
                     <i className="ri-login-circle-line me-1 text-primary/80" aria-hidden />
-                    Attendance from <span className="font-semibold text-defaulttextcolor/90 dark:text-white/70">{formatLocalYmd(joiningDateStart)}</span>
+                    Attendance from <span className="ms-1 font-semibold text-defaulttextcolor dark:text-white">{formatLocalYmd(joiningDateStart)}</span>
                   </p>
                 )}
                 {resignDateEnd && (
-                  <p className="mt-0.5 text-[0.75rem] text-[#64748b] dark:text-white/50">
+                  <p className="mt-0.5 flex items-center text-xs leading-5 text-[#475569] dark:text-white/60">
                     <i className="ri-logout-circle-line me-1 text-rose-500/80" aria-hidden />
-                    Last day <span className="font-semibold text-defaulttextcolor/90 dark:text-white/70">{formatLocalYmd(resignDateEnd)}</span>
+                    Last day <span className="ms-1 font-semibold text-defaulttextcolor dark:text-white">{formatLocalYmd(resignDateEnd)}</span>
                   </p>
                 )}
               </div>

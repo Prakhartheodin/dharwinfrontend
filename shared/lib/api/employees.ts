@@ -328,6 +328,54 @@ export async function shareCandidateProfile(
   return data?.data ?? {};
 }
 
+export interface PublicEmployeeProfile {
+  fullName?: string;
+  email?: string;
+  phoneNumber?: string;
+  countryCode?: string;
+  profilePicture?: { url?: string } | null;
+  shortBio?: string;
+  degree?: string;
+  visaType?: string;
+  customVisaType?: string;
+  sevisId?: string;
+  ead?: string;
+  supervisorName?: string;
+  supervisorContact?: string;
+  supervisorCountryCode?: string;
+  salaryRange?: { min?: number; max?: number; currency?: string } | null;
+  address?: { line1?: string; line2?: string; city?: string; state?: string; country?: string; zip?: string } | null;
+  createdAt?: string;
+  qualifications?: Array<{ degree?: string; institute?: string; startYear?: number; endYear?: number }>;
+  experiences?: Array<{ title?: string; company?: string; startDate?: string; endDate?: string; description?: string }>;
+  skills?: Array<{ name?: string; level?: string }>;
+  socialLinks?: Array<{ platform?: string; url?: string }>;
+  documents?: Array<{ label?: string; originalName?: string; url?: string; mimeType?: string }>;
+  salarySlips?: Array<{ month?: string; year?: string | number; documentUrl?: string }>;
+  withDoc?: boolean;
+  sharedBy?: string;
+  sharedAt?: string;
+}
+
+/** Public (no-auth) fetch for the shared-profile screen. Token + withDoc (or legacy data) come from the share link. */
+export async function getPublicEmployeeProfile(
+  candidateId: string,
+  token: string,
+  opts: { withDoc?: string | null; data?: string | null }
+): Promise<PublicEmployeeProfile> {
+  const params: Record<string, string> = { token };
+  if (opts.withDoc != null && opts.withDoc !== '') {
+    params.withDoc = opts.withDoc;
+  } else if (opts.data) {
+    params.data = opts.data;
+  }
+  const res = await apiClient.get<{ success?: boolean; data?: PublicEmployeeProfile }>(
+    `/candidates/public/candidate/${candidateId}/data`,
+    { params }
+  );
+  return res.data?.data ?? {};
+}
+
 export async function exportCandidateProfile(candidateId: string, email: string): Promise<void> {
   await apiClient.post(`/employees/${candidateId}/export`, { email });
 }
