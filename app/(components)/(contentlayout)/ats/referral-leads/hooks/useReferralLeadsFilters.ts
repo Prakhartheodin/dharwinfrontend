@@ -62,7 +62,7 @@ export function useReferralLeadsFilters(featureEnabled = false) {
       if (filters.quickStatus === "hiredOnly") params.hiredOnly = true;
       if (filters.quickStatus === "activeEmployees") params.employeeStatus = "active";
       if (filters.quickStatus === "resignedEmployees") params.employeeStatus = "resigned";
-      if (filters.quickStatus === "pendingReferrals") params.pendingReferrals = true;
+      if (filters.quickStatus === "appliedOnly") params.appliedOnly = true;
     }
 
     return params;

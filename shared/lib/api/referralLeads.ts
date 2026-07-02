@@ -138,7 +138,7 @@ export interface ReferralLeadsQueryParams {
   unassigned?: boolean;
   hiredOnly?: boolean;
   convertedEmployees?: boolean;
-  pendingReferrals?: boolean;
+  appliedOnly?: boolean;
   employeeStatus?: ReferralEmployeeStatus;
   /** When true, only referral leads whose portal user still has the Candidate role (interview scheduling). */
   candidateRoleOwnersOnly?: boolean;

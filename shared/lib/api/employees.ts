@@ -50,6 +50,29 @@ export interface CandidateListItem {
   /** Denormalized title from job-application / referral flow; used when aligning HRMS position to applied role. */
   referralJobTitle?: string | null;
   compensationType?: 'paid' | 'unpaid';
+  recruiterFeedback?: string | null;
+  recruiterRating?: number | null;
+  recruiterNotes?: RecruiterNote[];
+}
+
+export type RecruiterNote = {
+  note: string;
+  addedAt?: string;
+  addedBy?: { id?: string; name?: string; email?: string } | string;
+};
+
+export function getCandidateRecruiterFeedback(
+  item: CandidateListItem | { _raw?: CandidateListItem }
+): { feedback: string; rating: number | null; notes: RecruiterNote[] } {
+  const raw =
+    item && typeof item === "object" && "_raw" in item && item._raw
+      ? item._raw
+      : (item as CandidateListItem);
+  return {
+    feedback: raw.recruiterFeedback?.trim() ?? "",
+    rating: typeof raw.recruiterRating === "number" ? raw.recruiterRating : null,
+    notes: Array.isArray(raw.recruiterNotes) ? raw.recruiterNotes : [],
+  };
 }
 
 export type DocumentType = 'Aadhar' | 'PAN' | 'Bank' | 'Passport' | 'Other';
@@ -407,8 +430,12 @@ export async function addFeedbackToCandidate(
   candidateId: string,
   feedback: string,
   rating?: number
-): Promise<void> {
-  await apiClient.post(`/employees/${candidateId}/feedback`, { feedback, rating });
+): Promise<CandidateListItem> {
+  const { data } = await apiClient.post<CandidateListItem>(`/employees/${candidateId}/feedback`, {
+    feedback,
+    rating,
+  });
+  return data;
 }
 
 /** Same filter shape as list; page/limit/includeOpenSopCount are ignored by export. */

@@ -4,7 +4,7 @@ export type QuickStatusFilter =
   | "hiredOnly"
   | "activeEmployees"
   | "resignedEmployees"
-  | "pendingReferrals"
+  | "appliedOnly"
   | null;
 
 export function scopeLabel(scope: AttributionJobScope | null | undefined, jobTitle?: string | null): string {

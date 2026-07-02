@@ -10,6 +10,7 @@ import Link from 'next/link'
 import { resolveEmployeeJobTitleLabel } from '@/shared/lib/employee-job-title'
 import CallNowButton from '@/shared/components/CallNowButton'
 import CandidatesFilterPanel from './_components/CandidatesFilterPanel'
+import CandidateFeedbackPanel from './_components/CandidateFeedbackPanel'
 import {
   listCandidates,
   getCandidateFilterAgents,
@@ -30,6 +31,7 @@ import {
   resendVerificationEmail,
   addNoteToCandidate,
   addFeedbackToCandidate,
+  getCandidateRecruiterFeedback,
   deleteCandidate,
   uploadDocument,
   assignRecruiterToCandidate,
@@ -1125,8 +1127,9 @@ const Candidates = () => {
   }
 
   const openFeedbackModal = (candidate: CandidateDisplay) => {
+    const { feedback, rating } = getCandidateRecruiterFeedback(candidate)
     setFeedbackCandidate(candidate)
-    setFeedbackForm({ feedback: '', rating: 3 })
+    setFeedbackForm({ feedback, rating: rating ?? 3 })
     setActionError(null)
     queueMicrotask(() => openHsOverlay('#feedback-modal'))
   }
@@ -1135,12 +1138,18 @@ const Candidates = () => {
     setFeedbackSubmitting(true)
     setActionError(null)
     try {
-      await addFeedbackToCandidate(feedbackCandidate.id, feedbackForm.feedback.trim(), feedbackForm.rating)
-      setActionSuccess('Feedback added')
+      const updated = await addFeedbackToCandidate(
+        feedbackCandidate.id,
+        feedbackForm.feedback.trim(),
+        feedbackForm.rating
+      )
+      const mapped = mapCandidateToDisplay(updated)
+      setCandidates((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)))
+      setPreviewCandidate((prev) => (prev?.id === mapped.id ? mapped : prev))
+      setActionSuccess(getCandidateRecruiterFeedback(mapped).feedback ? 'Feedback saved' : 'Feedback added')
       setFeedbackCandidate(null)
       setFeedbackForm({ feedback: '', rating: 3 })
       setTimeout(() => document.querySelector('[data-hs-overlay="#feedback-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add feedback')
@@ -2008,10 +2017,26 @@ const Candidates = () => {
                 </button>
               </div>
               <div className="hs-tooltip ti-main-tooltip">
-                <button type="button" onClick={() => openFeedbackModal(c)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white" title="Add Feedback">
+                {(() => {
+                  const hasFeedback = getCandidateRecruiterFeedback(c).feedback.length > 0
+                  return (
+                <button
+                  type="button"
+                  onClick={() => openFeedbackModal(c)}
+                  className={`hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] ${
+                    hasFeedback
+                      ? 'bg-amber-500 text-white hover:bg-amber-600'
+                      : 'bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white'
+                  }`}
+                  title={hasFeedback ? 'View / update feedback' : 'Add feedback'}
+                >
                   <i className="ri-feedback-line"></i>
-                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Add Feedback</span>
+                  <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">
+                    {hasFeedback ? 'View / update feedback' : 'Add feedback'}
+                  </span>
                 </button>
+                  )
+                })()}
               </div>
               {/* <div className="hs-tooltip ti-main-tooltip">
                 <button
@@ -3361,35 +3386,63 @@ const Candidates = () => {
                   )}
 
                   {viewDetailTab === 'notes' && (
-                    <div className="space-y-4">
-                      <h4 className="text-base font-semibold text-gray-900 dark:text-white mb-3">Notes & Feedback</h4>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">Use the Add Note and Add Feedback actions from the employee row to add notes and feedback.</p>
-                      <button
-                        type="button"
-                        className="ti-btn ti-btn-primary"
-                        onClick={() => {
-                          handleAddNote(previewCandidate.id, previewCandidate)
-                          setPreviewCandidate(null)
-                          setViewDetailTab('personal')
-                        }}
-                      >
-                        <i className="ri-file-text-line me-1"></i>Open Notes
-                      </button>
-                    </div>
+                    <CandidateFeedbackPanel
+                      candidate={previewCandidate}
+                      onOpenFeedback={() => {
+                        if (!previewCandidate) return
+                        openFeedbackModal(previewCandidate)
+                      }}
+                      onOpenNotes={() => {
+                        if (!previewCandidate) return
+                        handleAddNote(previewCandidate.id, previewCandidate)
+                        setPreviewCandidate(null)
+                        setViewDetailTab('personal')
+                      }}
+                    />
                   )}
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-gray-200 dark:border-defaultborder/10">
+              <div className="flex flex-col gap-2 border-t border-gray-200 pt-4 dark:border-defaultborder/10 sm:flex-row">
+                {viewDetailTab === "notes" && previewCandidate ? (
+                  <>
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-warning !mb-0 flex-1 !h-auto !w-auto !min-h-[2.75rem] !px-4 whitespace-nowrap inline-flex items-center justify-center gap-1.5"
+                      onClick={() => openFeedbackModal(previewCandidate)}
+                    >
+                      <i className="ri-feedback-line text-base" aria-hidden />
+                      <span>
+                        {getCandidateRecruiterFeedback(previewCandidate).feedback
+                          ? "Update feedback"
+                          : "Add feedback"}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="ti-btn ti-btn-primary !mb-0 flex-1 !h-auto !w-auto !min-h-[2.75rem] !px-4 whitespace-nowrap inline-flex items-center justify-center gap-1.5"
+                      onClick={() => {
+                        handleAddNote(previewCandidate.id, previewCandidate)
+                        setPreviewCandidate(null)
+                        setViewDetailTab("personal")
+                      }}
+                    >
+                      <i className="ri-file-text-line text-base" aria-hidden />
+                      <span>Open notes</span>
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
-                  className="ti-btn ti-btn-light w-full"
+                  className={`ti-btn ti-btn-light !mb-0 !h-auto !w-auto !min-h-[2.75rem] !px-4 whitespace-nowrap border border-gray-200 dark:border-defaultborder/20 inline-flex items-center justify-center ${
+                    viewDetailTab === "notes" && previewCandidate ? "sm:flex-1" : "w-full"
+                  }`}
                   data-hs-overlay="#candidate-preview-panel"
                   onClick={() => {
-                    const el = document.querySelector('#candidate-preview-panel');
+                    const el = document.querySelector("#candidate-preview-panel");
                     if (el) (window as any).HSOverlay?.close(el);
                     setPreviewCandidate(null);
-                    setViewDetailTab('personal');
+                    setViewDetailTab("personal");
                   }}
                 >
                   Close
@@ -3446,6 +3499,43 @@ const Candidates = () => {
                     </div>
                   </div>
                 ) : null
+              })()}
+
+              {/* Recruiter feedback snapshot */}
+              {(() => {
+                const details = getCandidateDetails()
+                if (!details) return null
+                const { feedback, rating } = getCandidateRecruiterFeedback(details)
+                return (
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-defaultborder/10 dark:bg-black/30">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <h6 className="mb-0 flex min-w-0 items-center gap-2 font-semibold text-gray-800 dark:text-white">
+                        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                          <i className="ri-feedback-line" aria-hidden />
+                        </span>
+                        <span className="truncate">Recruiter feedback</span>
+                      </h6>
+                      <button
+                        type="button"
+                        className="ti-btn ti-btn-warning !mb-0 !h-auto !w-auto !min-h-[2.5rem] !px-4 whitespace-nowrap inline-flex items-center justify-center gap-1.5 shrink-0"
+                        onClick={() => openFeedbackModal(details)}
+                      >
+                        <i className={`${feedback ? "ri-edit-line" : "ri-add-line"} text-base`} aria-hidden />
+                        <span>{feedback ? "Update feedback" : "Add feedback"}</span>
+                      </button>
+                    </div>
+                    {feedback ? (
+                      <>
+                        {rating != null && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{rating}/5 rating</p>
+                        )}
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-0">{feedback}</p>
+                      </>
+                    ) : (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-0">No feedback saved yet.</p>
+                    )}
+                  </div>
+                )
               })()}
 
               {/* Add New Note Form */}

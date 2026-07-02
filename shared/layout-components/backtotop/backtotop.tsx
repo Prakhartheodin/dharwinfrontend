@@ -20,7 +20,10 @@ const Backtotop = () => {
 		};
 	}, []);
 	return (
-		<div className="scrollToTop" onClick={screenUp}>
+		<div
+			className="scrollToTop fixed bottom-20 start-5 z-10 hidden h-10 w-10 cursor-pointer items-center justify-center rounded-md bg-primary text-white shadow-lg transition duration-100"
+			onClick={screenUp}
+		>
 			<span className="arrow"><i className="ri-arrow-up-s-fill text-xl"></i></span>
 		</div>
 	);

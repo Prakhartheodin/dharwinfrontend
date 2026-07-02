@@ -18,9 +18,33 @@ import {
 	hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
 
-function menuPathMatchesItem(item: { path?: string }, currentPath: string): boolean {
+function normalizeMenuPath(path: string): string {
+	const pathOnly = path.split("?")[0] ?? path;
+	return pathOnly.endsWith("/") && pathOnly.length > 1 ? pathOnly.slice(0, -1) : pathOnly;
+}
+
+function menuPathMatchesItem(
+	item: { path?: string },
+	currentPath: string,
+	searchParams?: URLSearchParams
+): boolean {
 	if (!item.path) return false;
-	return item.path === currentPath;
+
+	const itemPath = normalizeMenuPath(item.path);
+	const normalizedCurrent = normalizeMenuPath(currentPath);
+	if (itemPath !== normalizedCurrent) return false;
+
+	const queryIndex = item.path.indexOf("?");
+	if (queryIndex === -1) return true;
+
+	// One nav entry covers all tabs on this route.
+	if (itemPath === "/training/curriculum/setup") return true;
+
+	const itemParams = new URLSearchParams(item.path.slice(queryIndex + 1));
+	for (const [key, value] of itemParams.entries()) {
+		if ((searchParams?.get(key) ?? "") !== value) return false;
+	}
+	return true;
 }
 
 type MenuSection = { title: string; items: any[] };
@@ -47,10 +71,12 @@ function groupMenuIntoSections(items: any[]): MenuSection[] {
 	return sections.filter((section) => section.items.length > 0);
 }
 
-function menuItemMatchesPath(item: any, currentPath: string): boolean {
-	if (menuPathMatchesItem(item, currentPath)) return true;
+function menuItemMatchesPath(item: any, currentPath: string, searchParams?: URLSearchParams): boolean {
+	if (menuPathMatchesItem(item, currentPath, searchParams)) return true;
 	if (!Array.isArray(item.children)) return false;
-	return item.children.some((child: any) => !child?.hidden && menuItemMatchesPath(child, currentPath));
+	return item.children.some(
+		(child: any) => !child?.hidden && menuItemMatchesPath(child, currentPath, searchParams)
+	);
 }
 
 function loadCollapsedSections(): Record<string, boolean> {
@@ -77,7 +103,8 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		isDesignatedSuperadmin,
 	} = useAuth();
 
-	const path = usePathname()
+	const path = usePathname();
+	const searchParams = useSearchParams();
 
 	const isPathAllowed = (menuPath?: string) => {
 		// Signed-out guests on public layout: only job seeker links (avoid a full app menu).
@@ -193,8 +220,9 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	useEffect(() => {
 		const currentPath = path.endsWith("/") ? path.slice(0, -1) : path;
+		const sp = new URLSearchParams(searchParams?.toString() || "");
 		const match = menuSections.find((section) =>
-			section.items.some((item) => menuItemMatchesPath(item, currentPath))
+			section.items.some((item) => menuItemMatchesPath(item, currentPath, sp))
 		);
 		if (!match) return;
 		setCollapsedSections((prev) => {
@@ -206,7 +234,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			}
 			return next;
 		});
-	}, [path, menuSections]);
+	}, [path, menuSections, searchParams]);
 
 	function closeMenu() {
 		const closeMenudata = (items: any) => {
@@ -241,8 +269,6 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	}, []);
 
 	const router = useRouter();
-	const pathname = usePathname();
-	const searchParams = useSearchParams();
 
 	function Onhover() {
 
@@ -614,7 +640,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 			items?.forEach((item: any) => {
 				if (item.path == '') { }
-				else if (menuPathMatchesItem(item, currentPath)) {
+				else if (menuPathMatchesItem(item, currentPath, sp)) {
 					setSubmenu(null, item);
 				}
 				setSubmenuRecursively(item.children);
@@ -637,14 +663,14 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 		// Start observing the target element
 		observer.observe(targetElement, config);
-		let currentPath = pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+		let currentPath = path.endsWith("/") ? path.slice(0, -1) : path;
 		const sp = new URLSearchParams(searchParams?.toString() || "");
 		const navKey = `${currentPath}?${sp.toString()}`;
 		if (navKey !== previousNavKey) {
 			setMenuUsingUrl(currentPath, sp);
 			setPreviousNavKey(navKey);
 		}
-	}, [pathname, searchParams]);
+	}, [path, searchParams]);
 
 	function toggleSidemenu(event: any, targetObject: any, MenuItems = menuitems) {
 		const theme = store.getState();
@@ -808,7 +834,7 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 			if (mutation.type === 'attributes' && mutation.attributeName === 'data-nav-layout') {
 				const newValue = mutation.target.getAttribute('data-nav-layout');
 				if (newValue == 'vertical') {
-					let currentPath = pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+					let currentPath = path.endsWith('/') ? path.slice(0, -1) : path;
 					currentPath = !currentPath ? '/dashboard' : currentPath;
 					const sp = new URLSearchParams(
 						typeof window !== "undefined" ? window.location.search : searchParams?.toString() || ""
@@ -868,8 +894,9 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 								{menuSections.map((section) => {
 									const isCollapsed = !forceExpandAll && collapsedSections[section.title] !== false;
 									const currentNavPath = path?.endsWith("/") ? path.slice(0, -1) : path;
+									const currentNavSearch = new URLSearchParams(searchParams?.toString() || "");
 									const sectionHasActive = section.items.some((item) =>
-										menuItemMatchesPath(item, currentNavPath)
+										menuItemMatchesPath(item, currentNavPath, currentNavSearch)
 									);
 									const itemsJsx = section.items.map((levelone: any, index: any) => (
 													<Fragment key={`${section.title}-${index}`}>

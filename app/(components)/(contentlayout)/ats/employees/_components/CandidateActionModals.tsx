@@ -1,10 +1,58 @@
 "use client"
 import React from 'react'
-import { mapCandidateToDisplay, type CandidateDocument } from '@/shared/lib/api/candidates'
+import { mapCandidateToDisplay, getCandidateRecruiterFeedback, type CandidateDocument } from '@/shared/lib/api/candidates'
 
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
 
 const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+const MODAL_FOOTER_BTN =
+  'ti-btn !mb-0 !h-auto !w-auto !min-h-[2.75rem] !px-4 whitespace-nowrap inline-flex items-center justify-center gap-1.5'
+
+function StarRatingInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: number
+  onChange: (rating: number) => void
+  disabled?: boolean
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Rating from 1 to 5 stars">
+        {[1, 2, 3, 4, 5].map((n) => {
+          const filled = n <= value
+          return (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={value === n}
+              aria-label={`Rate ${n} out of 5`}
+              disabled={disabled}
+              onClick={() => onChange(n)}
+              className={`inline-flex h-10 w-10 items-center justify-center rounded-lg border transition-colors duration-150 ${
+                filled
+                  ? 'border-amber-400 bg-amber-50 text-amber-500 shadow-sm dark:border-amber-500/40 dark:bg-amber-500/10'
+                  : 'border-gray-200 bg-white text-gray-300 hover:border-amber-300 hover:bg-amber-50/50 hover:text-amber-400 dark:border-defaultborder/20 dark:bg-black/20'
+              } disabled:cursor-not-allowed disabled:opacity-50`}
+            >
+              <i className={`${filled ? 'ri-star-fill' : 'ri-star-line'} text-xl`} aria-hidden />
+            </button>
+          )
+        })}
+      </div>
+      <p className="mb-0 text-xs text-gray-500 dark:text-gray-400">
+        {value === 1 && 'Poor — significant concerns'}
+        {value === 2 && 'Below average — needs improvement'}
+        {value === 3 && 'Average — meets basic expectations'}
+        {value === 4 && 'Good — solid performance'}
+        {value === 5 && 'Excellent — outstanding performance'}
+      </p>
+    </div>
+  )
+}
 
 export interface CandidateActionModalsProps {
   documentsCandidate: CandidateDisplay | null
@@ -259,28 +307,112 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
 
       {/* Feedback modal */}
       <div id="feedback-modal" className="hs-overlay hidden ti-modal">
-        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out lg:!max-w-lg lg:w-full m-3 lg:!mx-auto">
-          <div className="ti-modal-content">
-            <div className="ti-modal-header">
-              <h6 className="ti-modal-title">Add Feedback – {feedbackCandidate?.name}</h6>
-              <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#feedback-modal" onClick={() => setFeedbackCandidate(null)}><span className="sr-only">Close</span>×</button>
-            </div>
-            <div className="ti-modal-body space-y-4">
-              <div>
-                <label className="form-label">Feedback</label>
-                <textarea className="form-control" rows={4} value={feedbackForm.feedback} onChange={(e) => setFeedbackForm(f => ({ ...f, feedback: e.target.value }))} placeholder="Enter feedback..." />
+        <div className="hs-overlay-open:mt-7 ti-modal-box mt-0 ease-out m-3 lg:!mx-auto lg:w-full lg:!max-w-md">
+          <div className="ti-modal-content overflow-hidden rounded-xl">
+            <div className="ti-modal-header border-b border-gray-100 bg-gray-50/80 px-5 py-4 dark:border-white/5 dark:bg-black/20">
+              <div className="flex min-w-0 items-start gap-3 pe-8">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                  <i className="ri-feedback-line text-xl" aria-hidden />
+                </span>
+                <div className="min-w-0">
+                  <h6 className="ti-modal-title mb-0 text-base font-semibold text-gray-900 dark:text-white">
+                    {feedbackCandidate && getCandidateRecruiterFeedback(feedbackCandidate).feedback
+                      ? 'Update feedback'
+                      : 'Add feedback'}
+                  </h6>
+                  {feedbackCandidate?.name ? (
+                    <p className="mb-0 mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">
+                      for {feedbackCandidate.name}
+                    </p>
+                  ) : null}
+                </div>
               </div>
-              <div>
-                <label className="form-label">Rating (1-5)</label>
-                <select className="form-control" value={feedbackForm.rating} onChange={(e) => setFeedbackForm(f => ({ ...f, rating: parseInt(e.target.value, 10) }))}>
-                  {[1, 2, 3, 4, 5].map(n => (<option key={n} value={n}>{n}</option>))}
-                </select>
+              <button
+                type="button"
+                className="hs-dropdown-toggle ti-modal-close-btn"
+                data-hs-overlay="#feedback-modal"
+                onClick={() => setFeedbackCandidate(null)}
+                aria-label="Close feedback dialog"
+              >
+                <span className="sr-only">Close</span>
+                <i className="ri-close-line text-lg" aria-hidden />
+              </button>
+            </div>
+
+            <div className="ti-modal-body space-y-5 px-5 py-5">
+              {actionError ? (
+                <div
+                  className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2.5 text-sm text-danger"
+                  role="alert"
+                >
+                  {actionError}
+                </div>
+              ) : null}
+
+              <div className="space-y-2">
+                <label htmlFor="feedback-text" className="form-label mb-0 font-medium text-gray-800 dark:text-gray-200">
+                  Feedback <span className="text-danger">*</span>
+                </label>
+                <textarea
+                  id="feedback-text"
+                  className="form-control min-h-[7.5rem] resize-y rounded-lg !py-2.5 text-sm leading-relaxed"
+                  rows={4}
+                  value={feedbackForm.feedback}
+                  onChange={(e) => setFeedbackForm((f) => ({ ...f, feedback: e.target.value }))}
+                  placeholder="Summarize performance, interview impressions, or areas to improve…"
+                  disabled={feedbackSubmitting}
+                />
+                <p className="mb-0 text-xs text-gray-500 dark:text-gray-400">
+                  Visible to recruiters on this employee profile.
+                </p>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-gray-100 bg-gray-50/60 p-4 dark:border-white/5 dark:bg-black/10">
+                <label className="form-label mb-0 font-medium text-gray-800 dark:text-gray-200">
+                  Rating
+                </label>
+                <StarRatingInput
+                  value={feedbackForm.rating}
+                  onChange={(rating) => setFeedbackForm((f) => ({ ...f, rating }))}
+                  disabled={feedbackSubmitting}
+                />
               </div>
             </div>
-            <div className="ti-modal-footer">
-              <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#feedback-modal">Cancel</button>
-              <button type="button" className="ti-btn ti-btn-primary" disabled={feedbackSubmitting || !feedbackForm.feedback.trim()} onClick={handleFeedbackSubmit}>
-                {feedbackSubmitting ? 'Saving...' : 'Save Feedback'}
+
+            <div className="ti-modal-footer flex flex-col-reverse gap-2 border-t border-gray-100 bg-gray-50/50 px-5 py-4 dark:border-white/5 dark:bg-black/10 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                className={`${MODAL_FOOTER_BTN} ti-btn-light w-full border border-gray-200 dark:border-defaultborder/20 sm:w-auto`}
+                data-hs-overlay="#feedback-modal"
+                disabled={feedbackSubmitting}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={`${MODAL_FOOTER_BTN} ti-btn-primary-full w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed`}
+                disabled={feedbackSubmitting || !feedbackForm.feedback.trim()}
+                onClick={handleFeedbackSubmit}
+              >
+                {feedbackSubmitting ? (
+                  <>
+                    <span
+                      className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                      aria-hidden
+                    />
+                    Saving…
+                  </>
+                ) : feedbackCandidate && getCandidateRecruiterFeedback(feedbackCandidate).feedback ? (
+                  <>
+                    <i className="ri-save-line text-base" aria-hidden />
+                    Save changes
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-check-line text-base" aria-hidden />
+                    Save feedback
+                  </>
+                )}
               </button>
             </div>
           </div>

@@ -175,7 +175,7 @@ export function ReferralLeadsFilters({
                 { value: "hiredOnly" as const, label: "Hired only" },
                 { value: "activeEmployees" as const, label: "Active employees" },
                 { value: "resignedEmployees" as const, label: "Resigned employees" },
-                { value: "pendingReferrals" as const, label: "Pending referrals" },
+                  { value: "appliedOnly" as const, label: "Applied" },
               ] as const
             ).map(({ value, label }) => {
               const active = filters.quickStatus === value;

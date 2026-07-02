@@ -1813,6 +1813,11 @@ Toast
   .main-header-container .header-element.header-theme-mode button {
     @apply py-0 !important;
   }
+  /* Icon-only controls use explicit min touch targets in TSX — avoid fighting Tailwind with extra vertical padding. */
+  .main-header-container .header-element.header-search > button,
+  .main-header-container .header-element.notifications-dropdown > button {
+    @apply py-0 !important;
+  }
 }
 @media (max-width: 991.98px) {
   .app-header .horizontal-logo .header-logo img {
@@ -3864,6 +3869,9 @@ label {
 }
 .dharwin-kanban-board #new-tasks .box:last-child, .dharwin-kanban-board #todo-tasks .box:last-child, .dharwin-kanban-board #inprogress-tasks .box:last-child, .dharwin-kanban-board #inreview-tasks .box:last-child, .dharwin-kanban-board #completed-tasks .box:last-child {
   @apply mb-0;
+}
+.dharwin-kanban-board {
+  /* Scroll height comes from flex + kbScrollHost (Perfect Scrollbar), not a fixed max-height */
 }
 .dharwin-kanban-board #new-tasks, .dharwin-kanban-board #todo-tasks, .dharwin-kanban-board #inprogress-tasks, .dharwin-kanban-board #inreview-tasks, .dharwin-kanban-board #completed-tasks {
   @apply relative flex-1 min-h-0;
@@ -11049,7 +11057,7 @@ code {
 }
 
 .content {
-  @apply lg:ms-60 mt-[60px] transition-all ms-0 grow;
+  @apply lg:ms-60 mt-[60px] transition-all ms-0;
 }
 
 pre {
@@ -11131,9 +11139,9 @@ code {
   @apply lg:ms-24;
 }
 
-/* Start:: Back to Top */
+/* Start:: Back to Top — positioning lives on Backtotop component (Tailwind JIT); keep visuals only here for legacy style.css consumers */
 .scrollToTop {
-  @apply fixed bottom-5 end-5 hidden bg-primary text-white items-center justify-center text-center z-10 h-10 w-10 bg-no-repeat bg-center transition duration-100 rounded-md shadow-lg;
+  @apply hidden bg-primary text-white items-center justify-center text-center h-10 w-10 bg-no-repeat bg-center transition duration-100 rounded-md shadow-lg;
 }
 
 /* Start:: Back to Top */
@@ -13630,6 +13638,16 @@ h6 {
   }
 }
 .slide.has-sub.open > .side-menu__item .side-menu__angle {
+  @apply rotate-90;
+}
+
+.app-sidebar .slide__category .category-name--toggle {
+  @apply flex w-full items-center justify-between cursor-pointer border-0 bg-transparent p-0 text-inherit uppercase;
+}
+.app-sidebar .slide__category .category-name--toggle .side-menu__angle {
+  @apply text-[0.75rem] opacity-70 transition-transform duration-200 ms-2;
+}
+.app-sidebar .slide__category .category-name--toggle.is-open .side-menu__angle {
   @apply rotate-90;
 }
 
