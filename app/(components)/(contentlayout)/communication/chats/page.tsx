@@ -1126,6 +1126,28 @@ const Chat = () => {
     }
   };
 
+  // ponytail: live search — debounce keystrokes so results appear as you type; Enter/button still work.
+  useEffect(() => {
+    const q = userSearch.trim();
+    if (!q) { setSearchResults([]); return; }
+    const t = setTimeout(() => { handleSearchUsers(); }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSearch]);
+
+  useEffect(() => {
+    const q = addMemberSearch.trim();
+    if (!q) { setAddMemberResults([]); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await searchUsers({ search: q, limit: 20 });
+        setAddMemberResults(res.results || []);
+      } catch { setAddMemberResults([]); }
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addMemberSearch]);
+
   const handleStartChat = async (userOrId: { id?: string; _id?: string }) => {
     const userId = (userOrId as any)?.id || (userOrId as any)?._id;
     if (!userId) return;

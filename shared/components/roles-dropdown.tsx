@@ -21,6 +21,12 @@ export function RolesDropdown({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const closeToTrigger = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
 
   const filteredRoles = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -29,14 +35,22 @@ export function RolesDropdown({
   }, [roles, search]);
 
   useEffect(() => {
+    if (!open) return;
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeToTrigger();
+    }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [open]);
 
   const selectedNames = roles.filter((r) => selectedIds.includes(r.id)).map((r) => r.name);
   const label = selectedNames.length > 0 ? selectedNames.join(", ") : placeholder;
@@ -44,6 +58,7 @@ export function RolesDropdown({
   return (
     <div ref={containerRef} className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="form-control border flex items-center justify-between gap-2 text-start min-h-[2.375rem]"
@@ -68,7 +83,13 @@ export function RolesDropdown({
               placeholder="Search roles..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  closeToTrigger();
+                }
+              }}
               autoFocus
             />
           </div>

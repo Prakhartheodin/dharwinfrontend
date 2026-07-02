@@ -615,14 +615,14 @@ export default function CandidateAttendanceOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-[110] flex items-center justify-center p-3 sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)]"
+      className="fixed inset-0 z-[110] flex items-stretch justify-center p-0 sm:items-center sm:p-4 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.45)_0%,_transparent_55%)]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="candidate-attendance-title"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-bodybg rounded-2xl shadow-[0_24px_80px_-16px_rgba(0,0,0,0.35)] border border-defaultborder/80 dark:border-white/10 max-w-[min(100%,52rem)] w-full max-h-[92vh] overflow-hidden flex flex-col"
+        className="bg-white dark:bg-bodybg rounded-none sm:rounded-2xl shadow-[0_24px_80px_-16px_rgba(0,0,0,0.35)] border-0 sm:border border-defaultborder/80 dark:border-white/10 max-w-[min(100%,52rem)] w-full h-full sm:h-auto max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative overflow-hidden border-b border-defaultborder/80 dark:border-white/10 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.04] dark:from-primary/15 dark:to-amber-950/20 px-5 py-4 sm:px-6">
@@ -683,7 +683,7 @@ export default function CandidateAttendanceOverlay({
           </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-4 py-4 sm:px-6 sm:py-5">
+        <div className="overflow-y-auto flex-1 px-2.5 py-4 sm:px-6 sm:py-5">
           {!canLoadAttendance && (
             <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
               Missing candidate id. Close and open the row again.
@@ -919,7 +919,7 @@ export default function CandidateAttendanceOverlay({
                           key={idx}
                           title={titleParts.join(" · ")}
                           className={
-                            "min-h-[88px] p-2.5 sm:min-h-[96px] flex flex-col transition-colors " +
+                            "min-h-[56px] p-1 sm:min-h-[96px] sm:p-2.5 flex flex-col transition-colors " +
                             (isToday ? "ring-2 ring-primary ring-inset z-[1] " : "") +
                             (isEmpty || isFuture ? "opacity-60 " : "") +
                             cellBg +
@@ -962,7 +962,7 @@ export default function CandidateAttendanceOverlay({
                                   )}
                                 </div>
                               </div>
-                              <div className="mt-1 flex-1 flex flex-col gap-0.5 min-h-0">
+                              <div className="mt-1 flex-1 hidden sm:flex flex-col gap-0.5 min-h-0">
                                 {cell.holiday && (
                                   <p className="text-[0.6875rem] font-semibold leading-snug text-sky-800 dark:text-sky-200 line-clamp-2">
                                     {cell.holidayName || "Holiday"}

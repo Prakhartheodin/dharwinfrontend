@@ -166,9 +166,9 @@ export default function CandidateOnboardPage() {
           adminId,
         });
         await Swal.fire({
-          title: "Registration Successful!",
+          title: res.resent ? "Verification Email Re-sent" : "Registration Successful!",
           html: `
-            <p class="mb-4">We sent a verification email to <strong>${em}</strong>.</p>
+            ${res.resent ? `<p class="mb-4">You already started registration with this email, so we re-sent the verification link to <strong>${em}</strong>.</p>` : `<p class="mb-4">We sent a verification email to <strong>${em}</strong>.</p>`}
             <div class="text-left bg-gray-50 rounded-lg p-4 text-sm">
               <p class="font-semibold mb-2">Next steps:</p>
               <ul class="list-disc list-inside space-y-1 text-gray-700">
@@ -205,7 +205,12 @@ export default function CandidateOnboardPage() {
       }
     } catch (err: unknown) {
       const msg = getErrorMessage(err);
-      if (msg.toLowerCase().includes("already taken") || msg.toLowerCase().includes("email")) {
+      const errorCode = err instanceof AxiosError ? err.response?.data?.errorCode : undefined;
+      // Only a real duplicate account should send the user to login. Matching any message that
+      // merely contains "email" previously turned every email-related error (validation, candidate
+      // profile conflicts, failed verification sends) into a false "Account Already Exists".
+      const isExistingAccount = errorCode === "ACCOUNT_EXISTS" || msg.toLowerCase().includes("already taken");
+      if (isExistingAccount) {
         Swal.fire({
           title: "Account Already Exists",
           html: `

@@ -164,7 +164,10 @@ export interface RegisterCandidateFromInvitePayload {
 
 export interface RegisterCandidateFromInviteResponse {
   user: User;
-  tokens: { access: { token: string; expires: string }; refresh: { token: string; expires: string } };
+  /** True when an unfinished (pending, unverified) signup was resumed and the verification email re-sent. */
+  resent?: boolean;
+  message?: string;
+  tokens?: { access: { token: string; expires: string }; refresh: { token: string; expires: string } };
 }
 
 export async function registerCandidateFromInvite(

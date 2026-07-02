@@ -223,8 +223,8 @@ export default function SettingsUsersAddPage() {
       <div className="relative mt-4 space-y-6 min-h-[50vh] w-full">
         <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.07),transparent_50%)] dark:bg-[radial-gradient(ellipse_100%_60%_at_50%_-15%,rgba(99,102,241,0.12),transparent_50%)]" aria-hidden />
 
-        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
+        <section className="rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-sm shadow-black/[0.03] dark:shadow-none">
+          <div className="rounded-t-2xl flex flex-wrap items-center justify-between gap-4 px-6 py-5 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/90 to-white dark:from-white/[0.03] dark:to-transparent">
             <div className="flex items-center gap-4 min-w-0">
               <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/10 dark:ring-primary/20" aria-hidden>
                 <i className="ri-user-add-line text-2xl" />
@@ -239,7 +239,7 @@ export default function SettingsUsersAddPage() {
             </Link>
           </div>
 
-          <form onSubmit={handleSubmit} className="px-6 py-6 space-y-6 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
+          <form onSubmit={handleSubmit} className="rounded-b-2xl px-6 py-6 space-y-6 bg-gradient-to-b from-slate-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent">
             {error && (
               <div className="rounded-xl border border-danger/30 bg-danger/10 dark:bg-danger/15 px-4 py-3 text-sm text-danger flex items-start gap-2">
                 <i className="ri-error-warning-line text-lg shrink-0" aria-hidden />
