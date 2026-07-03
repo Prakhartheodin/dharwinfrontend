@@ -145,6 +145,27 @@ function TranscriptCard({ transcript }: { transcript?: string }) {
   );
 }
 
+/**
+ * The recording + AI-summary + transcript card cluster for one call record.
+ * Shared by the dialer's selected-call panel and the contact's Recent-calls list.
+ * Static by design: no live polling here — the selected-call panel owns polling
+ * via useLiveRecord and passes a fresh `record` in.
+ */
+export function CallCards({ record, stalled }: { record: CallRecord; stalled?: boolean }) {
+  return (
+    <>
+      {record.executionId ? (
+        <div className="mb-4 rounded-xl border border-defaultborder/60 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+          <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">Recording</p>
+          <CallRecordings executionId={record.executionId} />
+        </div>
+      ) : null}
+      <AiSummaryCard intelligence={record.intelligence} stalled={stalled} />
+      <TranscriptCard transcript={record.transcript} />
+    </>
+  );
+}
+
 export default function CallContextPanel(
   { record: recordProp, onCall, onSaveAsContact }:
   { record: CallRecord | null; onCall: (n: string) => void; onSaveAsContact?: (record: CallRecord) => void }
@@ -206,14 +227,7 @@ export default function CallContextPanel(
       </div>
       {date ? <p className="mb-4 text-[0.78rem] text-defaulttextcolor/45">{date}</p> : null}
 
-      {record.executionId ? (
-        <div className="mb-4 rounded-xl border border-defaultborder/60 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
-          <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">Recording</p>
-          <CallRecordings executionId={record.executionId} />
-        </div>
-      ) : null}
-      <AiSummaryCard intelligence={record.intelligence} stalled={stalled} />
-      <TranscriptCard transcript={record.transcript} />
+      <CallCards record={record} stalled={stalled} />
       {record.tags?.length ? (
         <div className="mb-4">
           <p className="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">Tags</p>
