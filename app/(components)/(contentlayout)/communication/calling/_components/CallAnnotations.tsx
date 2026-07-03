@@ -4,10 +4,8 @@ import { useMemo, useState } from "react";
 import {
   patchBolnaCallRecord,
   CALL_TAGS,
-  CALL_RELATED_ENTITY_TYPES,
   type CallRecord,
   type CallTag,
-  type CallRelatedEntityType,
 } from "@/shared/lib/api/bolna";
 
 const TAG_LABELS: Record<CallTag, string> = {
@@ -29,8 +27,7 @@ function apiErr(e: unknown, fallback: string): string {
 }
 
 /**
- * Batch B annotation editor: free-text notes, CRM tags, and a generic entity link.
- * The entity link is a type + id pair (paste the id) — a searchable picker is Batch C.
+ * Annotation editor for a call: free-text notes and CRM tags.
  */
 export default function CallAnnotations({
   record,
@@ -45,23 +42,14 @@ export default function CallAnnotations({
 
   const [notes, setNotes] = useState(record.notes ?? "");
   const [tags, setTags] = useState<CallTag[]>((record.tags as CallTag[]) ?? []);
-  const [entityType, setEntityType] = useState<CallRelatedEntityType | "">(
-    record.relatedTo?.entityType ?? ""
-  );
-  const [entityId, setEntityId] = useState(record.relatedTo?.entityId ?? "");
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
 
   const dirty = useMemo(() => {
     const sameTags =
       tags.length === (record.tags?.length ?? 0) && tags.every((t) => record.tags?.includes(t));
-    return (
-      notes !== (record.notes ?? "") ||
-      !sameTags ||
-      entityType !== (record.relatedTo?.entityType ?? "") ||
-      entityId.trim() !== (record.relatedTo?.entityId ?? "")
-    );
-  }, [notes, tags, entityType, entityId, record]);
+    return notes !== (record.notes ?? "") || !sameTags;
+  }, [notes, tags, record]);
 
   const toggleTag = (t: CallTag) =>
     setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
@@ -72,14 +60,7 @@ export default function CallAnnotations({
     setSaving(true);
     setFeedback(null);
     try {
-      const res = await patchBolnaCallRecord(id, {
-        notes,
-        tags,
-        relatedTo: {
-          entityType: entityType || null,
-          entityId: entityType && entityId.trim() ? entityId.trim() : null,
-        },
-      });
+      const res = await patchBolnaCallRecord(id, { notes, tags });
       setFeedback({ kind: "ok", msg: "Saved" });
       onSaved?.(res.record);
     } catch (e) {
@@ -125,31 +106,6 @@ export default function CallAnnotations({
             </button>
           );
         })}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <select
-          value={entityType}
-          disabled={!canEdit}
-          onChange={(e) => setEntityType(e.target.value as CallRelatedEntityType | "")}
-          className="shrink-0 rounded-lg border border-defaultborder/70 bg-white px-2 py-2 text-[0.75rem] dark:border-white/10 dark:bg-black/20 dark:text-white"
-          aria-label="Link to entity type"
-        >
-          <option value="">No link</option>
-          {CALL_RELATED_ENTITY_TYPES.map((et) => (
-            <option key={et} value={et}>
-              {et.charAt(0).toUpperCase() + et.slice(1)}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          value={entityId}
-          disabled={!canEdit || !entityType}
-          onChange={(e) => setEntityId(e.target.value)}
-          placeholder={entityType ? `${entityType} id` : "select a type first"}
-          className="w-full rounded-lg border border-defaultborder/70 bg-white px-2 py-2 font-mono text-[0.75rem] focus:outline-none disabled:opacity-50 dark:border-white/10 dark:bg-black/20 dark:text-white"
-        />
       </div>
 
       <div className="flex items-center gap-2">
