@@ -1943,47 +1943,78 @@ const Chat = () => {
                               <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
                                 <span className={`${chatStyles.msgMeta} ${isMe ? chatStyles.msgMetaMe : ""}`}>
                                   {isMe && !(m as any).deletedAt && (
-                                    <>
+                                    <span
+                                      ref={deleteMenuFor === String((m as any).id || (m as any)._id) ? deleteMenuRef : undefined}
+                                      className="relative inline-flex"
+                                    >
                                       <button
                                         type="button"
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
                                         title="Delete"
-                                        onClick={() => {
-                                          const cid = getId(selectedConversation);
-                                          if (!cid) return;
-                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "me").then(() => {
-                                            setMessages((prev) => prev.filter((x) => String((x as any).id || (x as any)._id) !== String((m as any).id || (m as any)._id)));
-                                          }).catch(() => {});
-                                        }}
+                                        aria-label="Delete message"
+                                        aria-haspopup="menu"
+                                        aria-expanded={deleteMenuFor === String((m as any).id || (m as any)._id)}
+                                        onClick={() =>
+                                          setDeleteMenuFor((prev) =>
+                                            prev === String((m as any).id || (m as any)._id)
+                                              ? null
+                                              : String((m as any).id || (m as any)._id)
+                                          )
+                                        }
                                       >
                                         <i className="ri-delete-bin-line text-sm" />
                                       </button>
-                                      <button
-                                        type="button"
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
-                                        title="Delete for everyone"
-                                        onClick={() => {
-                                          const cid = getId(selectedConversation);
-                                          if (!cid) return;
-                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "everyone").then(() => {
-                                            setMessages((prev) =>
-                                              prev.map((x) => {
-                                                if (String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)) {
-                                                  return { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const };
-                                                }
-                                                return x;
-                                              })
-                                            );
-                                          }).catch(() => {});
-                                        }}
-                                      >
-                                        <i className="ri-delete-bin-2-line text-sm" />
-                                      </button>
-                                    </>
+                                      {deleteMenuFor === String((m as any).id || (m as any)._id) && (
+                                        <div className="absolute top-full right-0 mt-1 z-20 min-w-[11rem] rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-black/5 dark:border-white/10 py-1 text-start">
+                                          <button
+                                            type="button"
+                                            className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+                                            onClick={() => {
+                                              const cid = getId(selectedConversation);
+                                              const mid = String((m as any).id || (m as any)._id);
+                                              setDeleteMenuFor(null);
+                                              if (!cid) return;
+                                              if (!window.confirm("Delete this message for you? It stays visible for others.")) return;
+                                              deleteMessage(cid, mid, "me")
+                                                .then(() => {
+                                                  setMessages((prev) => prev.filter((x) => String((x as any).id || (x as any)._id) !== mid));
+                                                })
+                                                .catch(() => {});
+                                            }}
+                                          >
+                                            Delete for me
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="w-full text-start px-3 py-1.5 text-sm text-danger hover:bg-black/5 dark:hover:bg-white/10"
+                                            onClick={() => {
+                                              const cid = getId(selectedConversation);
+                                              const mid = String((m as any).id || (m as any)._id);
+                                              setDeleteMenuFor(null);
+                                              if (!cid) return;
+                                              if (!window.confirm("Delete this message for everyone? This cannot be undone.")) return;
+                                              deleteMessage(cid, mid, "everyone")
+                                                .then(() => {
+                                                  setMessages((prev) =>
+                                                    prev.map((x) =>
+                                                      String((x as any).id || (x as any)._id) === mid
+                                                        ? { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const }
+                                                        : x
+                                                    )
+                                                  );
+                                                })
+                                                .catch(() => {});
+                                            }}
+                                          >
+                                            Delete for everyone
+                                          </button>
+                                        </div>
+                                      )}
+                                    </span>
                                   )}
                                   <button
                                     type="button"
-                                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
                                     title="Reply"
                                     onClick={() => setReplyingTo(m)}
                                   >
