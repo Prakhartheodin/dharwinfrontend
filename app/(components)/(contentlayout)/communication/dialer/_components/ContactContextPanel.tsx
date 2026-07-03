@@ -69,28 +69,66 @@ function RecentCalls({ contactId }: { contactId: string }) {
         const open = expandedKey === key;
         const dir = callDirection(c);
         const dirIcon = dir === "outbound" ? "ri-arrow-right-up-line" : dir === "inbound" ? "ri-arrow-left-down-line" : "ri-phone-line";
-        const when = c.createdAt ? new Date(c.createdAt).toLocaleString() : "";
+        const dirTint =
+          dir === "outbound"
+            ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+            : dir === "inbound"
+              ? "bg-primary/10 text-primary"
+              : "bg-black/[0.04] text-defaulttextcolor/50 dark:bg-white/10 dark:text-white/50";
+        const s = (c.status || "").toLowerCase();
+        const statusTone = /complet/.test(s)
+          ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+          : /(fail|busy|no.?answer|error|disconnect|cancel|reject|decline)/.test(s)
+            ? "bg-danger/10 text-danger"
+            : "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+        const d = c.createdAt ? new Date(c.createdAt) : null;
+        const dateLabel = d ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "";
+        const timeLabel = d ? d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }) : "";
         const duration = fmtDuration(c.duration);
+        const meta = [dateLabel && timeLabel ? `${dateLabel}, ${timeLabel}` : dateLabel || timeLabel, duration]
+          .filter(Boolean)
+          .join(" · ");
         return (
-          <div key={key} className="rounded-xl border border-defaultborder/60 dark:border-white/10">
+          <div
+            key={key}
+            className={`overflow-hidden rounded-xl border transition-colors ${
+              open
+                ? "border-primary/30 bg-primary/[0.02] dark:bg-white/[0.02]"
+                : "border-defaultborder/60 dark:border-white/10"
+            }`}
+          >
             <button
               type="button"
               onClick={() => setExpandedKey(open ? null : key)}
               aria-expanded={open}
-              className="flex w-full items-center gap-2 p-3 text-left text-[0.78rem] text-defaulttextcolor/60 dark:text-white/50"
+              className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
             >
-              <i className={`${dirIcon} text-sm`} aria-hidden />
-              <span className="capitalize">{dir}</span>
-              {c.status ? <span className="capitalize">· {c.status}</span> : null}
-              {duration ? <span>· {duration}</span> : null}
-              <span className="ml-auto flex items-center gap-1.5">
-                {when}
-                <i className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-sm`} aria-hidden />
+              <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${dirTint}`}>
+                <i className={`${dirIcon} text-base`} aria-hidden />
               </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium capitalize text-defaulttextcolor dark:text-white">{dir}</span>
+                  {c.status ? (
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-wide ${statusTone}`}>
+                      {c.status.replace(/_/g, " ")}
+                    </span>
+                  ) : null}
+                </span>
+                {meta ? (
+                  <span className="mt-0.5 block truncate text-[0.72rem] tabular-nums text-defaulttextcolor/50 dark:text-white/40">
+                    {meta}
+                  </span>
+                ) : null}
+              </span>
+              <i
+                className={`ri-arrow-down-s-line shrink-0 text-lg text-defaulttextcolor/40 transition-transform ${open ? "rotate-180" : ""}`}
+                aria-hidden
+              />
             </button>
             {open ? (
-              <div className="px-3 pb-3">
-                <CallCards record={c} />
+              <div className="border-t border-defaultborder/50 px-3 pb-3 pt-3 dark:border-white/10">
+                <CallCards record={c} historical />
               </div>
             ) : null}
           </div>

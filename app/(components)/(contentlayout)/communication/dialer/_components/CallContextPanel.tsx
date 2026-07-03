@@ -53,8 +53,14 @@ function useLiveRecord(record: CallRecord | null) {
  * omits `intelligence` for viewers without the Call AI permission, and for
  * calls made before the pipeline existed — the card hides itself entirely.
  */
-function AiSummaryCard({ intelligence, stalled }: { intelligence?: CallRecord["intelligence"]; stalled?: boolean }) {
+function AiSummaryCard(
+  { intelligence, stalled, historical }:
+  { intelligence?: CallRecord["intelligence"]; stalled?: boolean; historical?: boolean }
+) {
   if (!intelligence || (!intelligence.transcriptSid && !intelligence.summary)) return null;
+  // Static lists (e.g. a contact's call history) don't poll Intelligence, and old
+  // calls predate the pipeline — show nothing rather than a spinner that never resolves.
+  if (historical && !intelligence.summary) return null;
   const status = (intelligence.status || "").toLowerCase();
   const failed = status === "failed" || status === "canceled";
   const pending = !intelligence.summary && !failed;
@@ -151,7 +157,10 @@ function TranscriptCard({ transcript }: { transcript?: string }) {
  * Static by design: no live polling here — the selected-call panel owns polling
  * via useLiveRecord and passes a fresh `record` in.
  */
-export function CallCards({ record, stalled }: { record: CallRecord; stalled?: boolean }) {
+export function CallCards(
+  { record, stalled, historical }:
+  { record: CallRecord; stalled?: boolean; historical?: boolean }
+) {
   return (
     <>
       {record.executionId ? (
@@ -160,7 +169,7 @@ export function CallCards({ record, stalled }: { record: CallRecord; stalled?: b
           <CallRecordings executionId={record.executionId} />
         </div>
       ) : null}
-      <AiSummaryCard intelligence={record.intelligence} stalled={stalled} />
+      <AiSummaryCard intelligence={record.intelligence} stalled={stalled} historical={historical} />
       <TranscriptCard transcript={record.transcript} />
     </>
   );
