@@ -40,6 +40,24 @@ it("shows completed AI summary text", () => {
   expect(screen.getByText("Agent confirmed the offer.")).toBeInTheDocument();
 });
 
+it("hides transcript card when transcript is absent", () => {
+  render(<CallContextPanel record={baseRec} onCall={() => {}} />);
+  expect(screen.queryByText(/^transcript$/i)).not.toBeInTheDocument();
+});
+
+it("shows collapsed transcript, expands with speaker labels on click", () => {
+  const rec = { ...baseRec, transcript: "A: Hello there\nB: Hi, who is this?" };
+  render(<CallContextPanel record={rec} onCall={() => {}} />);
+  const toggle = screen.getByRole("button", { name: /transcript/i });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByText("Hello there")).not.toBeInTheDocument();
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText("Hello there")).toBeInTheDocument();
+  expect(screen.getByText("Agent")).toBeInTheDocument();
+  expect(screen.getByText("Caller")).toBeInTheDocument();
+});
+
 it("shows generating state while transcript is pending, failure note on failed", () => {
   const rec = { ...baseRec, intelligence: { transcriptSid: "GT1", status: "queued", summary: null } };
   const { unmount } = render(<CallContextPanel record={rec} onCall={() => {}} />);

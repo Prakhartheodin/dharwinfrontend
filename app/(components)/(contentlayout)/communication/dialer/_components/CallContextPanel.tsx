@@ -43,6 +43,55 @@ function AiSummaryCard({ intelligence }: { intelligence?: CallRecord["intelligen
   );
 }
 
+/**
+ * Full call transcript (Twilio Intelligence dual-channel: A = agent leg,
+ * B = callee). Backend strips `transcript` without the Call Transcripts
+ * permission, so the card self-hides. Collapsed by default — transcripts
+ * are long and the summary card above carries the gist.
+ */
+function TranscriptCard({ transcript }: { transcript?: string }) {
+  const [open, setOpen] = React.useState(false);
+  if (!transcript?.trim()) return null;
+  const lines = transcript.split("\n").map((l) => l.trim()).filter(Boolean);
+  return (
+    <div className="mb-4 rounded-xl border border-defaultborder/60 bg-black/[0.02] p-3 dark:border-white/10 dark:bg-white/[0.03]">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between text-left"
+      >
+        <span className="flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">
+          <i className="ri-chat-3-line text-sm" aria-hidden /> Transcript
+        </span>
+        <span className="flex items-center gap-1 text-[0.7rem] text-defaulttextcolor/45">
+          {open ? "Hide" : "Show"}
+          <i className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-sm`} aria-hidden />
+        </span>
+      </button>
+      {open ? (
+        <div className="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+          {lines.map((line, i) => {
+            const m = line.match(/^([AB]):\s*(.*)$/);
+            const speaker = m?.[1];
+            const text = m ? m[2] : line;
+            return (
+              <p key={i} className="mb-0 text-[0.8rem] leading-relaxed text-defaulttextcolor/75 dark:text-white/60">
+                {speaker ? (
+                  <span className={`mr-1.5 font-semibold ${speaker === "A" ? "text-primary" : "text-emerald-600 dark:text-emerald-400"}`}>
+                    {speaker === "A" ? "Agent" : "Caller"}
+                  </span>
+                ) : null}
+                {text}
+              </p>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CallContextPanel(
   { record, onCall, onSaveAsContact }:
   { record: CallRecord | null; onCall: (n: string) => void; onSaveAsContact?: (record: CallRecord) => void }
@@ -110,6 +159,7 @@ export default function CallContextPanel(
         </div>
       ) : null}
       <AiSummaryCard intelligence={record.intelligence} />
+      <TranscriptCard transcript={record.transcript} />
       {record.tags?.length ? (
         <div className="mb-4">
           <p className="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">Tags</p>
