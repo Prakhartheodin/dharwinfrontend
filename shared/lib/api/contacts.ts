@@ -1,6 +1,7 @@
 "use client";
 
 import { apiClient } from "@/shared/lib/api/client";
+import type { CallRecord } from "@/shared/lib/api/bolna";
 
 export type Phone = {
   label?: "work" | "mobile" | "other";
@@ -72,4 +73,11 @@ export async function updateContact(id: string, patch: Partial<CreateContactBody
 
 export async function deleteContact(id: string): Promise<void> {
   await apiClient.delete(`/contacts/${id}`);
+}
+
+export async function getContactCalls(id: string): Promise<CallRecord[]> {
+  const { data } = await apiClient.get<{ success: boolean; results: CallRecord[] }>(
+    `/contacts/${id}/calls`
+  );
+  return data.results ?? [];
 }
