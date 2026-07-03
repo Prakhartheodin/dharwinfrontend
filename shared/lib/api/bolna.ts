@@ -105,6 +105,17 @@ export type CallRecord = {
   displayName?: string | null;
   verification?: CallVerification;
   callQuality?: CallQuality;
+  /**
+   * Twilio Conversational Intelligence (dialer calls). Stripped by the backend
+   * when the viewer lacks the Call AI permission — absence hides the UI.
+   */
+  intelligence?: {
+    transcriptSid?: string | null;
+    status?: string | null;
+    summary?: string | null;
+    requestedAt?: string | null;
+    completedAt?: string | null;
+  } | null;
   /** Batch B — agent annotations. */
   notes?: string;
   tags?: string[];

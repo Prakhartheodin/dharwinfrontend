@@ -25,3 +25,27 @@ it("renders details, gates recording, saves as contact", () => {
   fireEvent.click(screen.getByRole("button", { name: /save as contact/i }));
   expect(onSaveAsContact).toHaveBeenCalledWith(rec);
 });
+
+const baseRec: CallRecord = { _id: "2", toPhoneNumber: "+911", status: "completed" };
+
+it("hides AI summary card when intelligence is absent (no permission / legacy call)", () => {
+  render(<CallContextPanel record={baseRec} onCall={() => {}} />);
+  expect(screen.queryByText(/ai summary/i)).not.toBeInTheDocument();
+});
+
+it("shows completed AI summary text", () => {
+  const rec = { ...baseRec, intelligence: { transcriptSid: "GT1", status: "completed", summary: "Agent confirmed the offer." } };
+  render(<CallContextPanel record={rec} onCall={() => {}} />);
+  expect(screen.getByText(/ai summary/i)).toBeInTheDocument();
+  expect(screen.getByText("Agent confirmed the offer.")).toBeInTheDocument();
+});
+
+it("shows generating state while transcript is pending, failure note on failed", () => {
+  const rec = { ...baseRec, intelligence: { transcriptSid: "GT1", status: "queued", summary: null } };
+  const { unmount } = render(<CallContextPanel record={rec} onCall={() => {}} />);
+  expect(screen.getByText(/generating summary/i)).toBeInTheDocument();
+  unmount();
+  const failedRec = { ...baseRec, intelligence: { transcriptSid: "GT1", status: "failed", summary: null } };
+  render(<CallContextPanel record={failedRec} onCall={() => {}} />);
+  expect(screen.getByText(/summary unavailable/i)).toBeInTheDocument();
+});

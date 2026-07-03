@@ -4,6 +4,45 @@ import type { CallRecord } from "@/shared/lib/api/bolna";
 import { callName, callNumber, callDirection, fmtDuration } from "../_lib/recentCalls";
 import CallRecordings from "../../calling/_components/CallRecordings";
 
+/**
+ * AI-generated call summary (Twilio Conversational Intelligence). The backend
+ * omits `intelligence` for viewers without the Call AI permission, and for
+ * calls made before the pipeline existed — the card hides itself entirely.
+ */
+function AiSummaryCard({ intelligence }: { intelligence?: CallRecord["intelligence"] }) {
+  if (!intelligence || (!intelligence.transcriptSid && !intelligence.summary)) return null;
+  const status = (intelligence.status || "").toLowerCase();
+  const failed = status === "failed" || status === "canceled";
+  const pending = !intelligence.summary && !failed;
+
+  return (
+    <div className="mb-4 rounded-xl border border-primary/20 bg-primary/[0.04] p-3 dark:border-primary/25 dark:bg-primary/10">
+      <p className="mb-2 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-primary/80 dark:text-primary">
+        <i className="ri-sparkling-2-line text-sm" aria-hidden />
+        AI Summary
+      </p>
+      {intelligence.summary ? (
+        <p className="mb-0 whitespace-pre-line text-sm leading-relaxed text-defaulttextcolor/80 dark:text-white/70">
+          {intelligence.summary}
+        </p>
+      ) : failed ? (
+        <p className="mb-0 text-[0.78rem] text-defaulttextcolor/50 dark:text-white/40">
+          Summary unavailable for this call.
+        </p>
+      ) : pending ? (
+        <div aria-live="polite">
+          <p className="mb-2 text-[0.78rem] text-defaulttextcolor/55 dark:text-white/45">Generating summary…</p>
+          <div className="space-y-1.5" aria-hidden>
+            <div className="h-2 w-full animate-pulse rounded-full bg-primary/15 dark:bg-primary/20" />
+            <div className="h-2 w-4/5 animate-pulse rounded-full bg-primary/15 dark:bg-primary/20" />
+            <div className="h-2 w-3/5 animate-pulse rounded-full bg-primary/15 dark:bg-primary/20" />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function CallContextPanel(
   { record, onCall, onSaveAsContact }:
   { record: CallRecord | null; onCall: (n: string) => void; onSaveAsContact?: (record: CallRecord) => void }
@@ -70,6 +109,7 @@ export default function CallContextPanel(
           <CallRecordings executionId={record.executionId} />
         </div>
       ) : null}
+      <AiSummaryCard intelligence={record.intelligence} />
       {record.tags?.length ? (
         <div className="mb-4">
           <p className="mb-1 text-[0.7rem] font-semibold uppercase tracking-wide text-defaulttextcolor/45">Tags</p>
