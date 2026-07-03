@@ -753,6 +753,10 @@
   padding: 0.55rem 0.85rem !important;
   font-size: 0.875rem !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  resize: none;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .composerInput:focus {
@@ -1690,5 +1694,31 @@
 .shell :global(.main-chart-wrapper .chat-info .chat-users-tab ul) > li:not([data-chat-section]),
 .shell :global(.main-chart-wrapper .chat-info .chat-groups-tab li) {
   padding: 0 !important;
+}
+
+/* ── Chat toast (send/upload failure feedback) ── */
+.chatToast {
+  position: fixed;
+  bottom: 5.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: var(--chat-radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #fff;
+  box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.45);
+}
+
+.chatToastError {
+  background: #dc2626;
+}
+
+.chatToastSuccess {
+  background: #0d9488;
 }
 

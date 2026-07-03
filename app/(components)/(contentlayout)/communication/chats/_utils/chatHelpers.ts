@@ -53,6 +53,27 @@ export function timelineCallPillText(call: {
   return chunks.join(" · ");
 }
 
+/** The current user's applied reaction emoji on a message, or undefined. */
+export function myReactionEmoji(
+  reactions: Array<{ user?: { id?: string; _id?: string } | string; emoji?: string }> | undefined,
+  myId: string | undefined
+): string | undefined {
+  if (!reactions?.length || !myId) return undefined;
+  const mine = reactions.find((r) => {
+    const u = r.user as { id?: string; _id?: string } | string | undefined;
+    const uid = typeof u === "string" ? u : u?.id || u?._id;
+    return uid && String(uid) === String(myId);
+  });
+  return mine?.emoji;
+}
+
+/** Emoji to send when a user clicks `clicked` on the reaction bar:
+ *  empty string removes an existing identical reaction (toggle-off),
+ *  otherwise the clicked emoji is applied/replaces. */
+export function reactionToggleEmoji(current: string | undefined, clicked: string): string {
+  return current === clicked ? "" : clicked;
+}
+
 export function participantIdFromCallUser(p: { id?: string; _id?: string } | null | undefined): string {
   if (!p) return "";
   return String((p as { id?: string }).id ?? (p as { _id?: string })._id ?? "").trim();

@@ -35,6 +35,8 @@ import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
 import chatStyles from "./chats.module.scss";
+import { myReactionEmoji, reactionToggleEmoji } from "./_utils/chatHelpers";
+import { ChatToast, useChatToast } from "./_components/ChatToast";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -607,6 +609,9 @@ const Chat = () => {
   } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const [deleteMenuFor, setDeleteMenuFor] = useState<string | null>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
+  const deleteMenuRef = useRef<HTMLSpanElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -620,9 +625,16 @@ const Chat = () => {
     return !!sessionStorage.getItem("chats-call-notification-prompt-dismissed");
   });
 
+  const { toast, showToast } = useChatToast();
+
   const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const autoResizeComposer = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`; // ~5 rows, then internal scroll
+  };
   const typingDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef<number>(0);
   const chatContainerRef = useRef<HTMLElement | null>(null);
@@ -980,6 +992,29 @@ const Chat = () => {
     return () => window.removeEventListener("keydown", onKey);
   }, [imagePreview]);
 
+  // Close the reaction bar / delete menu on outside-click or Escape.
+  useEffect(() => {
+    if (!reactionPickerFor && !deleteMenuFor) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (reactionPickerRef.current?.contains(t) || deleteMenuRef.current?.contains(t)) return;
+      setReactionPickerFor(null);
+      setDeleteMenuFor(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setReactionPickerFor(null);
+        setDeleteMenuFor(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [reactionPickerFor, deleteMenuFor]);
+
   // ── Handlers ──
   const addMessageIfNew = useCallback((prev: Message[], msg: Message) => {
     const msgId = String((msg as any)?.id || (msg as any)?._id || "");
@@ -999,10 +1034,11 @@ const Chat = () => {
       });
       setMessages((prev) => addMessageIfNew(prev, msg));
       setMessageInput("");
+      if (composerRef.current) composerRef.current.style.height = "auto";
       setReplyingTo(null);
       fetchConversations();
     } catch {
-      // Error
+      showToast("Message failed to send. Your text was kept — try again.");
     } finally {
       setSending(false);
     }
@@ -1020,7 +1056,7 @@ const Chat = () => {
       setReplyingTo(null);
       fetchConversations();
     } catch {
-      // Error
+      showToast("Upload failed. Try again.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1052,7 +1088,7 @@ const Chat = () => {
           setReplyingTo(null);
           fetchConversations();
         } catch {
-          // Error
+          showToast("Voice note failed to send.");
         } finally {
           setUploading(false);
         }
@@ -1063,7 +1099,7 @@ const Chat = () => {
     } catch {
       // Permission denied or not supported
     }
-  }, [selectedConversation, replyingTo]);
+  }, [selectedConversation, replyingTo, showToast]);
 
   const stopVoiceNote = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -1366,7 +1402,7 @@ const Chat = () => {
     return (
       <div>
         {replyBlock}
-        <p className="mb-0">{m.content}</p>
+        <p className="mb-0 whitespace-pre-wrap">{m.content}</p>
       </div>
     );
   };
@@ -1910,47 +1946,78 @@ const Chat = () => {
                               <div className={`min-w-0 flex-1 ${isMe ? "text-end" : ""}`}>
                                 <span className={`${chatStyles.msgMeta} ${isMe ? chatStyles.msgMetaMe : ""}`}>
                                   {isMe && !(m as any).deletedAt && (
-                                    <>
+                                    <span
+                                      ref={deleteMenuFor === String((m as any).id || (m as any)._id) ? deleteMenuRef : undefined}
+                                      className="relative inline-flex"
+                                    >
                                       <button
                                         type="button"
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                        className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
                                         title="Delete"
-                                        onClick={() => {
-                                          const cid = getId(selectedConversation);
-                                          if (!cid) return;
-                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "me").then(() => {
-                                            setMessages((prev) => prev.filter((x) => String((x as any).id || (x as any)._id) !== String((m as any).id || (m as any)._id)));
-                                          }).catch(() => {});
-                                        }}
+                                        aria-label="Delete message"
+                                        aria-haspopup="menu"
+                                        aria-expanded={deleteMenuFor === String((m as any).id || (m as any)._id)}
+                                        onClick={() =>
+                                          setDeleteMenuFor((prev) =>
+                                            prev === String((m as any).id || (m as any)._id)
+                                              ? null
+                                              : String((m as any).id || (m as any)._id)
+                                          )
+                                        }
                                       >
                                         <i className="ri-delete-bin-line text-sm" />
                                       </button>
-                                      <button
-                                        type="button"
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
-                                        title="Delete for everyone"
-                                        onClick={() => {
-                                          const cid = getId(selectedConversation);
-                                          if (!cid) return;
-                                          deleteMessage(cid, String((m as any).id || (m as any)._id), "everyone").then(() => {
-                                            setMessages((prev) =>
-                                              prev.map((x) => {
-                                                if (String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)) {
-                                                  return { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const };
-                                                }
-                                                return x;
-                                              })
-                                            );
-                                          }).catch(() => {});
-                                        }}
-                                      >
-                                        <i className="ri-delete-bin-2-line text-sm" />
-                                      </button>
-                                    </>
+                                      {deleteMenuFor === String((m as any).id || (m as any)._id) && (
+                                        <div className="absolute top-full right-0 mt-1 z-20 min-w-[11rem] rounded-lg bg-white dark:bg-gray-800 shadow-lg border border-black/5 dark:border-white/10 py-1 text-start">
+                                          <button
+                                            type="button"
+                                            className="w-full text-start px-3 py-1.5 text-sm hover:bg-black/5 dark:hover:bg-white/10"
+                                            onClick={() => {
+                                              const cid = getId(selectedConversation);
+                                              const mid = String((m as any).id || (m as any)._id);
+                                              setDeleteMenuFor(null);
+                                              if (!cid) return;
+                                              if (!window.confirm("Delete this message for you? It stays visible for others.")) return;
+                                              deleteMessage(cid, mid, "me")
+                                                .then(() => {
+                                                  setMessages((prev) => prev.filter((x) => String((x as any).id || (x as any)._id) !== mid));
+                                                })
+                                                .catch(() => {});
+                                            }}
+                                          >
+                                            Delete for me
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="w-full text-start px-3 py-1.5 text-sm text-danger hover:bg-black/5 dark:hover:bg-white/10"
+                                            onClick={() => {
+                                              const cid = getId(selectedConversation);
+                                              const mid = String((m as any).id || (m as any)._id);
+                                              setDeleteMenuFor(null);
+                                              if (!cid) return;
+                                              if (!window.confirm("Delete this message for everyone? This cannot be undone.")) return;
+                                              deleteMessage(cid, mid, "everyone")
+                                                .then(() => {
+                                                  setMessages((prev) =>
+                                                    prev.map((x) =>
+                                                      String((x as any).id || (x as any)._id) === mid
+                                                        ? { ...x, deletedAt: new Date().toISOString(), deletedFor: "everyone" as const }
+                                                        : x
+                                                    )
+                                                  );
+                                                })
+                                                .catch(() => {});
+                                            }}
+                                          >
+                                            Delete for everyone
+                                          </button>
+                                        </div>
+                                      )}
+                                    </span>
                                   )}
                                   <button
                                     type="button"
-                                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
+                                    className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 p-1 rounded hover:bg-white/10 transition-opacity shrink-0"
                                     title="Reply"
                                     onClick={() => setReplyingTo(m)}
                                   >
@@ -1988,42 +2055,49 @@ const Chat = () => {
                                   {!(m as any).deletedAt && (
                                     <>
                                       {reactionPickerFor === (m.id || (m as any)._id) ? (
-                                        <div className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10">
-                                          {REACTION_EMOJIS.map((emoji) => (
-                                            <button
-                                              key={emoji}
-                                              type="button"
-                                              className="text-lg hover:scale-125 transition-transform p-0.5"
-                                              onClick={() => {
-                                                const cid = getId(selectedConversation);
-                                                if (!cid) return;
-                                                reactToMessage(cid, String((m as any).id || (m as any)._id), emoji)
-                                                  .then((updated) => {
-                                                    setMessages((prev) =>
-                                                      prev.map((x) =>
-                                                        String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
-                                                          ? { ...x, reactions: updated.reactions || [] }
-                                                          : x
-                                                      )
-                                                    );
-                                                  })
-                                                  .catch(() => {});
-                                                setReactionPickerFor(null);
-                                              }}
-                                            >
-                                              {emoji}
-                                            </button>
-                                          ))}
+                                        <div
+                                          ref={reactionPickerRef}
+                                          className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10"
+                                        >
+                                          {REACTION_EMOJIS.map((emoji) => {
+                                            const mine = myReactionEmoji((m as any).reactions, myId);
+                                            const active = mine === emoji;
+                                            return (
+                                              <button
+                                                key={emoji}
+                                                type="button"
+                                                className={`text-lg hover:scale-125 transition-transform p-0.5 rounded ${active ? "bg-primary/20 ring-1 ring-primary" : ""}`}
+                                                onClick={() => {
+                                                  const cid = getId(selectedConversation);
+                                                  if (!cid) return;
+                                                  const toSend = reactionToggleEmoji(mine, emoji);
+                                                  reactToMessage(cid, String((m as any).id || (m as any)._id), toSend)
+                                                    .then((updated) => {
+                                                      setMessages((prev) =>
+                                                        prev.map((x) =>
+                                                          String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
+                                                            ? { ...x, reactions: updated.reactions || [] }
+                                                            : x
+                                                        )
+                                                      );
+                                                    })
+                                                    .catch(() => {});
+                                                  setReactionPickerFor(null);
+                                                }}
+                                              >
+                                                {emoji}
+                                              </button>
+                                            );
+                                          })}
                                         </div>
                                       ) : (
                                         <button
                                           type="button"
-                                          className="opacity-0 group-hover:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
+                                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
                                           title="React"
+                                          aria-label="React to message"
                                           onClick={() =>
-                                            setReactionPickerFor(
-                                              reactionPickerFor === (m.id || (m as any)._id) ? null : String((m as any).id || (m as any)._id)
-                                            )
+                                            setReactionPickerFor(String((m as any).id || (m as any)._id))
                                           }
                                         >
                                           <i className="ri-emotion-happy-line text-sm" />
@@ -2111,15 +2185,23 @@ const Chat = () => {
                     </button>
                   )
                 ) : null}
-                <input
+                <textarea
+                  ref={composerRef}
+                  rows={1}
                   className={`form-control flex-1 ${chatStyles.composerInput}`}
                   placeholder="Message…"
                   value={messageInput}
                   onChange={(e) => {
                     setMessageInput(e.target.value);
+                    autoResizeComposer(e.target);
                     handleTyping();
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
                   aria-label="Message text"
                 />
                 <button
@@ -2142,6 +2224,8 @@ const Chat = () => {
             </div>
           )}
         </div>
+
+        <ChatToast toast={toast} />
 
         {/* ── Right details panel ── */}
         <div
