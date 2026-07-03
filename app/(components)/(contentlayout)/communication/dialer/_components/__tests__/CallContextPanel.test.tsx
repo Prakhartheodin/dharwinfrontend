@@ -1,9 +1,26 @@
 import { it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
 import CallContextPanel from "../CallContextPanel";
-import type { CallRecord } from "@/shared/lib/api/bolna";
+import { getBolnaCallRecord, type CallRecord } from "@/shared/lib/api/bolna";
 
-afterEach(cleanup);
+vi.mock("@/shared/lib/api/bolna", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("@/shared/lib/api/bolna")>();
+  return {
+    ...mod,
+    getBolnaCallRecord: vi.fn(),
+    // CallRecordings mounts whenever executionId is set — keep it off the network.
+    getCallRecordings: vi.fn().mockResolvedValue({
+      success: true,
+      executionId: "x",
+      recordings: { bolna: { available: false }, plivo: { available: false } },
+    }),
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 it("shows empty state when no record", () => {
   render(<CallContextPanel record={null} onCall={() => {}} />);
@@ -66,4 +83,35 @@ it("shows generating state while transcript is pending, failure note on failed",
   const failedRec = { ...baseRec, intelligence: { transcriptSid: "GT1", status: "failed", summary: null } };
   render(<CallContextPanel record={failedRec} onCall={() => {}} />);
   expect(screen.getByText(/summary unavailable/i)).toBeInTheDocument();
+});
+
+it("polls the record and swaps in the summary once intelligence completes", async () => {
+  vi.useFakeTimers();
+  vi.mocked(getBolnaCallRecord).mockResolvedValue({
+    success: true,
+    record: { intelligence: { transcriptSid: "GT1", status: "completed", summary: "Done deal." } },
+  });
+  const rec: CallRecord = {
+    ...baseRec,
+    executionId: `CA${"a".repeat(32)}`,
+    intelligence: { transcriptSid: "GT1", status: "queued", summary: null, requestedAt: new Date().toISOString() },
+  };
+  render(<CallContextPanel record={rec} onCall={() => {}} />);
+  expect(screen.getByText(/generating summary/i)).toBeInTheDocument();
+  await act(async () => { await vi.advanceTimersByTimeAsync(8000); });
+  expect(getBolnaCallRecord).toHaveBeenCalledWith(rec.executionId);
+  expect(screen.getByText("Done deal.")).toBeInTheDocument();
+});
+
+it("shows the stalled note (no skeleton) when processing exceeds 10 minutes", () => {
+  const rec: CallRecord = {
+    ...baseRec,
+    intelligence: {
+      transcriptSid: "GT1", status: "queued", summary: null,
+      requestedAt: new Date(Date.now() - 11 * 60 * 1000).toISOString(),
+    },
+  };
+  render(<CallContextPanel record={rec} onCall={() => {}} />);
+  expect(screen.getByText(/taking longer than expected/i)).toBeInTheDocument();
+  expect(screen.queryByText(/generating summary/i)).not.toBeInTheDocument();
 });

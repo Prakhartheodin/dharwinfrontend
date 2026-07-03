@@ -270,6 +270,19 @@ export function readBolnaCallSummary(
   };
 }
 
+/**
+ * Lightweight single-record read (backend hits only the DB — no Bolna/Twilio
+ * upstream calls). Used to poll while Twilio Intelligence is processing.
+ */
+export async function getBolnaCallRecord(
+  executionId: string
+): Promise<{ success: boolean; record: CallRecord }> {
+  const { data } = await apiClient.get<{ success: boolean; record: CallRecord }>(
+    `/bolna/call-records/${encodeURIComponent(executionId)}`
+  );
+  return data;
+}
+
 export type RefreshCallRecordResponse = { success: boolean; record: CallRecord };
 
 export async function refreshBolnaCallRecord(executionId: string): Promise<RefreshCallRecordResponse> {
@@ -298,13 +311,25 @@ export async function setupCandidateVerificationExtractions(): Promise<SetupCand
   return data;
 }
 
-/** Fetch a proxied recording stream as an object URL (audio routes are JWT-protected). */
-export async function fetchRecordingObjectUrl(streamUrl: string): Promise<string> {
+/**
+ * Fetch a proxied recording stream as an object URL (audio routes are
+ * JWT-protected). `onProgress` reports 0–100 while the audio downloads, or
+ * null when the backend didn't send a Content-Length (indeterminate).
+ */
+export async function fetchRecordingObjectUrl(
+  streamUrl: string,
+  onProgress?: (percent: number | null) => void
+): Promise<string> {
   // apiClient baseURL already includes /v1 (resolves to /api/v1 in-browser).
   // Backend stream URLs come back as /v1/bolna/... — strip the /v1 prefix so
   // the final request path matches how other calls in this file are written (/bolna/...).
   const path = streamUrl.replace(/^\/v1/, "");
-  const res = await apiClient.get(path, { responseType: "blob" });
+  const res = await apiClient.get(path, {
+    responseType: "blob",
+    onDownloadProgress: onProgress
+      ? (e) => onProgress(e.total ? Math.min(100, Math.round((e.loaded / e.total) * 100)) : null)
+      : undefined,
+  });
   return URL.createObjectURL(res.data as Blob);
 }
 

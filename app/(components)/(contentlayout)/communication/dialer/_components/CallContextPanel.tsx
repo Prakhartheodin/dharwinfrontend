@@ -1,15 +1,59 @@
 "use client";
 import React from "react";
-import type { CallRecord } from "@/shared/lib/api/bolna";
+import { getBolnaCallRecord, type CallRecord } from "@/shared/lib/api/bolna";
 import { callName, callNumber, callDirection, fmtDuration } from "../_lib/recentCalls";
 import CallRecordings from "../../calling/_components/CallRecordings";
+
+const INTEL_POLL_MS = 8000;
+// Twilio Intelligence usually completes in 1–3 min; past this we stop polling
+// and tell the user instead of pulsing a skeleton forever.
+const INTEL_STALL_MS = 10 * 60 * 1000;
+
+function intelPending(intel: CallRecord["intelligence"]): boolean {
+  if (!intel || intel.summary || !intel.transcriptSid) return false;
+  const s = (intel.status || "").toLowerCase();
+  return s !== "failed" && s !== "canceled";
+}
+
+/**
+ * Keep the selected call fresh while Twilio Intelligence is processing: poll
+ * the lightweight single-record endpoint until the summary/transcript lands,
+ * fails, or stalls out. The list snapshot never updates on its own, so without
+ * this the "Generating summary…" skeleton would sit until the user re-selects.
+ */
+function useLiveRecord(record: CallRecord | null) {
+  const [live, setLive] = React.useState(record);
+  React.useEffect(() => setLive(record), [record]);
+
+  const executionId = record?.executionId;
+  const pending = intelPending(live?.intelligence);
+  const requestedAt = live?.intelligence?.requestedAt;
+  const stalled =
+    pending && !!requestedAt && Date.now() - new Date(requestedAt).getTime() > INTEL_STALL_MS;
+
+  React.useEffect(() => {
+    if (!pending || stalled || !executionId) return;
+    let cancelled = false;
+    const timer = setInterval(async () => {
+      try {
+        const { record: fresh } = await getBolnaCallRecord(executionId);
+        if (!cancelled && fresh) setLive((prev) => ({ ...prev, ...fresh }));
+      } catch {
+        // Transient poll failure — the next tick retries.
+      }
+    }, INTEL_POLL_MS);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [pending, stalled, executionId]);
+
+  return { record: live, stalled };
+}
 
 /**
  * AI-generated call summary (Twilio Conversational Intelligence). The backend
  * omits `intelligence` for viewers without the Call AI permission, and for
  * calls made before the pipeline existed — the card hides itself entirely.
  */
-function AiSummaryCard({ intelligence }: { intelligence?: CallRecord["intelligence"] }) {
+function AiSummaryCard({ intelligence, stalled }: { intelligence?: CallRecord["intelligence"]; stalled?: boolean }) {
   if (!intelligence || (!intelligence.transcriptSid && !intelligence.summary)) return null;
   const status = (intelligence.status || "").toLowerCase();
   const failed = status === "failed" || status === "canceled";
@@ -20,6 +64,9 @@ function AiSummaryCard({ intelligence }: { intelligence?: CallRecord["intelligen
       <p className="mb-2 flex items-center gap-1.5 text-[0.7rem] font-semibold uppercase tracking-wide text-primary/80 dark:text-primary">
         <i className="ri-sparkling-2-line text-sm" aria-hidden />
         AI Summary
+        {pending && !stalled ? (
+          <i className="ri-loader-4-line ml-auto animate-spin text-sm text-primary/60 motion-reduce:animate-none" aria-hidden />
+        ) : null}
       </p>
       {intelligence.summary ? (
         <p className="mb-0 whitespace-pre-line text-sm leading-relaxed text-defaulttextcolor/80 dark:text-white/70">
@@ -29,9 +76,15 @@ function AiSummaryCard({ intelligence }: { intelligence?: CallRecord["intelligen
         <p className="mb-0 text-[0.78rem] text-defaulttextcolor/50 dark:text-white/40">
           Summary unavailable for this call.
         </p>
+      ) : stalled ? (
+        <p className="mb-0 text-[0.78rem] text-defaulttextcolor/50 dark:text-white/40">
+          Summary is taking longer than expected — it will appear here once ready.
+        </p>
       ) : pending ? (
         <div aria-live="polite">
-          <p className="mb-2 text-[0.78rem] text-defaulttextcolor/55 dark:text-white/45">Generating summary…</p>
+          <p className="mb-2 text-[0.78rem] text-defaulttextcolor/55 dark:text-white/45">
+            Generating summary… usually ready in 1–3 minutes.
+          </p>
           <div className="space-y-1.5" aria-hidden>
             <div className="h-2 w-full animate-pulse rounded-full bg-primary/15 dark:bg-primary/20" />
             <div className="h-2 w-4/5 animate-pulse rounded-full bg-primary/15 dark:bg-primary/20" />
@@ -93,9 +146,10 @@ function TranscriptCard({ transcript }: { transcript?: string }) {
 }
 
 export default function CallContextPanel(
-  { record, onCall, onSaveAsContact }:
+  { record: recordProp, onCall, onSaveAsContact }:
   { record: CallRecord | null; onCall: (n: string) => void; onSaveAsContact?: (record: CallRecord) => void }
 ) {
+  const { record, stalled } = useLiveRecord(recordProp);
   if (!record) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-6 text-center">
@@ -158,7 +212,7 @@ export default function CallContextPanel(
           <CallRecordings executionId={record.executionId} />
         </div>
       ) : null}
-      <AiSummaryCard intelligence={record.intelligence} />
+      <AiSummaryCard intelligence={record.intelligence} stalled={stalled} />
       <TranscriptCard transcript={record.transcript} />
       {record.tags?.length ? (
         <div className="mb-4">

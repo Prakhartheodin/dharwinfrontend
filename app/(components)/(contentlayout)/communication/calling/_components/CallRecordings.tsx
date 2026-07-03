@@ -9,6 +9,7 @@ import { getCallRecordings, fetchRecordingObjectUrl } from "@/shared/lib/api/bol
 function Recording({ label, streamUrl, reason }: { label: string; streamUrl?: string; reason?: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pct, setPct] = useState<number | null>(null);
   const [err, setErr] = useState<string | undefined>(reason);
 
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
@@ -16,8 +17,9 @@ function Recording({ label, streamUrl, reason }: { label: string; streamUrl?: st
   async function load() {
     if (!streamUrl || loading) return;
     setLoading(true);
+    setPct(null);
     try {
-      setUrl(await fetchRecordingObjectUrl(streamUrl));
+      setUrl(await fetchRecordingObjectUrl(streamUrl, setPct));
     } catch {
       setErr("Recording found but playback failed (try sync or refresh)");
     } finally {
@@ -31,24 +33,41 @@ function Recording({ label, streamUrl, reason }: { label: string; streamUrl?: st
       {url ? (
         <audio controls autoPlay src={url} className="w-full" />
       ) : streamUrl ? (
-        <button
-          onClick={load}
-          disabled={loading}
-          aria-label={`Load ${label} recording`}
-          className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-defaultborder/60 px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor/80 transition-colors hover:bg-light/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/10 dark:hover:bg-white/5"
-        >
+        <div aria-live="polite">
+          <button
+            onClick={load}
+            disabled={loading}
+            aria-label={`Load ${label} recording`}
+            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-defaultborder/60 px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor/80 transition-colors hover:bg-light/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed dark:border-white/10 dark:hover:bg-white/5"
+          >
+            {loading ? (
+              <>
+                <i className="ri-loader-4-line animate-spin text-primary motion-reduce:animate-none" />
+                {pct != null ? `Fetching audio… ${pct}%` : "Fetching audio…"}
+              </>
+            ) : (
+              <>
+                <i className="ri-play-circle-line text-sm" />
+                Load recording
+              </>
+            )}
+          </button>
           {loading ? (
-            <>
-              <i className="ri-loader-4-line animate-spin motion-reduce:animate-none" />
-              Loading…
-            </>
-          ) : (
-            <>
-              <i className="ri-play-circle-line text-sm" />
-              Load recording
-            </>
-          )}
-        </button>
+            <div
+              className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-defaulttextcolor/10"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={pct ?? undefined}
+              aria-label={`Downloading ${label}`}
+            >
+              <div
+                className={`h-full rounded-full bg-primary/70 transition-[width] duration-300 ${pct == null ? "w-1/3 animate-pulse motion-reduce:animate-none" : ""}`}
+                style={pct != null ? { width: `${Math.max(pct, 4)}%` } : undefined}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : (
         <p className="text-xs text-defaulttextcolor/60">
           —{err ? <span className="block mt-0.5 italic">{err}</span> : null}
@@ -63,12 +82,12 @@ function Recording({ label, streamUrl, reason }: { label: string; streamUrl?: st
 function RecordingsSkeleton() {
   return (
     <div className="space-y-2 text-sm" aria-hidden>
-      {["Bolna", "Plivo"].map((label) => (
-        <div key={label}>
-          <p className="mb-1 font-medium text-defaulttextcolor/70">{label}</p>
-          <div className="h-[34px] w-full rounded-md bg-defaulttextcolor/10 animate-pulse motion-reduce:animate-none" />
-        </div>
-      ))}
+      {/* Neutral shimmer — channel names aren't known until metadata resolves,
+          so no provider labels here (a dialer call has one channel, not two). */}
+      <div>
+        <div className="mb-1.5 h-3 w-24 rounded bg-defaulttextcolor/10 animate-pulse motion-reduce:animate-none" />
+        <div className="h-[34px] w-full rounded-md bg-defaulttextcolor/10 animate-pulse motion-reduce:animate-none" />
+      </div>
     </div>
   );
 }
