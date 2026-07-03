@@ -623,6 +623,11 @@ const Chat = () => {
   const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const autoResizeComposer = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`; // ~5 rows, then internal scroll
+  };
   const typingDisplayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTypingEmitRef = useRef<number>(0);
   const chatContainerRef = useRef<HTMLElement | null>(null);
@@ -999,6 +1004,7 @@ const Chat = () => {
       });
       setMessages((prev) => addMessageIfNew(prev, msg));
       setMessageInput("");
+      if (composerRef.current) composerRef.current.style.height = "auto";
       setReplyingTo(null);
       fetchConversations();
     } catch {
@@ -1366,7 +1372,7 @@ const Chat = () => {
     return (
       <div>
         {replyBlock}
-        <p className="mb-0">{m.content}</p>
+        <p className="mb-0 whitespace-pre-wrap">{m.content}</p>
       </div>
     );
   };
@@ -2111,15 +2117,23 @@ const Chat = () => {
                     </button>
                   )
                 ) : null}
-                <input
+                <textarea
+                  ref={composerRef}
+                  rows={1}
                   className={`form-control flex-1 ${chatStyles.composerInput}`}
                   placeholder="Message…"
                   value={messageInput}
                   onChange={(e) => {
                     setMessageInput(e.target.value);
+                    autoResizeComposer(e.target);
                     handleTyping();
                   }}
-                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSend()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
                   aria-label="Message text"
                 />
                 <button

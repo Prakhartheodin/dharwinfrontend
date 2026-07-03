@@ -753,6 +753,10 @@
   padding: 0.55rem 0.85rem !important;
   font-size: 0.875rem !important;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  resize: none;
+  line-height: 1.4;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .composerInput:focus {
