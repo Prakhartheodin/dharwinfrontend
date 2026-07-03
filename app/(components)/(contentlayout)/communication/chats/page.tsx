@@ -36,6 +36,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
 import chatStyles from "./chats.module.scss";
 import { myReactionEmoji, reactionToggleEmoji } from "./_utils/chatHelpers";
+import { ChatToast, useChatToast } from "./_components/ChatToast";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -624,6 +625,8 @@ const Chat = () => {
     return !!sessionStorage.getItem("chats-call-notification-prompt-dismissed");
   });
 
+  const { toast, showToast } = useChatToast();
+
   const REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1035,7 +1038,7 @@ const Chat = () => {
       setReplyingTo(null);
       fetchConversations();
     } catch {
-      // Error
+      showToast("Message failed to send. Your text was kept — try again.");
     } finally {
       setSending(false);
     }
@@ -1053,7 +1056,7 @@ const Chat = () => {
       setReplyingTo(null);
       fetchConversations();
     } catch {
-      // Error
+      showToast("Upload failed. Try again.");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -1085,7 +1088,7 @@ const Chat = () => {
           setReplyingTo(null);
           fetchConversations();
         } catch {
-          // Error
+          showToast("Voice note failed to send.");
         } finally {
           setUploading(false);
         }
@@ -1096,7 +1099,7 @@ const Chat = () => {
     } catch {
       // Permission denied or not supported
     }
-  }, [selectedConversation, replyingTo]);
+  }, [selectedConversation, replyingTo, showToast]);
 
   const stopVoiceNote = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
@@ -2221,6 +2224,8 @@ const Chat = () => {
             </div>
           )}
         </div>
+
+        <ChatToast toast={toast} />
 
         {/* ── Right details panel ── */}
         <div
