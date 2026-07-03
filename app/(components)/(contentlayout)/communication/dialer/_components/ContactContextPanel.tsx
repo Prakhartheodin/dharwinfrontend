@@ -1,6 +1,9 @@
 "use client";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createContact, updateContact, deleteContact, type Contact } from "@/shared/lib/api/contacts";
+import { createContact, updateContact, deleteContact, getContactCalls, type Contact } from "@/shared/lib/api/contacts";
+import type { CallRecord } from "@/shared/lib/api/bolna";
+import { CallCards } from "./CallContextPanel";
+import { callDirection, fmtDuration } from "../_lib/recentCalls";
 import {
   blankDraft, draftFromContact, validateDraft, toCreateBody, primaryPhone, linkedType,
   normalizedDigits, type ContactDraft, type PhoneDraft, type DraftError,
@@ -30,6 +33,71 @@ export default function ContactContextPanel(props: Props) {
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="mb-4"><p className={LABEL}>{label}</p>{children}</div>;
+}
+
+function RecentCalls({ contactId }: { contactId: string }) {
+  const [calls, setCalls] = useState<CallRecord[] | null>(null);
+  const [error, setError] = useState(false);
+  // Only ONE call is expanded at a time: CallRecordings fetches sources on
+  // mount, so mounting CallCards for every row would fire a request per call.
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCalls(null);
+    setError(false);
+    setExpandedKey(null);
+    getContactCalls(contactId)
+      .then((rows) => { if (!cancelled) setCalls(rows); })
+      .catch(() => { if (!cancelled) setError(true); });
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  if (error) {
+    return <p className="text-sm text-defaulttextcolor/50 dark:text-white/40">Could not load calls.</p>;
+  }
+  if (calls === null) {
+    return <p className="text-sm text-defaulttextcolor/50 dark:text-white/40">Loading calls…</p>;
+  }
+  if (calls.length === 0) {
+    return <p className="text-sm text-defaulttextcolor/50 dark:text-white/40">No calls yet.</p>;
+  }
+  return (
+    <div className="space-y-2">
+      {calls.map((c, i) => {
+        const key = c._id || c.id || c.executionId || String(i);
+        const open = expandedKey === key;
+        const dir = callDirection(c);
+        const dirIcon = dir === "outbound" ? "ri-arrow-right-up-line" : dir === "inbound" ? "ri-arrow-left-down-line" : "ri-phone-line";
+        const when = c.createdAt ? new Date(c.createdAt).toLocaleString() : "";
+        const duration = fmtDuration(c.duration);
+        return (
+          <div key={key} className="rounded-xl border border-defaultborder/60 dark:border-white/10">
+            <button
+              type="button"
+              onClick={() => setExpandedKey(open ? null : key)}
+              aria-expanded={open}
+              className="flex w-full items-center gap-2 p-3 text-left text-[0.78rem] text-defaulttextcolor/60 dark:text-white/50"
+            >
+              <i className={`${dirIcon} text-sm`} aria-hidden />
+              <span className="capitalize">{dir}</span>
+              {c.status ? <span className="capitalize">· {c.status}</span> : null}
+              {duration ? <span>· {duration}</span> : null}
+              <span className="ml-auto flex items-center gap-1.5">
+                {when}
+                <i className={`${open ? "ri-arrow-up-s-line" : "ri-arrow-down-s-line"} text-sm`} aria-hidden />
+              </span>
+            </button>
+            {open ? (
+              <div className="px-3 pb-3">
+                <CallCards record={c} />
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function ReadView({ contact, onCall, onEdit, onDeleted, onDirtyChange }: Props & { contact: Contact }) {
@@ -63,7 +131,7 @@ function ReadView({ contact, onCall, onEdit, onDeleted, onDirtyChange }: Props &
   const linked = linkedType(contact.linkedTo);
   const initials = contact.name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   return (
-    <div className="flex h-full flex-col p-5">
+    <div className="flex h-full flex-col overflow-y-auto p-5">
       <div className="mb-5 flex items-center gap-3">
         <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-primary/10 text-base font-semibold text-primary">
           {initials || <i className="ri-user-3-line text-xl" />}
@@ -106,6 +174,10 @@ function ReadView({ contact, onCall, onEdit, onDeleted, onDirtyChange }: Props &
       ) : null}
       {contact.notes ? <Section label="Notes"><p className="mb-0 text-sm text-defaulttextcolor/70 dark:text-white/55">{contact.notes}</p></Section> : null}
       {linked ? <Section label="Linked"><span className="text-sm capitalize">{linked}</span></Section> : null}
+
+      <Section label="Recent calls">
+        <RecentCalls contactId={contact.id} />
+      </Section>
 
       <div className="mt-auto space-y-2 border-t border-defaultborder/60 pt-4 dark:border-white/10">
         <button type="button" onClick={() => onCall(primaryPhone(contact))}

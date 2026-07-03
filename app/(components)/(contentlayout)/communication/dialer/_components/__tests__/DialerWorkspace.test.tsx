@@ -13,6 +13,7 @@ vi.mock("@/shared/contexts/ChatSocketContext", () => ({ useChatSocket: () => ({ 
 vi.mock("@/shared/lib/api/contacts", () => ({
   listContacts: vi.fn().mockResolvedValue({ results: [{ id: "1", tenantId: "t", ownerId: "o", name: "Anita", phones: [{ number: "+91 1", isPrimary: true }] }], page: 1, limit: 50, totalPages: 1, totalResults: 1 }),
   createContact: vi.fn(), updateContact: vi.fn(), deleteContact: vi.fn(),
+  getContactCalls: vi.fn().mockResolvedValue([]),
 }));
 // Dialpad pulls in telephony SDKs; stub it for the workspace test.
 vi.mock("@/app/(components)/(contentlayout)/communication/calling/_components/Dialpad", () => ({

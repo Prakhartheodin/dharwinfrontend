@@ -8,6 +8,7 @@ vi.mock("@/shared/lib/api/contacts", () => ({
   createContact: vi.fn().mockResolvedValue({ contact: { id: "new", name: "Jane", phones: [{ number: "+91 5", isPrimary: true }] }, suggestedLink: null }),
   updateContact: vi.fn().mockImplementation((id, patch) => Promise.resolve({ id, ...patch })),
   deleteContact: vi.fn().mockResolvedValue(undefined),
+  getContactCalls: vi.fn().mockResolvedValue([]),
 }));
 
 const contact: Contact = {
