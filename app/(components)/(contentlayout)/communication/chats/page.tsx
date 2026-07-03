@@ -35,6 +35,7 @@ import { useChatSocket } from "@/shared/contexts/ChatSocketContext";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { format, formatDistanceToNow } from "date-fns";
 import chatStyles from "./chats.module.scss";
+import { myReactionEmoji, reactionToggleEmoji } from "./_utils/chatHelpers";
 
 const DEFAULT_AVATAR = "/assets/images/faces/1.jpg";
 
@@ -607,6 +608,9 @@ const Chat = () => {
   } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [reactionPickerFor, setReactionPickerFor] = useState<string | null>(null);
+  const [deleteMenuFor, setDeleteMenuFor] = useState<string | null>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null);
+  const deleteMenuRef = useRef<HTMLSpanElement>(null);
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -984,6 +988,29 @@ const Chat = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [imagePreview]);
+
+  // Close the reaction bar / delete menu on outside-click or Escape.
+  useEffect(() => {
+    if (!reactionPickerFor && !deleteMenuFor) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (reactionPickerRef.current?.contains(t) || deleteMenuRef.current?.contains(t)) return;
+      setReactionPickerFor(null);
+      setDeleteMenuFor(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setReactionPickerFor(null);
+        setDeleteMenuFor(null);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [reactionPickerFor, deleteMenuFor]);
 
   // ── Handlers ──
   const addMessageIfNew = useCallback((prev: Message[], msg: Message) => {
@@ -1994,42 +2021,49 @@ const Chat = () => {
                                   {!(m as any).deletedAt && (
                                     <>
                                       {reactionPickerFor === (m.id || (m as any)._id) ? (
-                                        <div className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10">
-                                          {REACTION_EMOJIS.map((emoji) => (
-                                            <button
-                                              key={emoji}
-                                              type="button"
-                                              className="text-lg hover:scale-125 transition-transform p-0.5"
-                                              onClick={() => {
-                                                const cid = getId(selectedConversation);
-                                                if (!cid) return;
-                                                reactToMessage(cid, String((m as any).id || (m as any)._id), emoji)
-                                                  .then((updated) => {
-                                                    setMessages((prev) =>
-                                                      prev.map((x) =>
-                                                        String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
-                                                          ? { ...x, reactions: updated.reactions || [] }
-                                                          : x
-                                                      )
-                                                    );
-                                                  })
-                                                  .catch(() => {});
-                                                setReactionPickerFor(null);
-                                              }}
-                                            >
-                                              {emoji}
-                                            </button>
-                                          ))}
+                                        <div
+                                          ref={reactionPickerRef}
+                                          className="absolute bottom-full left-0 mb-1 flex gap-1 p-1 rounded-lg bg-white dark:bg-gray-800 shadow-lg z-10"
+                                        >
+                                          {REACTION_EMOJIS.map((emoji) => {
+                                            const mine = myReactionEmoji((m as any).reactions, myId);
+                                            const active = mine === emoji;
+                                            return (
+                                              <button
+                                                key={emoji}
+                                                type="button"
+                                                className={`text-lg hover:scale-125 transition-transform p-0.5 rounded ${active ? "bg-primary/20 ring-1 ring-primary" : ""}`}
+                                                onClick={() => {
+                                                  const cid = getId(selectedConversation);
+                                                  if (!cid) return;
+                                                  const toSend = reactionToggleEmoji(mine, emoji);
+                                                  reactToMessage(cid, String((m as any).id || (m as any)._id), toSend)
+                                                    .then((updated) => {
+                                                      setMessages((prev) =>
+                                                        prev.map((x) =>
+                                                          String((x as any).id || (x as any)._id) === String((m as any).id || (m as any)._id)
+                                                            ? { ...x, reactions: updated.reactions || [] }
+                                                            : x
+                                                        )
+                                                      );
+                                                    })
+                                                    .catch(() => {});
+                                                  setReactionPickerFor(null);
+                                                }}
+                                              >
+                                                {emoji}
+                                              </button>
+                                            );
+                                          })}
                                         </div>
                                       ) : (
                                         <button
                                           type="button"
-                                          className="opacity-0 group-hover:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
+                                          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 absolute -bottom-1 right-0 p-1 rounded hover:bg-white/10 transition-opacity"
                                           title="React"
+                                          aria-label="React to message"
                                           onClick={() =>
-                                            setReactionPickerFor(
-                                              reactionPickerFor === (m.id || (m as any)._id) ? null : String((m as any).id || (m as any)._id)
-                                            )
+                                            setReactionPickerFor(String((m as any).id || (m as any)._id))
                                           }
                                         >
                                           <i className="ri-emotion-happy-line text-sm" />
