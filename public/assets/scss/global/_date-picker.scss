@@ -98,3 +98,68 @@
 .rmsc .dropdown-container:focus-within {
   @apply shadow-none;
 }
+
+/* Scheduler calendars — shared grid polish (meeting popup + interview inline) */
+.react-datepicker.schedule-interview-dp-cal,
+.react-datepicker.schedule-interview-dp-inline {
+  .react-datepicker__header {
+    @apply pt-4 px-3 pb-2 #{!important};
+  }
+  .react-datepicker__current-month {
+    @apply text-[0.95rem] font-semibold mb-3 #{!important};
+  }
+  .react-datepicker__day-name {
+    @apply text-[0.7rem] font-semibold uppercase tracking-wide text-textmuted #{!important};
+  }
+  .react-datepicker__day {
+    @apply rounded-lg font-medium transition-colors #{!important};
+  }
+  .react-datepicker__day--outside-month {
+    @apply text-textmuted/50 #{!important};
+  }
+  .react-datepicker__day--today:not(.react-datepicker__day--selected) {
+    @apply font-bold text-primary #{!important};
+  }
+}
+
+/* Meeting scheduler popup only — floating chrome + time column */
+.react-datepicker.schedule-interview-dp-cal {
+  @apply rounded-2xl overflow-hidden shadow-2xl #{!important};
+
+  /* time column: align "Start" header height with the calendar header so rows line up */
+  .react-datepicker__time-container {
+    @apply border-l border-defaultborder dark:border-defaultborder/10 #{!important};
+    width: 104px !important;
+
+    .react-datepicker__header--time {
+      @apply flex items-center justify-center pb-0 #{!important};
+      /* ponytail: fixed to match calendar header height; retune if header content changes */
+      min-height: 118px;
+    }
+    .react-datepicker-time__header {
+      @apply text-[0.95rem] font-semibold #{!important};
+    }
+    .react-datepicker__time-box {
+      width: 104px !important;
+    }
+    .react-datepicker__time-list {
+      @apply pt-1 #{!important};
+    }
+    .react-datepicker__time-list-item {
+      @apply mx-1.5 my-0.5 rounded-md text-[0.8125rem] flex items-center justify-center transition-colors #{!important};
+      height: auto !important;
+      padding: 7px 6px !important;
+    }
+    .react-datepicker__time-list-item:hover {
+      @apply bg-primary/10 text-primary #{!important};
+    }
+    .react-datepicker__time-list-item--selected {
+      @apply text-white rounded-md #{!important};
+    }
+  }
+
+  /* Today: subtle full-width link, not a heavy gray strip */
+  .react-datepicker__today-button {
+    @apply bg-transparent border-t border-defaultborder dark:border-defaultborder/10 py-2.5 text-[0.8125rem] font-semibold text-primary hover:bg-primary/[0.06] transition-colors #{!important};
+  }
+}

@@ -24,6 +24,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { buildReplyAllRecipients } from "@/shared/lib/email-recipient-utils";
 import { hasEmailManageAccess, hasEmailReadAccess } from "@/shared/lib/permissions";
+import { buildMailQuery } from "@/shared/lib/mailQuery";
 import { escapeHtmlForTextNode, sanitizeRichHtml } from "@/shared/lib/sanitize-html";
 import PerfectScrollbar from "react-perfect-scrollbar";
 import "react-perfect-scrollbar/dist/css/styles.css";
@@ -1710,7 +1711,15 @@ const Mailapp = () => {
   const quickRecipientList = quickRecipients;
 
   const handleSearch = useCallback(() => {
-    setSearchQuery(searchInput.trim());
+    setSearchQuery(buildMailQuery(searchInput));
+  }, [searchInput]);
+
+  // Predictive search: debounce typed input into the query that drives the fetch.
+  // buildMailQuery scopes plain text to sender+subject (no body-text noise);
+  // operator queries (is:unread, from:x) pass through. Enter/button fire instantly.
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(buildMailQuery(searchInput)), 350);
+    return () => clearTimeout(t);
   }, [searchInput]);
 
   const currentProvider = accounts.find((a) => a.id === selectedAccountId)?.provider ?? "gmail";

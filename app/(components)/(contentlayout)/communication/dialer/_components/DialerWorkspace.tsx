@@ -24,6 +24,11 @@ export default function DialerWorkspace() {
   const [contactMode, setContactMode] = useState<ContactMode | null>(null);
   const [createDraft, setCreateDraft] = useState<ContactDraft | null>(null);
   const [dialTarget, setDialTarget] = useState<string | undefined>();
+  // Bumped by a "Call" CTA to tell the Dialpad to place the call (not just prefill).
+  const [dialNowToken, setDialNowToken] = useState(0);
+  const dialNow = useCallback((n: string) => {
+    setDialTarget(n); setDialNowToken((t) => t + 1); setMobileTab("dialer");
+  }, []);
   const [mobileTab, setMobileTab] = useState<MobileTab>("dialer");
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadedContacts, setLoadedContacts] = useState<Contact[]>([]);
@@ -124,7 +129,7 @@ export default function DialerWorkspace() {
         </div>
 
         <div className={`min-h-0 overflow-y-auto rounded-2xl border border-defaultborder/70 bg-white p-4 dark:bg-black/10 ${mobileTab === "dialer" ? "block" : "hidden"} lg:block`}>
-          <Dialpad dialTarget={dialTarget} />
+          <Dialpad dialTarget={dialTarget} dialNowToken={dialNowToken} />
         </div>
 
         <div className={`sticky top-0 min-h-0 overflow-y-auto rounded-2xl border border-defaultborder/70 bg-white dark:bg-black/10 ${mobileTab === "context" ? "block" : "hidden"} lg:hidden xl:block`}>
@@ -139,13 +144,13 @@ export default function DialerWorkspace() {
           ) : showContactPane ? (
             <ContactContextPanel mode={contactMode ?? "read"} contact={selectedContact}
               initialDraft={createDraft} visibleNumbers={visibleNumbers}
-              onCall={(n) => { setDialTarget(n); setMobileTab("dialer"); }}
+              onCall={dialNow}
               onEdit={() => selectedContact && editContact(selectedContact)}
               onCancel={() => { setDirty(false); if (contactMode === "edit" && selectedContact) setContactMode("read"); else clearSelection(); }}
               onSaved={afterSaved} onDeleted={afterDeleted} onDirtyChange={setDirty} />
           ) : (
             <CallContextPanel record={selectedCall}
-              onCall={(n) => { setDialTarget(n); setMobileTab("dialer"); }}
+              onCall={dialNow}
               onSaveAsContact={saveAsContact} />
           )}
         </div>

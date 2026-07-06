@@ -755,7 +755,11 @@ export default function InternalMeetingsClient() {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      initialState: { pageIndex: 0, pageSize: 100 },
+      // ponytail: keep the user on their current page after a refetch (cancel/edit).
+      // react-table resets pageIndex to 0 on every data change unless disabled.
+      autoResetPage: false,
+      autoResetSortBy: false,
     },
     useSortBy,
     usePagination
@@ -780,6 +784,12 @@ export default function InternalMeetingsClient() {
   } = tableInstance
 
   const { pageIndex, pageSize } = state
+
+  // ponytail: autoResetPage=false can strand the user on a now-empty last page
+  // (cancel the only row on the final page). Clamp back to the last real page.
+  useEffect(() => {
+    if (pageCount > 0 && pageIndex > pageCount - 1) gotoPage(pageCount - 1)
+  }, [pageCount, pageIndex, gotoPage])
 
   const handleSortChange = useCallback(
     (sortOption: string) => {
@@ -986,7 +996,7 @@ export default function InternalMeetingsClient() {
                                 {headerGroup.headers.map((column: any) => {
                                   const { key: colKey, ...colRest } = column.getHeaderProps(column.getSortByToggleProps?.())
                                   return (
-                                    <th key={colKey ?? column.id} {...colRest} className="!text-[0.75rem]">
+                                    <th key={colKey ?? column.id} {...colRest} className="!text-[0.75rem] sticky top-0 z-10 bg-white dark:bg-bodybg">
                                       {column.id === "checkbox" ? (
                                         <input
                                           type="checkbox"

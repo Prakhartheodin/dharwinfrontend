@@ -179,6 +179,7 @@ export default function InterviewDateTimeOverlay({
                   onChange={(d: Date | null) => { if (d) setDraftDate(format(d, 'yyyy-MM-dd')) }}
                   minDate={startOfToday()}
                   calendarStartDay={1}
+                  calendarClassName="schedule-interview-dp-inline"
                 />
               </div>
               <p className="mt-2 flex items-center gap-1.5 text-xs text-textmuted">

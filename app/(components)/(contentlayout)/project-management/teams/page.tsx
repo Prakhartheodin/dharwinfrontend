@@ -1167,7 +1167,9 @@ const TeamsPage = () => {
           return;
         }
         const result = await listTeamMembers({
-          search: params?.search ?? (searchQuery || undefined),
+          // "search" in params means caller set it explicitly (incl. cleared to
+          // undefined); ?? would wrongly fall back to stale searchQuery on clear.
+          search: params && "search" in params ? params.search : searchQuery || undefined,
           page: params?.page ?? page,
           limit: PAGE_SIZE,
           ...(selectedTeamId ? { teamId: selectedTeamId } : {}),
@@ -1242,6 +1244,19 @@ const TeamsPage = () => {
     setPage(1);
     fetchMembers({ page: 1, search: trimmed || undefined });
   };
+
+  // Debounced live search — fires 400ms after typing stops. Button/Enter still
+  // force it immediately; the early-return skips the fetch they already ran.
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === searchQuery) return;
+    const t = setTimeout(() => {
+      setSearchQuery(trimmed);
+      setPage(1);
+      fetchMembers({ page: 1, search: trimmed || undefined });
+    }, 400);
+    return () => clearTimeout(t);
+  }, [searchInput, searchQuery, fetchMembers]);
 
   const openCreateForm = (defaultTeamId?: string) => {
     setFormIsEdit(false);
@@ -1626,13 +1641,33 @@ const TeamsPage = () => {
                       <div className="box custom-box overflow-hidden rounded-xl border border-dashed border-defaultborder/80 dark:border-white/15">
                         <div className="box-body flex min-h-[min(42vh,480px)] flex-col items-center justify-center gap-3 px-6 py-14 text-center">
                           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/15">
-                            <i className="ri-user-add-line text-2xl" aria-hidden />
+                            <i
+                              className={`${searchQuery ? "ri-search-eye-line" : "ri-user-add-line"} text-2xl`}
+                              aria-hidden
+                            />
                           </span>
-                          <p className="mb-0 max-w-md text-[0.8125rem] text-muted dark:text-white/50">
-                            No one on this squad yet. Use{" "}
-                            <strong className="text-defaulttextcolor">New member</strong> or the plus on the team row to
-                            add someone from your candidate pool.
-                          </p>
+                          {searchQuery ? (
+                            <>
+                              <p className="mb-0 max-w-md text-[0.8125rem] text-muted dark:text-white/50">
+                                No members match{" "}
+                                <strong className="text-defaulttextcolor">“{searchQuery}”</strong>. Try a different
+                                name, email, or role.
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => setSearchInput("")}
+                                className="mt-1 inline-flex items-center gap-1 rounded-full border border-slate-200 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:bg-slate-50 dark:border-white/15 dark:text-slate-300 dark:hover:bg-white/5"
+                              >
+                                <i className="ri-close-line" /> Clear search
+                              </button>
+                            </>
+                          ) : (
+                            <p className="mb-0 max-w-md text-[0.8125rem] text-muted dark:text-white/50">
+                              No one on this squad yet. Use{" "}
+                              <strong className="text-defaulttextcolor">New member</strong> or the plus on the team row to
+                              add someone from your candidate pool.
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>

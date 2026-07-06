@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useCallback, useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { format } from "date-fns"
 import { useAuth } from "@/shared/contexts/auth-context"
@@ -69,6 +69,8 @@ export default function CreateInternalMeetingModal({
   onScheduledInternalMeetingAtChange,
 }: CreateInternalMeetingModalProps) {
   const { user } = useAuth()
+  const scheduleDatePickerRef = useRef<{ setOpen: (open: boolean) => void } | null>(null)
+  const scheduleSnapshotRef = useRef<Date | null>(null)
   const [participantUsers, setParticipantUsers] = useState<ParticipantUser[]>([])
   const [participantUsersLoading, setParticipantUsersLoading] = useState(false)
   const [participantUsersError, setParticipantUsersError] = useState<string | null>(null)
@@ -276,6 +278,7 @@ export default function CreateInternalMeetingModal({
                       <input type="hidden" id="internal-schedule-date" value={scheduleDateStr} readOnly tabIndex={-1} aria-hidden />
                       <input type="hidden" id="internal-schedule-time" value={scheduleTimeStr} readOnly tabIndex={-1} aria-hidden />
                       <DatePicker
+                        ref={scheduleDatePickerRef}
                         selected={scheduledInternalMeetingAt}
                         onChange={(d: Date | null) => onScheduledInternalMeetingAtChange(d)}
                         showTimeSelect
@@ -285,6 +288,8 @@ export default function CreateInternalMeetingModal({
                         minDate={startOfToday}
                         filterTime={filterTime}
                         withPortal
+                        portalId="internal-schedule-dp-portal"
+                        onCalendarOpen={() => { scheduleSnapshotRef.current = scheduledInternalMeetingAt }}
                         shouldCloseOnSelect={false}
                         showMonthDropdown
                         showYearDropdown
@@ -298,7 +303,28 @@ export default function CreateInternalMeetingModal({
                         calendarClassName="schedule-interview-dp-cal"
                         wrapperClassName="schedule-interview-dp-wrap block w-full"
                         customInput={<InternalMeetingWhenTrigger disabled={formLoading} />}
-                      />
+                      >
+                        <div className="flex justify-end gap-2 border-t border-defaultborder/60 px-3 py-2 dark:border-white/10">
+                          <button
+                            type="button"
+                            onClick={() => scheduleDatePickerRef.current?.setOpen(false)}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-bodybg"
+                          >
+                            <i className="ri-check-line text-base" aria-hidden />
+                            Confirm
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onScheduledInternalMeetingAtChange(scheduleSnapshotRef.current)
+                              scheduleDatePickerRef.current?.setOpen(false)
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-defaultborder bg-white px-4 py-2 text-sm font-semibold text-defaulttextcolor shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 dark:border-defaultborder/10 dark:bg-bodybg dark:text-white dark:hover:bg-white/5 dark:focus-visible:ring-offset-bodybg"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </DatePicker>
                     </div>
                   </div>
                   <p className="mt-3 text-[0.8125rem] leading-relaxed text-textmuted dark:text-white/55">

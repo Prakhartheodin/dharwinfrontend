@@ -96,6 +96,7 @@ export default function Dialpad({
   contactName,
   contactAvatar,
   dialTarget,
+  dialNowToken,
 }: {
   defaultTo?: string;
   embedded?: boolean;
@@ -103,6 +104,7 @@ export default function Dialpad({
   contactName?: string;
   contactAvatar?: string;
   dialTarget?: string;
+  dialNowToken?: number;
 } = {}) {
   const [mode, setMode] = useState<Mode>("browser");
   const [provider, setProvider] = useState<TelephonyProvider>("plivo");
@@ -629,6 +631,23 @@ export default function Dialpad({
 
   const onCall = mode === "browser" ? () => void handleBrowserCall() : () => void handlePhoneCall();
   const inCall = mode === "browser" && callState !== "idle";
+
+  // Programmatic dial: a "Call" CTA elsewhere (e.g. the Recents context panel)
+  // bumps dialNowToken. Prefill + softphone connect are async, so we arm a
+  // pending flag and fire once canCall flips true (valid E.164 number + line
+  // ready) instead of dialing synchronously against stale state.
+  const [pendingDial, setPendingDial] = useState(false);
+  const dialNowSeen = useRef(dialNowToken);
+  useEffect(() => {
+    if (dialNowToken === undefined || dialNowSeen.current === dialNowToken) return;
+    dialNowSeen.current = dialNowToken;
+    setPendingDial(true);
+  }, [dialNowToken]);
+  useEffect(() => {
+    if (!pendingDial || !canCall) return;
+    setPendingDial(false);
+    onCall();
+  }, [pendingDial, canCall, onCall]);
   // Full call screen takes over for an active browser (WebRTC) call.
   const browserInCall = inCall && !incomingCall;
   const callTitle = contactName || dest;
@@ -936,7 +955,7 @@ export default function Dialpad({
               <input
                 type="tel"
                 inputMode="tel"
-                className={`w-full min-w-0 bg-transparent font-mono tracking-wide text-defaulttextcolor focus:outline-none dark:text-white ${embedded ? "text-lg" : "text-center text-2xl font-medium tabular-nums"}`}
+                className={`w-full min-w-0 rounded-md border-0 bg-transparent font-mono text-defaulttextcolor focus:outline-none dark:text-white ${embedded ? "text-lg tracking-wide" : "text-base font-medium tabular-nums"}`}
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
                 aria-label="Number to dial"
