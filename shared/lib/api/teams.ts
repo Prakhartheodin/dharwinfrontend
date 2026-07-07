@@ -54,6 +54,7 @@ export interface TeamMember {
   email?: string;
   memberSinceLabel?: string;
   projectsCount?: number;
+  tasksAssignedCount?: number;
   position?: string;
   coverImageUrl?: string;
   avatarImageUrl?: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Fragment, useCallback, useEffect, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -24,7 +24,10 @@ import {
   getTaskId,
   type Task,
   type TaskStatus,
+  type TaskUser,
 } from "@/shared/lib/api/tasks";
+import { resolveDownloadUrlForBrowser } from "@/shared/lib/api/client";
+import { listCandidates, type CandidateListItem } from "@/shared/lib/api/candidates";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { projectCanEdit } from "@/shared/lib/project-capabilities";
 
@@ -74,6 +77,83 @@ function initials(name: string | undefined): string {
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+/** Normalize stored profile picture paths for browser display. */
+function resolveAssigneeAvatarUrl(url: string | undefined | null): string | null {
+  const raw = (url ?? "").trim();
+  if (!raw) return null;
+  let resolved = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    resolved = resolveDownloadUrlForBrowser(raw);
+  } else if (raw.startsWith("/")) {
+    resolved = raw;
+  } else {
+    const legacy = raw.match(/assets\/images\/.+$/i);
+    resolved = legacy ? `/${legacy[0].replace(/^\/+/, "")}` : raw;
+  }
+  return resolved.trim() || null;
+}
+
+function normalizeAssigneeEmail(email: string | undefined | null): string {
+  return (email ?? "").trim().toLowerCase();
+}
+
+function resolveAssigneePhotoUrl(
+  user: { email?: string; profilePicture?: { url?: string } | null },
+  candidateAvatarByEmail: ReadonlyMap<string, string>,
+  sessionAvatar?: { email: string; url: string } | null
+): string | null {
+  const fromUser = resolveAssigneeAvatarUrl(user.profilePicture?.url);
+  if (fromUser) return fromUser;
+  const key = normalizeAssigneeEmail(user.email);
+  if (key) {
+    const fromCandidate = candidateAvatarByEmail.get(key);
+    if (fromCandidate) return resolveAssigneeAvatarUrl(fromCandidate);
+  }
+  if (
+    sessionAvatar?.url?.trim() &&
+    key &&
+    normalizeAssigneeEmail(sessionAvatar.email) === key
+  ) {
+    return resolveAssigneeAvatarUrl(sessionAvatar.url);
+  }
+  return null;
+}
+
+/** Avatar with resolved photo URL and initials fallback when missing or broken. */
+function AssigneeAvatar({
+  name,
+  profilePictureUrl,
+  size = "sm",
+}: {
+  name: string | undefined;
+  profilePictureUrl?: string | null;
+  size?: "sm" | "md";
+}): JSX.Element {
+  const [broken, setBroken] = useState(false);
+  const imgSrc = profilePictureUrl;
+  const showPhoto = !!imgSrc && !broken;
+
+  useEffect(() => {
+    setBroken(false);
+  }, [imgSrc]);
+
+  if (showPhoto) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={imgSrc}
+        alt=""
+        className="h-full w-full object-cover !rounded-full"
+        referrerPolicy="no-referrer"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+
+  const textSize = size === "md" ? "text-[0.875rem]" : "text-[0.6875rem]";
+  return <span className={textSize}>{initials(name)}</span>;
 }
 
 /** Best-effort file name from an attachment URL/path. */
@@ -386,7 +466,15 @@ function DueDateCell({
 }
 
 /** Stacked assignee avatars. Clicking a bubble opens an overview card for that assignee. */
-function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
+function AssigneeBubbles({
+  users,
+  candidateAvatarByEmail,
+  sessionAvatar,
+}: {
+  users: TaskUser[];
+  candidateAvatarByEmail: ReadonlyMap<string, string>;
+  sessionAvatar?: { email: string; url: string } | null;
+}): JSX.Element {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const wrapRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -417,7 +505,6 @@ function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
       <div className="avatar-list-stacked">
         {users.map((u, i) => {
           const label = u.name || u.email || "User";
-          const pic = u.profilePicture?.url;
           return (
             <button
               key={u._id || u.id || u.email || `t-assignee-${i}`}
@@ -427,12 +514,10 @@ function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
               title={label}
               aria-label={`View ${label}`}
             >
-              {pic ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={pic} alt={label} className="w-full h-full object-cover !rounded-full" />
-              ) : (
-                initials(u.name || u.email)
-              )}
+              <AssigneeAvatar
+                name={u.name || u.email}
+                profilePictureUrl={resolveAssigneePhotoUrl(u, candidateAvatarByEmail, sessionAvatar)}
+              />
             </button>
           );
         })}
@@ -445,16 +530,11 @@ function AssigneeBubbles({ users }: { users: TaskUser[] }): JSX.Element {
         >
           <div className="flex items-center gap-3">
             <span className="avatar avatar-md !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.875rem] font-semibold overflow-hidden shrink-0">
-              {active.profilePicture?.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={active.profilePicture.url}
-                  alt={active.name || "User"}
-                  className="w-full h-full object-cover !rounded-full"
-                />
-              ) : (
-                initials(active.name || active.email)
-              )}
+              <AssigneeAvatar
+                name={active.name || active.email}
+                profilePictureUrl={resolveAssigneePhotoUrl(active, candidateAvatarByEmail, sessionAvatar)}
+                size="md"
+              />
             </span>
             <div className="min-w-0">
               <div className="font-semibold truncate">{active.name || "Unnamed user"}</div>
@@ -499,6 +579,36 @@ const Projectoverview = (): JSX.Element => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
+  const [candidateAvatars, setCandidateAvatars] = useState<Map<string, string>>(() => new Map());
+
+  const sessionAvatar = useMemo(() => {
+    const email = auth.user?.email?.trim();
+    const url = auth.user?.profilePicture?.url?.trim();
+    if (!email || !url) return null;
+    return { email, url };
+  }, [auth.user?.email, auth.user?.profilePicture?.url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listCandidates({ limit: 1000, employmentStatus: "all", sortBy: "fullName:asc" })
+      .then((res) => {
+        if (cancelled) return;
+        const next = new Map<string, string>();
+        for (const c of (res.results ?? []) as CandidateListItem[]) {
+          const raw = (c.profilePicture?.url || "").trim();
+          if (!raw) continue;
+          const email = normalizeAssigneeEmail(c.email);
+          if (email) next.set(email, raw);
+        }
+        setCandidateAvatars(next);
+      })
+      .catch(() => {
+        if (!cancelled) setCandidateAvatars(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!id) {
@@ -801,10 +911,13 @@ const Projectoverview = (): JSX.Element => {
                         {assignees.map((u, i) => (
                           <span
                             key={u._id || u.id || u.email || `assignee-${i}`}
-                            className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold"
+                            className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold overflow-hidden"
                             title={u.name || u.email || "User"}
                           >
-                            {initials(u.name || u.email)}
+                            <AssigneeAvatar
+                              name={u.name || u.email}
+                              profilePictureUrl={resolveAssigneePhotoUrl(u, candidateAvatars, sessionAvatar)}
+                            />
                           </span>
                         ))}
                       </div>
@@ -902,7 +1015,11 @@ const Projectoverview = (): JSX.Element => {
                               )}
                             </td>
                             <td>
-                              <AssigneeBubbles users={t.assignedTo ?? []} />
+                              <AssigneeBubbles
+                                users={t.assignedTo ?? []}
+                                candidateAvatarByEmail={candidateAvatars}
+                                sessionAvatar={sessionAvatar}
+                              />
                             </td>
                             <td>
                               <DueDateCell
@@ -998,8 +1115,11 @@ const Projectoverview = (): JSX.Element => {
                           <tr key={u._id || u.id || u.email || `team-${i}`} className="border border-defaultborder">
                             <td className="align-middle">
                               <div className="flex items-center gap-2">
-                                <span className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold shrink-0">
-                                  {initials(u.name || u.email)}
+                                <span className="avatar avatar-sm !rounded-full bg-primary/10 text-primary inline-flex items-center justify-center text-[0.6875rem] font-semibold shrink-0 overflow-hidden">
+                                  <AssigneeAvatar
+                                    name={u.name || u.email}
+                                    profilePictureUrl={resolveAssigneePhotoUrl(u, candidateAvatars, sessionAvatar)}
+                                  />
                                 </span>
                                 <span className="font-semibold break-words min-w-0">{u.name?.trim() || "—"}</span>
                               </div>

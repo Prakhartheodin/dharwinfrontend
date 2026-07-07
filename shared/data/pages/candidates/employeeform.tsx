@@ -430,12 +430,15 @@ export const EmployeeForm = ({
   initialData,
   initialExcelMode,
   returnToCandidatesOnBack,
+  employeesListReturnUrl,
   relaxPersonalInfoValidation = false,
   selfServiceEdit = false,
 }: {
   initialData?: any;
   initialExcelMode?: boolean;
   returnToCandidatesOnBack?: boolean;
+  /** After save, return to this employees list URL (preserves page). */
+  employeesListReturnUrl?: string;
   /** When true (admin/manager employee edit), personal-info fields are optional. */
   relaxPersonalInfoValidation?: boolean;
   /** When true, PATCH /employees/me (strict personal-info validation on backend). */
@@ -2083,7 +2086,9 @@ export const EmployeeForm = ({
       }
 
       // Redirect after successful operation - candidate persona goes to their profile.
-      router.push(isCandidate && !canManageEmployees ? ROUTES.candidateProfile : "/ats/employees");
+      const employeesReturn =
+        employeesListReturnUrl?.trim() || "/ats/employees";
+      router.push(isCandidate && !canManageEmployees ? ROUTES.candidateProfile : employeesReturn);
     } catch (err: any) {
       setError(initialData ? "Failed to update employee" : "Failed to add employee");
       await Swal.fire({

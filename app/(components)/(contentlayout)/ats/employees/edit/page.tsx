@@ -32,6 +32,12 @@ const EditEmployee = () => {
   const pathname = usePathname();
   const router = useRouter();
   const id = searchParams.get("id");
+  const returnPageRaw = searchParams.get("returnPage");
+  const returnPage = returnPageRaw ? Number.parseInt(returnPageRaw, 10) : NaN;
+  const employeesListReturnUrl =
+    Number.isInteger(returnPage) && returnPage >= 1
+      ? `/ats/employees?page=${returnPage}`
+      : "/ats/employees";
   const { user, permissions, permissionsLoaded, isPlatformSuperUser } = useAuth();
   const { isEmployee, isLoading: rolesLoading } = useIsEmployeeForProfile();
   const [initialData, setInitialData] = useState<any | null>(null);
@@ -164,6 +170,7 @@ const EditEmployee = () => {
                       initialData={initialData}
                       relaxPersonalInfoValidation={!isEmployee}
                       selfServiceEdit={isEmployee}
+                      employeesListReturnUrl={employeesListReturnUrl}
                     />
                   </>
                 ) : (

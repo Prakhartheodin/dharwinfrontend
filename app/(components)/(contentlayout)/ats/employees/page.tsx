@@ -53,7 +53,7 @@ import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-tem
 import { displayApplicantEmail } from '@/shared/lib/ats/applicant-email'
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import CandidateActionModals from './_components/CandidateActionModals'
 import CandidateShareModal from './_components/CandidateShareModal'
@@ -155,6 +155,15 @@ function resignDateLabel(candidate: CandidateDisplay): string | null {
 
 /** Stable ref for react-table initialState (avoid new object each render). */
 const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 50 }
+
+function parseEmployeesListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
+
+function buildEmployeeEditHref(id: string, returnPage: number): string {
+  return `/ats/employees/edit/?id=${encodeURIComponent(id)}&returnPage=${returnPage}`
+}
 
 /** Maps toolbar / column-header sort → `/employees` `sortBy` (`field:asc|desc`). */
 function getEmployeesApiSortBy(selectedSort: string): string {
@@ -485,6 +494,8 @@ const AiThinkingPanel = () => {
 
 const Candidates = () => {
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { isAdministrator, isPlatformSuperUser, permissions, roleNames, user: authUser, startImpersonation, isLoading: authLoading } = useAuth()
   const authForPermissions = useMemo(
     () => ({ permissions: permissions ?? [], isPlatformSuperUser }),
@@ -545,7 +556,22 @@ const Candidates = () => {
   const [shareSubmitting, setShareSubmitting] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('')
   
-  const [apiPage, setApiPage] = useState(1)
+  const [apiPage, setApiPage] = useState(() => parseEmployeesListPage(searchParams.get('page')))
+
+  useEffect(() => {
+    const fromUrl = parseEmployeesListPage(searchParams.get('page'))
+    setApiPage((prev) => (prev === fromUrl ? prev : fromUrl))
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const urlPage = parseEmployeesListPage(params.get('page'))
+    if (urlPage === apiPage) return
+    if (apiPage <= 1) params.delete('page')
+    else params.set('page', String(apiPage))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [apiPage, pathname, router, searchParams])
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [pageSize, setPageSize] = useState(50)
@@ -570,6 +596,7 @@ const Candidates = () => {
   const [agentsLoading, setAgentsLoading] = useState(false)
 
   const [debouncedEmployeeSearch, setDebouncedEmployeeSearch] = useState('')
+  const prevDebouncedEmployeeSearchRef = useRef(debouncedEmployeeSearch)
   useEffect(() => {
     const t = setTimeout(() => setDebouncedEmployeeSearch(employeeSearch), 400)
     return () => clearTimeout(t)
@@ -666,6 +693,8 @@ const Candidates = () => {
   }, [fetchParams, apiPage])
 
   useEffect(() => {
+    if (prevDebouncedEmployeeSearchRef.current === debouncedEmployeeSearch) return
+    prevDebouncedEmployeeSearchRef.current = debouncedEmployeeSearch
     setApiPage(1)
   }, [debouncedEmployeeSearch])
 
@@ -1015,7 +1044,7 @@ const Candidates = () => {
       await deleteSalarySlip(candidateId, index)
       setSalarySlipsFromCandidate((prev) => prev.filter((_, i) => i !== index))
       setActionSuccess('Salary slip removed')
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 2000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
@@ -1117,7 +1146,7 @@ const Candidates = () => {
       setSalarySlipCandidate(null)
       setSalarySlipForm({ month: '', year: '', file: null })
       setTimeout(() => document.querySelector('[data-hs-overlay="#salary-slip-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to add salary slip')
@@ -1206,7 +1235,7 @@ const Candidates = () => {
                   icon: 'info',
                   title: 'Email already verified',
                 })
-                refreshCandidates(true)
+                refreshCandidates(false)
                 return false
               }
               Swal.showValidationMessage(message)
@@ -1222,7 +1251,7 @@ const Candidates = () => {
             icon: 'success',
             title: to ? `Verification email sent to ${to}` : 'Verification email sent',
           })
-          refreshCandidates(true)
+          refreshCandidates(false)
         }
       } finally {
         setResendingVerificationCandidateId(null)
@@ -1389,7 +1418,7 @@ const Candidates = () => {
       }
       setSelectedRows(new Set())
       setActionSuccess('Selected employees deleted')
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Delete failed')
@@ -1417,7 +1446,7 @@ const Candidates = () => {
       setAssignRecruiterCandidate(null)
       setAssignRecruiterId('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#assign-recruiter-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign recruiter')
@@ -1443,7 +1472,7 @@ const Candidates = () => {
       setJoiningDateCandidate(null)
       setJoiningDateValue('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#joining-date-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update joining date')
@@ -1469,7 +1498,7 @@ const Candidates = () => {
       setResignDateCandidate(null)
       setResignDateValue('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#resign-date-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
@@ -1589,7 +1618,7 @@ const Candidates = () => {
       setPreviewCandidate((prev: any) =>
         prev ? { ...prev, _raw: { ...prev._raw, joiningDate: value } } : null
       )
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update joining date')
@@ -1608,7 +1637,7 @@ const Candidates = () => {
       setPreviewCandidate((prev: any) =>
         prev ? { ...prev, _raw: { ...prev._raw, resignDate: value } } : null
       )
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update resign date')
@@ -1638,7 +1667,7 @@ const Candidates = () => {
       setWeekOffCandidateIds([])
       setWeekOffDays([])
       setTimeout(() => document.querySelector('[data-hs-overlay="#week-off-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to update week-off')
@@ -1669,7 +1698,7 @@ const Candidates = () => {
       setAssignShiftCandidateIds([])
       setAssignShiftId('')
       setTimeout(() => document.querySelector('[data-hs-overlay="#assign-shift-modal"]')?.dispatchEvent(new Event('click')), 0)
-      refreshCandidates(true)
+      refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
     } catch (err: any) {
       setActionError(err?.response?.data?.message ?? err?.message ?? 'Failed to assign shift')
@@ -1946,7 +1975,7 @@ const Candidates = () => {
               )}
               {canUpdateEmployee ? (
                 <div className="hs-tooltip ti-main-tooltip">
-                  <Link href={`/ats/employees/edit/?id=${c.id}`} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
+                  <Link href={buildEmployeeEditHref(c.id, apiPage)} className="hs-tooltip-toggle ti-btn ti-btn-icon ti-btn-sm !h-[1.75rem] !w-[1.75rem] bg-info/10 text-info hover:bg-info hover:text-white" title="Edit employee">
                     <i className="ri-pencil-line"></i>
                     <span className="hs-tooltip-content ti-main-tooltip-content py-1 px-2 !bg-black !text-xs !font-medium !text-white" role="tooltip">Edit employee</span>
                   </Link>
@@ -2097,6 +2126,7 @@ const Candidates = () => {
       handleResendVerification,
       canBulkSelectEmployees,
       canUpdateEmployee,
+      apiPage,
     ]
   )
 
@@ -2912,6 +2942,16 @@ const Candidates = () => {
             <i className="ri-user-line text-primary text-base"></i>
             {previewCandidate?.name || 'Employee preview'}
           </h6>
+          <div className="flex items-center gap-2">
+            {canUpdateEmployee && previewCandidate?.id ? (
+              <Link
+                href={buildEmployeeEditHref(previewCandidate.id, apiPage)}
+                className="ti-btn ti-btn-sm ti-btn-primary !py-1 !px-3"
+              >
+                <i className="ri-pencil-line me-1" aria-hidden />
+                Edit profile
+              </Link>
+            ) : null}
               <button
                 type="button"
             className="hs-dropdown-toggle ti-btn flex-shrink-0 p-0 transition-none text-gray-500 hover:text-gray-700 focus:ring-gray-400 focus:ring-offset-white dark:text-[#8c9097] dark:text-white/50 dark:hover:text-white/80 rounded-md p-1"
@@ -2928,7 +2968,8 @@ const Candidates = () => {
               <path d="M0.258206 1.00652C0.351976 0.912791 0.479126 0.860131 0.611706 0.860131C0.744296 0.860131 0.871447 0.912791 0.965207 1.00652L3.61171 3.65302L6.25822 1.00652C6.30432 0.958771 6.35952 0.920671 6.42052 0.894471C6.48152 0.868271 6.54712 0.854471 6.61352 0.853901C6.67992 0.853321 6.74572 0.865971 6.80722 0.891111C6.86862 0.916251 6.92442 0.953381 6.97142 1.00032C7.01832 1.04727 7.05552 1.1031 7.08062 1.16454C7.10572 1.22599 7.11842 1.29183 7.11782 1.35822C7.11722 1.42461 7.10342 1.49022 7.07722 1.55122C7.05102 1.61222 7.01292 1.6674 6.96522 1.71352L4.31871 4.36002L6.96522 7.00648C7.05632 7.10078 7.10672 7.22708 7.10552 7.35818C7.10442 7.48928 7.05182 7.61468 6.95912 7.70738C6.86642 7.80018 6.74102 7.85268 6.60992 7.85388C6.47882 7.85498 6.35252 7.80458 6.25822 7.71348L3.61171 5.06702L0.965207 7.71348C0.870907 7.80458 0.744606 7.85498 0.613506 7.85388C0.482406 7.85268 0.357007 7.80018 0.264297 7.70738C0.171597 7.61468 0.119017 7.48928 0.117877 7.35818C0.116737 7.22708 0.167126 7.10078 0.258206 7.00648L2.90471 4.36002L0.258206 1.71352C0.164476 1.61976 0.111816 1.4926 0.111816 1.36002C0.111816 1.22744 0.164476 1.10028 0.258206 1.00652Z" fill="currentColor"/>
             </svg>
               </button>
-            </div>
+          </div>
+        </div>
         <div className="ti-offcanvas-body !p-4 overflow-y-auto">
           {previewCandidate ? (
             <>

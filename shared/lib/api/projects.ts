@@ -23,6 +23,9 @@ export interface ProjectUser {
   id?: string;
   name?: string;
   email?: string;
+  phoneNumber?: string;
+  location?: string;
+  profilePicture?: { url?: string; key?: string };
 }
 
 export interface ProjectTeam {

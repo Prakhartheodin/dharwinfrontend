@@ -476,9 +476,9 @@ function TeamMemberCard({
               </span>
             </div>
             <div className="text-center p-4 w-full">
-              <p className="font-semibold mb-0">Projects</p>
+              <p className="font-semibold mb-0">Tasks</p>
               <span className="text-[#8c9097] dark:text-white/50 text-[0.75rem]">
-                {member.projectsCount ?? 0}
+                {member.tasksAssignedCount ?? 0}
               </span>
             </div>
             <div className="text-center p-4 w-full">

@@ -16,10 +16,9 @@ import { DEBOUNCE_MS, STORAGE_KEY_FILTERS } from "../lib/constants";
 import {
   buildSearchParamsFromFilters,
   deserialize,
-  isEqual,
   normalize,
 } from "../lib/url-state";
-import { safeGet, safeRemove, safeSet } from "../lib/safe-storage";
+import { safeRemove } from "../lib/safe-storage";
 import { EMPTY_FILTERS, type TaskFilters } from "../types";
 import { trackTaskBoard } from "../lib/telemetry";
 
@@ -55,7 +54,7 @@ export function TaskFiltersProvider({
   const pathname = usePathname();
   const auth = useAuth();
   const userKey = auth?.user?.id ?? "anon";
-  const storageKey = STORAGE_KEY_FILTERS(userKey);
+  const legacyFiltersKey = STORAGE_KEY_FILTERS(userKey);
 
   const hydratedForKey = useRef<string | null>(null);
   const urlWritesEnabled = useRef(false);
@@ -67,20 +66,15 @@ export function TaskFiltersProvider({
   const [searchInput, setSearchInput] = useState("");
 
   useLayoutEffect(() => {
-    if (hydratedForKey.current === storageKey) return;
-    hydratedForKey.current = storageKey;
+    if (hydratedForKey.current === legacyFiltersKey) return;
+    hydratedForKey.current = legacyFiltersKey;
     const fromUrl = normalize(deserialize(sp));
-    const stored = safeGet<TaskFilters>(storageKey);
-    const initial =
-      stored &&
-      !isEqual(normalize(stored), normalize(EMPTY_FILTERS)) &&
-      isEqual(fromUrl, normalize(EMPTY_FILTERS))
-        ? normalize(stored)
-        : fromUrl;
-    setFiltersState(initial);
-    setSearchInput(initial.q);
+    setFiltersState(fromUrl);
+    setSearchInput(fromUrl.q);
     urlWritesEnabled.current = true;
-  }, [sp, storageKey]);
+    // Filters are URL-scoped only; clear legacy localStorage restore keys.
+    safeRemove(legacyFiltersKey);
+  }, [sp, legacyFiltersKey]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -104,15 +98,6 @@ export function TaskFiltersProvider({
     });
   }, [filters, pathname, router, sp]);
 
-  useEffect(() => {
-    if (!urlWritesEnabled.current) return;
-    if (isEqual(filters, normalize(EMPTY_FILTERS))) {
-      safeRemove(storageKey);
-      return;
-    }
-    void safeSet(storageKey, filters);
-  }, [filters, storageKey]);
-
   const emitFilterTelemetry = useCallback((next: TaskFilters) => {
     if (filterTelemetryTimer.current) clearTimeout(filterTelemetryTimer.current);
     filterTelemetryTimer.current = setTimeout(() => {
@@ -125,7 +110,7 @@ export function TaskFiltersProvider({
       setFiltersState(n);
       emitFilterTelemetry(n);
     setSearchInput(next.q);
-  }, []);
+  }, [emitFilterTelemetry]);
 
   const patchFilters = useCallback((patch: Partial<TaskFilters>) => {
     if (patch.q !== undefined) setSearchInput(patch.q);
@@ -135,8 +120,8 @@ export function TaskFiltersProvider({
   const clearFilters = useCallback(() => {
     setFiltersState(normalize(EMPTY_FILTERS));
     setSearchInput("");
-    safeRemove(storageKey);
-  }, [storageKey]);
+    safeRemove(legacyFiltersKey);
+  }, [legacyFiltersKey]);
 
   const hasActiveFilters = useMemo(() => {
     return (
