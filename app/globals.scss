@@ -80,22 +80,124 @@
   }
 }
 
-// White background for logo area in header
-.header-logo-container {
+// White background for logo area in header (light mode only — dark mode uses white-text logo)
+html:not(.dark) .header-logo-container {
   background-color: white !important;
-  
+
   .horizontal-logo {
     background-color: white !important;
   }
-  
+
   .header-logo {
     background-color: white !important;
   }
 }
 
-// White background for sidebar header
-.main-sidebar-header {
+// White background for sidebar header (light mode only)
+html:not(.dark) .main-sidebar-header {
   background-color: white !important;
+}
+
+.main-sidebar-header {
+  overflow: visible !important;
+
+  .header-logo {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+
+    img.main-logo {
+      height: 2rem !important;
+      width: auto !important;
+      max-width: 100% !important;
+      object-fit: contain !important;
+      object-position: center !important;
+    }
+  }
+}
+
+// Logo theme swap. Sidebar header chip is white in light mode even when the menu
+// itself is dark (data-menu-styles=dark), so the img must follow the THEME, not the
+// menu style — template rules key off menu style and pick the wrong variant.
+html:not(.dark):not([data-toggled]) .app-sidebar .main-sidebar-header .header-logo {
+  img.desktop-dark,
+  img.desktop-white,
+  img.toggle-logo,
+  img.toggle-dark,
+  img.toggle-white {
+    display: none !important;
+  }
+
+  img.desktop-logo {
+    display: block !important;
+  }
+}
+
+html.dark:not([data-toggled]) .app-sidebar .main-sidebar-header .header-logo {
+  img.desktop-logo,
+  img.toggle-logo,
+  img.desktop-white,
+  img.toggle-dark,
+  img.toggle-white {
+    display: none !important;
+  }
+
+  img.desktop-dark {
+    display: block !important;
+  }
+}
+
+html:not(.dark) .app-header .horizontal-logo .header-logo {
+  img.desktop-dark,
+  img.desktop-white,
+  img.toggle-dark,
+  img.toggle-white {
+    display: none !important;
+  }
+
+  img.desktop-logo {
+    display: block !important;
+  }
+}
+
+html.dark .app-header .horizontal-logo .header-logo {
+  img.desktop-logo {
+    display: none !important;
+  }
+
+  img.desktop-dark {
+    display: block !important;
+  }
+}
+
+/* Collapsed sidebar rail — keep toggle icon fully visible inside ~5rem header */
+@media (min-width: 992px) {
+  [data-toggled="icon-overlay-close"]:not([data-icon-overlay="open"]) .app-sidebar .main-sidebar-header,
+  [data-toggled="icon-click-closed"] .app-sidebar .main-sidebar-header,
+  [data-toggled="icon-text-close"] .app-sidebar .main-sidebar-header,
+  [data-toggled="close-menu-close"] .app-sidebar .main-sidebar-header,
+  [data-toggled="detached-close"] .app-sidebar .main-sidebar-header,
+  [data-toggled="double-menu-close"] .app-sidebar .main-sidebar-header {
+    padding-inline: 0.625rem !important;
+    overflow: visible !important;
+  }
+
+  [data-toggled="icon-overlay-close"]:not([data-icon-overlay="open"]) .app-sidebar .header-logo img.toggle-logo,
+  [data-toggled="icon-click-closed"] .app-sidebar .header-logo img.toggle-logo,
+  [data-toggled="icon-text-close"] .app-sidebar .header-logo img.toggle-logo,
+  [data-toggled="close-menu-close"] .app-sidebar .header-logo img.toggle-logo,
+  [data-toggled="detached-close"] .app-sidebar .header-logo img.toggle-logo,
+  [data-toggled="double-menu-close"] .app-sidebar .header-logo img.toggle-logo {
+    height: 2rem !important;
+    width: auto !important;
+    max-width: 100% !important;
+    max-height: 2rem !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
 }
 
 /* Do not zero padding on form controls — auth/login inputs use max-w-full for width only */
@@ -387,3 +489,53 @@ html.swal2-shown {
   }
 }
 
+/* Communication meetings table — override global overflow-y:visible so sticky thead works */
+.meetings-table-scroll {
+  overflow-y: auto !important;
+}
+
+/* ATS employees table — same inner scroll override */
+.employees-table-scroll {
+  overflow-y: auto !important;
+}
+
+/*
+ * Meetings list: fill viewport below main header (same offset as recordings page)
+ * so box header stays at top, pagination footer at bottom, table body scrolls.
+ */
+.meetings-page-shell {
+  height: calc(100dvh - 8rem);
+  max-height: calc(100dvh - 8rem);
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/*
+ * ATS employees list: fill viewport below app chrome so box-footer
+ * stays pinned to the bottom with no gap; table body scrolls inside.
+ */
+.employees-page-root {
+  display: flex;
+  flex-direction: column;
+  /* header (60px) + main-content + container top padding */
+  height: calc(100dvh - 5.75rem);
+  max-height: calc(100dvh - 5.75rem);
+  min-height: 0;
+  padding-bottom: 0 !important;
+}
+
+@media (min-width: 640px) {
+  .employees-page-root {
+    height: calc(100dvh - 6.25rem);
+    max-height: calc(100dvh - 6.25rem);
+    min-height: 0;
+  }
+}
+
+.employees-page-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}

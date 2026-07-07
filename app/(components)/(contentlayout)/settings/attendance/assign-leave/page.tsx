@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { listCandidates } from "@/shared/lib/api/candidates";
 import { listStudents } from "@/shared/lib/api/students";
@@ -19,6 +19,13 @@ import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hook
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
 import { formatUtcCalendarDate } from "@/shared/lib/attendance-display";
+import { getAllHolidays, type Holiday } from "@/shared/lib/api/holidays";
+import {
+  buildHolidayDateKeySet,
+  expandLeaveDatesInRange,
+  isWeekOffDayLocal,
+  parseYmdLocal,
+} from "@/shared/lib/leave-date-range";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -32,8 +39,10 @@ export default function SettingsAttendanceAssignLeavePage() {
   const [people, setPeople] = useState<AssignPersonRow[]>([]);
   const [selectedPeople, setSelectedPeople] = useState<AssignPersonRow[]>([]);
   const [leaveType, setLeaveType] = useState<"casual" | "sick" | "unpaid">("casual");
-  const [dateInput, setDateInput] = useState("");
-  const [selectedDates, setSelectedDates] = useState<string[]>([]);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [removedDates, setRemovedDates] = useState<Set<string>>(() => new Set());
+  const [holidays, setHolidays] = useState<Holiday[]>([]);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(true);
   const [assigning, setAssigning] = useState(false);
@@ -53,12 +62,23 @@ export default function SettingsAttendanceAssignLeavePage() {
     }
   }, []);
 
+  const fetchHolidays = useCallback(async () => {
+    try {
+      const response = await getAllHolidays({ isActive: true, sortBy: "date:asc", limit: 1000 });
+      const data = (response as { data?: { results?: Holiday[] } | Holiday[] }).data;
+      const list = Array.isArray(data) ? data : data?.results ?? [];
+      setHolidays(list);
+    } catch {
+      setHolidays([]);
+    }
+  }, []);
+
   useEffect(() => {
     if (isAdmin) {
       setLoading(true);
-      fetchPeople().finally(() => setLoading(false));
+      Promise.all([fetchPeople(), fetchHolidays()]).finally(() => setLoading(false));
     }
-  }, [isAdmin, fetchPeople]);
+  }, [isAdmin, fetchPeople, fetchHolidays]);
 
   const mergeSopPerson = useCallback((row: AssignPersonRow) => {
     setPeople((prev) => (prev.some((s) => s.value === row.value) ? prev : [row, ...prev]));
@@ -66,27 +86,55 @@ export default function SettingsAttendanceAssignLeavePage() {
 
   useSopPreselectStudents(people, setSelectedPeople, sopQueryString, mergeSopPerson);
 
+  const chosenPeople = useMemo(
+    () =>
+      selectedPeople.some((s) => s.value === SELECT_ALL)
+        ? people
+        : selectedPeople.filter((s) => s.value !== SELECT_ALL),
+    [selectedPeople, people]
+  );
+
+  const holidayDateKeys = useMemo(() => buildHolidayDateKeySet(holidays), [holidays]);
+
+  const isWeekOffForSelectedPeople = useCallback(
+    (date: Date) => {
+      if (chosenPeople.length === 0) return isWeekOffDayLocal(date, []);
+      return chosenPeople.some((person) => {
+        const weekOff =
+          person.kind === "student" && person.student.weekOff?.length
+            ? person.student.weekOff
+            : [];
+        return isWeekOffDayLocal(date, weekOff);
+      });
+    },
+    [chosenPeople]
+  );
+
+  const rangeExpansion = useMemo(() => {
+    if (!fromDate || !toDate) {
+      return { dates: [] as string[], excludedWeekOff: 0, excludedHoliday: 0 };
+    }
+    return expandLeaveDatesInRange(fromDate, toDate, {
+      holidayDateKeys,
+      isWeekOff: isWeekOffForSelectedPeople,
+    });
+  }, [fromDate, toDate, holidayDateKeys, isWeekOffForSelectedPeople]);
+
+  useEffect(() => {
+    setRemovedDates(new Set());
+  }, [fromDate, toDate]);
+
+  const selectedDates = useMemo(
+    () => rangeExpansion.dates.filter((d) => !removedDates.has(d)),
+    [rangeExpansion.dates, removedDates]
+  );
+
   const personOptions = people.length
     ? [{ value: SELECT_ALL, label: "Select all (training + employees)" } as AssignPersonRow, ...people]
     : people;
 
-  const addDate = () => {
-    if (!dateInput) {
-      Swal.fire({ icon: "warning", title: "Select a date first", confirmButtonText: "OK" });
-      return;
-    }
-    const iso = dateInput.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
-      Swal.fire({ icon: "warning", title: "Invalid date", confirmButtonText: "OK" });
-      return;
-    }
-    if (!selectedDates.includes(iso)) {
-      setSelectedDates((prev) => [...prev, iso].sort());
-    }
-  };
-
   const removeDate = (d: string) => {
-    setSelectedDates((prev) => prev.filter((x) => x !== d));
+    setRemovedDates((prev) => new Set(prev).add(d));
   };
 
   const handleAssign = async () => {
@@ -99,8 +147,37 @@ export default function SettingsAttendanceAssignLeavePage() {
       });
       return;
     }
+    if (!fromDate || !toDate) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Date range required",
+        text: "Select a start date and end date.",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
+    const from = parseYmdLocal(fromDate);
+    const to = parseYmdLocal(toDate);
+    if (!from || !to) {
+      await Swal.fire({ icon: "warning", title: "Invalid dates", confirmButtonText: "OK" });
+      return;
+    }
+    if (to < from) {
+      await Swal.fire({
+        icon: "warning",
+        title: "Invalid range",
+        text: "End date must be on or after start date.",
+        confirmButtonText: "OK",
+      });
+      return;
+    }
     if (selectedDates.length === 0) {
-      await Swal.fire({ icon: "warning", title: "No dates", text: "Add at least one date", confirmButtonText: "OK" });
+      await Swal.fire({
+        icon: "warning",
+        title: "No working days",
+        text: "The selected range has no working days after excluding week-offs and holidays.",
+        confirmButtonText: "OK",
+      });
       return;
     }
     setAssigning(true);
@@ -153,7 +230,9 @@ export default function SettingsAttendanceAssignLeavePage() {
         confirmButtonText: "OK",
       });
       dispatchSopStripRefresh();
-      setSelectedDates([]);
+      setFromDate("");
+      setToDate("");
+      setRemovedDates(new Set());
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ?? (err as { message?: string })?.message ?? "Failed to assign leave";
       setError(msg);
@@ -298,24 +377,65 @@ export default function SettingsAttendanceAssignLeavePage() {
                 </div>
 
                 <div className="p-5 border border-defaultborder/70 rounded-xl bg-slate-50/60 dark:bg-white/[0.04] dark:border-defaultborder/50">
-                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">Dates <span className="text-danger">*</span></label>
-                  <p className="text-xs text-defaulttextcolor/60 mb-3">Add one or more leave dates. Pick a date and click Add Date for each day.</p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      type="date"
-                      value={dateInput}
-                      onChange={(e) => setDateInput(e.target.value)}
-                      className="rounded-lg border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={addDate}
-                      className="inline-flex items-center gap-2 rounded-xl border border-defaultborder/80 px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-defaultborder/20 dark:hover:bg-white/5 transition-colors"
-                    >
-                      <i className="ri-add-line text-lg" />
-                      Add Date
-                    </button>
+                  <label className="block text-sm font-semibold text-defaulttextcolor mb-2">
+                    Date range <span className="text-danger">*</span>
+                  </label>
+                  <p className="text-xs text-defaulttextcolor/60 mb-3 leading-relaxed">
+                    Select a start and end date. Only <strong>working days</strong> in the range are included; week-offs and holidays are skipped automatically.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label htmlFor="assign-leave-from-date" className="mb-1.5 block text-xs font-medium text-defaulttextcolor/80">
+                        Start date <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        id="assign-leave-from-date"
+                        type="date"
+                        value={fromDate}
+                        onChange={(e) => setFromDate(e.target.value)}
+                        className="w-full rounded-lg border border-defaultborder/80 bg-white px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:bg-white/5"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="assign-leave-to-date" className="mb-1.5 block text-xs font-medium text-defaulttextcolor/80">
+                        End date <span className="text-danger">*</span>
+                      </label>
+                      <input
+                        id="assign-leave-to-date"
+                        type="date"
+                        value={toDate}
+                        min={fromDate || undefined}
+                        onChange={(e) => setToDate(e.target.value)}
+                        className="w-full rounded-lg border border-defaultborder/80 bg-white px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:bg-white/5"
+                      />
+                    </div>
                   </div>
+                  {fromDate && toDate && (
+                    <p className="mt-3 text-xs text-defaulttextcolor/65">
+                      {selectedDates.length > 0 ? (
+                        <>
+                          <span className="font-semibold text-defaulttextcolor">{selectedDates.length}</span> working day
+                          {selectedDates.length === 1 ? "" : "s"} selected
+                          {(rangeExpansion.excludedWeekOff > 0 || rangeExpansion.excludedHoliday > 0) && (
+                            <>
+                              {" "}
+                              (
+                              {rangeExpansion.excludedWeekOff > 0 && (
+                                <>{rangeExpansion.excludedWeekOff} week-off{rangeExpansion.excludedWeekOff === 1 ? "" : "s"}</>
+                              )}
+                              {rangeExpansion.excludedWeekOff > 0 && rangeExpansion.excludedHoliday > 0 && ", "}
+                              {rangeExpansion.excludedHoliday > 0 && (
+                                <>{rangeExpansion.excludedHoliday} holiday{rangeExpansion.excludedHoliday === 1 ? "" : "s"}</>
+                              )}{" "}
+                              excluded)
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        "No working days in this range after excluding week-offs and holidays."
+                      )}
+                    </p>
+                  )}
                   {selectedDates.length > 0 && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       {selectedDates.map((d) => (
@@ -328,7 +448,7 @@ export default function SettingsAttendanceAssignLeavePage() {
                             type="button"
                             onClick={() => removeDate(d)}
                             className="p-0.5 rounded-full hover:bg-primary/20 dark:hover:bg-primary/30 transition-colors"
-                            aria-label="Remove date"
+                            aria-label={`Remove ${formatDate(d)}`}
                           >
                             <i className="ri-close-line text-sm" />
                           </button>

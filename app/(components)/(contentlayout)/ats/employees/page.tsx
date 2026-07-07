@@ -2260,7 +2260,7 @@ const Candidates = () => {
   return (
     <Fragment>
       <Seo title="Employees" />
-      <div className="container-fluid max-w-[100vw] px-3 pt-4 pb-6 sm:px-4 sm:pt-6 md:pb-8">
+      <div className="employees-page-root container-fluid flex max-w-[100vw] flex-col px-3 pt-4 pb-0 sm:px-4 sm:pt-6">
       {!candidatesLoading && candidatesError && (
         <div
           className="mb-6 flex items-start gap-3 rounded-2xl border border-danger/25 bg-danger/[0.07] p-4 text-danger shadow-sm"
@@ -2303,10 +2303,10 @@ const Candidates = () => {
           <div className="min-w-0 flex-1 text-sm font-medium leading-relaxed">{actionSuccess}</div>
         </div>
       )}
-      <div className="grid min-h-0 grid-cols-12 gap-4 md:h-[calc(100vh-8rem)] md:gap-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box flex h-full flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
-            <div className="box-header flex flex-col gap-3 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-4 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-6">
+      <div className="employees-page-shell grid min-h-0 flex-1 grid-cols-12 gap-4 md:gap-6">
+        <div className="col-span-12 flex h-full min-h-0 min-w-0 flex-col xl:col-span-12">
+          <div className="box custom-box flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10">
+            <div className="box-header flex shrink-0 flex-col gap-3 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-4 py-4 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-4 sm:px-5 sm:py-6">
               <div className="flex min-w-0 flex-1 items-start gap-3">
                 <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
                   <i className="ri-team-line text-xl" aria-hidden />
@@ -2512,7 +2512,7 @@ const Candidates = () => {
               onDownloadTemplate={downloadCandidateExcelTemplate}
             />
 
-            <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden min-h-0">
+            <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">
               {candidatesLoading && (
                 <div
                   className="relative h-1 w-full shrink-0 overflow-hidden bg-primary/[0.08] dark:bg-primary/[0.12]"
@@ -2523,7 +2523,7 @@ const Candidates = () => {
                   <div className="absolute inset-y-0 left-0 w-[28%] rounded-e-full bg-gradient-to-r from-primary/30 via-primary to-primary/30 ring-1 ring-primary/25 motion-safe:animate-candidates-load-bar" />
                 </div>
               )}
-              <div className="flex w-full min-w-0 flex-row flex-wrap items-center gap-2 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:gap-x-5 sm:px-5">
+              <div className="flex w-full min-w-0 shrink-0 flex-row flex-wrap items-center gap-2 gap-y-2 border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/95 via-white/60 to-transparent px-4 py-3 text-[0.72rem] font-medium text-textmuted dark:from-white/[0.04] dark:via-transparent dark:to-white/[0.02] dark:text-white/55 sm:gap-x-5 sm:px-5">
                 <span className="inline-flex max-w-full shrink-0 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-100/90">
                   <i className="ri-checkbox-blank-circle-fill shrink-0 text-[0.5rem] text-emerald-500" aria-hidden />
                   Active row
@@ -2538,8 +2538,9 @@ const Candidates = () => {
                   </span>
                 </span>
               </div>
+              <div className="flex min-h-0 flex-1 min-w-0 overflow-hidden" style={{ minHeight: 0 }}>
               <div
-                className="table-responsive flex-1 overflow-y-auto overflow-x-hidden rounded-b-xl bg-slate-50/40 [-webkit-overflow-scrolling:touch] dark:bg-black/25 md:overflow-x-auto"
+                className="table-responsive employees-table-scroll w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto rounded-b-xl bg-slate-50/40 [-webkit-overflow-scrolling:touch] dark:bg-black/25 md:overflow-x-auto"
                 style={{ minHeight: 0 }}
               >
                 <table
@@ -2778,8 +2779,9 @@ const Candidates = () => {
                   </tbody>
                 </table>
               </div>
+              </div>
             </div>
-            <div className="box-footer border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
+            <div className="box-footer shrink-0 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
               <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
                 <div className="text-center text-sm text-textmuted dark:text-white/55 sm:text-start">
                   Showing{' '}

@@ -315,7 +315,7 @@ export function OfferLetterGeneratorWorkspace({
     const hoursLabel = getJobHoursLabel(jobUi, letterForm.weeklyHours)
     const jobTypeLabel = getJobTypeLabelUi(jobUi, letterForm.weeklyHours)
 
-    /** Branded logo: `logo.jpeg` + `ceo-signature-harvinder.png` in `offer-letter-images/`. */
+    /** Branded logo: `offer-letter-images/logo.png` + CEO signature in the same folder. */
     const letterheadLogoHtml = `<img class="${styles.letterLogoImg}" src="${offerLetterLogoSrcAbsolute()}" alt="Dharwin Business Solutions" />`
 
     /* Inline line icons (stroke = currentColor): green in the header, white in the green footer band. */

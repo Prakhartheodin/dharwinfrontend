@@ -834,17 +834,20 @@ export default function InternalMeetingsClient() {
   return (
     <Fragment>
       <Seo title="Meetings" />
-      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
-            <div className="box-header relative z-20 flex items-center justify-between flex-wrap gap-4">
-              <div className="box-title">
+      <div className="meetings-page-shell mt-5 grid w-full min-w-0 max-w-full grid-cols-12 gap-3 overflow-hidden sm:mt-6 sm:gap-4 lg:gap-6">
+        <div className="col-span-12 flex h-full min-h-0 min-w-0 flex-col xl:col-span-12">
+          <div className="box custom-box flex h-full min-h-0 min-w-0 max-w-full flex-col overflow-hidden border border-defaultborder/70 shadow-sm dark:border-defaultborder/20">
+            <div className="box-header relative z-20 flex shrink-0 flex-col gap-2.5 overflow-visible border-b border-defaultborder/70 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 py-3 dark:border-defaultborder/20 dark:from-black/25 dark:via-black/15 dark:to-black/10 sm:flex-row sm:items-center sm:justify-between sm:px-4 sm:py-3.5">
+              <div className="box-title text-sm sm:text-base">
                 Meetings
-                <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">{data.length}</span>
+                <span className="badge bg-light text-default ms-1 rounded-full align-middle text-[0.7rem] sm:ms-2 sm:text-[0.75rem]">{data.length}</span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex w-full min-w-0 max-w-full flex-col gap-2 xl:w-auto xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 [&_.form-control]:shrink-0 [&_.ti-btn]:shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 sm:contents sm:gap-2">
                 <select
-                  className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem] me-2"
+                  id="meetings-page-size"
+                  aria-label="Rows per page"
+                  className="form-control select-show-page-size !w-auto !min-w-[6.5rem] !max-w-[8rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
                   value={pageSize}
                   onChange={(e) => setPageSize(Number(e.target.value))}
                 >
@@ -854,14 +857,15 @@ export default function InternalMeetingsClient() {
                     </option>
                   ))}
                 </select>
-                <div className="hs-dropdown ti-dropdown me-2">
+                <div className="hs-dropdown ti-dropdown">
                   <button
                     type="button"
-                    className="ti-btn ti-btn-light !py-1 !px-2 !text-[0.75rem] ti-dropdown-toggle"
+                    className="ti-btn ti-btn-light !py-1.5 !px-2.5 !text-[0.75rem] ti-dropdown-toggle"
                     aria-expanded="false"
                   >
-                    <i className="ri-arrow-up-down-line font-semibold align-middle me-1"></i>Sort
-                    <i className="ri-arrow-down-s-line align-middle ms-1 inline-block"></i>
+                    <i className="ri-arrow-up-down-line me-1 align-middle font-semibold"></i>
+                    <span className="hidden sm:inline">Sort</span>
+                    <i className="ri-arrow-down-s-line ms-1 inline-block align-middle"></i>
                   </button>
                   <ul className="hs-dropdown-menu ti-dropdown-menu hidden">
                     <li>
@@ -892,32 +896,41 @@ export default function InternalMeetingsClient() {
                     </li>
                   </ul>
                 </div>
-                <div className="flex items-center rounded-lg border border-defaultborder dark:border-defaultborder/20 p-0.5 me-2">
+                <div className="flex items-center rounded-lg border border-defaultborder bg-white p-0.5 dark:border-defaultborder/20 dark:bg-black/10">
                   <button
                     type="button"
                     onClick={() => setViewMode("table")}
-                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === "table" ? "ti-btn-primary" : "ti-btn-light"}`}
+                    className={`ti-btn !rounded-md !py-1.5 !px-2.5 !text-[0.75rem] ${viewMode === "table" ? "ti-btn-primary" : "ti-btn-light"}`}
+                    aria-label="Table view"
                   >
-                    Table
+                    <i className="ri-list-check-2 align-middle sm:me-1"></i>
+                    <span className="hidden sm:inline">Table</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setViewMode("week")}
-                    className={`ti-btn !py-1 !px-2.5 !text-[0.75rem] rounded-md ${viewMode === "week" ? "ti-btn-primary" : "ti-btn-light"}`}
+                    className={`ti-btn !rounded-md !py-1.5 !px-2.5 !text-[0.75rem] ${viewMode === "week" ? "ti-btn-primary" : "ti-btn-light"}`}
+                    aria-label="Week view"
                   >
-                    Week
+                    <i className="ri-calendar-schedule-line align-middle sm:me-1"></i>
+                    <span className="hidden sm:inline">Week</span>
                   </button>
                 </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 sm:contents sm:gap-2">
                 <button
                   type="button"
-                  className="ti-btn ti-btn-primary-full !py-1 !px-2 !text-[0.75rem] me-2"
+                  className="ti-btn ti-btn-primary-full ms-auto !py-1.5 !px-2.5 !text-[0.75rem] sm:ms-0"
                   onClick={() => openHsOverlay("#create-internal-meeting-modal")}
                 >
-                  <i className="ri-add-line font-semibold align-middle"></i> Schedule meeting
+                  <i className="ri-add-line align-middle font-semibold sm:me-1"></i>
+                  <span className="hidden sm:inline">Schedule meeting</span>
+                  <span className="sm:hidden">Schedule</span>
                 </button>
+                </div>
               </div>
             </div>
-            <div className="box-body relative z-0 !p-0 flex-1 flex flex-col overflow-hidden">
+            <div className="box-body relative z-0 !p-0 flex-1 min-w-0 flex flex-col overflow-hidden">
               {meetingsLoading ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4">
                   <div className="animate-spin rounded-full h-12 w-12 border-2 border-primary border-t-transparent mb-4"></div>
@@ -984,105 +997,113 @@ export default function InternalMeetingsClient() {
                   </div>
                 </div>
               ) : (
-                <div className="flex min-h-0 flex-1 flex-col">
-                  <div className="min-h-0 flex-1 overflow-auto">
-                    <div className="table-responsive">
-                      <table {...getTableProps()} className="table table-hover whitespace-nowrap min-w-full">
-                        <thead>
-                          {headerGroups.map((headerGroup: any) => {
-                            const { key: hgKey, ...hgRest } = headerGroup.getHeaderGroupProps()
-                            return (
-                              <tr key={hgKey ?? headerGroup.id} {...hgRest}>
-                                {headerGroup.headers.map((column: any) => {
-                                  const { key: colKey, ...colRest } = column.getHeaderProps(column.getSortByToggleProps?.())
-                                  return (
-                                    <th key={colKey ?? column.id} {...colRest} className="!text-[0.75rem] sticky top-0 z-10 bg-white dark:bg-bodybg">
-                                      {column.id === "checkbox" ? (
-                                        <input
-                                          type="checkbox"
-                                          className="form-check-input"
-                                          checked={isAllSelected}
-                                          onChange={handleSelectAll}
-                                          aria-label="Select all"
-                                        />
-                                      ) : (
-                                        column.render("Header")
-                                      )}
-                                    </th>
-                                  )
-                                })}
-                              </tr>
-                            )
-                          })}
-                        </thead>
-                        <tbody {...getTableBodyProps()}>
-                          {page.map((row: any) => {
-                            prepareRow(row)
-                            const { key: rowKey, ...rowRest } = row.getRowProps()
-                            return (
-                              <tr key={rowKey ?? row.id} {...rowRest}>
-                                {row.cells.map((cell: any) => {
-                                  const { key: cellKey, ...cellRest } = cell.getCellProps()
-                                  return (
-                                    <td key={cellKey ?? cell.column.id} {...cellRest} className="!text-[0.8125rem] align-middle">
-                                      {cell.render("Cell")}
-                                    </td>
-                                  )
-                                })}
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-t border-defaultborder px-4 py-3 dark:border-defaultborder/10">
-                    <span className="text-xs text-defaulttextcolor/70">
-                      Page {pageIndex + 1} of {pageCount || 1}
-                    </span>
-                    <nav aria-label="Page navigation" className="shrink-0">
-                      <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
-                        <span className={!canPreviousPage ? "opacity-50" : ""}>
-                          <button
-                            type="button"
-                            className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
-                            onClick={() => previousPage()}
-                            disabled={!canPreviousPage}
-                          >
-                            Prev
-                          </button>
-                        </span>
-                        {pageOptions.map((p: number) => (
-                          <span key={p}>
-                            <button
-                              type="button"
-                              className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                                pageIndex === p
-                                  ? "bg-primary text-white shadow-sm"
-                                  : "text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
-                              }`}
-                              onClick={() => gotoPage(p)}
-                            >
-                              {p + 1}
-                            </button>
-                          </span>
-                        ))}
-                        <span className={!canNextPage ? "opacity-50" : ""}>
-                          <button
-                            type="button"
-                            className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
-                            onClick={() => nextPage()}
-                            disabled={!canNextPage}
-                          >
-                            Next
-                          </button>
-                        </span>
-                      </div>
-                    </nav>
+                <div className="flex min-h-0 flex-1 min-w-0 overflow-hidden px-4 pb-4" style={{ minHeight: 0 }}>
+                  <div className="table-responsive meetings-table-scroll w-full min-w-0 max-w-full overflow-x-auto overflow-y-auto rounded-xl border border-defaultborder/70 bg-white/95 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
+                    <table {...getTableProps()} className="table mb-0 min-w-full table-hover whitespace-nowrap">
+                      <thead>
+                        {headerGroups.map((headerGroup: any) => {
+                          const { key: hgKey, ...hgRest } = headerGroup.getHeaderGroupProps()
+                          return (
+                            <tr key={hgKey ?? headerGroup.id} {...hgRest} className="border-b border-defaultborder/70 dark:border-defaultborder/20">
+                              {headerGroup.headers.map((column: any) => {
+                                const { key: colKey, ...colRest } = column.getHeaderProps(column.getSortByToggleProps?.())
+                                return (
+                                  <th
+                                    key={colKey ?? column.id}
+                                    {...colRest}
+                                    scope="col"
+                                    className="!text-[0.75rem] bg-gray-50 align-middle dark:bg-black/20"
+                                    style={{ position: "sticky", top: 0, zIndex: 10 }}
+                                  >
+                                    {column.id === "checkbox" ? (
+                                      <input
+                                        type="checkbox"
+                                        className="form-check-input"
+                                        checked={isAllSelected}
+                                        onChange={handleSelectAll}
+                                        aria-label="Select all"
+                                      />
+                                    ) : (
+                                      column.render("Header")
+                                    )}
+                                  </th>
+                                )
+                              })}
+                            </tr>
+                          )
+                        })}
+                      </thead>
+                      <tbody {...getTableBodyProps()}>
+                        {page.map((row: any) => {
+                          prepareRow(row)
+                          const { key: rowKey, ...rowRest } = row.getRowProps()
+                          return (
+                            <tr key={rowKey ?? row.id} {...rowRest}>
+                              {row.cells.map((cell: any) => {
+                                const { key: cellKey, ...cellRest } = cell.getCellProps()
+                                return (
+                                  <td key={cellKey ?? cell.column.id} {...cellRest} className="!text-[0.8125rem] align-middle">
+                                    {cell.render("Cell")}
+                                  </td>
+                                )
+                              })}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
             </div>
+            {!meetingsLoading && !meetingsError && viewMode === "table" && (
+              <div className="box-footer shrink-0 border-t border-defaultborder/70 bg-gray-50/90 px-3 py-3 dark:border-defaultborder/20 dark:bg-black/25 sm:px-4">
+                <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-between">
+                  <span className="w-full text-center text-xs text-defaulttextcolor/70 sm:w-auto sm:text-left sm:text-sm">
+                    Page {pageIndex + 1} of {pageCount || 1}
+                  </span>
+                  <nav aria-label="Page navigation" className="flex w-full justify-center sm:w-auto sm:shrink-0">
+                    <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
+                      <span className={!canPreviousPage ? "opacity-50" : ""}>
+                        <button
+                          type="button"
+                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
+                          onClick={() => previousPage()}
+                          disabled={!canPreviousPage}
+                        >
+                          Prev
+                        </button>
+                      </span>
+                      {pageOptions.map((p: number) => (
+                        <span key={p}>
+                          <button
+                            type="button"
+                            className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                              pageIndex === p
+                                ? "bg-primary text-white shadow-sm"
+                                : "text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
+                            }`}
+                            onClick={() => gotoPage(p)}
+                          >
+                            {p + 1}
+                          </button>
+                        </span>
+                      ))}
+                      <span className={!canNextPage ? "opacity-50" : ""}>
+                        <button
+                          type="button"
+                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
+                          onClick={() => nextPage()}
+                          disabled={!canNextPage}
+                        >
+                          Next
+                        </button>
+                      </span>
+                    </div>
+                  </nav>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

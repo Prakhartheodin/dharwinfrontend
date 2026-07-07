@@ -91,6 +91,18 @@ function loadCollapsedSections(): Record<string, boolean> {
 	}
 }
 
+/** `false` = expanded; `true` = collapsed. Only one section may be expanded at a time. */
+function buildSectionCollapseState(
+	sections: MenuSection[],
+	expandedTitle: string | null
+): Record<string, boolean> {
+	const next: Record<string, boolean> = {};
+	for (const section of sections) {
+		next[section.title] = expandedTitle === null || section.title !== expandedTitle;
+	}
+	return next;
+}
+
 const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 	const [menuitems, setMenuitems] = useState(MenuItems);
 	const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() =>
@@ -209,8 +221,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 
 	const toggleSection = (title: string) => {
 		setCollapsedSections((prev) => {
-			// Independent sections: flip only the clicked one, leave the rest as-is.
-			const next: Record<string, boolean> = { ...prev, [title]: prev[title] === false ? true : false };
+			const isCurrentlyExpanded = prev[title] === false;
+			const next = buildSectionCollapseState(
+				menuSections,
+				isCurrentlyExpanded ? null : title
+			);
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
@@ -226,9 +241,11 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 		);
 		if (!match) return;
 		setCollapsedSections((prev) => {
-			if (prev[match.title] === false) return prev; // already open
-			// Open the section owning the current route; leave other sections untouched.
-			const next: Record<string, boolean> = { ...prev, [match.title]: false };
+			const next = buildSectionCollapseState(menuSections, match.title);
+			const unchanged =
+				prev[match.title] === false &&
+				menuSections.every((section) => prev[section.title] === next[section.title]);
+			if (unchanged) return prev;
 			if (typeof window !== "undefined") {
 				window.localStorage.setItem(SIDEBAR_SECTIONS_STORAGE_KEY, JSON.stringify(next));
 			}
@@ -875,10 +892,10 @@ const Sidebar = ({ local_varaiable, ThemeChanger }: any) => {
 					<Link href="/dashboard" className="header-logo">
 						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-logo" />
 						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-logo" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-dark" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo toggle-dark" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo desktop-white" />
-						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="main-logo toggle-white" />
+						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="main-logo desktop-dark" />
+						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-dark" />
+						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="main-logo desktop-white" />
+						<img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="main-logo toggle-white" />
 
 					</Link>
 				</div>
