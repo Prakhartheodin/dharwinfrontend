@@ -2938,17 +2938,17 @@ const Candidates = () => {
         tabIndex={-1}
       >
         <div className="ti-offcanvas-header bg-gray-50 dark:bg-black/20 !py-2.5">
-          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2">
-            <i className="ri-user-line text-primary text-base"></i>
-            {previewCandidate?.name || 'Employee preview'}
+          <h6 className="ti-offcanvas-title text-base font-semibold flex items-center gap-2 flex-1 min-w-0">
+            <i className="ri-user-line text-primary text-base flex-shrink-0"></i>
+            <span className="truncate">{previewCandidate?.name || 'Employee preview'}</span>
           </h6>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {canUpdateEmployee && previewCandidate?.id ? (
               <Link
                 href={buildEmployeeEditHref(previewCandidate.id, apiPage)}
-                className="ti-btn ti-btn-sm ti-btn-primary !py-1 !px-3"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 transition-colors"
               >
-                <i className="ri-pencil-line me-1" aria-hidden />
+                <i className="ri-pencil-line text-sm" aria-hidden />
                 Edit profile
               </Link>
             ) : null}
