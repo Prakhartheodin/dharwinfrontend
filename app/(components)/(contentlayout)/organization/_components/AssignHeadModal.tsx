@@ -6,7 +6,21 @@ import Swal from "sweetalert2";
 import { assignHead, listAssignableHeads } from "@/shared/lib/api/org-structure";
 import { OrgFormField, OrgModal, OrgModalCancelButton, OrgModalSubmitButton } from "./org-ui";
 
-type HeadOption = { value: string; label: string };
+type HeadOption = { value: string; name: string; email?: string; label: string };
+
+function formatHeadLabel(name: string, email?: string) {
+  return email ? `${name} (${email})` : name;
+}
+
+function HeadOptionLabel({ name, email }: { name: string; email?: string }) {
+  if (!email) return <span>{name}</span>;
+  return (
+    <div className="leading-tight">
+      <div>{name}</div>
+      <div className="text-[0.75rem] text-[#64748b]">{email}</div>
+    </div>
+  );
+}
 
 type Props = {
   open: boolean;
@@ -31,10 +45,19 @@ export default function AssignHeadModal({
 }: Props) {
   const isDepartment = unitType === "department";
   const [headEmployeeId, setHeadEmployeeId] = useState("");
-  const [roster, setRoster] = useState<{ id: string; name: string }[]>([]);
+  const [roster, setRoster] = useState<{ id: string; name: string; email?: string }[]>([]);
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [saving, setSaving] = useState(false);
-  const options = useMemo<HeadOption[]>(() => roster.map((r) => ({ value: r.id, label: r.name })), [roster]);
+  const options = useMemo<HeadOption[]>(
+    () =>
+      roster.map((r) => ({
+        value: r.id,
+        name: r.name,
+        email: r.email,
+        label: formatHeadLabel(r.name, r.email),
+      })),
+    [roster]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -100,6 +123,7 @@ export default function AssignHeadModal({
               options={options}
               value={options.find((o) => o.value === headEmployeeId) ?? null}
               onChange={(opt) => setHeadEmployeeId(opt?.value ?? "")}
+              formatOptionLabel={(opt) => <HeadOptionLabel name={opt.name} email={opt.email} />}
               menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
               styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
             />

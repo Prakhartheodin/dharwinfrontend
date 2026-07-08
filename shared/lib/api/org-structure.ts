@@ -95,7 +95,9 @@ export const searchOrgChart = async (q: string): Promise<OrgChartSearchResult> =
   (await apiClient.get("/org-structure/search", { params: { q } })).data;
 export const getOrgCoverage = async (): Promise<OrgCoverageSummary> =>
   (await apiClient.get("/org-structure/coverage")).data;
-export const listAssignableHeads = async (departmentId?: string | null): Promise<{ id: string; name: string }[]> =>
+export const listAssignableHeads = async (
+  departmentId?: string | null
+): Promise<{ id: string; name: string; email?: string }[]> =>
   (await apiClient.get("/org-structure/employees", { params: departmentId ? { departmentId } : {} })).data;
 export async function exportOrgComplianceReport(format?: "json"): Promise<OrgComplianceReport>;
 export async function exportOrgComplianceReport(format: "csv"): Promise<Blob>;
