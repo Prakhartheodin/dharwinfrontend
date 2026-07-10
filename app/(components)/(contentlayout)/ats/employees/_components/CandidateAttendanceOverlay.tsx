@@ -625,7 +625,7 @@ export default function CandidateAttendanceOverlay({
         className="bg-white dark:bg-bodybg rounded-none sm:rounded-2xl shadow-[0_24px_80px_-16px_rgba(0,0,0,0.35)] border-0 sm:border border-defaultborder/80 dark:border-white/10 max-w-[min(100%,52rem)] w-full h-full sm:h-auto max-h-[100dvh] sm:max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative overflow-hidden border-b border-defaultborder/80 dark:border-white/10 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.04] dark:from-primary/15 dark:to-amber-950/20 px-5 py-4 sm:px-6">
+        <div className="relative shrink-0 overflow-hidden border-b border-defaultborder/80 dark:border-white/10 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.04] dark:from-primary/15 dark:to-amber-950/20 px-5 py-4 sm:px-6">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex items-start gap-3">
               <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/15 text-primary shadow-inner ring-1 ring-primary/20">

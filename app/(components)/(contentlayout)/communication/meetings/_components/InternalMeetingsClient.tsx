@@ -32,8 +32,10 @@ interface InternalMeetingRow {
   date: string
   time: string
   type: string
+  durationMinutes: number
   participantsSummary: string
   status: string
+  actualDurationMinutes: number | null
   publicMeetingUrl: string
   meetingId: string
   seriesId: string | null
@@ -68,6 +70,27 @@ function participantsSummary(m: InternalMeeting): string {
   return (hostPart || "—") + extra
 }
 
+function isCompletedStatus(status?: string): boolean {
+  const raw = (status || "").toLowerCase()
+  return raw === "ended" || raw === "completed"
+}
+
+function computeActualDurationMinutes(m: InternalMeeting): number | null {
+  if (!isCompletedStatus(m.status)) return null
+  const startedAtMs = new Date(m.scheduledAt).getTime()
+  const endedAtMs = m.endedAt ? new Date(m.endedAt).getTime() : NaN
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs) || endedAtMs <= startedAtMs) return null
+  return Math.max(1, Math.round((endedAtMs - startedAtMs) / 60000))
+}
+
+function formatDurationMinutes(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours && minutes) return `${hours}h ${minutes}m`
+  if (hours) return `${hours}h`
+  return `${minutes}m`
+}
+
 function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
   const baseId = String(m.id ?? m._id ?? m.meetingId ?? "")
   return {
@@ -76,8 +99,10 @@ function meetingToRow(m: InternalMeeting, index: number): InternalMeetingRow {
     date: formatMeetingDate(m.scheduledAt, m.timezone),
     time: formatMeetingTime(m.scheduledAt),
     type: m.meetingType || "Video",
+    durationMinutes: Number.isFinite(Number(m.durationMinutes)) ? Math.max(1, Number(m.durationMinutes)) : 60,
     participantsSummary: participantsSummary(m),
     status: m.status || "scheduled",
+    actualDurationMinutes: computeActualDurationMinutes(m),
     publicMeetingUrl:
       m.publicMeetingUrl ||
       (typeof window !== "undefined"
@@ -101,6 +126,7 @@ export default function InternalMeetingsClient() {
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
   const [selectedSort, setSelectedSort] = useState<string>("")
+  const [statusFilter, setStatusFilter] = useState<"all" | "scheduled" | "completed" | "cancelled">("all")
 
   const [createdMeeting, setCreatedMeeting] = useState<InternalMeeting | null>(null)
   const [hosts, setHosts] = useState<{ nameOrRole: string; email: string }[]>([{ nameOrRole: "", email: "" }])
@@ -563,7 +589,16 @@ export default function InternalMeetingsClient() {
     })
   }
 
-  const tableData = useMemo(() => meetings.map((m, i) => meetingToRow(m, i)), [meetings])
+  const filteredMeetings = useMemo(() => {
+    if (statusFilter === "all") return meetings
+    return meetings.filter((meeting) => {
+      const raw = (meeting.status || "").toLowerCase()
+      if (statusFilter === "completed") return raw === "ended" || raw === "completed"
+      return raw === statusFilter
+    })
+  }, [meetings, statusFilter])
+
+  const tableData = useMemo(() => filteredMeetings.map((m, i) => meetingToRow(m, i)), [filteredMeetings])
 
   const columns = useMemo(
     () => [
@@ -610,10 +645,27 @@ export default function InternalMeetingsClient() {
                   {r.time}
                 </span>
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
-                <i className="ri-vidicon-line text-success"></i>
-                {r.type}
+              <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2">
+                <span className="flex items-center gap-1">
+                  <i className="ri-vidicon-line text-success"></i>
+                  {r.type}
+                </span>
+                <span className="flex items-center gap-1">
+                  <i className="ri-timer-line text-info"></i>
+                  Duration: {formatDurationMinutes(r.durationMinutes)}
+                </span>
               </div>
+              {r.actualDurationMinutes !== null ? (
+                <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1">
+                  <i className="ri-timer-flash-line text-emerald-500"></i>
+                  Actual: {formatDurationMinutes(r.actualDurationMinutes)}
+                </div>
+              ) : isCompletedStatus(r.status) ? (
+                <div className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1">
+                  <i className="ri-information-line"></i>
+                  Actual: not available for this meeting
+                </div>
+              ) : null}
             </div>
           )
         },
@@ -856,6 +908,18 @@ export default function InternalMeetingsClient() {
                       Show {size}
                     </option>
                   ))}
+                </select>
+                <select
+                  id="meetings-status-filter"
+                  aria-label="Filter meetings by status"
+                  className="form-control !w-auto !min-w-[9.5rem] !max-w-[11rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as "all" | "scheduled" | "completed" | "cancelled")}
+                >
+                  <option value="all">All status</option>
+                  <option value="scheduled">Scheduled</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
                 </select>
                 <div className="hs-dropdown ti-dropdown">
                   <button

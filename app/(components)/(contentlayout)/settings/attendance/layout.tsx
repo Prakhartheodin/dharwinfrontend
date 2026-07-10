@@ -53,7 +53,7 @@ const ATTENDANCE_LINKS: {
   { href: ROUTES.settingsAttendanceWeekOff, label: "Manage Week Off", access: "assign" },
   { href: ROUTES.settingsAttendanceHolidays, label: "Holidays List", access: "admin" },
   { href: ROUTES.settingsAttendanceAssignHolidays, label: "Assign Holidays", access: "assign" },
-  { href: ROUTES.settingsAttendanceCandidateGroups, label: "Student Groups", access: "admin" },
+  { href: ROUTES.settingsAttendanceCandidateGroups, label: "Employee Groups", access: "admin" },
   { href: ROUTES.settingsAttendanceManageShifts, label: "Manage Shifts", access: "admin" },
   { href: ROUTES.settingsAttendanceAssignShift, label: "Assign Shift", access: "assign" },
   { href: ROUTES.settingsAttendanceAssignLeave, label: "Assign Leave", access: "assign" },

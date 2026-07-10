@@ -95,6 +95,7 @@ export interface TasksListParams {
   sprintId?: string;
   search?: string;
   assignedToMe?: boolean;
+  unassigned?: boolean;
   leaving?: boolean;
   sortBy?: string;
   limit?: number;
@@ -125,6 +126,7 @@ export async function listTasks(params?: TasksListParams): Promise<TasksListResp
       ? {
           ...params,
           assignedToMe: params.assignedToMe === true ? "true" : undefined,
+          unassigned: params.unassigned === true ? "true" : undefined,
           leaving: params.leaving === true ? "true" : undefined,
         }
       : undefined,

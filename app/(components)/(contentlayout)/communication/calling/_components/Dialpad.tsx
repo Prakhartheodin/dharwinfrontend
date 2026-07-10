@@ -856,9 +856,9 @@ export default function Dialpad({
                 <span className="mb-1 block text-xs font-medium text-defaulttextcolor/70 dark:text-white/60">
                   Your phone (rings first)
                 </span>
-                <div className="flex items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 dark:border-white/10 dark:bg-black/20">
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-defaultborder/70 bg-white px-2 dark:border-white/10 dark:bg-black/20">
                   <select
-                    className="shrink-0 rounded-md border-0 bg-transparent py-2 text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
+                    className="max-w-[7rem] shrink-0 rounded-md border-0 bg-transparent py-2 text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
                     value={agentCountry}
                     onChange={(e) => handleAgentCountry(e.target.value)}
                     aria-label="Your phone country dial code"
@@ -875,7 +875,7 @@ export default function Dialpad({
                     type="tel"
                     inputMode="tel"
                     placeholder="+14155550100"
-                    className="w-full min-w-0 bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
+                    className="min-w-0 flex-1 basis-[7rem] bg-transparent py-2 text-sm focus:outline-none text-defaulttextcolor dark:text-white"
                     value={agentPhone}
                     onChange={(e) => setAgentPhone(e.target.value)}
                   />
@@ -937,9 +937,11 @@ export default function Dialpad({
                 To (number to call)
               </span>
             )}
-            <div className={`flex items-center gap-2 rounded-xl border border-defaultborder/70 bg-white px-2.5 dark:border-white/10 dark:bg-black/20 ${embedded ? "py-2" : "py-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15"}`}>
+            {/* flex-wrap + basis floor: when the panel is too narrow for select + number,
+                the input wraps to its own full-width line so typed digits stay visible. */}
+            <div className={`flex flex-wrap items-center gap-2 rounded-xl border border-defaultborder/70 bg-white px-2.5 dark:border-white/10 dark:bg-black/20 ${embedded ? "py-2" : "py-2.5 focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/15"}`}>
               <select
-                className="shrink-0 rounded-md border-0 bg-transparent text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
+                className="max-w-[7rem] shrink-0 rounded-md border-0 bg-transparent text-sm font-medium text-defaulttextcolor focus:outline-none dark:text-white"
                 value={country}
                 onChange={(e) => handleCountry(e.target.value)}
                 aria-label="Country dial code"
@@ -955,7 +957,7 @@ export default function Dialpad({
               <input
                 type="tel"
                 inputMode="tel"
-                className={`w-full min-w-0 rounded-md border-0 bg-transparent font-mono text-defaulttextcolor focus:outline-none dark:text-white ${embedded ? "text-lg tracking-wide" : "text-base font-medium tabular-nums"}`}
+                className={`min-w-0 flex-1 basis-[7rem] rounded-md border-0 bg-transparent font-mono text-defaulttextcolor focus:outline-none dark:text-white ${embedded ? "text-lg tracking-wide" : "text-base font-medium tabular-nums"}`}
                 value={dest}
                 onChange={(e) => setDest(e.target.value)}
                 aria-label="Number to dial"

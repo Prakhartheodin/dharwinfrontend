@@ -60,6 +60,7 @@ export interface InternalMeeting {
   emailInvites: string[];
   notes?: string;
   status: string;
+  endedAt?: string | null;
   createdBy?: { _id: string; name?: string; email?: string };
   createdAt?: string;
   updatedAt?: string;

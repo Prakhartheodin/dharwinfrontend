@@ -973,7 +973,7 @@ const OffersPlacement = () => {
     {
       columns,
       data,
-      initialState: { pageIndex: 0, pageSize: 10 },
+      initialState: { pageIndex: 0, pageSize: 100 },
     },
     useSortBy,
     usePagination
@@ -1074,10 +1074,10 @@ const OffersPlacement = () => {
   return (
     <Fragment>
       <Seo title="Offers & Placement" />
-      <div className={`mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
-        <div className="col-span-12 min-w-0 flex flex-col">
-          <div className="box min-w-0 flex flex-col">
-            <div className="box-header flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
+      <div className={`offers-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
+        <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">
+          <div className="box h-full min-h-0 min-w-0 flex flex-col overflow-hidden">
+            <div className="box-header shrink-0 flex flex-col gap-3 overflow-visible sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2">
               <span className="box-title min-w-0">
                 Offers &amp; Placement
                 <span
@@ -1320,7 +1320,7 @@ const OffersPlacement = () => {
                 </div>
               </div>
             </div>
-            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-x-clip">
+            <div className="box-body !p-0 flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               {offersLoading ? (
                 <div
                   className="flex flex-col items-center justify-center gap-4 px-6 py-10"
@@ -1440,7 +1440,7 @@ const OffersPlacement = () => {
               </div>
               )}
             </div>
-            <div className="box-footer border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
+            <div className="box-footer shrink-0 border-t border-defaultborder/60 dark:border-white/5 !px-3 !py-2 sm:!px-4">
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <div className="text-xs text-gray-600 sm:text-sm dark:text-gray-400">
                   {filteredData.length === 0 ? (

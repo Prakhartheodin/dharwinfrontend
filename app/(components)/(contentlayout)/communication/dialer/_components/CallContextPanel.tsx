@@ -196,7 +196,10 @@ export default function CallContextPanel(
   const name = callName(record);
   const duration = fmtDuration(record.duration);
   const status = record.status || "";
-  const date = record.createdAt ? new Date(record.createdAt).toLocaleString() : "";
+  // Pinned locale — must match the Call Records table so dates read the same for every user.
+  const date = record.createdAt
+    ? new Date(record.createdAt).toLocaleString("en-US", { dateStyle: "short", timeStyle: "medium" })
+    : "";
 
   const s = status.toLowerCase();
   const statusTone = /complete/.test(s)

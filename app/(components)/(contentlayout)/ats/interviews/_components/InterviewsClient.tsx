@@ -7,7 +7,7 @@ import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
-import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
@@ -149,7 +149,8 @@ function meetingToTableRow(m: Meeting, viewerTz?: string): InterviewTableRow {
   const time = formatDualZone(m.scheduledAt, m.timezone || 'UTC', viewerTz)
   const position = m.title || m.jobPosition || 'Interview'
   return {
-    id: (m._id != null ? String(m._id) : m.meetingId) || '',
+    // API documents are serialized via toJSON plugin (`id` present, `_id` removed).
+    id: String(m.id ?? m._id ?? m.meetingId ?? ''),
     position,
     date,
     time,
@@ -201,6 +202,7 @@ export default function InterviewsClient() {
   }, [authUser?.email, authUser?.name])
 
   const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set())
+  const [deletingSelected, setDeletingSelected] = useState(false)
   const [selectedSort, setSelectedSort] = useState<string>('date-asc')
   /** Recruiter derived from the selected candidate's assigned agent (create form). */
   const [assignedAgentRecruiter, setAssignedAgentRecruiter] = useState<{ id: string; name: string; email: string } | null>(null)
@@ -783,6 +785,43 @@ export default function InterviewsClient() {
     if (!ok) return
     await doInternalTransfer(row)
   }, [confirm, doInternalTransfer])
+
+  // Toolbar Delete: bulk-delete the checked interviews after an explicit confirmation.
+  const handleDeleteSelected = useCallback(async () => {
+    const ids = Array.from(selectedRows)
+    if (ids.length === 0) return
+    const ok = await confirm({
+      title: `Delete ${ids.length} interview${ids.length === 1 ? '' : 's'}?`,
+      message: (
+        <>
+          This permanently removes the selected interview{ids.length === 1 ? '' : 's'} and cannot be
+          undone. Participants will no longer see {ids.length === 1 ? 'it' : 'them'} anywhere.
+        </>
+      ),
+      confirmLabel: 'Yes, delete',
+      cancelLabel: 'Cancel',
+      tone: 'danger',
+    })
+    if (!ok) return
+    setDeletingSelected(true)
+    try {
+      const results = await Promise.allSettled(ids.map((id) => deleteMeeting(id)))
+      const failed = results.filter((r) => r.status === 'rejected').length
+      setSelectedRows(new Set())
+      await fetchMeetings()
+      if (failed > 0) {
+        await confirm({
+          title: 'Some deletions failed',
+          message: `${ids.length - failed} deleted, ${failed} failed. Refresh and try the remaining ones again.`,
+          confirmLabel: 'Close',
+          tone: 'danger',
+          hideCancel: true,
+        })
+      }
+    } finally {
+      setDeletingSelected(false)
+    }
+  }, [selectedRows, confirm, fetchMeetings])
 
   const handleSaveInterviewResult = useCallback(async () => {
     if (!resultModalInterview || !resultModalInterview.id) return
@@ -1752,7 +1791,7 @@ export default function InterviewsClient() {
     {
       columns: tableColumns,
       data,
-      initialState: { pageIndex: 0, pageSize: 50, sortBy: [{ id: 'interviewInfo', desc: false }] },
+      initialState: { pageIndex: 0, pageSize: 100, sortBy: [{ id: 'interviewInfo', desc: false }] },
     },
     useSortBy,
     usePagination
@@ -1825,10 +1864,10 @@ export default function InterviewsClient() {
     <Fragment>
       <Seo title="Interviews" />
 
-<div className="mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full overflow-x-hidden min-h-[calc(100vh-6rem)] sm:min-h-[calc(100vh-8rem)] lg:gap-6">
+<div className="interviews-page-shell mt-2 sm:mt-4 grid grid-cols-12 gap-3 sm:gap-4 w-full min-w-0 max-w-full overflow-x-hidden lg:gap-6">
         <div className="xl:col-span-12 col-span-12 h-full min-w-0 flex flex-col">
           <div className="box custom-box h-full min-w-0 max-w-full flex flex-col overflow-hidden border border-defaultborder/70 dark:border-defaultborder/20 shadow-sm">
-            <div className="box-header relative z-30 overflow-visible flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-3 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
+            <div className="box-header shrink-0 relative z-30 overflow-visible flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between border-b border-defaultborder/70 dark:border-defaultborder/20 bg-gradient-to-b from-gray-50/90 via-white to-white px-3 sm:px-4 py-3 sm:py-3.5 dark:from-black/25 dark:via-black/15 dark:to-black/10">
               <div className="box-title text-sm sm:text-base">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.7rem] sm:text-[0.75rem] align-middle">
@@ -1950,10 +1989,16 @@ export default function InterviewsClient() {
                 {canDelete && (
                   <button
                     type="button"
-                    className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem]"
+                    className="ti-btn ti-btn-danger !py-1.5 !px-2.5 !text-[0.75rem] disabled:opacity-50 disabled:cursor-not-allowed"
                     aria-label="Delete selected"
+                    disabled={selectedRows.size === 0 || deletingSelected}
+                    title={selectedRows.size === 0 ? 'Select interviews to delete' : `Delete ${selectedRows.size} selected`}
+                    onClick={() => void handleDeleteSelected()}
                   >
-                    <i className="ri-delete-bin-line font-semibold align-middle sm:me-1"></i><span className="hidden sm:inline">Delete</span>
+                    <i className={`${deletingSelected ? 'ri-loader-4-line animate-spin' : 'ri-delete-bin-line'} font-semibold align-middle sm:me-1`}></i>
+                    <span className="hidden sm:inline">
+                      Delete{selectedRows.size > 0 ? ` (${selectedRows.size})` : ''}
+                    </span>
                   </button>
                 )}
                 </div>
@@ -2315,7 +2360,7 @@ export default function InterviewsClient() {
                 })}
               </div>
               <div className="hidden lg:flex flex-1 min-w-0 max-w-full overflow-hidden px-4 pb-4" style={{ minHeight: 0 }}>
-                <div className="table-responsive w-full max-w-full min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 shadow-sm">
+                <div className="interviews-table-scroll table-responsive w-full max-w-full min-w-0 overflow-x-auto overflow-y-auto rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 shadow-sm">
                 <table {...getTableProps()} className="table mb-0 w-full max-w-full table-fixed table-striped table-hover table-bordered border-gray-300 dark:border-gray-600">
                   <thead>
                     {headerGroups.map((headerGroup: any, i: number) => (
@@ -2394,7 +2439,7 @@ export default function InterviewsClient() {
               )}
             </div>
             {!meetingsLoading && !meetingsError && viewMode === 'table' && (
-            <div className="box-footer border-t border-defaultborder/70 dark:border-defaultborder/20 bg-gray-50/90 dark:bg-black/25 px-4 py-3">
+            <div className="box-footer shrink-0 border-t border-defaultborder/70 dark:border-defaultborder/20 bg-gray-50/90 dark:bg-black/25 px-4 py-3">
               <div className="flex flex-col sm:flex-row items-center flex-wrap gap-3">
                 <div className="text-sm text-center sm:text-left text-defaulttextcolor/80 dark:text-white/70 w-full sm:w-auto">
                   Showing {data.length === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}

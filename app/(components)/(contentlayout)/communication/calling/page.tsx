@@ -418,7 +418,8 @@ const Calling = () => {
     try {
       const d = new Date(iso);
       if (Number.isNaN(d.getTime())) return "–";
-      return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
+      // Pinned locale: browser-locale formatting made the same table read differently per user.
+      return d.toLocaleString("en-US", { dateStyle: "short", timeStyle: "medium" });
     } catch {
       return "–";
     }

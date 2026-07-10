@@ -64,7 +64,8 @@ export interface CreateMeetingPayload {
 }
 
 export interface Meeting {
-  _id: string;
+  id?: string;
+  _id?: string;
   meetingId: string;
   title: string;
   description?: string;

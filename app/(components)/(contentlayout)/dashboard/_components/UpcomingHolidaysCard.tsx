@@ -93,7 +93,7 @@ export default function UpcomingHolidaysCard({
             No upcoming holidays assigned.
           </p>
         ) : (
-          <ul className="list-none space-y-2 mb-0">
+          <ul className="list-none space-y-2 mb-0 max-h-[19rem] overflow-y-auto pe-1">
             {holidays.map((h) => {
               const until = daysUntil(h.date);
               const isToday = until === 0;

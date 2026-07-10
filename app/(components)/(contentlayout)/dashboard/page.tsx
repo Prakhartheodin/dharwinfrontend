@@ -741,7 +741,7 @@ export default function DashboardPage() {
             typeof Intl !== "undefined" && Intl.DateTimeFormat?.().resolvedOptions?.().timeZone
               ? Intl.DateTimeFormat().resolvedOptions().timeZone
               : "UTC";
-          const holidayData = await getMyUpcomingHolidays({ limit: 5, timezone: tz });
+          const holidayData = await getMyUpcomingHolidays({ limit: 20, timezone: tz });
           setUpcomingHolidays(holidayData.upcoming ?? []);
           setTodayIsHoliday(Boolean(holidayData.todayIsHoliday));
           setTodayHolidayTitle(holidayData.todayHolidayTitle ?? null);

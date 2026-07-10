@@ -8,6 +8,7 @@ import {
   createHolidayGroup,
   updateHolidayGroup,
   deleteHolidayGroup,
+  removeHolidayGroup,
   type HolidayGroup,
 } from "@/shared/lib/api/holiday-groups";
 import { getAllHolidays, type Holiday } from "@/shared/lib/api/holidays";
@@ -132,6 +133,9 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
   const [assignDateIds, setAssignDateIds] = useState<string[]>([]);
   const [assignDates, setAssignDates] = useState<{ id: string; label: string }[]>([]);
   const [assignMembers, setAssignMembers] = useState<AssignPersonRow[]>([]);
+  // In-app confirmation overlay for destructive row actions (remove dates / delete group).
+  const [confirmAction, setConfirmAction] = useState<{ kind: "delete" | "remove"; group: HolidayGroup } | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const fetchGroups = useCallback(async () => {
     setLoading(true);
@@ -275,22 +279,7 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
     }
   };
 
-  const handleDelete = async (group: HolidayGroup) => {
-    const count = group.holidayCount ?? 0;
-    const result = await Swal.fire({
-      icon: "warning",
-      title: "Delete Holiday Group",
-      html: `Delete <strong>${group.name}</strong>?${
-        count > 0
-          ? `<br/><span class="text-sm text-gray-600">${count} holiday date(s) will be ungrouped (not deleted). Assigned members will have these dates removed from their dashboard and attendance.</span>`
-          : ""
-      }`,
-      showCancelButton: true,
-      confirmButtonText: "Yes, delete it",
-      cancelButtonText: "Cancel",
-      confirmButtonColor: "#dc2626",
-    });
-    if (!result.isConfirmed) return;
+  const executeDelete = async (group: HolidayGroup) => {
     try {
       await deleteHolidayGroup((group._id ?? group.id)!);
       await Swal.fire({ icon: "success", title: "Deleted", text: "Holiday group deleted", confirmButtonText: "OK" });
@@ -305,6 +294,60 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
           "Failed to delete holiday group",
         confirmButtonText: "OK",
       });
+    }
+  };
+
+  // Row-level quick Remove: strip all of the group's dates from all members without deleting the group.
+  const executeRemove = async (group: HolidayGroup) => {
+    const id = (group._id ?? group.id) as string;
+    try {
+      const res = await removeHolidayGroup(id);
+      // Controller wraps the service result, so counts live one level deeper (data.data).
+      const payload = (res?.data ?? {}) as { data?: Record<string, number>; [k: string]: unknown };
+      const d = (payload.data ?? payload) as {
+        candidatesUpdated?: number;
+        holidaysRemoved?: number;
+        attendanceRecordsDeleted?: number;
+        membersRemovedFromGroup?: number;
+      };
+      await Swal.fire({
+        icon: "success",
+        title: "Success",
+        html: `
+          <p class="mb-3">${res?.message ?? "Holidays removed"}</p>
+          <div class="text-left text-sm space-y-1">
+            <p><strong>Employees Updated:</strong> ${d.candidatesUpdated ?? 0}</p>
+            <p><strong>Holidays Removed:</strong> ${d.holidaysRemoved ?? 0}</p>
+            <p><strong>Attendance Records Deleted:</strong> ${d.attendanceRecordsDeleted ?? 0}</p>
+            <p><strong>Members Removed from Group:</strong> ${d.membersRemovedFromGroup ?? 0}</p>
+          </div>
+        `,
+        confirmButtonText: "OK",
+      });
+      await fetchGroups();
+    } catch (err: unknown) {
+      await Swal.fire({
+        icon: "error",
+        title: "Error",
+        text:
+          (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data?.message ??
+          (err as { message?: string })?.message ??
+          "Failed to remove group holidays",
+        confirmButtonText: "OK",
+      });
+    }
+  };
+
+  // Overlay "Yes" handler: routes to delete or remove, then closes the overlay.
+  const confirmProceed = async () => {
+    if (!confirmAction) return;
+    setConfirmBusy(true);
+    try {
+      if (confirmAction.kind === "delete") await executeDelete(confirmAction.group);
+      else await executeRemove(confirmAction.group);
+    } finally {
+      setConfirmBusy(false);
+      setConfirmAction(null);
     }
   };
 
@@ -545,6 +588,15 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
                             </button>
                             <button
                               type="button"
+                              onClick={() => setConfirmAction({ kind: "remove", group })}
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-danger/10 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger/20 transition-colors"
+                              title="Remove all group dates from members and clear the member list (keeps the group)"
+                            >
+                              <i className="ri-calendar-close-line" />
+                              Remove
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => openEdit(group)}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-primary hover:bg-primary/10 transition-colors"
                               title="Edit dates & members"
@@ -553,7 +605,7 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDelete(group)}
+                              onClick={() => setConfirmAction({ kind: "delete", group })}
                               className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-danger hover:bg-danger/10 transition-colors"
                               title="Delete"
                             >
@@ -888,6 +940,74 @@ export default function HolidayGroupsManager({ embedded = false }: { embedded?: 
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmAction && (
+        <div
+          className="fixed inset-0 z-[10120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => !confirmBusy && setConfirmAction(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label={confirmAction.kind === "delete" ? "Delete holiday group" : "Remove group holidays"}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-defaultborder/70 bg-white dark:bg-bodybg shadow-2xl shadow-black/30 overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10 text-danger ring-1 ring-danger/20" aria-hidden>
+                <i className={`${confirmAction.kind === "delete" ? "ri-delete-bin-line" : "ri-calendar-close-line"} text-3xl`} />
+              </div>
+              <h3 className="text-lg font-semibold text-defaulttextcolor dark:text-white mb-1.5">
+                {confirmAction.kind === "delete" ? "Delete Holiday Group?" : "Remove Group Holidays?"}
+              </h3>
+              <p className="text-sm text-defaulttextcolor/70 dark:text-white/60 mb-0">
+                {confirmAction.kind === "delete" ? (
+                  <>
+                    Delete <strong>{confirmAction.group.name}</strong>?{" "}
+                    {(confirmAction.group.holidayCount ?? 0) > 0
+                      ? `${confirmAction.group.holidayCount} holiday date(s) will be ungrouped (not deleted). `
+                      : ""}
+                    Members will have these dates removed from their dashboard and attendance.
+                  </>
+                ) : (
+                  <>
+                    Remove all of <strong>{confirmAction.group.name}</strong>&apos;s holiday dates from its{" "}
+                    {confirmAction.group.memberCount ?? 0} member(s)? Attendance records with status &quot;Holiday&quot; for
+                    those dates will be deleted and members will be removed from the group. The group and its dates are
+                    kept.
+                  </>
+                )}
+              </p>
+            </div>
+            <div className="flex gap-3 px-6 pb-6">
+              <button
+                type="button"
+                autoFocus
+                disabled={confirmBusy}
+                onClick={() => setConfirmAction(null)}
+                className="flex-1 rounded-xl border border-defaultborder/80 px-5 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={confirmBusy}
+                onClick={confirmProceed}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-danger px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-danger/90 transition-all disabled:opacity-60 disabled:pointer-events-none"
+              >
+                {confirmBusy ? (
+                  <><i className="ri-loader-4-line animate-spin text-lg" /> Working…</>
+                ) : confirmAction.kind === "delete" ? (
+                  <><i className="ri-delete-bin-line text-lg" /> Yes, Delete</>
+                ) : (
+                  <><i className="ri-calendar-close-line text-lg" /> Yes, Remove</>
+                )}
+              </button>
             </div>
           </div>
         </div>

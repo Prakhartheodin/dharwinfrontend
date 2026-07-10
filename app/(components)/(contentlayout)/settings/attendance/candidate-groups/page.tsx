@@ -212,7 +212,7 @@ export default function SettingsAttendanceStudentGroupsPage() {
                 <i className="ri-error-warning-line text-5xl" />
               </div>
               <h3 className="text-xl font-semibold text-defaulttextcolor dark:text-white mb-2">Access Denied</h3>
-              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can manage student groups.</p>
+              <p className="text-sm text-defaulttextcolor/80 max-w-md mx-auto">Only administrators can manage employee groups.</p>
             </div>
           </div>
         </div>
@@ -234,7 +234,7 @@ export default function SettingsAttendanceStudentGroupsPage() {
                 <i className="ri-group-line text-2xl" />
               </span>
               <div className="min-w-0">
-                <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Student Groups</h2>
+                <h2 className="text-lg font-semibold text-defaulttextcolor dark:text-white tracking-tight">Employee Groups</h2>
                 <p className="text-xs text-defaulttextcolor/60 dark:text-white/50 mt-0.5">Create and manage groups for bulk holidays and shifts</p>
               </div>
             </div>

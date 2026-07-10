@@ -1125,7 +1125,7 @@ const Jobs = () => {
       data,
       initialState: {
         pageIndex: 0,
-        pageSize: 50,
+        pageSize: 100,
         sortBy: [{ id: 'postingDate', desc: true }],
       },
     },
@@ -1276,10 +1276,10 @@ const Jobs = () => {
   return (
     <Fragment>
   
-      <div className="mt-5 grid grid-cols-12 gap-6 h-[calc(100vh-8rem)] sm:mt-6">
-        <div className="xl:col-span-12 col-span-12 h-full flex flex-col">
-          <div className="box custom-box h-full flex flex-col">
-            <div className="box-header flex items-center justify-between flex-wrap gap-3 sm:gap-4 !p-3 sm:!p-4">
+      <div className="jobs-page-shell mt-5 grid grid-cols-12 gap-6 sm:mt-6">
+        <div className="xl:col-span-12 col-span-12 h-full min-h-0 flex flex-col">
+          <div className="box custom-box h-full min-h-0 flex flex-col overflow-hidden">
+            <div className="box-header shrink-0 flex items-center justify-between flex-wrap gap-3 sm:gap-4 !p-3 sm:!p-4">
               <div className="box-title">
                 Jobs
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.75rem] align-middle">
@@ -1607,7 +1607,7 @@ const Jobs = () => {
                 )}
               </div>
 
-              <div className="hidden md:block table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
+              <div className="jobs-table-scroll hidden md:block table-responsive flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
                 <table
                   {...getTableProps()}
                   className="table w-full max-w-full whitespace-nowrap table-striped table-hover table-bordered border-gray-300 dark:border-gray-600"
@@ -1756,7 +1756,7 @@ const Jobs = () => {
                 </table>
               </div>
             </div>
-            <div className="box-footer !border-t-0">
+            <div className="box-footer shrink-0 !border-t-0">
               <div className="flex items-center flex-wrap gap-4">
                 <select
                   className="form-control select-show-page-size !w-auto !py-1 !px-4 !text-[0.75rem]"

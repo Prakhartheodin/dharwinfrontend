@@ -499,11 +499,28 @@ html.swal2-shown {
   overflow-y: auto !important;
 }
 
+/* ATS jobs/interviews table — keep body scrollable for sticky header/footer shells */
+.jobs-table-scroll,
+.interviews-table-scroll {
+  overflow-y: auto !important;
+}
+
 /*
  * Meetings list: fill viewport below main header (same offset as recordings page)
  * so box header stays at top, pagination footer at bottom, table body scrolls.
  */
 .meetings-page-shell {
+  height: calc(100dvh - 8rem);
+  max-height: calc(100dvh - 8rem);
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: minmax(0, 1fr);
+}
+
+/* ATS table pages: fixed viewport shell so header/footer remain pinned */
+.jobs-page-shell,
+.interviews-page-shell,
+.offers-page-shell {
   height: calc(100dvh - 8rem);
   max-height: calc(100dvh - 8rem);
   min-height: 0;

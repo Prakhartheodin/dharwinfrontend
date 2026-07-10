@@ -154,7 +154,7 @@ function resignDateLabel(candidate: CandidateDisplay): string | null {
 }
 
 /** Stable ref for react-table initialState (avoid new object each render). */
-const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 50 }
+const EMPLOYEES_TABLE_INITIAL_STATE = { pageIndex: 0, pageSize: 100 }
 
 function parseEmployeesListPage(raw: string | null | undefined): number {
   const n = Number.parseInt(String(raw ?? ''), 10)
@@ -574,7 +574,7 @@ const Candidates = () => {
   }, [apiPage, pathname, router, searchParams])
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
-  const [pageSize, setPageSize] = useState(50)
+  const [pageSize, setPageSize] = useState(100)
   
   const [filters, setFilters] = useState<FilterState>({
     agentIds: [],
