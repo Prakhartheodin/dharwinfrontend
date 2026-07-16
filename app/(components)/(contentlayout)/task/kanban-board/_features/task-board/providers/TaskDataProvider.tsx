@@ -30,6 +30,7 @@ import {
 import { fetchBoardMetadata, type ProjectRow, type UserRow } from "../lib/fetch-board-metadata";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { taskBoardScopeToAssignedOnly } from "../lib/task-board-capabilities";
+import { getApiErrorMessage } from "@/shared/lib/api/client";
 import { getErrorMessage } from "../lib/errors";
 import { isEqual, parsePage, serializePage } from "../lib/url-state";
 import type {
@@ -415,8 +416,9 @@ export function TaskDataProvider({
         },
       });
     } catch (e) {
-      setError(getErrorMessage(e));
-      trackTaskBoard("taskboard.mutation_failed", { reason: getErrorMessage(e) });
+      const message = getApiErrorMessage(e, getErrorMessage(e));
+      setError(message);
+      trackTaskBoard("taskboard.mutation_failed", { reason: message });
       dispatch({ type: "RECONCILE", payload: { tasks: [] } });
     } finally {
       setIsLoading(false);

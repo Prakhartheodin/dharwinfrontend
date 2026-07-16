@@ -663,6 +663,14 @@ export default function InterviewsClient() {
     const interviewType = (form.querySelector('input[name="edit-type"]:checked') as HTMLInputElement)?.value || editMeeting.interviewType || 'Video'
     const notes = getVal('edit-notes')
     const status = getVal('edit-status') as 'scheduled' | 'ended' | 'cancelled' || editMeeting.status
+    const allowGuestJoin =
+      (form.querySelector('#edit-allow-guest') as HTMLInputElement)?.checked ??
+      editMeeting.allowGuestJoin ??
+      false
+    const requireApproval =
+      (form.querySelector('#edit-require-approval') as HTMLInputElement)?.checked ??
+      editMeeting.requireApproval ??
+      false
     const candidateId = (form.querySelector('#edit-candidate') as HTMLSelectElement)?.value
     const candidate = candidateId
       ? candidates.find((c) => (c.id ?? c._id) === candidateId) ??
@@ -688,6 +696,8 @@ export default function InterviewsClient() {
       emailInvites: editEmailInvites.map((em) => em.trim()).filter(Boolean),
       notes: notes || undefined,
       status,
+      allowGuestJoin,
+      requireApproval,
     }
 
     const runUpdate = async () => {
@@ -2813,6 +2823,28 @@ export default function InterviewsClient() {
                   <div>
                     <label htmlFor="edit-duration" className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-1.5">Duration (minutes) <span className="text-danger">*</span></label>
                     <input type="number" id="edit-duration" name="edit-duration" min={1} max={480} defaultValue={editMeeting.durationMinutes ?? 60} required className="form-control !py-2 !text-sm w-full border-defaultborder dark:border-defaultborder/10 rounded-lg focus:ring-2 focus:ring-primary/20 focus:border-primary" />
+                  </div>
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="edit-allow-guest"
+                        key={`${editMeetingId}-allow-guest-${editMeeting.allowGuestJoin}`}
+                        defaultChecked={Boolean(editMeeting.allowGuestJoin)}
+                        className="form-check-input !w-4 !h-4 text-primary"
+                      />
+                      <span className="text-sm text-defaulttextcolor dark:text-white">Allow guest join</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="edit-require-approval"
+                        key={`${editMeetingId}-require-approval-${editMeeting.requireApproval}`}
+                        defaultChecked={Boolean(editMeeting.requireApproval)}
+                        className="form-check-input !w-4 !h-4 text-primary"
+                      />
+                      <span className="text-sm text-defaulttextcolor dark:text-white">Require approval</span>
+                    </label>
                   </div>
                   <div>
                     <label className="form-label block text-sm font-medium text-defaulttextcolor dark:text-white mb-2">Interview type</label>

@@ -1514,6 +1514,41 @@ const Mailapp = () => {
     }
   }, [selectedAccountId, selectedThreadId, selectedThread?.isUnread, selectedLabelId, mailProvider]);
 
+  const handleMarkUnread = useCallback(
+    async (thread: EmailThreadListItem, e?: React.MouseEvent) => {
+      e?.stopPropagation();
+      if (!selectedAccountId || thread.isUnread) return;
+      try {
+        await emailApi.batchModifyThreads(
+          {
+            accountId: selectedAccountId,
+            threadIds: [thread.id],
+            addLabelIds: ["UNREAD"],
+            removeLabelIds: [],
+          },
+          mailProvider
+        );
+        setThreads((prev) =>
+          prev.map((t) =>
+            t.id === thread.id
+              ? {
+                  ...t,
+                  isUnread: true,
+                  labelIds: [...new Set([...(t.labelIds || []), "UNREAD"])],
+                }
+              : t
+          )
+        );
+        if (selectedLabelId === "INBOX") {
+          setResultSizeEstimate((prev) => prev + 1);
+        }
+      } catch {
+        // ignore
+      }
+    },
+    [selectedAccountId, selectedLabelId, mailProvider]
+  );
+
   const idsToUse = selectedThreadIds.size > 0 ? Array.from(selectedThreadIds) : threads.map((t) => t.id);
 
   const handleMarkAllRead = useCallback(async () => {
@@ -2392,6 +2427,17 @@ const Mailapp = () => {
                                 </span>
                               </p>
                             </div>
+                            {!thread.isUnread && (
+                              <button
+                                type="button"
+                                onClick={(e) => void handleMarkUnread(thread, e)}
+                                className="ti-btn ti-btn-icon ti-btn-ghost !p-1 ms-1 self-center opacity-50 hover:opacity-100"
+                                title="Mark as unread"
+                                aria-label="Mark thread as unread"
+                              >
+                                <i className="ri-mail-unread-line"></i>
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={(e) => handleToggleStar(thread, e)}
@@ -2858,7 +2904,7 @@ const Mailapp = () => {
                         className="hidden"
                         onChange={handleInlineReplyFileChange}
                       />
-                      {selectedThread?.isUnread && (
+                      {selectedThread?.isUnread ? (
                         <button
                           type="button"
                           onClick={handleMarkRead}
@@ -2868,7 +2914,17 @@ const Mailapp = () => {
                         >
                           <i className="ri-mail-open-line" aria-hidden></i>
                         </button>
-                      )}
+                      ) : selectedThread ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleMarkUnread(selectedThread)}
+                          className="ti-btn ti-btn-icon ti-btn-light"
+                          title="Mark as unread"
+                          aria-label="Mark thread as unread"
+                        >
+                          <i className="ri-mail-unread-line" aria-hidden></i>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={refetchMessages}

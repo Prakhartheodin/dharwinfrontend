@@ -474,7 +474,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
             <div className="header-content-left flex items-center">
               <div className="header-element header-logo-container">
                 <div className="horizontal-logo">
-                  <Link href="/apps/projects/project-list" className="header-logo">
+                  <Link href={ROUTES.defaultAfterLogin} className="header-logo">
                     <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo.png`} alt="logo" className="desktop-logo" />
                     <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/icon.png`} alt="logo" className="toggle-logo" />
                     <img src={`${process.env.NODE_ENV === "production" ? basePath : ""}/assets/images/logo-dark.png`} alt="logo" className="desktop-dark" />

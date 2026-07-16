@@ -189,6 +189,241 @@
   color: #0f172a;
 }
 
+.kbFilterBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.kbFilterBarPrimary {
+  display: flex;
+  flex: 1 1 28rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.kbFilterBarSecondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kbFilterProject {
+  flex: 0 1 16rem;
+  min-width: min(100%, 12rem);
+  max-width: 18rem;
+}
+
+.kbFilterAssignment {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.kbFilterPill {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.kbFilterPill:hover {
+  border-color: #94a3b8;
+}
+
+:global(.dark) .kbFilterPill {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+}
+
+:global(.dark) .kbFilterPill:hover {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.kbFilterPillActive {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+:global(.dark) .kbFilterPillActive {
+  border-color: #f8fafc;
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.kbFilterSearchWrap {
+  position: relative;
+  flex: 1 1 14rem;
+  min-width: min(100%, 14rem);
+}
+
+.kbFilterSearchIcon {
+  pointer-events: none;
+  position: absolute;
+  left: 0.875rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #94a3b8;
+}
+
+.kbFilterSearchInput {
+  width: 100%;
+  min-height: 2.75rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0.625rem 0.875rem 0.625rem 2.375rem;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.kbFilterSearchInput::placeholder {
+  color: #94a3b8;
+}
+
+.kbFilterSearchInput:focus {
+  border-color: #0f172a;
+  outline: none;
+}
+
+:global(.dark) .kbFilterSearchInput {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+}
+
+:global(.dark) .kbFilterSearchInput:focus {
+  border-color: rgba(248, 250, 252, 0.45);
+}
+
+.kbFilterClearBtn {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.kbFilterClearBtn:hover {
+  border-color: #94a3b8;
+}
+
+:global(.dark) .kbFilterClearBtn {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+}
+
+.kbAdvancedFilterTrigger {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 0 0.875rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.kbAdvancedFilterTrigger:hover {
+  border-color: #94a3b8;
+}
+
+.kbAdvancedFilterTriggerActive {
+  border-color: #0f172a;
+}
+
+:global(.dark) .kbAdvancedFilterTrigger {
+  border-color: rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+}
+
+:global(.dark) .kbAdvancedFilterTriggerActive {
+  border-color: rgba(248, 250, 252, 0.45);
+}
+
+.kbAdvancedFilterBadge {
+  display: inline-flex;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #0f172a;
+  padding: 0 0.35rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+:global(.dark) .kbAdvancedFilterBadge {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+.kbAdvancedFilterPanel {
+  z-index: 12050;
+  width: 17.5rem;
+  max-width: calc(100vw - 1rem);
+  border-radius: 0.625rem;
+  border: 1px solid #e2e8f0;
+  background: rgb(var(--body-bg, 255 255 255));
+  padding: 0.875rem;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+}
+
+:global(.dark) .kbAdvancedFilterPanel {
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+.kbAdvancedFilterSection {
+  margin-bottom: 0.75rem;
+}
+
+.kbAdvancedFilterLabel {
+  margin-bottom: 0.375rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.kbAdvancedFilterCheck {
+  display: flex;
+  min-height: 2.75rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: inherit;
+}
+
 .kbFilterDrawer {
   position: fixed;
   inset: 0;

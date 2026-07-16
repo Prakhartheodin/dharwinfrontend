@@ -1743,9 +1743,9 @@ const Chat = () => {
               {/* Rejoin bar (WhatsApp-style) */}
               {activeCallForConv && String(activeCallForConv.conversation) === String(convId) && (
                 <div className={chatStyles.rejoinBar}>
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="flex items-center gap-2 text-primary font-semibold text-sm">
-                      <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} text-lg`} />
+                  <div className={chatStyles.rejoinBarStatus}>
+                    <span className={`flex items-center gap-2 text-primary font-semibold text-sm ${chatStyles.rejoinBarStatusText}`}>
+                      <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} shrink-0 text-lg`} />
                       {activeCallForConv.participantCount && activeCallForConv.participantCount > 1
                         ? `${activeCallForConv.participantCount} in call`
                         : "Call in progress"}
@@ -1753,7 +1753,7 @@ const Chat = () => {
                   </div>
                   <button
                     type="button"
-                    className="ti-btn ti-btn-sm ti-btn-primary !rounded-full shrink-0"
+                    className={`ti-btn ti-btn-sm ti-btn-primary !rounded-full ${chatStyles.rejoinBarAction}`}
                     onClick={() => {
                       const params = new URLSearchParams({ from: "chat", conv: activeCallForConv.conversation });
                       if (activeCallForConv.id) params.set("callId", activeCallForConv.id);

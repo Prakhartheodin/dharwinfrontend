@@ -20,7 +20,7 @@ import {
 } from "@/shared/lib/api/internal-meetings"
 import CreateInternalMeetingModal from "./CreateInternalMeetingModal"
 import RecordingsModal, { type RecordingListItem } from "../../../ats/interviews/_components/RecordingsModal"
-import { listUsers } from "@/shared/lib/api/users"
+import { listUsers, pickOfficialEmail } from "@/shared/lib/api/users"
 import ParticipantInvitesField, { type ParticipantUser } from "@/shared/components/meeting/ParticipantInvitesField"
 import MeetingReadOnlyView from "@/shared/components/meeting/MeetingReadOnlyView"
 import { useConfirm } from "@/shared/components/ui/useConfirm"
@@ -412,7 +412,7 @@ export default function InternalMeetingsClient() {
       const res = await listUsers({ limit: 500, status: "active" })
       setEditUsers(
         (res.results || [])
-          .map((u) => ({ id: u.id, name: u.name, email: u.email }))
+          .map((u) => ({ id: u.id, name: u.name, email: pickOfficialEmail(u) }))
           .filter((u) => u.email)
       )
       editUsersLoadedRef.current = true
@@ -483,6 +483,14 @@ export default function InternalMeetingsClient() {
         typeRaw === "video" ? "Video" : typeRaw === "in-person" ? "In-Person" : "Phone"
       const notes = getVal("edit-internal-notes")
       const status = getVal("edit-internal-status") as "scheduled" | "ended" | "cancelled"
+      const allowGuestJoin =
+        (form.querySelector("#edit-internal-allow-guest") as HTMLInputElement)?.checked ??
+        editMeeting.allowGuestJoin ??
+        false
+      const requireApproval =
+        (form.querySelector("#edit-internal-require-approval") as HTMLInputElement)?.checked ??
+        editMeeting.requireApproval ??
+        false
       // Convert the wall-clock edit inputs back to a UTC instant using the meeting's
       // stored zone, matching how the create path and the edit display interpret them.
       const editTz = editMeeting.timezone || getViewerTimezone()
@@ -496,6 +504,8 @@ export default function InternalMeetingsClient() {
         emailInvites: editEmailInvites.map((em) => em.trim()).filter(Boolean),
         notes: notes || undefined,
         status,
+        allowGuestJoin,
+        requireApproval,
       }
       setEditSaving(true)
       try {
@@ -1368,6 +1378,28 @@ export default function InternalMeetingsClient() {
                         </label>
                       ))}
                     </div>
+                  </div>
+                  <div className="flex flex-wrap gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="edit-internal-allow-guest"
+                        key={`${editMeeting._id}-allow-guest-${editMeeting.allowGuestJoin}`}
+                        defaultChecked={Boolean(editMeeting.allowGuestJoin)}
+                        className="form-check-input !w-4 !h-4 text-primary"
+                      />
+                      <span className="text-sm">Allow guest join</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        id="edit-internal-require-approval"
+                        key={`${editMeeting._id}-require-approval-${editMeeting.requireApproval}`}
+                        defaultChecked={Boolean(editMeeting.requireApproval)}
+                        className="form-check-input !w-4 !h-4 text-primary"
+                      />
+                      <span className="text-sm">Require approval</span>
+                    </label>
                   </div>
                   <div>
                     <span className="form-label block text-sm font-medium mb-1.5">Participants &amp; invites</span>

@@ -13,11 +13,12 @@ import {
   getMyStudent,
   listStudentCourses,
   mapStudentCourseToCard,
+  COURSE_THUMBNAIL_PLACEHOLDER,
   type StudentCourseListItem,
 } from "@/shared/lib/api/student-courses"
 
 const COURSES_PER_PAGE = 9
-const PLACEHOLDER_IMAGE = "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400&h=220&fit=crop"
+const PLACEHOLDER_IMAGE = COURSE_THUMBNAIL_PLACEHOLDER
 
 export type CourseCardItem = {
   id: string
@@ -341,8 +342,12 @@ function CourseCard({
   onMenuClose: () => void
 }) {
   const router = useRouter()
+  const [thumbnailSrc, setThumbnailSrc] = useState(course.thumbnail || PLACEHOLDER_IMAGE)
   const canNavigate = isValidCourseId(course.id)
   const detailHref = canNavigate ? `/courses/${course.id}/` : "/courses/"
+  useEffect(() => {
+    setThumbnailSrc(course.thumbnail || PLACEHOLDER_IMAGE)
+  }, [course.thumbnail])
   const openCourse = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return
     e.preventDefault()
@@ -359,7 +364,14 @@ function CourseCard({
         className="bg-bodybg dark:bg-white/5 border border-defaultborder dark:border-white/10 h-full rounded-lg overflow-hidden shadow-sm hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5 transition-all cursor-pointer"
       >
         <div className="relative w-full aspect-[40/22] bg-defaultborder/20 overflow-hidden">
-          <img src={course.thumbnail} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+          <img
+            src={thumbnailSrc}
+            alt={course.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+            onError={() => {
+              if (thumbnailSrc !== PLACEHOLDER_IMAGE) setThumbnailSrc(PLACEHOLDER_IMAGE)
+            }}
+          />
           <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
             <span className="w-14 h-14 rounded-full border-2 border-white bg-white flex items-center justify-center shadow-xl text-[#1c1d1f]">

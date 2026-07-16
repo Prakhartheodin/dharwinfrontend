@@ -3,6 +3,32 @@ import { deserialize, normalize, serializeFilters } from "../url-state";
 import { EMPTY_FILTERS } from "../../types";
 
 describe("url-state", () => {
+  it("round-trips search q through URL params", () => {
+    const filters = normalize({
+      ...EMPTY_FILTERS,
+      q: "DBS137",
+    });
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(serializeFilters(filters))) {
+      params.set(k, v);
+    }
+    const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+    expect(parsed.q).toBe("DBS137");
+  });
+
+  it("round-trips search q through URL params", () => {
+    const filters = normalize({
+      ...EMPTY_FILTERS,
+      q: "DBS137",
+    });
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(serializeFilters(filters))) {
+      params.set(k, v);
+    }
+    const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+    expect(parsed.q).toBe("DBS137");
+  });
+
   it("round-trips filters through URL params", () => {
     const filters = normalize({
       ...EMPTY_FILTERS,
@@ -53,6 +79,30 @@ describe("url-state", () => {
     });
   });
 
+  describe("unassigned filter", () => {
+    it("serializeFilters emits unassigned=1 when unassigned is true", () => {
+      const filters = normalize({ ...EMPTY_FILTERS, unassigned: true });
+      const out = serializeFilters(filters);
+      expect(out["unassigned"]).toBe("1");
+    });
+
+    it("deserializeFilters parses unassigned=1 as true", () => {
+      const params = new URLSearchParams({ unassigned: "1" });
+      const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+      expect(parsed.unassigned).toBe(true);
+    });
+
+    it("round-trip: unassigned:true serializes and deserializes correctly", () => {
+      const filters = normalize({ ...EMPTY_FILTERS, unassigned: true });
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(serializeFilters(filters))) {
+        params.set(k, v);
+      }
+      const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+      expect(parsed.unassigned).toBe(true);
+    });
+  });
+
   describe("reassigned filter", () => {
     it("serializeFilters emits reassigned=1 when reassigned is true", () => {
       const filters = normalize({ ...EMPTY_FILTERS, reassigned: true });
@@ -62,6 +112,16 @@ describe("url-state", () => {
 
     it("deserializeFilters parses reassigned=1 as true", () => {
       const params = new URLSearchParams({ reassigned: "1" });
+      const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+      expect(parsed.reassigned).toBe(true);
+    });
+
+    it("round-trip: reassigned:true serializes and deserializes correctly", () => {
+      const filters = normalize({ ...EMPTY_FILTERS, reassigned: true });
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(serializeFilters(filters))) {
+        params.set(k, v);
+      }
       const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
       expect(parsed.reassigned).toBe(true);
     });

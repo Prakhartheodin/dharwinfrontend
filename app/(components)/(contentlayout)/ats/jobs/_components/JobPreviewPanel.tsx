@@ -20,6 +20,7 @@ const FUNNEL_TONES: Record<string, string> = {
   Applied: 'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-300',
   Screening: 'bg-sky-500/10 text-sky-700 border-sky-500/20 dark:text-sky-300',
   Interview: 'bg-violet-500/10 text-violet-700 border-violet-500/20 dark:text-violet-300',
+  Shortlisted: 'bg-indigo-500/10 text-indigo-700 border-indigo-500/20 dark:text-indigo-300',
   Offered: 'bg-emerald-500/10 text-emerald-700 border-emerald-500/20 dark:text-emerald-300',
   Hired: 'bg-emerald-600/15 text-emerald-800 border-emerald-500/30 dark:text-emerald-200',
   Rejected: 'bg-rose-500/10 text-rose-700 border-rose-500/20 dark:text-rose-300',

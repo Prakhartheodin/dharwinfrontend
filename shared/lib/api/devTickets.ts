@@ -221,12 +221,15 @@ function appendFilters(params: URLSearchParams, filters?: DevTicketFilters) {
   if (filters.sortBy) params.append("sortBy", filters.sortBy);
 }
 
-export async function listDevTickets(filters?: DevTicketFilters): Promise<DevTicketListResponse> {
+export async function listDevTickets(
+  filters?: DevTicketFilters,
+  requestConfig?: { signal?: AbortSignal }
+): Promise<DevTicketListResponse> {
   const params = new URLSearchParams();
   appendFilters(params, filters);
   const query = params.toString();
   const url = query ? `${BASE}?${query}` : BASE;
-  const { data } = await apiClient.get<DevTicketListResponse>(url);
+  const { data } = await apiClient.get<DevTicketListResponse>(url, requestConfig);
   return data;
 }
 

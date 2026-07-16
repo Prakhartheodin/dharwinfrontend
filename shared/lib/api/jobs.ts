@@ -484,7 +484,7 @@ export async function deleteJobBookmark(jobId: string, bookmarkId: string): Prom
 }
 
 export interface JobStatsFunnelRow {
-  status: "Applied" | "Screening" | "Interview" | "Offered" | "Hired" | "Rejected";
+  status: "Applied" | "Screening" | "Interview" | "Shortlisted" | "Offered" | "Hired" | "Rejected";
   count: number;
 }
 

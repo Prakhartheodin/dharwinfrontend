@@ -104,6 +104,8 @@ export interface CandidatesListResponse {
 
 export interface ListCandidatesParams {
   owner?: string;
+  /** Toolbar quick search — matches employee fullName or employeeId only. */
+  search?: string;
   fullName?: string;
   email?: string;
   employeeId?: string;

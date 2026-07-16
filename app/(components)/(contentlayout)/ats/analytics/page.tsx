@@ -157,9 +157,10 @@ function fillMonthlyTimeBuckets<T extends { period: string; count: number }>(buc
 // ---------------------------------------------------------------------------
 // CSV Export
 // ---------------------------------------------------------------------------
-function exportToCsv(data: AtsAnalyticsResponse) {
+function exportToCsv(data: AtsAnalyticsResponse, periodLabel: string) {
   const rows: string[][] = [
     ['ATS Analytics Export', ''],
+    ['Period', periodLabel],
     ['Total Candidates', String(data.totals.totalCandidates)],
     ['Total Jobs', String(data.totals.totalJobs)],
     ['Active Jobs', String(data.totals.activeJobs)],
@@ -192,7 +193,7 @@ function exportToCsv(data: AtsAnalyticsResponse) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `ats-analytics-${new Date().toISOString().slice(0, 10)}.csv`
+  a.download = `ats-analytics-${periodLabel.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -895,6 +896,9 @@ const ATSAnalytics = () => {
   }, [funnelData.categories, funnelData.values, funnelBarOpts, openDrill])
 
   const prevLabel = data?.previousPeriod?.periodLabel || ''
+  const periodLabel = RANGE_OPTIONS.find((opt) => opt.value === range)?.label || 'All time'
+  const applicationsPeriodTotal = data?.totals.totalApplications ?? 0
+  const jobsPeriodTotal = data?.totals.totalJobs ?? 0
 
   return (
     <Fragment>
@@ -918,7 +922,7 @@ const ATSAnalytics = () => {
             <button
               type="button"
               className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-              onClick={() => exportToCsv(data)}
+              onClick={() => exportToCsv(data, periodLabel)}
             >
               <i className="ri-download-line align-middle me-1" />
               Export CSV
@@ -1002,7 +1006,10 @@ const ATSAnalytics = () => {
                   </div>
                   {applicationsOverTimeData.categories.length > 0 && (
                     <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1 text-[0.75rem] font-medium tabular-nums text-primary">
-                      {applicationsOverTimeData.total}{applicationsOverTimeData.hasSlider ? ' in view' : ' total'}
+                      {applicationsPeriodTotal} total
+                      {applicationsOverTimeData.hasSlider && applicationsOverTimeData.total !== applicationsPeriodTotal
+                        ? ` · ${applicationsOverTimeData.total} in view`
+                        : ''}
                     </span>
                   )}
                 </div>
@@ -1013,8 +1020,8 @@ const ATSAnalytics = () => {
                         role="img"
                         aria-label={
                           applicationsOverTimeData.peak
-                            ? `Applications over time. ${applicationsOverTimeData.total} in view. Peak ${applicationsOverTimeData.peak.period} with ${applicationsOverTimeData.peak.count} applications.`
-                            : `Applications over time. ${applicationsOverTimeData.total} in view.`
+                            ? `Applications over time. ${applicationsPeriodTotal} total${applicationsOverTimeData.hasSlider && applicationsOverTimeData.total !== applicationsPeriodTotal ? `, ${applicationsOverTimeData.total} in view` : ''}. Peak ${applicationsOverTimeData.peak.period} with ${applicationsOverTimeData.peak.count} applications.`
+                            : `Applications over time. ${applicationsPeriodTotal} total.`
                         }
                       >
                         <ReactApexChart
@@ -1218,7 +1225,10 @@ const ATSAnalytics = () => {
                   </div>
                   {jobsOverTimeData.categories.length > 0 && (
                     <span className="inline-flex items-center rounded-md bg-primary/10 px-2.5 py-1 text-[0.75rem] font-medium tabular-nums text-primary">
-                      {jobsOverTimeData.total}{jobsOverTimeData.hasSlider ? ' in view' : ' total'}
+                      {jobsPeriodTotal} total
+                      {jobsOverTimeData.hasSlider && jobsOverTimeData.total !== jobsPeriodTotal
+                        ? ` · ${jobsOverTimeData.total} in view`
+                        : ''}
                     </span>
                   )}
                 </div>
@@ -1229,8 +1239,8 @@ const ATSAnalytics = () => {
                         role="img"
                         aria-label={
                           jobsOverTimeData.peak
-                            ? `Jobs created over time. ${jobsOverTimeData.total} in view. Peak ${jobsOverTimeData.peak.period} with ${jobsOverTimeData.peak.count} jobs.`
-                            : `Jobs created over time. ${jobsOverTimeData.total} in view.`
+                            ? `Jobs created over time. ${jobsPeriodTotal} total${jobsOverTimeData.hasSlider && jobsOverTimeData.total !== jobsPeriodTotal ? `, ${jobsOverTimeData.total} in view` : ''}. Peak ${jobsOverTimeData.peak.period} with ${jobsOverTimeData.peak.count} jobs.`
+                            : `Jobs created over time. ${jobsPeriodTotal} total.`
                         }
                       >
                         <ReactApexChart

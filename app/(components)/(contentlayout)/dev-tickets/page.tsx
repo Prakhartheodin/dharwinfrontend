@@ -35,7 +35,7 @@ import { listUsers } from "@/shared/lib/api/users";
 import { useAuth } from "@/shared/contexts/auth-context";
 import Swal from "sweetalert2";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Select from "react-select";
 
 type ScopeFilter = DevTicketFilters["scope"];
@@ -46,6 +46,9 @@ const SCOPES: { key: ScopeFilter; label: string }[] = [
   { key: "reported", label: "Reported by me" },
   { key: "unassigned", label: "Unassigned" },
 ];
+
+const TICKET_FILTER_SELECT_CLASS =
+  "form-control min-w-[8.5rem] flex-1 sm:flex-none sm:w-auto !min-h-[2.375rem] !shrink-0 !py-1.5 !px-2 !text-[0.75rem]";
 
 function Toast({ message }: { message: string | null }) {
   if (!message) return null;
@@ -67,6 +70,7 @@ export default function DevTicketsPage() {
 
   const [tickets, setTickets] = useState<DevTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -113,6 +117,10 @@ export default function DevTicketsPage() {
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchGenerationRef = useRef(0);
+  const hasLoadedOnceRef = useRef(false);
+  const prevDebouncedSearchRef = useRef(searchQuery);
 
   const [assignModalTicket, setAssignModalTicket] = useState<DevTicket | null>(null);
   const [assignUserId, setAssignUserId] = useState("");
@@ -124,7 +132,15 @@ export default function DevTicketsPage() {
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    searchDebounceRef.current = setTimeout(() => {
+      const trimmedPrev = prevDebouncedSearchRef.current.trim();
+      const trimmedNext = searchQuery.trim();
+      if (trimmedPrev !== trimmedNext) {
+        setCurrentPage(1);
+      }
+      prevDebouncedSearchRef.current = searchQuery;
+      setDebouncedSearch(searchQuery);
+    }, 300);
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
@@ -168,20 +184,43 @@ export default function DevTicketsPage() {
   }, [currentPage, limit, sortBy, scope, statusFilter, priorityFilter, severityFilter, labelFilter, moduleFilter, debouncedSearch]);
 
   const fetchTickets = useCallback(async () => {
-    if (!canView) return;
-    setLoading(true);
+    if (!canView) {
+      fetchAbortRef.current?.abort();
+      fetchAbortRef.current = null;
+      fetchGenerationRef.current += 1;
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    fetchAbortRef.current?.abort();
+    const generation = ++fetchGenerationRef.current;
+    const ac = new AbortController();
+    fetchAbortRef.current = ac;
+
+    const isInitial = !hasLoadedOnceRef.current;
+    if (isInitial) setLoading(true);
+    else setRefreshing(true);
     setError(null);
     try {
-      const data = await listDevTickets(buildFilters());
+      const data = await listDevTickets(buildFilters(), { signal: ac.signal });
+      if (generation !== fetchGenerationRef.current) return;
       setTickets(data.results ?? []);
       setTotalPages(data.totalPages ?? 1);
       setTotalResults(data.totalResults ?? 0);
+      hasLoadedOnceRef.current = true;
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { message?: string } }; message?: string };
+      if (generation !== fetchGenerationRef.current) return;
+      const e = err as { response?: { data?: { message?: string } }; message?: string; code?: string; name?: string };
+      if (e?.code === "ERR_CANCELED" || e?.name === "CanceledError") return;
       setError(e?.response?.data?.message ?? e?.message ?? "Failed to fetch tickets");
       setTickets([]);
+      setTotalResults(0);
     } finally {
-      setLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [canView, buildFilters]);
 
@@ -204,8 +243,15 @@ export default function DevTicketsPage() {
 
   useEffect(() => {
     fetchTickets();
+    return () => {
+      fetchAbortRef.current?.abort();
+      fetchGenerationRef.current += 1;
+    };
+  }, [fetchTickets]);
+
+  useEffect(() => {
     syncUrl();
-  }, [fetchTickets, syncUrl]);
+  }, [syncUrl]);
 
   useEffect(() => {
     fetchScopeCounts();
@@ -249,13 +295,21 @@ export default function DevTicketsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [drawerOpen, showCreateModal]);
 
-  const activeFilterCount = [statusFilter, priorityFilter, severityFilter, labelFilter, moduleFilter, debouncedSearch].filter(Boolean).length;
+  const isSearchDebouncing = searchQuery.trim() !== debouncedSearch.trim();
+  const isSearchBusy = isSearchDebouncing || refreshing;
+  const activeFilterCount = [statusFilter, priorityFilter, severityFilter, labelFilter, moduleFilter, searchQuery.trim()].filter(Boolean).length;
   const hasActiveFilters = activeFilterCount > 0;
+  const isListBusy = loading || refreshing || isSearchDebouncing;
 
-  const statOpen = tickets.filter((t) => t.status === "Open").length;
-  const statInProgress = tickets.filter((t) => t.status === "In Progress").length;
-  const statResolved = tickets.filter((t) => t.status === "Resolved").length;
-  const statCritical = tickets.filter((t) => t.severity === "Blocker" || t.severity === "Critical").length;
+  const pageStats = useMemo(
+    () => ({
+      open: tickets.filter((t) => t.status === "Open").length,
+      inProgress: tickets.filter((t) => t.status === "In Progress").length,
+      resolved: tickets.filter((t) => t.status === "Resolved").length,
+      critical: tickets.filter((t) => t.severity === "Blocker" || t.severity === "Critical").length,
+    }),
+    [tickets]
+  );
 
   const allPageSelected = tickets.length > 0 && tickets.every((t) => selectedIds.has(getTicketDbId(t)));
   const someSelected = tickets.some((t) => selectedIds.has(getTicketDbId(t)));
@@ -298,14 +352,21 @@ export default function DevTicketsPage() {
     fetchScopeCounts();
   };
 
+  const clearSearch = () => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    prevDebouncedSearchRef.current = "";
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setCurrentPage(1);
+  };
+
   const clearFilters = () => {
+    clearSearch();
     setStatusFilter("");
     setPriorityFilter("");
     setSeverityFilter("");
     setLabelFilter("");
     setModuleFilter("");
-    setSearchQuery("");
-    setCurrentPage(1);
   };
 
   const addFiles = (files: File[]) => {
@@ -461,10 +522,10 @@ export default function DevTicketsPage() {
         {/* Stats */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { label: "Open", count: statOpen, icon: "ri-radio-button-line", cls: "bg-primary/10 text-primary" },
-            { label: "In Progress", count: statInProgress, icon: "ri-loader-4-line", cls: "bg-warning/10 text-warning" },
-            { label: "Resolved", count: statResolved, icon: "ri-checkbox-circle-line", cls: "bg-success/10 text-success" },
-            { label: "Blocker / Critical", count: statCritical, icon: "ri-alarm-warning-line", cls: "bg-danger/10 text-danger" },
+            { label: "Open", count: pageStats.open, icon: "ri-radio-button-line", cls: "bg-primary/10 text-primary" },
+            { label: "In Progress", count: pageStats.inProgress, icon: "ri-loader-4-line", cls: "bg-warning/10 text-warning" },
+            { label: "Resolved", count: pageStats.resolved, icon: "ri-checkbox-circle-line", cls: "bg-success/10 text-success" },
+            { label: "Blocker / Critical", count: pageStats.critical, icon: "ri-alarm-warning-line", cls: "bg-danger/10 text-danger" },
           ].map((s) => (
             <div key={s.label} className="box !mb-0">
               <div className="box-body !flex !items-center !gap-3 !p-4">
@@ -496,39 +557,81 @@ export default function DevTicketsPage() {
         <div className="box">
           <div className="box-header justify-between">
             <div className="box-title">All Tickets</div>
-            <span className="text-[0.75rem] text-[#8c9097]">{totalResults} results{activeFilterCount > 0 && ` · ${activeFilterCount} filter${activeFilterCount > 1 ? "s" : ""}`}</span>
+            <span className="text-[0.75rem] text-[#8c9097]">
+              {error ? "—" : `${totalResults} results`}
+              {!error && activeFilterCount > 0 && ` · ${activeFilterCount} filter${activeFilterCount > 1 ? "s" : ""}`}
+            </span>
           </div>
           <div className="box-body">
             <div className="mb-4 space-y-3">
-              <div className="relative">
-                <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-[#8c9097]" />
-                <input type="text" value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }} placeholder="Search ticket ID, title, description…" className="form-control !rounded-md !pl-9 !text-[0.8125rem]" />
+              <div className="relative max-w-xl">
+                <span
+                  className="pointer-events-none absolute inset-y-0 left-0 flex w-10 items-center justify-center"
+                  aria-hidden
+                >
+                  {isSearchBusy ? (
+                    <span className="flex h-4 w-4 items-center justify-center">
+                      <i className="ri-loader-4-line animate-spin text-base leading-none text-primary" />
+                    </span>
+                  ) : (
+                    <i className="ri-search-line text-base leading-none text-[#8c9097]" />
+                  )}
+                </span>
+                <input
+                  type="text"
+                  role="searchbox"
+                  autoComplete="off"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search ticket ID, title, description…"
+                  aria-label="Search tickets"
+                  aria-busy={isSearchBusy}
+                  className={`form-control !rounded-md !ps-10 !text-[0.8125rem] ${searchQuery ? "!pe-10" : "!pe-3"}`}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-[#8c9097] transition-colors hover:text-defaulttextcolor"
+                    aria-label="Clear search"
+                  >
+                    <i className="ri-close-line text-base leading-none" />
+                  </button>
+                )}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 {[
                   { label: "Status", val: statusFilter, set: setStatusFilter, opts: Object.keys(STATUS_CONFIG) },
                   { label: "Priority", val: priorityFilter, set: setPriorityFilter, opts: Object.keys(PRIORITY_CONFIG) },
                   { label: "Severity", val: severityFilter, set: setSeverityFilter, opts: Object.keys(SEVERITY_CONFIG) },
                 ].map((f) => (
-                  <select key={f.label} value={f.val} onChange={(e) => { f.set(e.target.value); setCurrentPage(1); }} className="form-control !w-auto !py-1 !px-2 !text-[0.75rem]">
+                  <select key={f.label} value={f.val} onChange={(e) => { f.set(e.target.value); setCurrentPage(1); }} className={TICKET_FILTER_SELECT_CLASS}>
                     <option value="">{f.label}: All</option>
                     {f.opts.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ))}
-                <select value={labelFilter} onChange={(e) => { setLabelFilter(e.target.value); setCurrentPage(1); }} className="form-control !w-auto !py-1 !px-2 !text-[0.75rem]">
+                <select value={labelFilter} onChange={(e) => { setLabelFilter(e.target.value); setCurrentPage(1); }} className={TICKET_FILTER_SELECT_CLASS}>
                   <option value="">Label: All</option>
                   {DEV_TICKET_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
                 </select>
-                <select value={moduleFilter} onChange={(e) => { setModuleFilter(e.target.value); setCurrentPage(1); }} className="form-control !w-auto !max-w-[200px] !py-1 !px-2 !text-[0.75rem]">
+                <select value={moduleFilter} onChange={(e) => { setModuleFilter(e.target.value); setCurrentPage(1); }} className={`${TICKET_FILTER_SELECT_CLASS} sm:max-w-[200px]`}>
                   <option value="">Module: All</option>
                   {DEV_TICKET_MODULE_LABELS.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
                 {hasActiveFilters && (
-                  <button type="button" onClick={clearFilters} className="ti-btn ti-btn-sm ti-btn-danger-full !text-[0.7rem]">
-                    <i className="ri-close-line" /> Clear all
-                  </button>
+                  <div className="w-full shrink-0 sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      aria-label="Clear all filters"
+                      className="ti-btn ti-btn-sm ti-btn-soft-danger !inline-flex !shrink-0 !flex-none !items-center !justify-center !gap-1.5 !whitespace-nowrap !px-3 !py-2 !min-h-[2.375rem] !h-auto !w-full !text-[0.75rem] sm:!w-auto"
+                    >
+                      <i className="ri-filter-off-line text-[0.875rem]" aria-hidden />
+                      Clear all
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -554,13 +657,16 @@ export default function DevTicketsPage() {
             )}
 
             {error && (
-              <div className="mb-4 flex items-center justify-between rounded-md border border-danger/30 bg-danger/5 px-4 py-3">
-                <span className="text-[0.8125rem] text-danger">{error}</span>
-                <button type="button" onClick={fetchTickets} className="ti-btn ti-btn-sm ti-btn-danger">Retry</button>
+              <div role="alert" aria-live="assertive" className="mb-4 flex flex-col gap-3 rounded-md border border-danger/30 bg-danger/5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                <span className="min-w-0 flex-1 text-[0.8125rem] leading-snug text-danger">{error}</span>
+                <button type="button" onClick={fetchTickets} className="ti-btn ti-btn-sm ti-btn-danger !inline-flex !shrink-0 !items-center !justify-center !gap-1.5 !self-start !whitespace-nowrap !px-4 !py-2 sm:!self-center">
+                  <i className="ri-refresh-line" aria-hidden />
+                  Retry
+                </button>
               </div>
             )}
 
-            {loading ? (
+            {loading && tickets.length === 0 ? (
               <div className="space-y-3">{[1, 2, 3, 4, 5].map((n) => <div key={n} className="h-12 animate-pulse rounded bg-black/5 dark:bg-white/10" />)}</div>
             ) : tickets.length === 0 ? (
               <div className="py-16 text-center">
@@ -574,7 +680,8 @@ export default function DevTicketsPage() {
                 )}
               </div>
             ) : (
-              <div className="table-responsive">
+              <div className={`relative transition-opacity ${isListBusy ? "opacity-60" : ""}`} aria-busy={isListBusy}>
+                <div className="table-responsive">
                 <table className="table table-hover table-bordered min-w-full whitespace-nowrap">
                   <thead>
                     <tr>
@@ -653,6 +760,7 @@ export default function DevTicketsPage() {
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
           </div>

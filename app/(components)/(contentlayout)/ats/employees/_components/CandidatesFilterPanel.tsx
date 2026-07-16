@@ -25,6 +25,8 @@ interface CandidatesFilterPanelProps {
   onExport?: () => void
   onImport?: () => void
   onDownloadTemplate?: () => void
+  exportLoading?: boolean
+  exportError?: string | null
 }
 
 const COMPACT_INPUT_ICON = 'form-control !h-[34px] !py-[5px] !ps-7 !pe-3 !text-[0.8125rem] !rounded-md w-full'
@@ -100,6 +102,8 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
   onExport,
   onImport,
   onDownloadTemplate,
+  exportLoading = false,
+  exportError = null,
 }) => {
   const agentInputRef = useRef<HTMLInputElement>(null)
   const showExcelActions = canExport || canImport
@@ -239,10 +243,18 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
 
       {showExcelActions && (
         <div className="flex flex-col gap-2 border-t border-defaultborder/60 bg-gray-50/70 px-4 py-3 dark:bg-black/20 sm:flex-row sm:items-center sm:justify-between">
-          <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-gray-500 dark:text-gray-400">
-            <i className="ri-file-excel-2-line text-emerald-600 dark:text-emerald-400" aria-hidden />
-            Export respects the filters set above
-          </span>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="inline-flex items-center gap-1.5 text-[0.7rem] font-medium text-gray-500 dark:text-gray-400">
+              <i className="ri-file-excel-2-line text-emerald-600 dark:text-emerald-400" aria-hidden />
+              Export respects the filters set above
+            </span>
+            {exportError ? (
+              <p className="text-[0.7rem] font-medium text-danger flex items-center gap-1" role="alert">
+                <i className="ri-error-warning-line shrink-0" aria-hidden />
+                {exportError}
+              </p>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {canImport && (
               <>
@@ -267,8 +279,19 @@ const CandidatesFilterPanel: React.FC<CandidatesFilterPanelProps> = ({
                 type="button"
                 className="ti-btn ti-btn-primary !py-1.5 !px-3 !text-[0.75rem]"
                 onClick={onExport}
+                disabled={exportLoading}
+                aria-busy={exportLoading}
               >
-                <i className="ri-file-excel-2-line me-1 align-middle" aria-hidden />Export to Excel
+                {exportLoading ? (
+                  <>
+                    <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white me-1 align-middle" aria-hidden />
+                    Exporting…
+                  </>
+                ) : (
+                  <>
+                    <i className="ri-file-excel-2-line me-1 align-middle" aria-hidden />Export to Excel
+                  </>
+                )}
               </button>
             )}
           </div>

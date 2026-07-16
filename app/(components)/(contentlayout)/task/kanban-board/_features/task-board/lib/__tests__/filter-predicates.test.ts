@@ -30,6 +30,21 @@ describe("filter-predicates", () => {
     ).toBe(true);
   });
 
+  it("matches employee name search via assignee metadata", () => {
+    const pred = compilePredicate({ ...EMPTY_FILTERS, q: "prakhar" });
+    expect(
+      pred({
+        ...baseTask,
+        assigneeEmployeeNames: ["Prakhar Sharma"],
+      })
+    ).toBe(true);
+  });
+
+  it("matches task title search", () => {
+    const pred = compilePredicate({ ...EMPTY_FILTERS, q: "billing" });
+    expect(pred({ ...baseTask, title: "Billing reconciliation" })).toBe(true);
+  });
+
   it("filters by priority", () => {
     const pred = compilePredicate({ ...EMPTY_FILTERS, priorities: ["high"] });
     expect(pred({ ...baseTask, priority: "high" })).toBe(true);

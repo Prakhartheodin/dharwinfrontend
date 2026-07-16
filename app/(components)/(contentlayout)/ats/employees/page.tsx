@@ -49,8 +49,8 @@ import {
 import { resolveDownloadUrlForBrowser } from '@/shared/lib/api/client'
 import { listUsers } from '@/shared/lib/api/users'
 import { getAllShifts } from '@/shared/lib/api/shifts'
-import { downloadCandidateExcelTemplate } from '@/shared/lib/candidate-excel-template'
 import { displayApplicantEmail } from '@/shared/lib/ats/applicant-email'
+import { buildEmployeesListQueryParams } from '@/shared/lib/ats/employee-list-query'
 import Swal from 'sweetalert2'
 import { AxiosError } from 'axios'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -643,29 +643,26 @@ const Candidates = () => {
   }, [])
 
   // Experience range from data (for slider min/max)
-  const fetchParams = useMemo(() => {
-    const params: Record<string, unknown> = {
-      limit: pageSize,
-      sortBy: getEmployeesApiSortBy(selectedSort),
-      includeOpenSopCount: '1',
-    }
-    if (debouncedEmployeeSearch.trim()) params.search = debouncedEmployeeSearch.trim()
-    if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
-    params.employmentStatus = filters.employmentStatus
-    if (filters.compensationType) params.compensationType = filters.compensationType
-    return params
-  }, [filters, pageSize, debouncedEmployeeSearch, selectedSort])
+  const fetchParams = useMemo(
+    () =>
+      buildEmployeesListQueryParams(filters, {
+        search: debouncedEmployeeSearch,
+        sortBy: getEmployeesApiSortBy(selectedSort),
+        limit: pageSize,
+        includeOpenSopCount: true,
+      }),
+    [filters, pageSize, debouncedEmployeeSearch, selectedSort]
+  )
 
-  /** POST /candidates/export uses the same filters as the list (omit page/limit/SOP count). */
-  const exportQueryParams = useMemo(() => {
-    const params: Record<string, unknown> = {
-      sortBy: getEmployeesApiSortBy(selectedSort),
-    }
-    if (debouncedEmployeeSearch.trim()) params.search = debouncedEmployeeSearch.trim()
-    if (filters.agentIds?.length) params.agentIds = filters.agentIds.join(',')
-    params.employmentStatus = filters.employmentStatus
-    return params
-  }, [filters, debouncedEmployeeSearch, selectedSort])
+  /** POST /employees/export uses the same filters as the list (omit page/limit/SOP count). */
+  const exportQueryParams = useMemo(
+    () =>
+      buildEmployeesListQueryParams(filters, {
+        search: debouncedEmployeeSearch,
+        sortBy: getEmployeesApiSortBy(selectedSort),
+      }),
+    [filters, debouncedEmployeeSearch, selectedSort]
+  )
 
   const refreshCandidates = useCallback((resetPage = false) => {
     const page = resetPage ? 1 : apiPage
@@ -1371,19 +1368,13 @@ const Candidates = () => {
     }
   }
 
-  const handleExportAllOpen = () => {
-    setExportAllEmail('')
-    setActionError(null)
-    queueMicrotask(() => openHsOverlay('#export-all-modal'))
-  }
-  const handleExportAllSubmit = async () => {
+  const runFilteredExport = async (opts?: { email?: string; ids?: string[] }) => {
     setExportAllSubmitting(true)
     setActionError(null)
     try {
-      const ids = selectedRows.size > 0 ? Array.from(selectedRows) : undefined
       const body: { email?: string; ids?: string[] } = {}
-      if (exportAllEmail.trim()) body.email = exportAllEmail.trim()
-      if (ids) body.ids = ids
+      if (opts?.email?.trim()) body.email = opts.email.trim()
+      if (opts?.ids?.length) body.ids = opts.ids
       const result = await exportAllCandidates(
         exportQueryParams as ExportAllCandidatesParams,
         Object.keys(body).length ? body : undefined,
@@ -1405,6 +1396,17 @@ const Candidates = () => {
     } finally {
       setExportAllSubmitting(false)
     }
+  }
+
+  const handleFilterPanelExport = () => {
+    void runFilteredExport()
+  }
+
+  const handleExportAllSubmit = async () => {
+    await runFilteredExport({
+      email: exportAllEmail,
+      ids: selectedRows.size > 0 ? Array.from(selectedRows) : undefined,
+    })
   }
 
   const handleBulkDelete = async () => {
@@ -2536,10 +2538,9 @@ const Candidates = () => {
               handleRemoveFilter={handleRemoveFilter}
               handleResetFilters={handleResetFilters}
               canExport={canViewEmployees}
-              canImport={canCreateEmployee}
-              onExport={handleExportAllOpen}
-              onImport={() => router.push('/ats/employees/import')}
-              onDownloadTemplate={downloadCandidateExcelTemplate}
+              onExport={handleFilterPanelExport}
+              exportLoading={exportAllSubmitting}
+              exportError={actionError}
             />
 
             <div className="box-body !p-0 flex min-h-0 flex-1 flex-col overflow-hidden">

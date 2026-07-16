@@ -246,6 +246,47 @@ export async function getQuizResults(
 }
 
 /** Essay submit: answers (typed text). Backend marks item complete on submit. */
+export interface EssayResultsQuestion {
+  questionText: string;
+  expectedAnswer?: string;
+  studentAnswer: string;
+  score?: number;
+  feedback?: string;
+  rubric?: {
+    accuracy?: number;
+    completeness?: number;
+    clarity?: number;
+    criticalThinking?: number;
+  };
+  suggestions?: string;
+}
+
+export interface EssayResultsResponse {
+  essay: {
+    playlistItemId: string;
+    title: string;
+    questions: EssayResultsQuestion[];
+  };
+  attempt: {
+    attemptNumber: number;
+    score?: { totalQuestions: number; correctAnswers?: number; percentage: number };
+    submittedAt: string;
+    timeSpent?: number;
+    status: string;
+  };
+}
+
+export async function getEssayResults(
+  studentId: string,
+  moduleId: string,
+  playlistItemId: string
+): Promise<EssayResultsResponse> {
+  const { data } = await apiClient.get<EssayResultsResponse>(
+    `/training/students/${studentId}/courses/${moduleId}/essays/${playlistItemId}/results`
+  );
+  return data;
+}
+
 export async function submitEssayAttempt(
   studentId: string,
   moduleId: string,
@@ -279,7 +320,7 @@ export function mapStudentCourseToCard(item: StudentCourseListItem): {
     id: module.id ?? "",
     title: module.moduleName ?? "Untitled course",
     instructor: category ?? "Instructor",
-    thumbnail: module.coverImage?.url ?? "",
+    thumbnail: resolveCourseThumbnailUrl(module.coverImage?.url),
     progress: item.progress?.percentage ?? 0,
     category: category ?? undefined,
     status: item.status ?? "enrolled",
@@ -312,6 +353,15 @@ export interface CourseForUI {
 }
 
 const PLACEHOLDER_THUMBNAIL = "https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=400&h=220&fit=crop";
+
+/** Shared fallback when a course cover image is missing or fails to load. */
+export const COURSE_THUMBNAIL_PLACEHOLDER = PLACEHOLDER_THUMBNAIL;
+
+/** Normalize API cover image url; empty values fall back to placeholder. */
+export function resolveCourseThumbnailUrl(url?: string | null): string {
+  const trimmed = url?.trim();
+  return trimmed ? trimmed : PLACEHOLDER_THUMBNAIL;
+}
 
 /** Format date for "Last updated" (e.g. "1/2026" or "Jan 2026"). */
 function formatLastUpdated(iso?: string | Date | null): string | undefined {
@@ -450,7 +500,7 @@ export function mapStudentCourseDetailToCourse(detail: StudentCourseDetail): Cou
     id: module.id,
     title: module.moduleName ?? "Untitled course",
     instructor: categoryNames[0] ?? "Instructor",
-    thumbnail: module.coverImage?.url ?? PLACEHOLDER_THUMBNAIL,
+    thumbnail: resolveCourseThumbnailUrl(module.coverImage?.url),
     progress: detail.progress?.percentage ?? 0,
     description,
     lessons: lectures,

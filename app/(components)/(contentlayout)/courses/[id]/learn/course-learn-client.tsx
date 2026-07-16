@@ -4,7 +4,7 @@
  * Course learn page – tabs match training module content types: Overview, Video, Blog, Quiz, PDF, Q&A.
  */
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useState, useMemo, useRef, useEffect } from "react"
+import React, { Fragment, useState, useMemo, useRef, useEffect, useCallback } from "react"
 import Link from "next/link"
 import type { Course, CourseSection, CourseLesson } from "@/shared/data/training/courses-data"
 import type { PlaylistItemForLearn, PlaylistItemContentType } from "@/shared/lib/api/student-courses"
@@ -14,10 +14,47 @@ import {
   submitQuizAttempt,
   getQuizResults,
   submitEssayAttempt,
+  getEssayResults,
   type QuizSubmitAnswer,
   type QuizResultsResponse,
+  type EssayResultsResponse,
 } from "@/shared/lib/api/student-courses"
 import { sanitizeRichHtml } from "@/shared/lib/sanitize-html"
+import { getApiErrorMessage } from "@/shared/lib/api/client"
+
+function CompleteButtonLabel({ completing, label }: { completing: boolean; label: string }) {
+  if (completing) {
+    return (
+      <>
+        <i className="ti ti-loader-2 animate-spin text-[0.875rem] shrink-0" aria-hidden />
+        <span>Saving…</span>
+      </>
+    )
+  }
+  return <span>{label}</span>
+}
+
+function CourseLearnToast({
+  message,
+  tone,
+}: {
+  message: string
+  tone: "success" | "error"
+}) {
+  return (
+    <div
+      aria-live="polite"
+      role="status"
+      className={`fixed bottom-6 left-1/2 z-[200] -translate-x-1/2 max-w-[min(92vw,28rem)] rounded-lg px-4 py-2.5 text-[0.8125rem] font-medium shadow-lg ${
+        tone === "success"
+          ? "bg-emerald-600 text-white"
+          : "bg-red-600 text-white"
+      }`}
+    >
+      {message}
+    </div>
+  )
+}
 
 function sectionDurationMin(lectures: CourseLesson[]): number {
   let total = 0
@@ -235,12 +272,26 @@ function QuizRenderer({
   )
 }
 
+function formatEssaySubmittedAt(iso: string | undefined): string {
+  if (!iso) return "Recently"
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
+  } catch {
+    return "Recently"
+  }
+}
+
 function EssayRenderer({
   essay,
   playlistItemId,
   studentId,
   moduleId,
   isCompleted,
+  playlistItems,
+  onSelectItem,
   onProgressUpdate,
 }: {
   essay: unknown
@@ -248,6 +299,8 @@ function EssayRenderer({
   studentId: string
   moduleId: string
   isCompleted?: boolean
+  playlistItems: PlaylistItemForLearn[]
+  onSelectItem: (item: PlaylistItemForLearn) => void
   onProgressUpdate: () => Promise<void>
 }) {
   const e = essay as { questions?: { questionText?: string; expectedAnswer?: string }[] } | null
@@ -255,93 +308,193 @@ function EssayRenderer({
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [result, setResult] = useState<{
-    percentage: number
-    totalQuestions: number
-    correctAnswers?: number
-    answers?: {
-      questionIndex: number
-      score?: number
-      feedback?: string
-      rubric?: { accuracy?: number; completeness?: number; clarity?: number; criticalThinking?: number }
-      suggestions?: string
-    }[]
-  } | null>(null)
+  const [retakeMode, setRetakeMode] = useState(false)
+  const [showResponses, setShowResponses] = useState(true)
+  const [essayResults, setEssayResults] = useState<EssayResultsResponse | null>(null)
+  const [resultsLoading, setResultsLoading] = useState(false)
+  const [resultsError, setResultsError] = useState<string | null>(null)
+
+  const showCompletedState = (isCompleted || submitted) && !retakeMode
+  const currentIndex = playlistItems.findIndex((p) => p.id === playlistItemId)
+  const nextItem = currentIndex >= 0 && currentIndex < playlistItems.length - 1
+    ? playlistItems[currentIndex + 1]
+    : null
+
+  const loadResults = async () => {
+    setResultsLoading(true)
+    setResultsError(null)
+    try {
+      const results = await getEssayResults(studentId, moduleId, playlistItemId)
+      setEssayResults(results)
+    } catch {
+      setResultsError("Could not load your Q&A responses. Please try again.")
+      setEssayResults(null)
+    } finally {
+      setResultsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showCompletedState) {
+      loadResults()
+    }
+  }, [showCompletedState, studentId, moduleId, playlistItemId])
 
   if (questions.length === 0) return <p className="text-[#6a6f73] dark:text-white/60">No Q&A questions.</p>
 
   const handleSubmit = async () => {
     setSubmitting(true)
     try {
-      const attempt = (await submitEssayAttempt(studentId, moduleId, playlistItemId, {
+      await submitEssayAttempt(studentId, moduleId, playlistItemId, {
         answers: questions.map((_, i) => ({ questionIndex: i, typedAnswer: answers[i] ?? "" })),
-      })) as {
-        score?: { percentage?: number; totalQuestions?: number; correctAnswers?: number }
-        answers?: { questionIndex: number; score?: number; feedback?: string }[]
-      }
+      })
       setSubmitted(true)
-      if (attempt?.score?.percentage != null) {
-        setResult({
-          percentage: attempt.score.percentage,
-          totalQuestions: attempt.score.totalQuestions ?? questions.length,
-          correctAnswers: attempt.score.correctAnswers,
-          answers: (attempt as { answers?: { questionIndex: number; score?: number; feedback?: string; rubric?: Record<string, number>; suggestions?: string }[] }).answers,
-        })
-      }
+      setRetakeMode(false)
+      setShowResponses(true)
       await onProgressUpdate()
     } finally {
       setSubmitting(false)
     }
   }
 
-  if (isCompleted || submitted) {
+  const handleRetake = () => {
+    setRetakeMode(true)
+    setSubmitted(false)
+    setEssayResults(null)
+    setResultsError(null)
+    setAnswers({})
+  }
+
+  if (showCompletedState) {
+    const attempt = essayResults?.attempt
+    const responseCount = essayResults?.essay.questions.filter((q) => q.studentAnswer.trim()).length ?? 0
+    const totalQuestions = essayResults?.essay.questions.length ?? questions.length
+    const hasScore = attempt?.score?.percentage != null
+
     return (
-      <div className="space-y-4">
-        <p className="text-emerald-600 dark:text-emerald-400 font-medium">Q&A submitted.</p>
-        {result && (
-          <div className="p-4 rounded-lg border border-defaultborder bg-black/5 dark:bg-white/5">
-            <div className="text-[1rem] font-semibold text-[#1c1d1f] dark:text-white mb-2">
-              Score: {result.percentage}%
-            </div>
-            {result.answers?.map((a) => {
-              const q = questions[a.questionIndex]
-              if (!q) return null
-              const hasContent = a.score != null || a.feedback || a.rubric || a.suggestions
-              if (!hasContent) return null
-              return (
-                <div key={a.questionIndex} className="mt-3 text-[0.875rem]">
-                  <p className="font-medium text-[#1c1d1f] dark:text-white">
-                    Q{a.questionIndex + 1}: {a.score != null ? `${a.score}/100` : "—"}
-                  </p>
-                  {a.feedback && (
-                    <p className="text-[#6a6f73] dark:text-white/70 mt-1">{a.feedback}</p>
-                  )}
-                  {a.rubric && typeof a.rubric === "object" && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {[
-                        ["accuracy", "Accuracy"],
-                        ["completeness", "Completeness"],
-                        ["clarity", "Clarity"],
-                        ["criticalThinking", "Critical thinking"],
-                      ].map(([key, label]) => {
-                        const v = (a.rubric as Record<string, number>)?.[key]
-                        if (v == null) return null
-                        return (
-                          <span key={key} className="badge bg-primary/10 text-primary">
-                            {label}: {v}/25
-                          </span>
-                        )
-                      })}
-                    </div>
-                  )}
-                  {a.suggestions && (
-                    <p className="text-primary/90 dark:text-primary/80 mt-1.5 italic">{a.suggestions}</p>
-                  )}
-                </div>
-              )
-            })}
+      <div className="space-y-5" aria-live="polite">
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-4">
+          <p className="text-emerald-700 dark:text-emerald-300 font-semibold text-[1rem]">Q&A submitted.</p>
+          {resultsLoading ? (
+            <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60 mt-1">Loading your summary…</p>
+          ) : hasScore ? (
+            <p className="text-[0.875rem] text-[#1c1d1f] dark:text-white/90 mt-1">
+              Score: {attempt!.score!.correctAnswers ?? "—"}/{attempt!.score!.totalQuestions} ({attempt!.score!.percentage}%)
+            </p>
+          ) : attempt?.submittedAt ? (
+            <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/70 mt-1">
+              Submitted on {formatEssaySubmittedAt(attempt.submittedAt)}
+              {responseCount > 0 && ` · ${responseCount} of ${totalQuestions} responses`}
+            </p>
+          ) : (
+            <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/70 mt-1">
+              Your responses have been saved.
+            </p>
+          )}
+        </div>
+
+        {resultsError && (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p className="text-[0.875rem] text-amber-800 dark:text-amber-200">{resultsError}</p>
+            <button
+              type="button"
+              className="ti-btn ti-btn-outline-primary min-h-[44px] shrink-0"
+              onClick={loadResults}
+              disabled={resultsLoading}
+            >
+              Retry
+            </button>
           </div>
         )}
+
+        {essayResults && (
+          <>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="ti-btn ti-btn-outline-primary min-h-[44px]"
+                onClick={() => setShowResponses((v) => !v)}
+              >
+                {showResponses ? "Hide responses" : "View your responses"}
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-outline-secondary min-h-[44px]"
+                onClick={handleRetake}
+              >
+                Retake Q&A
+              </button>
+            </div>
+
+            {showResponses && (
+              <div className="space-y-4">
+                <p className="font-semibold text-[#1c1d1f] dark:text-white">Your responses</p>
+                {essayResults.essay.questions.map((q, qidx) => (
+                  <div
+                    key={qidx}
+                    className="rounded-lg border border-[#d1d7dc] dark:border-white/10 p-4 bg-white dark:bg-white/[0.03]"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+                      <p className="font-medium text-[#1c1d1f] dark:text-white">
+                        {qidx + 1}. {q.questionText ?? "Question"}
+                      </p>
+                      {q.score != null && (
+                        <span className="badge bg-primary/10 text-primary shrink-0">{q.score}/100</span>
+                      )}
+                    </div>
+                    <div className="rounded-md border border-[#e4e8eb] dark:border-white/10 bg-[#f7f9fa] dark:bg-white/5 p-3 text-[0.9375rem] text-[#1c1d1f] dark:text-white/90 whitespace-pre-wrap min-h-[3rem]">
+                      {q.studentAnswer.trim() ? q.studentAnswer : (
+                        <span className="text-[#6a6f73] dark:text-white/50 italic">No answer provided</span>
+                      )}
+                    </div>
+                    {q.feedback && (
+                      <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/70 mt-2">{q.feedback}</p>
+                    )}
+                    {q.rubric && typeof q.rubric === "object" && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(
+                          [
+                            ["accuracy", "Accuracy"],
+                            ["completeness", "Completeness"],
+                            ["clarity", "Clarity"],
+                            ["criticalThinking", "Critical thinking"],
+                          ] as const
+                        ).map(([key, label]) => {
+                          const v = q.rubric?.[key]
+                          if (v == null) return null
+                          return (
+                            <span key={key} className="badge bg-primary/10 text-primary">
+                              {label}: {v}/25
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
+                    {q.suggestions && (
+                      <p className="text-primary/90 dark:text-primary/80 mt-2 text-[0.875rem] italic">{q.suggestions}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <div className="pt-2">
+          {nextItem ? (
+            <button
+              type="button"
+              className="ti-btn ti-btn-primary min-h-[44px]"
+              onClick={() => onSelectItem(nextItem)}
+            >
+              Next lesson: {nextItem.title}
+            </button>
+          ) : (
+            <p className="text-[0.875rem] text-[#6a6f73] dark:text-white/60">
+              You&apos;ve reached the last item in this course.
+            </p>
+          )}
+        </div>
       </div>
     )
   }
@@ -354,7 +507,7 @@ function EssayRenderer({
             {i + 1}. {q.questionText ?? ""}
           </p>
           <textarea
-            className="form-control w-full rounded border border-[#d1d7dc] dark:border-white/20 bg-white dark:bg-white/5 text-[#1c1d1f] dark:text-white p-3"
+            className="form-control w-full rounded border border-[#d1d7dc] dark:border-white/20 bg-white dark:bg-white/5 text-[#1c1d1f] dark:text-white p-3 min-h-[132px]"
             rows={6}
             placeholder="Type your answer..."
             value={answers[i] ?? ""}
@@ -364,7 +517,7 @@ function EssayRenderer({
       ))}
       <button
         type="button"
-        className="ti-btn ti-btn-primary"
+        className="ti-btn ti-btn-primary min-h-[44px]"
         onClick={handleSubmit}
         disabled={submitting}
       >
@@ -622,9 +775,10 @@ function UploadVideoPlayer({
               type="button"
               onClick={onMarkComplete}
               disabled={completing}
-              className="shrink-0 px-3 py-1 rounded bg-primary text-white text-[0.75rem] font-medium hover:opacity-90 disabled:opacity-60"
+              aria-busy={completing}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded bg-primary text-white text-[0.75rem] font-medium hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity duration-150"
             >
-              {completing ? "Saving…" : "Mark as complete"}
+              <CompleteButtonLabel completing={completing} label="Mark as complete" />
             </button>
           )}
         </div>
@@ -891,9 +1045,10 @@ function YouTubeVideoPlayer({
               type="button"
               onClick={onMarkComplete}
               disabled={completing}
-              className="shrink-0 px-3 py-1 rounded bg-primary text-white text-[0.75rem] font-medium hover:opacity-90 disabled:opacity-60"
+              aria-busy={completing}
+              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1 rounded bg-primary text-white text-[0.75rem] font-medium hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity duration-150"
             >
-              {completing ? "Saving…" : "I've finished watching"}
+              <CompleteButtonLabel completing={completing} label="I've finished watching" />
             </button>
           )}
         </div>
@@ -917,6 +1072,25 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
   const [scheduleDismissed, setScheduleDismissed] = useState(false)
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [completingId, setCompletingId] = useState<string | null>(null)
+  const [progressOverride, setProgressOverride] = useState<number | null>(null)
+  const [feedback, setFeedback] = useState<{ message: string; tone: "success" | "error" } | null>(null)
+
+  const displayProgress = progressOverride ?? course.progress ?? 0
+
+  const showFeedback = useCallback((message: string, tone: "success" | "error") => {
+    setFeedback({ message, tone })
+    window.setTimeout(() => setFeedback(null), tone === "success" ? 3000 : 5000)
+  }, [])
+
+  useEffect(() => {
+    setProgressOverride(null)
+  }, [course])
+
+  useEffect(() => {
+    if (!currentLectureId) return
+    const fresh = playlistItems.find((p) => p.id === currentLectureId)
+    if (fresh) setSelectedItem(fresh)
+  }, [playlistItems, currentLectureId])
 
   const selectLecture = (lectureId: string) => {
     setCurrentLectureId(lectureId)
@@ -936,11 +1110,17 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
   }
 
   const markComplete = async (item: PlaylistItemForLearn) => {
-    if (item.isCompleted || completingId) return
+    if (item.isCompleted || completingId === item.id) return
     setCompletingId(item.id)
     try {
-      await markCourseItemComplete(studentId, moduleId, item.id, item.contentType)
+      const result = await markCourseItemComplete(studentId, moduleId, item.id, item.contentType)
+      const pct = result.progress?.percentage
+      if (typeof pct === "number") setProgressOverride(pct)
+      setSelectedItem((prev) => (prev?.id === item.id ? { ...prev, isCompleted: true } : prev))
+      showFeedback("Lesson marked complete", "success")
       await onProgressUpdate()
+    } catch (err) {
+      showFeedback(getApiErrorMessage(err, "Could not mark lesson complete. Try again."), "error")
     } finally {
       setCompletingId(null)
     }
@@ -1007,6 +1187,7 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
   return (
     <Fragment>
       <Seo title={`${course.title} - Learn`} />
+      {feedback && <CourseLearnToast message={feedback.message} tone={feedback.tone} />}
 
       {/* Top bar: course title, Your progress, Share, More */}
       <header className="sticky top-0 z-30 flex items-center justify-between gap-4 h-14 px-4 lg:px-6 border-b border-[#d1d7dc] dark:border-white/10 bg-white dark:bg-[#1c1d1f]">
@@ -1024,11 +1205,11 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
             <span className="text-[0.75rem] font-medium text-[#6a6f73] dark:text-white/70 whitespace-nowrap">Your progress</span>
             <div className="flex-1 h-2 rounded-full bg-[#e4e8eb] dark:bg-white/20 overflow-hidden">
               <div
-                className="h-full rounded-full bg-[#5624d0] dark:bg-primary transition-[width]"
-                style={{ width: `${Math.min(100, Math.max(0, course.progress ?? 0))}%` }}
+                className="h-full rounded-full bg-[#5624d0] dark:bg-primary transition-[width] duration-300"
+                style={{ width: `${Math.min(100, Math.max(0, displayProgress))}%` }}
               />
             </div>
-            <span className="text-[0.75rem] font-semibold text-[#1c1d1f] dark:text-white w-8">{course.progress ?? 0}%</span>
+            <span className="text-[0.75rem] font-semibold text-[#1c1d1f] dark:text-white w-8">{displayProgress}%</span>
           </div>
           <button type="button" className="p-2 rounded hover:bg-black/5 dark:hover:bg-white/10 text-[#1c1d1f] dark:text-white" aria-label="Share">
             <i className="ti ti-share text-[1.125rem]" />
@@ -1102,13 +1283,17 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                     <button
                       type="button"
                       onClick={() => markComplete(selectedItem)}
-                      disabled={!!completingId}
-                      className="inline-flex items-center justify-center shrink-0 px-3 py-1.5 rounded bg-primary text-white text-[0.8125rem] font-medium whitespace-nowrap outline-offset-2 transition-opacity duration-200 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-primary dark:text-white"
+                      disabled={completingId === selectedItem.id}
+                      aria-busy={completingId === selectedItem.id}
+                      className="inline-flex items-center justify-center gap-1.5 shrink-0 px-3 py-1.5 rounded bg-primary text-white text-[0.8125rem] font-medium whitespace-nowrap outline-offset-2 transition-opacity duration-150 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-primary dark:text-white"
                     >
-                      {completingId === selectedItem.id ? "Saving…" : "Mark as complete"}
+                      <CompleteButtonLabel completing={completingId === selectedItem.id} label="Mark as complete" />
                     </button>
                   ) : (
-                      <span className="text-emerald-600 dark:text-emerald-400 text-[0.8125rem] font-medium whitespace-nowrap">Completed</span>
+                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[0.8125rem] font-medium whitespace-nowrap">
+                        <i className="ti ti-circle-check text-[0.875rem]" aria-hidden />
+                        Completed
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1166,13 +1351,17 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                       <button
                         type="button"
                         onClick={() => markComplete(selectedItem)}
-                        disabled={!!completingId}
-                        className="inline-flex items-center justify-center shrink-0 px-3 py-1.5 rounded bg-primary text-white text-[0.8125rem] font-medium whitespace-nowrap focus:!ring-0 focus:!ring-offset-0 transition-opacity duration-200 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-primary dark:text-white"
+                        disabled={completingId === selectedItem.id}
+                        aria-busy={completingId === selectedItem.id}
+                        className="inline-flex items-center justify-center gap-1.5 shrink-0 px-3 py-1.5 rounded bg-primary text-white text-[0.8125rem] font-medium whitespace-nowrap focus:!ring-0 focus:!ring-offset-0 transition-opacity duration-150 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-primary dark:text-white"
                       >
-                        {completingId === selectedItem.id ? "Saving…" : "Mark as complete"}
+                        <CompleteButtonLabel completing={completingId === selectedItem.id} label="Mark as complete" />
                       </button>
                     ) : (
-                      <span className="text-emerald-600 dark:text-emerald-400 text-[0.8125rem] font-medium whitespace-nowrap">Completed</span>
+                      <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-[0.8125rem] font-medium whitespace-nowrap">
+                        <i className="ti ti-circle-check text-[0.875rem]" aria-hidden />
+                        Completed
+                      </span>
                     )}
                   </div>
                 </div>
@@ -1194,6 +1383,8 @@ export default function CourseLearnClient({ course, studentId, moduleId, onProgr
                   studentId={studentId}
                   moduleId={moduleId}
                   isCompleted={selectedItem.isCompleted}
+                  playlistItems={playlistItems}
+                  onSelectItem={selectItem}
                   onProgressUpdate={onProgressUpdate}
                 />
               </div>

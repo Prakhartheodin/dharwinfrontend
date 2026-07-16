@@ -464,12 +464,37 @@
 
 .rejoinBar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.65rem 1rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.75rem 1.25rem;
   border-bottom: 1px solid rgba(13, 148, 136, 0.2);
   background: linear-gradient(90deg, var(--chat-accent-soft), transparent);
+}
+
+.rejoinBarStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.rejoinBarStatusText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rejoinBarAction {
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-height: 2.75rem;
 }
 
 .threadHeader {

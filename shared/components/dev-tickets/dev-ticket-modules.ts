@@ -113,7 +113,6 @@ export const DEV_TICKET_MODULE_GROUPS: DevTicketModuleGroup[] = [
       { label: "Email Templates", path: "/settings/email-templates" },
       { label: "Email Templates (Admin)", path: "/settings/email-templates-admin" },
       { label: "Job Templates", path: "/settings/job-templates" },
-      { label: "Bolna Voice Agent", path: "/settings/bolna-voice-agent" },
       { label: "Attendance", path: "/settings/attendance" },
       { label: "Week Off", path: "/settings/attendance/week-off" },
       { label: "Holidays", path: "/settings/attendance/holidays" },

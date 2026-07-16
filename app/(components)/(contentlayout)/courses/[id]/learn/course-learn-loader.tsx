@@ -24,13 +24,9 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
   const loadCourse = React.useCallback(async () => {
     const id = (moduleId ?? "").trim();
     if (!id || !isValidModuleId(id) || !studentId) return;
-    try {
-      const detail = await getStudentCourse(studentId, id);
-      const mapped = mapStudentCourseDetailToCourse(detail) as Course;
-      setCourse(mapped);
-    } catch {
-      // Keep current course on refresh error
-    }
+    const detail = await getStudentCourse(studentId, id);
+    const mapped = mapStudentCourseDetailToCourse(detail) as Course;
+    setCourse(mapped);
   }, [moduleId, studentId]);
 
   useEffect(() => {

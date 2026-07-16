@@ -365,7 +365,16 @@ export function StableVideoConference() {
  * and entrance transitions. Scoped under our own classnames so it doesn't
  * disturb either meeting-room page's existing LiveKit overrides. */
 const SVC_CSS = `
-.lk-video-conference-inner { position: relative; }
+/* LiveKit's .lk-video-conference is display:flex with the DEFAULT row direction
+ * (its prebuilt nests the control bar inside .lk-video-conference-inner). We render
+ * {controls} as a sibling of the inner column, so without forcing column the bar is
+ * stretched to full height and its button-groups render as tall vertical bands with
+ * the icons floating at mid-screen (broken on phones/tablets). Column = video fills,
+ * bar pinned short at the bottom. The public room sets this on its own container; this
+ * makes the component self-correct for every consumer (e.g. the authenticated room). */
+.lk-video-conference { flex-direction: column; }
+.lk-video-conference-inner { position: relative; flex: 1 1 auto; min-height: 0; }
+.lk-video-conference > .lk-control-bar { margin-top: auto; }
 
 .lk-cam-tile {
   position: relative;

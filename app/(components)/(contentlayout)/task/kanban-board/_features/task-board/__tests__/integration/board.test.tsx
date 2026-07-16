@@ -43,6 +43,8 @@ describe("board integration (MSW)", () => {
     await waitFor(() =>
       expect(screen.getByRole("search", { name: "Task filters" })).toBeInTheDocument()
     );
-    expect(screen.getByLabelText("Search tasks")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search by task, employee, or ID")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reassigned" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Advanced filters")).toBeInTheDocument();
   });
 });
