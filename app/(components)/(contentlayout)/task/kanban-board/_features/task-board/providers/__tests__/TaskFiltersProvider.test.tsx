@@ -51,6 +51,7 @@ describe("TaskFiltersProvider", () => {
       assignedToMe: false,
       unassigned: false,
       leaving: true,
+      reassigned: false,
     });
 
     render(

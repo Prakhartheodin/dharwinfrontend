@@ -26,6 +26,8 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
     setAssignedToMe,
     unassigned,
     setUnassigned,
+    reassigned,
+    setReassigned,
     priorities,
     togglePriority,
     clearFilters,
@@ -100,13 +102,13 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
         Unassigned
       </button>
 
-      <div className="relative w-full sm:w-auto sm:flex-1 sm:max-w-[22rem]">
+      <div className="relative w-full sm:min-w-[18rem] sm:flex-[1.6] sm:max-w-[30rem]">
         <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           type="search"
           className="h-9 w-full rounded-full border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-700 placeholder:text-slate-400 focus:border-slate-900 focus:outline-none dark:border-white/10 dark:bg-bodybg2 dark:text-slate-200 dark:focus:border-white/40"
-          placeholder="Search tasks or people…"
-          aria-label="Search tasks or people"
+          placeholder="Search by task, employee name, or employee ID…"
+          aria-label="Search by task, employee name, or employee ID"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
         />
@@ -127,6 +129,11 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
         label={leavingCount > 0 ? `Leaving · ${leavingCount}` : "Leaving"}
         active={filters.leaving}
         onClick={() => patchFilters({ leaving: !filters.leaving })}
+      />
+      <TaskFilterChip
+        label="Reassigned"
+        active={reassigned}
+        onClick={() => setReassigned(!reassigned)}
       />
 
 

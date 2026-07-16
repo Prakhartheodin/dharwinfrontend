@@ -527,4 +527,18 @@ export const MenuItems: any = [
     selected: false,
     dirchange: false,
   },
+
+  {
+    menutitle: "Help & Support",
+  },
+
+  {
+    icon: <i className="bx bx-life-ring side-menu__icon"></i>,
+    title: "Help & Support",
+    type: "link",
+    path: "/dev-tickets",
+    active: false,
+    selected: false,
+    dirchange: false,
+  },
 ];

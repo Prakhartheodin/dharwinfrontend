@@ -20,6 +20,8 @@ import {
 import { AxiosError } from "axios";
 import Swal from "sweetalert2";
 
+const DEV_TICKETS_VIEW_PERMISSION = "devTickets.view";
+
 export default function RolesEditPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -27,6 +29,7 @@ export default function RolesEditPage() {
 
   const [name, setName] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
+  const [helpSupportAccess, setHelpSupportAccess] = useState(false);
   const [permissions, setPermissions] = useState<RolePermissionsState | null>(null);
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(PERMISSION_SECTIONS.map((s) => s.id))
@@ -52,6 +55,7 @@ export default function RolesEditPage() {
         setName(role.name);
         setStatus((role.status as "active" | "inactive") ?? "active");
         const raw = Array.isArray(role.permissions) ? role.permissions.filter((x): x is string => typeof x === "string") : [];
+        setHelpSupportAccess(raw.includes(DEV_TICKETS_VIEW_PERMISSION));
         setOriginalPermissionStrings(raw);
         setPermissions(permissionsFromApi(raw));
       } catch (err) {
@@ -136,9 +140,14 @@ export default function RolesEditPage() {
     setLoading(true);
     try {
       const permissionStrings = mergePermissionsForRoleSave(permissionsToApi(permissions), originalPermissionStrings);
+      const withHelpSupport = helpSupportAccess
+        ? permissionStrings.includes(DEV_TICKETS_VIEW_PERMISSION)
+          ? permissionStrings
+          : [...permissionStrings, DEV_TICKETS_VIEW_PERMISSION]
+        : permissionStrings.filter((p) => p !== DEV_TICKETS_VIEW_PERMISSION);
       await rolesApi.updateRole(roleId, {
         name: trimmedName,
-        permissions: permissionStrings,
+        permissions: withHelpSupport,
         status,
       });
       await Swal.fire({
@@ -243,18 +252,39 @@ export default function RolesEditPage() {
                       required
                     />
                   </div>
-                  <div className="mb-6">
-                    <label className="form-label">Status</label>
-                    <select
-                      className="form-control form-select"
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </select>
+                  <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="form-label">Status</label>
+                      <select
+                        className="form-control form-select"
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="form-label" htmlFor="help-support-access">
+                        Help & Support access
+                      </label>
+                      <div className="flex items-center gap-3 mt-2">
+                        <input
+                          id="help-support-access"
+                          type="checkbox"
+                          className="form-check-input"
+                          checked={helpSupportAccess}
+                          onChange={(e) => setHelpSupportAccess(e.target.checked)}
+                        />
+                        <span className="text-sm text-defaulttextcolor/80">
+                          Allow this role to view and use the Help & Support tracker
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  {getUnmappedPermissionStrings(originalPermissionStrings).length > 0 && (
+                  {getUnmappedPermissionStrings(originalPermissionStrings).filter(
+                    (s) => s !== DEV_TICKETS_VIEW_PERMISSION
+                  ).length > 0 && (
                     <div className="mb-6 p-4 rounded-md border border-defaultborder bg-gray-50 dark:bg-gray-800/40">
                       <p className="text-sm font-medium text-defaulttextcolor mb-2">
                         Additional permissions (not in matrix)
@@ -263,7 +293,9 @@ export default function RolesEditPage() {
                         These strings stay on the role when you save. Add matching rows to the permission matrix to manage them with checkboxes.
                       </p>
                       <ul className="text-xs font-mono space-y-1 list-disc list-inside text-defaulttextcolor/90">
-                        {getUnmappedPermissionStrings(originalPermissionStrings).map((s) => (
+                        {getUnmappedPermissionStrings(originalPermissionStrings)
+                          .filter((s) => s !== DEV_TICKETS_VIEW_PERMISSION)
+                          .map((s) => (
                           <li key={s}>{s}</li>
                         ))}
                       </ul>

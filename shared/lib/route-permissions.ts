@@ -134,7 +134,34 @@ export const PATH_PERMISSION_PREFIX: Record<string, string> = {
   "/communication/filemanager": "communication.files-storage:",
   "/communication/recordings": "communication.meetings:",
   "/support-tickets": "support.tickets:",
+  "/dev-tickets": "__standalone__devTickets.view",
 };
+
+/** Paths gated by a single raw permission string (not matrix prefix:action). */
+export const STANDALONE_PATH_PERMISSIONS: Record<string, string> = {
+  "/dev-tickets": "devTickets.view",
+};
+
+const STANDALONE_PATH_KEYS = Object.keys(STANDALONE_PATH_PERMISSIONS).sort(
+  (a, b) => b.length - a.length
+);
+
+export function getStandalonePermissionForPath(pathname: string): string | null {
+  const normalized = pathname.replace(/\/$/, "") || "/";
+  for (const path of STANDALONE_PATH_KEYS) {
+    if (normalized === path || normalized.startsWith(`${path}/`)) {
+      return STANDALONE_PATH_PERMISSIONS[path];
+    }
+  }
+  return null;
+}
+
+export function hasStandalonePermission(
+  userPermissions: string[],
+  permission: string
+): boolean {
+  return userPermissions.includes(permission);
+}
 
 /**
  * Permission prefixes that also grant access to another prefix.
@@ -202,12 +229,19 @@ export function hasPermissionForPath(
  * Falls back to prefix-only check for paths without action rules.
  */
 export function canAccessPath(userPermissions: string[], pathname: string): boolean {
+  const standalone = getStandalonePermissionForPath(pathname);
+  if (standalone) {
+    return hasStandalonePermission(userPermissions, standalone);
+  }
   const rule = getPathAccessRule(pathname);
   if (rule) {
     return userPermissions.some((p) => permissionStringGrantsRule(p, rule));
   }
   const required = getRequiredPermissionForPath(pathname);
   if (required == null) return true;
+  if (required.startsWith("__standalone__")) {
+    return hasStandalonePermission(userPermissions, required.slice("__standalone__".length));
+  }
   return hasPermissionForPath(userPermissions, required);
 }
 

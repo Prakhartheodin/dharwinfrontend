@@ -23,6 +23,7 @@ export interface TaskFilters {
   assignedToMe: boolean;
   unassigned: boolean;
   leaving: boolean;
+  reassigned: boolean;
 }
 
 export const EMPTY_FILTERS: TaskFilters = Object.freeze({
@@ -38,6 +39,7 @@ export const EMPTY_FILTERS: TaskFilters = Object.freeze({
   assignedToMe: false,
   unassigned: false,
   leaving: false,
+  reassigned: false,
 });
 
 export type TaskViewModel = ApiTask & {

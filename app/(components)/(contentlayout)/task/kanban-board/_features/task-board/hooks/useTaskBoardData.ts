@@ -56,7 +56,9 @@ export function useTaskBoardData(filters: TaskFilters) {
           ...(priorityParam && { priority: priorityParam }),
           ...(sprintIdParam && { sprintId: sprintIdParam }),
           ...(scopeToAssignedOnly || filters.assignedToMe ? { assignedToMe: true } : {}),
+          ...(filters.unassigned ? { unassigned: true } : {}),
           ...(filters.leaving ? { leaving: true } : {}),
+          ...(filters.reassigned ? { reassigned: true } : {}),
         }),
         fetchBoardMetadata(TASK_LIMIT, { scopeToAssignedOnly }),
       ]);
@@ -69,7 +71,17 @@ export function useTaskBoardData(filters: TaskFilters) {
     } finally {
       setLoading(false);
     }
-  }, [filters.q, filters.assignedToMe, filters.leaving, scopeToAssignedOnly, projectIdParam, priorityParam, sprintIdParam]);
+  }, [
+    filters.q,
+    filters.assignedToMe,
+    filters.unassigned,
+    filters.leaving,
+    filters.reassigned,
+    scopeToAssignedOnly,
+    projectIdParam,
+    priorityParam,
+    sprintIdParam,
+  ]);
 
   useEffect(() => {
     void load();

@@ -385,6 +385,7 @@ export function TaskDataProvider({
           ...(scopeToAssignedOnly || filters.assignedToMe ? { assignedToMe: true } : {}),
           ...(filters.unassigned ? { unassigned: true } : {}),
           ...(filters.leaving ? { leaving: true } : {}),
+          ...(filters.reassigned ? { reassigned: true } : {}),
         }),
         fetchBoardMetadata(TASK_LIMIT, { scopeToAssignedOnly }),
       ]);
@@ -427,6 +428,7 @@ export function TaskDataProvider({
     filters.assignedToMe,
     filters.unassigned,
     filters.leaving,
+    filters.reassigned,
     scopeToAssignedOnly,
     projectIdParam,
     priorityParam,

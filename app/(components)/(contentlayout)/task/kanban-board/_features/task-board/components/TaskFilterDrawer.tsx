@@ -34,6 +34,8 @@ export function TaskFilterDrawer({
     setAssignedToMe,
     unassigned,
     setUnassigned,
+    reassigned,
+    setReassigned,
     priorities,
     togglePriority,
     clearFilters,
@@ -95,6 +97,7 @@ export function TaskFilterDrawer({
                 <input
                   type="search"
                   className="form-control w-full !rounded-md"
+                  placeholder="Task name, employee name, or employee ID"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                 />
@@ -122,6 +125,14 @@ export function TaskFilterDrawer({
                   onChange={(e) => patchFilters({ leaving: e.target.checked })}
                 />
                 {leavingCount > 0 ? `Leaving · ${leavingCount}` : "Leaving"}
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={reassigned}
+                  onChange={(e) => setReassigned(e.target.checked)}
+                />
+                Reassigned
               </label>
               <div>
                 <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">

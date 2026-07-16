@@ -72,6 +72,10 @@ const ROUTE_MAP: Record<string, RouteFn> = {
     const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "ticketId"));
     return id ? `/support-tickets/${id}` : "/support-tickets";
   },
+  dev_ticket: (n) => {
+    const id = stripId(n.relatedEntity?.id) || stripId(meta(n, "ticketId"));
+    return id ? `/dev-tickets?ticket=${id}` : "/dev-tickets";
+  },
   system: () => "/notifications",
   general: () => "/notifications",
 };

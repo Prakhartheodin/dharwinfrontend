@@ -52,5 +52,19 @@ describe("url-state", () => {
       expect(parsed.leaving).toBe(false);
     });
   });
+
+  describe("reassigned filter", () => {
+    it("serializeFilters emits reassigned=1 when reassigned is true", () => {
+      const filters = normalize({ ...EMPTY_FILTERS, reassigned: true });
+      const out = serializeFilters(filters);
+      expect(out["reassigned"]).toBe("1");
+    });
+
+    it("deserializeFilters parses reassigned=1 as true", () => {
+      const params = new URLSearchParams({ reassigned: "1" });
+      const parsed = deserialize(params as unknown as import("next/navigation").ReadonlyURLSearchParams);
+      expect(parsed.reassigned).toBe(true);
+    });
+  });
 });
 

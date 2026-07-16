@@ -19,6 +19,7 @@ export type NotificationType =
   | "assignment"
   | "sop"
   | "support_ticket"
+  | "dev_ticket"
   | "chat_message"
   | "joining_reminder"
   | "placement_update"

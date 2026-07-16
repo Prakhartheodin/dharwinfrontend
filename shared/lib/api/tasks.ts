@@ -40,6 +40,15 @@ export interface Task {
   /** Staffing hints from PM / AI (may include specialist slugs such as feature-engineer). */
   requiredSkills?: string[];
   assignedTo?: TaskUser[];
+  formerAssignees?: Array<{
+    user?: string | { _id?: string; id?: string };
+    removedAt?: string;
+    reason?: string;
+  }>;
+  /** Derived (response-only): employee IDs of assignees (for task-board search). */
+  assigneeEmployeeIds?: string[];
+  /** Derived (response-only): employee names of assignees (for task-board search). */
+  assigneeEmployeeNames?: string[];
   /** Populated project, raw ObjectId string, or null if unlinked / missing ref */
   projectId?: { _id?: string; id?: string; name?: string } | string | null;
   likesCount: number;
@@ -97,6 +106,7 @@ export interface TasksListParams {
   assignedToMe?: boolean;
   unassigned?: boolean;
   leaving?: boolean;
+  reassigned?: boolean;
   sortBy?: string;
   limit?: number;
   page?: number;
@@ -128,6 +138,7 @@ export async function listTasks(params?: TasksListParams): Promise<TasksListResp
           assignedToMe: params.assignedToMe === true ? "true" : undefined,
           unassigned: params.unassigned === true ? "true" : undefined,
           leaving: params.leaving === true ? "true" : undefined,
+          reassigned: params.reassigned === true ? "true" : undefined,
         }
       : undefined,
   });

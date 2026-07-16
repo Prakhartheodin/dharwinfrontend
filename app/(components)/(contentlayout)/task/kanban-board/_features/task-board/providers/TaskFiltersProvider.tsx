@@ -36,6 +36,8 @@ export type TaskFiltersContextValue = {
   setAssignedToMe: (v: boolean) => void;
   unassigned: boolean;
   setUnassigned: (v: boolean) => void;
+  reassigned: boolean;
+  setReassigned: (v: boolean) => void;
   priorities: TaskFilters["priorities"];
   setPriorities: (next: TaskFilters["priorities"]) => void;
   togglePriority: (p: TaskFilters["priorities"][number]) => void;
@@ -136,7 +138,8 @@ export function TaskFiltersProvider({
       !!filters.due ||
       filters.assignedToMe ||
       filters.unassigned ||
-      filters.leaving
+      filters.leaving ||
+      filters.reassigned
     );
   }, [filters]);
 
@@ -157,6 +160,12 @@ export function TaskFiltersProvider({
   const unassigned = filters.unassigned;
   const setUnassigned = useCallback(
     (v: boolean) => patchFilters({ unassigned: v }),
+    [patchFilters]
+  );
+
+  const reassigned = filters.reassigned;
+  const setReassigned = useCallback(
+    (v: boolean) => patchFilters({ reassigned: v }),
     [patchFilters]
   );
 
@@ -192,6 +201,8 @@ export function TaskFiltersProvider({
       setAssignedToMe,
       unassigned,
       setUnassigned,
+      reassigned,
+      setReassigned,
       priorities,
       setPriorities,
       togglePriority,
@@ -209,6 +220,8 @@ export function TaskFiltersProvider({
       setAssignedToMe,
       unassigned,
       setUnassigned,
+      reassigned,
+      setReassigned,
       priorities,
       setPriorities,
       togglePriority,

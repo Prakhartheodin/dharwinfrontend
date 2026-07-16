@@ -15,6 +15,7 @@ import {
   QUERY_PRIORITY,
   QUERY_PROJECT,
   QUERY_Q,
+  QUERY_REASSIGNED,
   QUERY_SPRINT,
   QUERY_STATUS,
   QUERY_UNASSIGNED,
@@ -59,6 +60,7 @@ export function deserializeFilters(sp: ReadonlyURLSearchParams): TaskFilters {
     assignedToMe: sp.get(QUERY_ASSIGNED_TO_ME) === "1",
     unassigned: sp.get(QUERY_UNASSIGNED) === "1",
     leaving: sp.get(QUERY_LEAVING) === "1",
+    reassigned: sp.get(QUERY_REASSIGNED) === "1",
   };
 }
 
@@ -97,6 +99,7 @@ export function normalize(raw: Partial<TaskFilters> | TaskFilters): TaskFilters 
     assignedToMe: raw.assignedToMe === true,
     unassigned: raw.unassigned === true,
     leaving: raw.leaving === true,
+    reassigned: raw.reassigned === true,
   };
 }
 
@@ -106,6 +109,7 @@ export function isEqual(a: TaskFilters, b: TaskFilters): boolean {
     a.assignedToMe === b.assignedToMe &&
     a.unassigned === b.unassigned &&
     a.leaving === b.leaving &&
+    a.reassigned === b.reassigned &&
     dueEqual(a.due, b.due) &&
     sortedCopy(a.projectIds).join("\0") === sortedCopy(b.projectIds).join("\0") &&
     sortedCopy(a.assigneeIds).join("\0") === sortedCopy(b.assigneeIds).join("\0") &&
@@ -140,6 +144,7 @@ export function serializeFilters(
   if (filters.assignedToMe) out[QUERY_ASSIGNED_TO_ME] = "1";
   if (filters.unassigned) out[QUERY_UNASSIGNED] = "1";
   if (filters.leaving) out[QUERY_LEAVING] = "1";
+  if (filters.reassigned) out[QUERY_REASSIGNED] = "1";
   return out;
 }
 

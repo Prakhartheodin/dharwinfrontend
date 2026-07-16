@@ -12,6 +12,7 @@ describe("url-state extra", () => {
       priorities: ["high" as const],
       statuses: ["new" as const],
       assignedToMe: true,
+      reassigned: true,
     };
     const sp = new URLSearchParams(serializeFilters(filters));
     const back = deserializeFilters(sp as never);
@@ -19,6 +20,7 @@ describe("url-state extra", () => {
     expect(back.priorities).toContain("high");
     expect(back.statuses).toContain("new");
     expect(back.assignedToMe).toBe(true);
+    expect(back.reassigned).toBe(true);
   });
 
   it("drops invalid status values", () => {

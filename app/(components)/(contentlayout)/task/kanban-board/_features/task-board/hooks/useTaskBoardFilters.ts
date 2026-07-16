@@ -117,7 +117,10 @@ export function useTaskBoardFilters() {
       filters.sprintIds.length > 0 ||
       filters.createdByIds.length > 0 ||
       !!filters.due ||
-      filters.assignedToMe
+      filters.assignedToMe ||
+      filters.unassigned ||
+      filters.leaving ||
+      filters.reassigned
     );
   }, [filters]);
 

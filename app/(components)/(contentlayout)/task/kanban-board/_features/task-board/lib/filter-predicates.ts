@@ -56,6 +56,12 @@ function assigneeSearchText(task: Task): string {
     .toLowerCase();
 }
 
+function assigneeDirectorySearchText(task: Task): string {
+  const employeeIds = (task.assigneeEmployeeIds ?? []).join(" ");
+  const employeeNames = (task.assigneeEmployeeNames ?? []).join(" ");
+  return `${employeeIds} ${employeeNames}`.toLowerCase().trim();
+}
+
 function createdById(task: Task): string | undefined {
   const u = task.createdBy;
   if (!u) return undefined;
@@ -102,11 +108,13 @@ export function compilePredicate(filters: TaskFilters): (task: Task) => boolean 
       const desc = String(task.description ?? "").toLowerCase();
       const code = String(task.taskCode ?? "").toLowerCase();
       const assignees = assigneeSearchText(task);
+      const directory = assigneeDirectorySearchText(task);
       if (
         !title.includes(q) &&
         !desc.includes(q) &&
         !code.includes(q) &&
-        !assignees.includes(q)
+        !assignees.includes(q) &&
+        !directory.includes(q)
       ) {
         return false;
       }
@@ -135,6 +143,7 @@ export function compilePredicate(filters: TaskFilters): (task: Task) => boolean 
     }
     if (filters.due && !matchesDue(task, filters.due)) return false;
     if (filters.leaving && !task.offboardingFlag) return false;
+    if (filters.reassigned && (task.formerAssignees?.length ?? 0) === 0) return false;
     return true;
   };
 }

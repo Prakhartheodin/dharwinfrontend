@@ -344,6 +344,19 @@ select[id*='page-size'] {
   flex-shrink: 0;
 }
 
+/*
+  Opt-out: full-width select inside form grids.
+  The width:auto rule above narrows every select.form-control (needed for table
+  toolbars). In stacked/grid forms that makes selects misalign against full-width
+  inputs. Higher specificity (0,2,1) beats the rule above so these selects fill
+  their column and line up with text inputs.
+*/
+select.form-control.form-control-block {
+  width: 100% !important;
+  min-width: 0 !important;
+  align-self: stretch;
+}
+
 /* Notification bell ring animation */
 @keyframes bell-ring {
   0%,100% { transform: rotate(0deg); transform-origin: top center; }
