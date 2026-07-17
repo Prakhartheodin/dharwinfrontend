@@ -872,8 +872,8 @@ export function DevTicketDetailDrawer({
           </section>
         </div>
 
-        {/* Footer composer */}
-        {detail.status !== "Closed" && (
+        {/* Footer composer — reporter/assignee/admin only, matching the backend gate */}
+        {detail.status !== "Closed" && canEdit && (
           <div className="min-w-0 shrink-0 border-t border-defaultborder bg-white px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] dark:border-white/10 dark:bg-bodybg dark:shadow-[0_-8px_24px_rgba(0,0,0,0.25)] sm:px-5" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
             <label htmlFor="dev-ticket-comment" className="mb-2 block text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-500 dark:text-white/50">
               Add a comment
@@ -944,7 +944,7 @@ export function DevTicketDetailDrawer({
                 <button
                   type="button"
                   onClick={handleAddComment}
-                  disabled={addingComment || commentText.trim().length < 5}
+                  disabled={addingComment || !commentText.trim()}
                   className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[0.8125rem] font-medium text-white shadow-sm transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-40"
                   aria-busy={addingComment}
                 >
