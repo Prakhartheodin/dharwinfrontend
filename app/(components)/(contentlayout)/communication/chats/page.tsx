@@ -1744,16 +1744,20 @@ const Chat = () => {
               {activeCallForConv && String(activeCallForConv.conversation) === String(convId) && (
                 <div className={chatStyles.rejoinBar}>
                   <div className={chatStyles.rejoinBarStatus}>
-                    <span className={`flex items-center gap-2 text-primary font-semibold text-sm ${chatStyles.rejoinBarStatusText}`}>
-                      <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} shrink-0 text-lg`} />
-                      {activeCallForConv.participantCount && activeCallForConv.participantCount > 1
-                        ? `${activeCallForConv.participantCount} in call`
-                        : "Call in progress"}
+                    <span className={chatStyles.rejoinBarPulse} aria-hidden="true" />
+                    <span className={`flex items-center gap-2 font-semibold text-sm ${chatStyles.rejoinBarStatusText}`}>
+                      <i className={`${activeCallForConv.callType === "video" ? "ri-vidicon-line" : "ri-phone-line"} shrink-0 text-lg`} aria-hidden="true" />
+                      {(() => {
+                        const label = activeCallForConv.callType === "video" ? "Video call" : "Voice call";
+                        const count = activeCallForConv.participantCount;
+                        return count && count > 1 ? `${label} · ${count} in call` : `${label} in progress`;
+                      })()}
                     </span>
                   </div>
                   <button
                     type="button"
-                    className={`ti-btn ti-btn-sm ti-btn-primary !rounded-full ${chatStyles.rejoinBarAction}`}
+                    className={chatStyles.rejoinBarAction}
+                    aria-label="Rejoin ongoing call"
                     onClick={() => {
                       const params = new URLSearchParams({ from: "chat", conv: activeCallForConv.conversation });
                       if (activeCallForConv.id) params.set("callId", activeCallForConv.id);
@@ -1762,7 +1766,7 @@ const Chat = () => {
                       window.open(url, "_blank", "noopener");
                     }}
                   >
-                    <i className="ri-phone-fill me-1" />
+                    <i className="ri-phone-fill" aria-hidden="true" />
                     Rejoin
                   </button>
                 </div>

@@ -3,6 +3,7 @@
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect, useMemo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import * as XLSX from 'xlsx'
 import {
   getAtsAnalytics,
   getAtsDrillDown,
@@ -155,47 +156,64 @@ function fillMonthlyTimeBuckets<T extends { period: string; count: number }>(buc
 }
 
 // ---------------------------------------------------------------------------
-// CSV Export
+// Excel Export
 // ---------------------------------------------------------------------------
-function exportToCsv(data: AtsAnalyticsResponse, periodLabel: string) {
-  const rows: string[][] = [
-    ['ATS Analytics Export', ''],
+/** A leading =, +, -, or @ is quoted so Excel treats the cell as text, not a formula. */
+function defangCell(v: unknown): string | number {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'number') return v
+  const s = String(v)
+  return /^[=+\-@]/.test(s) ? `'${s}` : s
+}
+
+/**
+ * One sheet per section, header on row 1, so every sheet sorts and filters.
+ * Columns are sized to their longest value (clamped 10..60) so nothing truncates.
+ */
+function addSheet(wb: XLSX.WorkBook, name: string, headers: string[], rows: unknown[][]) {
+  const aoa = [headers, ...rows.map((r) => r.map(defangCell))]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  ws['!cols'] = headers.map((h, col) => {
+    const longest = aoa.reduce((max, row) => {
+      const len = String(row[col] ?? '').length
+      return len > max ? len : max
+    }, h.length)
+    return { wch: Math.min(Math.max(longest + 2, 10), 60) }
+  })
+  const lastCol = XLSX.utils.encode_col(headers.length - 1)
+  ws['!autofilter'] = { ref: `A1:${lastCol}${aoa.length}` }
+  XLSX.utils.book_append_sheet(wb, ws, name)
+}
+
+function exportToExcel(data: AtsAnalyticsResponse, periodLabel: string) {
+  const wb = XLSX.utils.book_new()
+
+  addSheet(wb, 'Summary', ['Metric', 'Value'], [
     ['Period', periodLabel],
-    ['Total Candidates', String(data.totals.totalCandidates)],
-    ['Total Jobs', String(data.totals.totalJobs)],
-    ['Active Jobs', String(data.totals.activeJobs)],
-    ['Total Applications', String(data.totals.totalApplications)],
-    ['Hired', String(data.totals.hiredCount)],
-    ['Total Recruiters', String(data.totals.totalRecruiters)],
-    ['Conversion Rate %', String(data.totals.conversionRate)],
-    ['Avg Profile Completion %', String(data.totals.avgProfileCompletion)],
-    [''],
-    ['Application Funnel', 'Count'],
-    ...(data.applicationFunnel || []).map((f) => [f.status, String(f.count)]),
-    [''],
-    ['Job Status', 'Count'],
-    ...(data.jobStatusBreakdown || []).map((j) => [j.status, String(j.count)]),
-    [''],
-    ['Job Type', 'Count'],
-    ...(data.jobTypeDistribution || []).map((j) => [j.jobType, String(j.count)]),
-    [''],
-    ['Top Jobs by Applications', 'Count'],
-    ...(data.topJobsByApplications || []).map((j) => [`${j.title} (${j.org || '—'})`, String(j.count)]),
-    [''],
-    ['Applications Over Time', 'Count'],
-    ...(data.applicationsOverTime || []).map((t) => [t.period, String(t.count)]),
-    [''],
-    ['Jobs Created Over Time', 'Count'],
-    ...(data.jobsOverTime || []).map((t) => [t.period, String(t.count)]),
-  ]
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `ats-analytics-${periodLabel.replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+    ['Total Candidates', data.totals.totalCandidates],
+    ['Total Jobs', data.totals.totalJobs],
+    ['Active Jobs', data.totals.activeJobs],
+    ['Total Applications', data.totals.totalApplications],
+    ['Hired', data.totals.hiredCount],
+    ['Total Recruiters', data.totals.totalRecruiters],
+    ['Conversion Rate %', data.totals.conversionRate],
+    ['Avg Profile Completion %', data.totals.avgProfileCompletion],
+  ])
+  addSheet(wb, 'Application Funnel', ['Status', 'Count'],
+    (data.applicationFunnel || []).map((f) => [f.status, f.count]))
+  addSheet(wb, 'Job Status', ['Status', 'Count'],
+    (data.jobStatusBreakdown || []).map((j) => [j.status, j.count]))
+  addSheet(wb, 'Job Type', ['Job Type', 'Count'],
+    (data.jobTypeDistribution || []).map((j) => [j.jobType, j.count]))
+  addSheet(wb, 'Top Jobs', ['Job Title', 'Organisation', 'Applications'],
+    (data.topJobsByApplications || []).map((j) => [j.title, j.org || '', j.count]))
+  addSheet(wb, 'Applications Over Time', ['Period', 'Count'],
+    (data.applicationsOverTime || []).map((t) => [t.period, t.count]))
+  addSheet(wb, 'Jobs Over Time', ['Period', 'Count'],
+    (data.jobsOverTime || []).map((t) => [t.period, t.count]))
+
+  const slug = periodLabel.replace(/\s+/g, '-').toLowerCase()
+  XLSX.writeFile(wb, `ats-analytics-${slug}-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
 
 // ---------------------------------------------------------------------------
@@ -922,10 +940,10 @@ const ATSAnalytics = () => {
             <button
               type="button"
               className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-              onClick={() => exportToCsv(data, periodLabel)}
+              onClick={() => exportToExcel(data, periodLabel)}
             >
-              <i className="ri-download-line align-middle me-1" />
-              Export CSV
+              <i className="ri-file-excel-2-line align-middle me-1" />
+              Export Excel
             </button>
           )}
         </div>

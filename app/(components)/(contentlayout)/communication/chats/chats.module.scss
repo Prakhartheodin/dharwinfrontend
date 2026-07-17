@@ -489,12 +489,67 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--chat-accent);
 }
 
+/* Live-call indicator dot */
+.rejoinBarPulse {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--chat-accent);
+  animation: rejoinPulse 1.6s ease-in-out infinite;
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+@keyframes rejoinPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--chat-accent-soft); opacity: 1; }
+  50% { box-shadow: 0 0 0 5px var(--chat-accent-soft); opacity: 0.75; }
+}
+
+/* Self-contained pill button — intentionally independent of template .ti-btn
+   globals (their load order previously collapsed this into an icon circle). */
 .rejoinBarAction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
   flex-shrink: 0;
   white-space: nowrap;
   min-height: 2.75rem;
+  padding: 0.5rem 1.25rem;
+  border: 0;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, var(--chat-accent) 0%, #0f766e 100%);
+  color: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.15s ease, filter 0.2s ease;
+
+  &:hover {
+    filter: brightness(1.06);
+    box-shadow: 0 4px 12px rgba(13, 148, 136, 0.35);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--chat-accent);
+    outline-offset: 2px;
+  }
+
+  i {
+    font-size: 1rem;
+    line-height: 1;
+  }
 }
 
 .threadHeader {

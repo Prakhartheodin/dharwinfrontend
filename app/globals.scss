@@ -153,6 +153,7 @@ html.dark:not([data-toggled]) .app-sidebar .main-sidebar-header .header-logo {
 html:not(.dark) .app-header .horizontal-logo .header-logo {
   img.desktop-dark,
   img.desktop-white,
+  img.toggle-logo,
   img.toggle-dark,
   img.toggle-white {
     display: none !important;
@@ -164,7 +165,11 @@ html:not(.dark) .app-header .horizontal-logo .header-logo {
 }
 
 html.dark .app-header .horizontal-logo .header-logo {
-  img.desktop-logo {
+  img.desktop-logo,
+  img.desktop-white,
+  img.toggle-logo,
+  img.toggle-dark,
+  img.toggle-white {
     display: none !important;
   }
 

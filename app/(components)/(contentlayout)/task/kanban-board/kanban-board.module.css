@@ -208,15 +208,46 @@
 
 .kbFilterBarSecondary {
   display: flex;
+  /* Own row always: otherwise it slots inline beside the primary bar when
+   * narrow (e.g. no "Clear filters" button) and knocks the search field onto
+   * its own line, so the layout flips as filters toggle. */
+  flex-basis: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* Project select sits on its own full-width line above the pills/search row. */
+.kbFilterProjectRow {
+  display: flex;
+  flex-basis: 100%;
 }
 
 .kbFilterProject {
   flex: 0 1 16rem;
   min-width: min(100%, 12rem);
   max-width: 18rem;
+}
+
+/* Toolbar actions (view/density toggles, saved views, new task) live at the
+ * end of the pills/search line so the whole row shares one centered axis. */
+.kbFilterTrailing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-inline-start: auto;
+}
+
+/* < lg: filter controls collapse into the drawer (mobile "Filters" button);
+ * only that button + trailing actions stay in the bar. */
+@media (max-width: 1023.98px) {
+  .kbFilterProjectRow,
+  .kbFilterAssignment,
+  .kbFilterSearchWrap,
+  .kbFilterBarSecondary {
+    display: none;
+  }
 }
 
 .kbFilterAssignment {
@@ -269,8 +300,25 @@
 
 .kbFilterSearchWrap {
   position: relative;
-  flex: 1 1 14rem;
-  min-width: min(100%, 14rem);
+  flex: 1 1 6rem;
+  /* Small floor so the trailing actions can stay on this line at ~900px
+   * viewports instead of wrapping to a stray row. */
+  min-width: min(100%, 6rem);
+}
+
+/* Mid widths: tighten the trailing controls so the pills/search/actions row
+ * keeps fitting on one line instead of dropping the actions to a stray row. */
+@media (max-width: 1279.98px) {
+  .kbFilterTrailing .kbToggleBtn {
+    padding: 0 0.5rem;
+  }
+  .kbFilterTrailing .kbSavedViewsTrigger {
+    padding: 0 0.5rem;
+  }
+  .kbFilterTrailing :global(.ti-btn) {
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+  }
 }
 
 .kbFilterSearchIcon {

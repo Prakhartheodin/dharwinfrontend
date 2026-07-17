@@ -188,11 +188,17 @@ export async function browseApplyToJob(
   return data;
 }
 
-export async function exportJobsToExcel(params?: JobsListParams): Promise<Blob> {
-  const { data } = await apiClient.get<Blob>("/jobs/export/excel", {
-    params,
-    responseType: "blob",
-  });
+/**
+ * Export jobs to xlsx. Pass the ids of the rows currently visible in the list —
+ * the page filters client-side, so the server can't reproduce that selection from
+ * query params. Omit `ids` to export every job the user may see.
+ */
+export async function exportJobsToExcel(ids?: string[]): Promise<Blob> {
+  const { data } = await apiClient.post<Blob>(
+    "/jobs/export/excel",
+    ids?.length ? { ids } : {},
+    { responseType: "blob" }
+  );
   return data;
 }
 

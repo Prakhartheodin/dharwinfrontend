@@ -30,7 +30,7 @@ export function TaskToolbar({
     <>
       <SkipLinks />
       <header className={styles.kbToolbar} role="banner">
-        <div className={`${styles.kbToolbarCluster} min-w-0 flex-1 flex-col !items-stretch sm:flex-row sm:items-center`}>
+        <div className={styles.kbToolbarCluster}>
           <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
             Task board
           </span>
@@ -44,26 +44,23 @@ export function TaskToolbar({
               ? `${taskCount.toString().padStart(2, "0")} tasks match filters`
               : "Loading task count"}
           </span>
-          <div className="hidden w-full lg:block">
-            <TaskFilters projects={projects} leavingCount={leavingCount} />
-          </div>
-          <div className="flex w-full flex-wrap items-center gap-2 lg:hidden">
-            <button
-              type="button"
-              className="ti-btn ti-btn-light flex-1 !py-2"
-              onClick={() => setMobileFiltersOpen(true)}
-            >
-              <i className="ri-filter-3-line me-1" aria-hidden />
-              Filters
-            </button>
-          </div>
         </div>
-        <div className={styles.kbToolbarCluster}>
-          <ViewToggle />
-          <DensityToggle />
-          <SavedViewsMenu userId={userId} onAfterApply={() => setMobileFiltersOpen(false)} />
-          {extraActions}
-        </div>
+        <TaskFilters
+          projects={projects}
+          leavingCount={leavingCount}
+          onOpenMobileFilters={() => setMobileFiltersOpen(true)}
+          trailing={
+            <>
+              <ViewToggle />
+              <DensityToggle />
+              <SavedViewsMenu
+                userId={userId}
+                onAfterApply={() => setMobileFiltersOpen(false)}
+              />
+              {extraActions}
+            </>
+          }
+        />
       </header>
       <TaskFilterDrawer
         open={mobileFiltersOpen}

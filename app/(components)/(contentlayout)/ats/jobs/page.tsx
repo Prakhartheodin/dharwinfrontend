@@ -328,7 +328,14 @@ const Jobs = () => {
 
   const handleExportExcel = async () => {
     try {
-      const blob = await exportJobsToExcel()
+      // Export what the list is showing. Filtering happens client-side, so the ids
+      // of the filtered rows are the only faithful way to express it to the server.
+      const visibleIds = filteredData.map((job) => job.id).filter(Boolean)
+      if (visibleIds.length === 0) {
+        alert('No jobs match the current filters — nothing to export.')
+        return
+      }
+      const blob = await exportJobsToExcel(visibleIds)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url

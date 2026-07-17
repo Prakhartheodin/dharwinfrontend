@@ -13,9 +13,19 @@ const Select = dynamic(() => import("react-select"), { ssr: false });
 export interface TaskFiltersProps {
   projects: Array<{ id: string; name: string }>;
   leavingCount?: number;
+  /** Actions rendered at the end of the pills/search line (view toggles,
+   *  saved views, new task) so the whole row shares one center-aligned line. */
+  trailing?: React.ReactNode;
+  /** When set, renders the mobile "Filters" button (< lg) that opens the drawer. */
+  onOpenMobileFilters?: () => void;
 }
 
-export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): React.JSX.Element {
+export function TaskFilters({
+  projects,
+  leavingCount = 0,
+  trailing,
+  onOpenMobileFilters,
+}: TaskFiltersProps): React.JSX.Element {
   const {
     searchInput,
     setSearchInput,
@@ -42,7 +52,8 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
       aria-label="Task filters"
     >
       <div className={styles.kbFilterBarPrimary}>
-        <div className={`kb-project-select ${styles.kbFilterProject}`}>
+        <div className={styles.kbFilterProjectRow}>
+          <div className={`kb-project-select ${styles.kbFilterProject}`}>
           <Select
             name="project"
             placeholder="All projects"
@@ -68,6 +79,7 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
             styles={selectMenuLayerStyles}
             classNamePrefix="Select2"
           />
+          </div>
         </div>
 
         <div className={styles.kbFilterAssignment} role="group" aria-label="Assignment">
@@ -102,6 +114,19 @@ export function TaskFilters({ projects, leavingCount = 0 }: TaskFiltersProps): R
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
+
+        {onOpenMobileFilters ? (
+          <button
+            type="button"
+            className="ti-btn ti-btn-light flex-1 !py-2 lg:hidden"
+            onClick={onOpenMobileFilters}
+          >
+            <i className="ri-filter-3-line me-1" aria-hidden />
+            Filters
+          </button>
+        ) : null}
+
+        {trailing ? <div className={styles.kbFilterTrailing}>{trailing}</div> : null}
       </div>
 
       <div className={styles.kbFilterBarSecondary}>
