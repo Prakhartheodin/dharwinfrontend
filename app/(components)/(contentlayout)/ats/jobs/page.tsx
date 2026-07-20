@@ -105,7 +105,7 @@ function formatPostingDateMeta(raw?: string | null): { formatted: string; relati
 /** Per-column visibility classes for md→2xl table view (mobile uses card list instead). */
 const COLUMN_VISIBILITY: Record<string, string> = {
   checkbox: '',
-  jobTitle: '',
+  jobTitle: 'max-w-[22rem] min-w-0 overflow-hidden whitespace-normal',
   company: '',
   vacancies: 'hidden xl:table-cell',
   postingDate: 'hidden w-0 max-w-0 !p-0 !border-0 overflow-hidden',
@@ -671,9 +671,10 @@ const Jobs = () => {
               : postedOn
             : ''
           return (
-            <div className="min-w-0 max-w-[18rem] sm:max-w-[22rem]">
+            <div className="min-w-0 max-w-[18rem] sm:max-w-[22rem] overflow-hidden">
               <span
-                className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary block leading-snug"
+                className="font-semibold text-gray-800 dark:text-white cursor-pointer hover:text-primary block leading-snug line-clamp-2"
+                title={job.jobTitle}
                 onClick={openJobPreview}
               >
                 {job.jobTitle}
