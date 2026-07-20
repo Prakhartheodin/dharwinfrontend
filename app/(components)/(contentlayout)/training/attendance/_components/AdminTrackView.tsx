@@ -11,7 +11,7 @@ export interface AdminTrackViewProps {
   search: string
   onSearchChange: (value: string) => void
   onPunchOut: (studentId: string) => void
-  onExportCsv: (list?: AttendanceTrackItem[]) => void
+  onExportExcel: (punchStatus: "all" | "in" | "out") => void
   formatTimeInTimezone: (dateStr: string | null, timezone: string) => string
   formatDuration: (ms: number) => string
   formatDurationFromMs: (ms: number | null) => string
@@ -25,7 +25,7 @@ export default function AdminTrackView({
   search,
   onSearchChange,
   onPunchOut,
-  onExportCsv,
+  onExportExcel,
   formatTimeInTimezone,
   formatDuration,
   formatDurationFromMs,
@@ -139,10 +139,10 @@ export default function AdminTrackView({
             <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
               <button
                 type="button"
-                onClick={() => onExportCsv(filteredList)}
+                onClick={() => onExportExcel(statusFilter)}
                 disabled={trackList.length === 0}
-                title="Export CSV"
-                aria-label="Export attendance as CSV"
+                title="Export Excel"
+                aria-label="Export attendance as Excel"
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
               >
                 <i className="ri-download-2-line text-[1.1rem]" aria-hidden />

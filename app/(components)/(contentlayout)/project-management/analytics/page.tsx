@@ -6,8 +6,17 @@ import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { listProjects, normalizeProjectPriority, type Project, type ProjectStatus } from "@/shared/lib/api/projects";
-import { listTasks, getTaskId, type Task, type TaskStatus, TASK_STATUS_LABELS } from "@/shared/lib/api/tasks";
+import {
+  listTasks,
+  getTaskId,
+  getTaskProjectMeta,
+  type Task,
+  type TaskStatus,
+  TASK_STATUS_LABELS,
+} from "@/shared/lib/api/tasks";
 import { listTeamGroups } from "@/shared/lib/api/projectTeams";
+import * as XLSX from "xlsx";
+import { addSheet, downloadWorkbook, fmtExportDate, fmtExportDateTime } from "@/shared/lib/xlsx-export";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -219,13 +228,137 @@ function PmCompactTable({
   );
 }
 
-const csvSafe = (v: string | number | null | undefined): string => {
-  const raw = String(v ?? "");
-  return `"${raw.replace(/"/g, '""').replace(/\r?\n/g, " ")}"`;
-};
-
 function getProjectId(p: Project): string {
   return (p as Project & { id?: string }).id ?? p._id ?? "";
+}
+
+function joinNames(items: Array<{ name?: string } | undefined> | undefined): string {
+  if (!items?.length) return "";
+  return items
+    .map((item) => item?.name?.trim())
+    .filter(Boolean)
+    .join("; ");
+}
+
+function getTaskProjectName(task: Task): string {
+  const { embeddedName } = getTaskProjectMeta(task);
+  return embeddedName ?? "";
+}
+
+function projectProgressPct(project: Project): number {
+  const total = project.totalTasks ?? 0;
+  const done = project.completedTasks ?? 0;
+  return total > 0 ? Math.round((done / total) * 100) : 0;
+}
+
+type PmAnalyticsExportInput = {
+  kpis: {
+    totalProjects: number;
+    totalTasks: number;
+    taskCompletionPct: number;
+    projectProgressPct: number;
+    teamCount: number;
+  };
+  tasksByStatus: { label: string; count: number }[];
+  projectsByStatus: { label: string; count: number }[];
+  projects: Project[];
+  overdueTasks: Task[];
+  atRiskProjects: Project[];
+};
+
+function exportPmAnalyticsToExcel(input: PmAnalyticsExportInput) {
+  const wb = XLSX.utils.book_new();
+  const exportedAt = fmtExportDateTime(new Date());
+
+  addSheet(wb, "Summary", ["Metric", "Value"], [
+    ["Total Projects", input.kpis.totalProjects],
+    ["Total Tasks", input.kpis.totalTasks],
+    ["Task Completion %", input.kpis.taskCompletionPct],
+    ["Project Progress %", input.kpis.projectProgressPct],
+    ["Teams", input.kpis.teamCount],
+    ["Overdue Tasks", input.overdueTasks.length],
+    ["At-Risk Projects", input.atRiskProjects.length],
+    ["Exported At (UTC)", exportedAt],
+  ]);
+
+  addSheet(
+    wb,
+    "Tasks by Status",
+    ["Status", "Count"],
+    input.tasksByStatus.map((row) => [row.label, row.count])
+  );
+
+  addSheet(
+    wb,
+    "Projects by Status",
+    ["Status", "Count"],
+    input.projectsByStatus.map((row) => [row.label, row.count])
+  );
+
+  addSheet(
+    wb,
+    "Projects Overview",
+    [
+      "Project Name",
+      "Status",
+      "Priority",
+      "Progress %",
+      "Completed Tasks",
+      "Total Tasks",
+      "Start Date (UTC)",
+      "End Date (UTC)",
+      "Project Manager",
+      "Assigned Members",
+      "Assigned Teams",
+      "Tags",
+    ],
+    input.projects.map((project) => [
+      project.name ?? "",
+      PROJECT_STATUS_LABELS[project.status],
+      normalizeProjectPriority(project.priority),
+      projectProgressPct(project),
+      project.completedTasks ?? 0,
+      project.totalTasks ?? 0,
+      fmtExportDate(project.startDate),
+      fmtExportDate(project.endDate),
+      project.projectManager ?? "",
+      joinNames(project.assignedTo),
+      (project.assignedTeams ?? []).map((team) => team.name ?? "").filter(Boolean).join("; "),
+      (project.tags ?? []).join("; "),
+    ])
+  );
+
+  addSheet(
+    wb,
+    "Overdue Tasks",
+    ["Task Title", "Task Code", "Status", "Priority", "Due Date (UTC)", "Project", "Assignees"],
+    input.overdueTasks.map((task) => [
+      task.title ?? "",
+      task.taskCode ?? "",
+      TASK_STATUS_LABELS[task.status],
+      task.priority ?? "",
+      fmtExportDate(task.dueDate),
+      getTaskProjectName(task),
+      joinNames(task.assignedTo),
+    ])
+  );
+
+  addSheet(
+    wb,
+    "At-Risk Projects",
+    ["Project Name", "Status", "Priority", "End Date (UTC)", "Progress %", "Completed Tasks", "Total Tasks"],
+    input.atRiskProjects.map((project) => [
+      project.name ?? "",
+      PROJECT_STATUS_LABELS[project.status],
+      normalizeProjectPriority(project.priority),
+      fmtExportDate(project.endDate),
+      projectProgressPct(project),
+      project.completedTasks ?? 0,
+      project.totalTasks ?? 0,
+    ])
+  );
+
+  downloadWorkbook(wb, `pm-analytics-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 function StatCard({
@@ -475,55 +608,20 @@ const AnalyticsPage = () => {
             <button
               type="button"
               className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-600 transition hover:border-slate-900 hover:text-slate-900 dark:border-white/10 dark:bg-bodybg2 dark:text-slate-300 dark:hover:border-white dark:hover:text-white"
-              onClick={() => {
-            const rows: string[] = [
-              "Projects Overview",
-              "Project,Status,Priority,Progress,Tasks",
-              ...projects.slice(0, 50).map((p) => {
-                const total = p.totalTasks ?? 0;
-                const done = p.completedTasks ?? 0;
-                const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-                return [
-                  csvSafe(p.name ?? ""),
-                  csvSafe(PROJECT_STATUS_LABELS[p.status]),
-                  csvSafe(p.priority ?? ""),
-                  csvSafe(`${pct}%`),
-                  csvSafe(`${done}/${total}`),
-                ].join(",");
-              }),
-              "",
-              "Overdue Tasks",
-              "Task,Due Date,Status,Project",
-              ...overdueTasks.slice(0, 50).map((t) =>
-                [
-                  csvSafe(t.title ?? ""),
-                  csvSafe(t.dueDate ? new Date(t.dueDate).toLocaleDateString() : ""),
-                  csvSafe(TASK_STATUS_LABELS[t.status]),
-                  csvSafe(typeof t.projectId === "object" && t.projectId?.name ? t.projectId.name ?? "" : ""),
-                ].join(",")
-              ),
-              "",
-              "At-Risk Projects",
-              "Project,End Date,Status",
-              ...atRiskProjects.slice(0, 50).map((p) =>
-                [
-                  csvSafe(p.name ?? ""),
-                  csvSafe(p.endDate ? new Date(p.endDate).toLocaleDateString() : ""),
-                  csvSafe(PROJECT_STATUS_LABELS[p.status]),
-                ].join(",")
-              ),
-            ];
-            const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `analytics-${new Date().toISOString().slice(0, 10)}.csv`;
-            a.click();
-            URL.revokeObjectURL(a.href);
-          }}
-                title="Export to CSV"
-              >
-                <i className="ri-file-download-line" /> Export
-              </button>
+              onClick={() =>
+                exportPmAnalyticsToExcel({
+                  kpis,
+                  tasksByStatus,
+                  projectsByStatus,
+                  projects,
+                  overdueTasks,
+                  atRiskProjects,
+                })
+              }
+              title="Export to Excel"
+            >
+              <i className="ri-file-download-line" /> Export
+            </button>
               <button
                 type="button"
                 onClick={fetchData}

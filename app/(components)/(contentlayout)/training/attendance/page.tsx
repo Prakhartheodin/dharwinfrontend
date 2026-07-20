@@ -661,18 +661,47 @@ export default function AttendanceTracking() {
     });
   }, [sortedAttendanceList]);
 
-  const exportTrackCsv = useCallback((list?: attendanceApi.AttendanceTrackItem[]) => {
-    const data = list ?? trackList;
-    const rows = data.map((row) => ({ Name: row.studentName, "Employee ID": row.employeeId ?? "", Email: row.email, Status: row.isPunchedIn ? "Punched In" : "Punched Out", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: row.isPunchedIn ? "In progress" : formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
-    downloadCsv(`track-attendance-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Employee ID", label: "Employee ID" }, { key: "Email", label: "Email" }, { key: "Status", label: "Status" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
-  }, [trackList]);
+  const buildHistoryExportParams = useCallback((): attendanceApi.AttendanceHistoryExportParams => {
+    if (historyRange === "7d") {
+      return {
+        startDate: new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10),
+        endDate: new Date().toISOString().slice(0, 10),
+        search: debouncedTrackSearch || undefined,
+      };
+    }
+    if (historyRange === "30d") {
+      return {
+        startDate: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10),
+        endDate: new Date().toISOString().slice(0, 10),
+        search: debouncedTrackSearch || undefined,
+      };
+    }
+    return { search: debouncedTrackSearch || undefined };
+  }, [historyRange, debouncedTrackSearch]);
+
+  const exportTrackExcel = useCallback(
+    async (punchStatus: "all" | "in" | "out") => {
+      try {
+        await attendanceApi.downloadAttendanceTrackExport({
+          search: debouncedTrackSearch || undefined,
+          punchStatus: punchStatus === "all" ? undefined : punchStatus,
+        });
+      } catch {
+        alert("Export failed. Check permissions and try again.");
+      }
+    },
+    [debouncedTrackSearch]
+  );
+
+  const exportHistoryExcel = useCallback(async () => {
+    try {
+      await attendanceApi.downloadAttendanceHistoryExport(buildHistoryExportParams());
+    } catch {
+      alert("Export failed. Check permissions and try again.");
+    }
+  }, [buildHistoryExportParams]);
 
   const filteredHistoryList = historyList;
-
-  const exportHistoryCsv = useCallback(() => {
-    const rows = filteredHistoryList.map((row) => ({ Name: row.studentName, "Employee ID": row.employeeId ?? "", Email: row.email, Date: formatDate(row.date), Day: row.day ?? "", "Punch In": row.punchIn ? formatTimeInTimezone(row.punchIn, row.timezone) : "", "Punch Out": row.punchOut ? formatTimeInTimezone(row.punchOut, row.timezone) : "", Duration: formatDurationFromMs(row.durationMs ?? null), Timezone: row.timezone }));
-    downloadCsv(`attendance-history-${new Date().toISOString().slice(0, 10)}.csv`, [{ key: "Name", label: "Name" }, { key: "Employee ID", label: "Employee ID" }, { key: "Email", label: "Email" }, { key: "Date", label: "Date" }, { key: "Day", label: "Day" }, { key: "Punch In", label: "Punch In" }, { key: "Punch Out", label: "Punch Out" }, { key: "Duration", label: "Duration" }, { key: "Timezone", label: "Timezone" }], rows);
-  }, [filteredHistoryList]);
 
   const canPunch = !!myStudentId;
   const punchBlockedByHoliday = canPunch && todayIsHoliday;
@@ -1263,7 +1292,7 @@ export default function AttendanceTracking() {
                 search={trackSearch}
                 onSearchChange={setTrackSearch}
                 onPunchOut={handleAdminPunchOut}
-                onExportCsv={exportTrackCsv}
+                onExportExcel={(punchStatus) => void exportTrackExcel(punchStatus)}
                 formatTimeInTimezone={formatTimeInTimezone}
                 formatDuration={formatDuration}
                 formatDurationFromMs={formatDurationFromMs}
@@ -1315,10 +1344,10 @@ export default function AttendanceTracking() {
                     <div className="inline-flex items-center rounded-xl border border-defaultborder/80 bg-gray-50/60 dark:bg-white/5 p-0.5">
                       <button
                         type="button"
-                        onClick={exportHistoryCsv}
+                        onClick={() => void exportHistoryExcel()}
                         disabled={filteredHistoryList.length === 0}
-                        title="Export CSV"
-                        aria-label="Export attendance history as CSV"
+                        title="Export Excel"
+                        aria-label="Export attendance history as Excel"
                         className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-defaulttextcolor/80 hover:bg-primary/10 hover:text-primary dark:hover:bg-primary/20 dark:hover:text-primary transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-defaulttextcolor/80 active:scale-95"
                       >
                         <i className="ri-download-2-line text-[1.1rem]" aria-hidden />

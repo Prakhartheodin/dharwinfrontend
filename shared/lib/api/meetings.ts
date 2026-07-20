@@ -4,16 +4,29 @@
 import { apiClient } from "@/shared/lib/api/client";
 
 /**
- * Download interviews as an .xlsx file. Mirrors the active list filters
- * (status / title) so the export matches what's on screen.
+ * Download interviews as an .xlsx file. POST with the same query filters as the list
+ * (omit page/limit) so the export matches the filtered Interviews table.
  */
+export type ExportInterviewsExcelParams = {
+  candidate?: string
+  recruiter?: string
+  status?: string
+  interviewType?: string
+  title?: string
+  sortBy?: string
+}
+
 export async function exportInterviewsExcel(
-  params: { status?: string; title?: string } = {}
+  params: ExportInterviewsExcelParams = {}
 ): Promise<Blob> {
   const query: Record<string, string> = {};
+  if (params.candidate) query.candidate = params.candidate;
+  if (params.recruiter) query.recruiter = params.recruiter;
   if (params.status) query.status = params.status;
+  if (params.interviewType) query.interviewType = params.interviewType;
   if (params.title) query.title = params.title;
-  const res = await apiClient.get<Blob>("/meetings/export", {
+  if (params.sortBy) query.sortBy = params.sortBy;
+  const res = await apiClient.post<Blob>("/meetings/export", {}, {
     params: query,
     responseType: "blob",
   });
@@ -110,6 +123,9 @@ export async function createMeeting(payload: CreateMeetingPayload): Promise<Meet
 export async function listMeetings(params?: {
   title?: string;
   status?: string;
+  candidate?: string;
+  recruiter?: string;
+  interviewType?: string;
   page?: number;
   limit?: number;
   sortBy?: string;

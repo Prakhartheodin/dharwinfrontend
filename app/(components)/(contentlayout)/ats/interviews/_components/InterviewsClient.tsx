@@ -8,6 +8,7 @@ import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
 import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
+import { buildInterviewExportParams } from '@/shared/lib/ats/interview-list-query'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
@@ -239,36 +240,6 @@ export default function InterviewsClient() {
     }
 
     setExcelMenuPos({ top, left })
-  }, [])
-
-  /** Download all accessible interviews as an .xlsx file. */
-  const handleExportInterviews = useCallback(async () => {
-    setIsExcelMenuOpen(false)
-    setIsExcelExporting(true)
-    try {
-      const blob = await exportInterviewsExcel()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      const date = new Date().toISOString().slice(0, 10)
-      a.href = url
-      a.download = `interviews-export-${date}.xlsx`
-      a.click()
-      URL.revokeObjectURL(url)
-      await Swal.fire({
-        icon: 'success',
-        title: 'Export ready',
-        text: 'Your interviews spreadsheet download has started.',
-        timer: 2000,
-        showConfirmButton: false,
-        toast: true,
-        position: 'top-end',
-      })
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Export failed'
-      await Swal.fire({ icon: 'error', title: 'Export failed', text: message })
-    } finally {
-      setIsExcelExporting(false)
-    }
   }, [])
   
   const [filters, setFilters] = useState<FilterState>({
@@ -1683,6 +1654,50 @@ export default function InterviewsClient() {
   }, [tableData, filters])
 
   const data = useMemo(() => filteredData, [filteredData])
+
+  /** POST /meetings/export uses the same filters as the filtered table (omit page/limit). */
+  const exportQueryParams = useMemo(
+    () => buildInterviewExportParams(filters),
+    [filters]
+  )
+
+  /** Download filtered interviews as an .xlsx file. */
+  const handleExportInterviews = useCallback(async () => {
+    setIsExcelMenuOpen(false)
+    if (filteredData.length === 0) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'Nothing to export',
+        text: 'No interviews match the current filters.',
+      })
+      return
+    }
+    setIsExcelExporting(true)
+    try {
+      const blob = await exportInterviewsExcel(exportQueryParams)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const date = new Date().toISOString().slice(0, 10)
+      a.href = url
+      a.download = `interviews-export-${date}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+      await Swal.fire({
+        icon: 'success',
+        title: 'Export ready',
+        text: 'Your interviews spreadsheet download has started.',
+        timer: 2000,
+        showConfirmButton: false,
+        toast: true,
+        position: 'top-end',
+      })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Export failed'
+      await Swal.fire({ icon: 'error', title: 'Export failed', text: message })
+    } finally {
+      setIsExcelExporting(false)
+    }
+  }, [exportQueryParams, filteredData.length])
 
   // Week view: 7 days from weekStart, interviews grouped by date
   const weekDays = useMemo(() => {

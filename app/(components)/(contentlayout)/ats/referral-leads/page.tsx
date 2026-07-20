@@ -144,9 +144,12 @@ export default function ReferralLeadsPage() {
   const showEmptyNoData = !loading && !error && list.length === 0 && !hasActiveFilters;
   const showEmptyFiltered = !loading && !error && list.length === 0 && hasActiveFilters;
 
+  /** POST /employees/referral-leads/export uses the same filters as the list (omit page/limit). */
+  const exportQueryParams = baseParams;
+
   const onExport = async () => {
     try {
-      await downloadReferralLeadsExport(baseParams);
+      await downloadReferralLeadsExport(exportQueryParams);
     } catch {
       alert("Export failed. Check permissions and try again.");
     }
@@ -197,7 +200,7 @@ export default function ReferralLeadsPage() {
               onClick={() => void onExport()}
               className="ti-btn ti-btn-light border border-slate-200 dark:border-white/10 !py-2"
             >
-              Export CSV
+              Export Excel
             </button>
           </div>
         </div>

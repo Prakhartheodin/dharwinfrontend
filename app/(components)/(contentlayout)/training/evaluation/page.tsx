@@ -9,6 +9,7 @@ import * as studentsApi from '@/shared/lib/api/students'
 import type { Student } from '@/shared/lib/api/students'
 import {
   getEvaluation,
+  downloadEvaluationExport,
   type EvaluationRow,
   type EvaluationSummary,
   type EvaluationDisplayStatus,
@@ -43,7 +44,6 @@ import {
   getCourseDisplayStatus,
   statusBadgeClass,
   atRiskLabel,
-  exportEvaluationCsv,
 } from './_components/evaluation-utils'
 import { closeHsOverlay, openHsOverlay } from './_components/evaluation-overlay'
 import pipelineStyles from '../../ats/ats-pipeline-list.module.css'
@@ -308,7 +308,14 @@ const Evaluation = () => {
   const handleExport = async () => {
     setExporting(true)
     try {
-      exportEvaluationCsv(evaluations)
+      await downloadEvaluationExport({
+        status: filterStatus || undefined,
+        q: debouncedQ || undefined,
+        courseId: filterCourseId || undefined,
+        atRisk: filterAtRiskOnly || undefined,
+      })
+    } catch {
+      alert('Export failed. Check permissions and try again.')
     } finally {
       setExporting(false)
     }
@@ -603,7 +610,7 @@ const Evaluation = () => {
                   className={EVAL_BTN_OUTLINE_PRIMARY}
                   onClick={handleExport}
                   disabled={loading || exporting || evaluations.length === 0}
-                  aria-label="Export evaluation data as CSV"
+                  aria-label="Export evaluation data as Excel"
                   aria-busy={exporting}
                 >
                   {exporting ? (
@@ -611,7 +618,7 @@ const Evaluation = () => {
                   ) : (
                     <i className="ri-download-2-line" aria-hidden />
                   )}
-                  {exporting ? 'Exporting…' : 'Export CSV'}
+                  {exporting ? 'Exporting…' : 'Export Excel'}
                 </button>
                 <select
                   className="form-control select-show-page-size min-h-[44px] w-full min-w-0 max-w-full !py-1 !px-4 !text-[0.75rem] sm:w-auto"

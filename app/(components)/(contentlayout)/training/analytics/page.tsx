@@ -4,6 +4,7 @@ import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
+import * as XLSX from 'xlsx'
 import {
   getTrainingAnalytics,
   type TrainingAnalyticsResponse,
@@ -503,29 +504,154 @@ function MentorWorkloadList({
   )
 }
 
-function exportToCsv(data: TrainingAnalyticsResponse) {
-  const rows: string[][] = [
-    ['Training Analytics Export', ''],
-    ['Students', String(data.totalStudents)],
-    ['Mentors', String(data.totalMentors)],
-    ['Courses', String(data.totalCourses)],
-    ['Enrollments', String(data.totalEnrollments)],
-    ['Completions', String(data.completionCount)],
-    [''],
-    ['Enrollments by module', 'Count'],
-    ...(data.enrollmentsByModule || []).map((m) => [m.moduleName, String(m.enrolledCount)]),
-    [''],
-    ['Completion by module', 'Enrolled', 'Completed', 'Rate %'],
-    ...(data.completionByModule || []).map((m) => [m.moduleName, String(m.enrolled), String(m.completed), String(m.completionRate)]),
+// ---------------------------------------------------------------------------
+// Excel Export
+// ---------------------------------------------------------------------------
+/** A leading =, +, -, or @ is quoted so Excel treats the cell as text, not a formula. */
+function defangCell(v: unknown): string | number {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'number') return v
+  const s = String(v)
+  return /^[=+\-@]/.test(s) ? `'${s}` : s
+}
+
+/**
+ * One sheet per section, header on row 1, so every sheet sorts and filters.
+ * Columns are sized to their longest value (clamped 10..60) so nothing truncates.
+ */
+function addSheet(wb: XLSX.WorkBook, name: string, headers: string[], rows: unknown[][]) {
+  const aoa = [headers, ...rows.map((r) => r.map(defangCell))]
+  const ws = XLSX.utils.aoa_to_sheet(aoa)
+  ws['!cols'] = headers.map((h, col) => {
+    const longest = aoa.reduce((max, row) => {
+      const len = String(row[col] ?? '').length
+      return len > max ? len : max
+    }, h.length)
+    return { wch: Math.min(Math.max(longest + 2, 10), 60) }
+  })
+  const lastCol = XLSX.utils.encode_col(headers.length - 1)
+  ws['!autofilter'] = { ref: `A1:${lastCol}${aoa.length}` }
+  XLSX.utils.book_append_sheet(wb, ws, name)
+}
+
+function exportToExcel(data: TrainingAnalyticsResponse, periodLabel: string) {
+  const wb = XLSX.utils.book_new()
+  const completionRate =
+    data.totalEnrollments > 0
+      ? Math.round((data.completionCount / data.totalEnrollments) * 100)
+      : 0
+
+  const summaryRows: unknown[][] = [
+    ['Period', periodLabel],
+    ['Students', data.totalStudents],
+    ['Mentors', data.totalMentors],
+    ['Courses', data.totalCourses],
+    ['Enrollments', data.totalEnrollments],
+    ['Completions', data.completionCount],
+    ['Completion Rate %', completionRate],
+    ['Average Quiz Score %', data.averageQuizScore ?? ''],
+    ['Not Started', data.notStartedCount ?? ''],
+    ['Average Days to Complete', data.averageDaysToComplete ?? ''],
   ]
-  const csv = rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\r\n')
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `training-analytics-${new Date().toISOString().slice(0, 10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+
+  if (data.previousPeriod) {
+    summaryRows.push(
+      ['Previous Period', data.previousPeriod.periodLabel],
+      ['Previous Enrollments', data.previousPeriod.enrollments],
+      ['Previous Completions', data.previousPeriod.completions],
+    )
+  }
+
+  addSheet(wb, 'Summary', ['Metric', 'Value'], summaryRows)
+
+  if (data.statusBreakdown) {
+    addSheet(wb, 'Enrollment Status', ['Status', 'Count'], [
+      ['Not started', data.statusBreakdown.notStarted ?? 0],
+      ['In progress', data.statusBreakdown.inProgress ?? 0],
+      ['Completed', data.statusBreakdown.completed ?? 0],
+    ])
+  }
+
+  addSheet(
+    wb,
+    'Enrollments by Module',
+    ['Module', 'Students'],
+    (data.enrollmentsByModule || []).map((m) => [m.moduleName, m.enrolledCount]),
+  )
+  addSheet(
+    wb,
+    'Completion by Module',
+    ['Module', 'Enrolled', 'Completed', 'Completion Rate %'],
+    (data.completionByModule || []).map((m) => [
+      m.moduleName,
+      m.enrolled,
+      m.completed,
+      m.completionRate,
+    ]),
+  )
+  addSheet(
+    wb,
+    'Quiz Score by Module',
+    ['Module', 'Average Score %'],
+    (data.quizScoreByModule || []).map((m) => [m.moduleName, m.averageScore ?? '']),
+  )
+  addSheet(
+    wb,
+    'Enrollments by Category',
+    ['Category', 'Enrollments'],
+    (data.enrollmentsByCategory || []).map((c) => [c.categoryName, c.count]),
+  )
+  addSheet(
+    wb,
+    'Enrollments Over Time',
+    ['Period', 'Count'],
+    (data.enrollmentsOverTime || []).map((t) => [t.period, t.count ?? 0]),
+  )
+  addSheet(
+    wb,
+    'Completions Over Time',
+    ['Period', 'Count'],
+    (data.completionsOverTime || []).map((t) => [t.period, t.count ?? 0]),
+  )
+  addSheet(
+    wb,
+    'Quiz Score Over Time',
+    ['Period', 'Average Score %'],
+    (data.quizScoreOverTime || []).map((t) => [t.period, t.averageScore ?? '']),
+  )
+  addSheet(
+    wb,
+    'Recent Completions',
+    ['Student', 'Course', 'Completed Date'],
+    (data.recentCompletions || []).map((r) => [
+      r.studentName,
+      r.courseName,
+      r.completedAt ? formatAnalyticsDate(r.completedAt) : '',
+    ]),
+  )
+  addSheet(
+    wb,
+    'Not Started',
+    ['Student', 'Course', 'Enrolled Date'],
+    (data.notStartedList || []).map((r) => [
+      r.studentName,
+      r.courseName,
+      r.enrolledAt ? formatAnalyticsDate(r.enrolledAt) : '',
+    ]),
+  )
+  addSheet(
+    wb,
+    'Mentor Workload',
+    ['Mentor', 'Modules', 'Students'],
+    (data.mentorWorkload || []).map((m) => [
+      mentorDisplayName(m.mentorName),
+      m.moduleCount,
+      m.studentCount,
+    ]),
+  )
+
+  const slug = periodLabel.replace(/\s+/g, '-').toLowerCase()
+  XLSX.writeFile(wb, `training-analytics-${slug}-${new Date().toISOString().slice(0, 10)}.xlsx`)
 }
 
 const TrainingAnalytics = () => {
@@ -565,6 +691,8 @@ const TrainingAnalytics = () => {
     data && data.totalEnrollments > 0
       ? Math.round((data.completionCount / data.totalEnrollments) * 100)
       : 0
+
+  const periodLabel = RANGE_OPTIONS.find((opt) => opt.value === range)?.label || 'All time'
 
   const configurableChartData = useMemo(() => {
     if (!data) return { series: [], categories: [], type: 'line' as const }
@@ -657,10 +785,10 @@ const TrainingAnalytics = () => {
             <button
               type="button"
               className="ti-btn ti-btn-outline-primary !py-1.5 !px-3 !text-[0.8125rem]"
-              onClick={() => exportToCsv(data)}
+              onClick={() => exportToExcel(data, periodLabel)}
             >
-              <i className="ri-download-line align-middle me-1" />
-              Export CSV
+              <i className="ri-file-excel-2-line align-middle me-1" />
+              Export Excel
             </button>
           )}
         </div>

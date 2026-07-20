@@ -76,3 +76,27 @@ export async function getEvaluation(params?: GetEvaluationParams): Promise<Evalu
   const { data } = await apiClient.get<EvaluationResponse>("/training/evaluation", { params: query });
   return data;
 }
+
+export type EvaluationExportParams = Omit<GetEvaluationParams, "page" | "limit">;
+
+/** GET /training/evaluation/export — same filters as list (omit page/limit). */
+export async function downloadEvaluationExport(params: EvaluationExportParams = {}): Promise<void> {
+  const { page: _page, limit: _limit, ...filters } = params;
+  const query: Record<string, string> = {};
+  if (filters.courseId) query.courseId = filters.courseId;
+  if (filters.status) query.status = filters.status;
+  if (filters.q?.trim()) query.q = filters.q.trim();
+  if (filters.atRisk) query.atRisk = "true";
+
+  const { data } = await apiClient.get<Blob>("/training/evaluation/export", {
+    params: query,
+    responseType: "blob",
+  });
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `training-evaluation-export-${dateStamp}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

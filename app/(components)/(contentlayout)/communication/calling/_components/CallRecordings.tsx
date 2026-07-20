@@ -1,81 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCallRecordings, fetchRecordingObjectUrl } from "@/shared/lib/api/bolna";
-
-// One channel (Bolna or Plivo). Bytes are fetched only when the user clicks play —
-// audio routes are JWT-protected, so we can't stream via a plain <audio src>; the
-// blob fetch stays, but it no longer runs eagerly on panel open.
-function Recording({ label, streamUrl, reason }: { label: string; streamUrl?: string; reason?: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [pct, setPct] = useState<number | null>(null);
-  const [err, setErr] = useState<string | undefined>(reason);
-
-  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
-
-  async function load() {
-    if (!streamUrl || loading) return;
-    setLoading(true);
-    setPct(null);
-    try {
-      setUrl(await fetchRecordingObjectUrl(streamUrl, setPct));
-    } catch {
-      setErr("Recording found but playback failed (try sync or refresh)");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div>
-      <p className="mb-1 font-medium">{label}</p>
-      {url ? (
-        <audio controls autoPlay src={url} className="w-full" />
-      ) : streamUrl ? (
-        <div aria-live="polite">
-          <button
-            onClick={load}
-            disabled={loading}
-            aria-label={`Load ${label} recording`}
-            className="inline-flex min-h-[34px] items-center gap-1.5 rounded-md border border-defaultborder/60 px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor/80 transition-colors hover:bg-light/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 disabled:cursor-not-allowed dark:border-white/10 dark:hover:bg-white/5"
-          >
-            {loading ? (
-              <>
-                <i className="ri-loader-4-line animate-spin text-primary motion-reduce:animate-none" />
-                {pct != null ? `Fetching audio… ${pct}%` : "Fetching audio…"}
-              </>
-            ) : (
-              <>
-                <i className="ri-play-circle-line text-sm" />
-                Load recording
-              </>
-            )}
-          </button>
-          {loading ? (
-            <div
-              className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-defaulttextcolor/10"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={pct ?? undefined}
-              aria-label={`Downloading ${label}`}
-            >
-              <div
-                className={`h-full rounded-full bg-primary/70 transition-[width] duration-300 ${pct == null ? "w-1/3 animate-pulse motion-reduce:animate-none" : ""}`}
-                style={pct != null ? { width: `${Math.max(pct, 4)}%` } : undefined}
-              />
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <p className="text-xs text-defaulttextcolor/60">
-          —{err ? <span className="block mt-0.5 italic">{err}</span> : null}
-        </p>
-      )}
-    </div>
-  );
-}
+import { getCallRecordings } from "@/shared/lib/api/bolna";
+import InlineRecordingPlayer from "./InlineRecordingPlayer";
 
 // Reserve the channel layout while availability metadata loads — shimmer over a
 // blocking spinner, no layout shift when the real controls swap in.
@@ -104,9 +31,29 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 const CHANNEL_ORDER = ["twilio", "plivo", "bolna"];
 
-export default function CallRecordings({ executionId }: { executionId: string }) {
+type CallRecordingsProps = {
+  executionId: string;
+  /** When provided, only one recording can be active across the detail panel. */
+  activeKey?: string | null;
+  onActivate?: (key: string) => void;
+  /** After metadata loads, auto-play the first available channel (table → detail handoff). */
+  autoPlayFirst?: boolean;
+  onAutoPlayDone?: () => void;
+};
+
+export default function CallRecordings({
+  executionId,
+  activeKey: controlledActiveKey,
+  onActivate: controlledOnActivate,
+  autoPlayFirst = false,
+  onAutoPlayDone,
+}: CallRecordingsProps) {
   const [recs, setRecs] = useState<Record<string, Channel> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [internalActiveKey, setInternalActiveKey] = useState<string | null>(null);
+
+  const activeKey = controlledOnActivate ? (controlledActiveKey ?? null) : internalActiveKey;
+  const onActivate = controlledOnActivate ?? setInternalActiveKey;
 
   useEffect(() => {
     let cancelled = false;
@@ -122,6 +69,15 @@ export default function CallRecordings({ executionId }: { executionId: string })
     return () => { cancelled = true; };
   }, [executionId]);
 
+  useEffect(() => {
+    if (!autoPlayFirst || !recs) return;
+    const playable = CHANNEL_ORDER.filter((k) => recs[k]?.streamUrl);
+    if (playable.length > 0) {
+      onActivate(`${executionId}-${playable[0]}`);
+    }
+    onAutoPlayDone?.();
+  }, [autoPlayFirst, recs, executionId, onActivate, onAutoPlayDone]);
+
   if (error) return <p className="text-xs text-defaulttextcolor/60">{error}</p>;
   if (!recs) return <RecordingsSkeleton />;
 
@@ -134,9 +90,31 @@ export default function CallRecordings({ executionId }: { executionId: string })
     <div className="space-y-2 text-sm">
       {/* key includes executionId: switching calls remounts each player so its
           cached blob URL resets instead of replaying the previous call's audio */}
-      {playable.map((k) => (
-        <Recording key={`${executionId}-${k}`} label={CHANNEL_LABELS[k] ?? k} streamUrl={recs[k]?.streamUrl} reason={recs[k]?.reason} />
-      ))}
+      {playable.map((k) => {
+        const channel = recs[k];
+        const label = CHANNEL_LABELS[k] ?? k;
+        const playerKey = `${executionId}-${k}`;
+        return (
+          <div key={playerKey}>
+            <p className="mb-1 font-medium">{label}</p>
+            {channel?.streamUrl ? (
+              <InlineRecordingPlayer
+                recordingUrl={channel.streamUrl}
+                playerKey={playerKey}
+                activeKey={activeKey}
+                onActivate={onActivate}
+                variant="outline"
+                buttonLabel="Play recording"
+                audioClassName="w-full"
+              />
+            ) : (
+              <p className="text-xs text-defaulttextcolor/60">
+                —{channel?.reason ? <span className="block mt-0.5 italic">{channel.reason}</span> : null}
+              </p>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

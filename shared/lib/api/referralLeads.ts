@@ -213,16 +213,24 @@ export async function getReferralAttributionOverrideHistory(
   return data;
 }
 
-/** Download CSV using cookie auth (opens in same origin). */
-export async function downloadReferralLeadsExport(params: ReferralLeadsQueryParams = {}): Promise<void> {
-  const { data } = await apiClient.get<Blob>("/employees/referral-leads/export", {
-    params,
-    responseType: "blob",
-  });
+export type ReferralLeadsExportParams = Omit<ReferralLeadsQueryParams, 'page' | 'limit'>;
+
+/** Export filtered referral leads as .xlsx — POST with same query params as list (omit page/limit). */
+export async function downloadReferralLeadsExport(params: ReferralLeadsExportParams = {}): Promise<void> {
+  const { page: _page, limit: _limit, ...filters } = params;
+  const { data } = await apiClient.post<Blob>(
+    '/employees/referral-leads/export',
+    {},
+    {
+      params: filters,
+      responseType: 'blob',
+    }
+  );
+  const dateStamp = new Date().toISOString().split('T')[0];
   const url = URL.createObjectURL(data);
-  const a = document.createElement("a");
+  const a = document.createElement('a');
   a.href = url;
-  a.download = "referral-leads.csv";
+  a.download = `referral-leads-export-${dateStamp}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
 }

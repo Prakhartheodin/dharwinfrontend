@@ -300,11 +300,29 @@ export interface AttendanceTrackResponse {
 
 export interface AttendanceTrackListParams {
   search?: string;
+  punchStatus?: "all" | "in" | "out";
 }
 
 export async function getAttendanceTrackList(params?: AttendanceTrackListParams): Promise<AttendanceTrackResponse> {
   const { data } = await apiClient.get<AttendanceTrackResponse>("/training/attendance/track", { params });
   return data;
+}
+
+export type AttendanceTrackExportParams = AttendanceTrackListParams;
+
+/** GET /training/attendance/track/export — same filters as track list. */
+export async function downloadAttendanceTrackExport(params: AttendanceTrackExportParams = {}): Promise<void> {
+  const { data } = await apiClient.get<Blob>("/training/attendance/track/export", {
+    params,
+    responseType: "blob",
+  });
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `track-attendance-export-${dateStamp}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export interface AttendanceTrackHistoryItem {
@@ -341,6 +359,26 @@ export async function getAttendanceTrackHistory(
     { params }
   );
   return data;
+}
+
+export type AttendanceHistoryExportParams = Omit<AttendanceTrackHistoryParams, "limit" | "page">;
+
+/** GET /training/attendance/track/history/export — same filters as history list (omit limit). */
+export async function downloadAttendanceHistoryExport(
+  params: AttendanceHistoryExportParams = {}
+): Promise<void> {
+  const { limit: _limit, ...filters } = params as AttendanceTrackHistoryParams;
+  const { data } = await apiClient.get<Blob>("/training/attendance/track/history/export", {
+    params: filters,
+    responseType: "blob",
+  });
+  const dateStamp = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `attendance-history-export-${dateStamp}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /** Response from assign/remove holidays to students */

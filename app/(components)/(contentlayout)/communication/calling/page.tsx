@@ -13,6 +13,7 @@ import {
 } from "@/shared/lib/api/bolna";
 import CallVerificationPanel, { CallQualityBadge, hasReviewableSummary } from "./_components/CallVerificationPanel";
 import CallRecordings from "./_components/CallRecordings";
+import InlineRecordingPlayer from "./_components/InlineRecordingPlayer";
 import CallAnnotations from "./_components/CallAnnotations";
 import { listCalls as listChatCalls, type ChatCall } from "@/shared/lib/api/chat";
 import { backfillTwilioDialerCalls } from "@/shared/lib/api/telephony";
@@ -211,6 +212,8 @@ const Calling = () => {
   const [backfilling, setBackfilling] = useState(false);
   const [settingUpExtractions, setSettingUpExtractions] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [activeRecordingKey, setActiveRecordingKey] = useState<string | null>(null);
+  const [pendingRecordingPlayId, setPendingRecordingPlayId] = useState<string | null>(null);
   const [selectedCall, setSelectedCall] = useState<UnifiedCall | null>(null);
   /** Panel visibility (animated). Content may linger until transition ends — see effect below. */
   const [detailsPanelOpen, setDetailsPanelOpen] = useState(false);
@@ -220,6 +223,16 @@ const Calling = () => {
   const openCallDetails = useCallback((u: UnifiedCall) => {
     setSelectedCall(u);
     setDetailsPanelOpen(true);
+    setActiveRecordingKey(null);
+  }, []);
+
+  const handleTableRecordingPlay = useCallback((u: UnifiedCall) => {
+    openCallDetails(u);
+    setPendingRecordingPlayId(getUnifiedId(u));
+  }, [openCallDetails]);
+
+  const clearPendingRecordingPlay = useCallback(() => {
+    setPendingRecordingPlayId(null);
   }, []);
 
   const closeCallDetails = useCallback(() => {
@@ -259,6 +272,27 @@ const Calling = () => {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [detailsPanelOpen, closeCallDetails]);
+
+  useEffect(() => {
+    if (!pendingRecordingPlayId || !selectedCall || !detailsPanelOpen) return;
+    if (getUnifiedId(selectedCall) !== pendingRecordingPlayId) return;
+    if (selectedCall.source !== "in_app") return;
+    if ((selectedCall.data as ChatCall).recordingUrl) {
+      setActiveRecordingKey(`in_app-detail-${pendingRecordingPlayId}`);
+    }
+    clearPendingRecordingPlay();
+  }, [pendingRecordingPlayId, selectedCall, detailsPanelOpen, clearPendingRecordingPlay]);
+
+  useEffect(() => {
+    if (!pendingRecordingPlayId || !selectedCall || !detailsPanelOpen) return;
+    if (getUnifiedId(selectedCall) !== pendingRecordingPlayId) return;
+    if (selectedCall.source !== "telephony") return;
+    if ((selectedCall.data as CallRecord).executionId) return;
+    if ((selectedCall.data as CallRecord).recordingUrl) {
+      setActiveRecordingKey(`telephony-detail-${pendingRecordingPlayId}`);
+    }
+    clearPendingRecordingPlay();
+  }, [pendingRecordingPlayId, selectedCall, detailsPanelOpen, clearPendingRecordingPlay]);
 
   const fetchTelephony = useCallback(async () => {
     const data = await getBolnaCallRecords({
@@ -951,15 +985,15 @@ const Calling = () => {
                                 </td>
                                 <td className="!text-[0.8125rem] align-middle">
                                   {recordingUrl ? (
-                                    <a
-                                      href={recordingUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
+                                    <button
+                                      type="button"
+                                      onClick={() => handleTableRecordingPlay(u)}
                                       className="ti-btn ti-btn-icon ti-btn-sm ti-btn-success"
-                                      title="Play recording"
+                                      title="Play recording in call details"
+                                      aria-label="Play recording in call details"
                                     >
                                       <i className="ri-play-line" />
-                                    </a>
+                                    </button>
                                   ) : (
                                     <span className="text-defaulttextcolor/40 text-sm">—</span>
                                   )}
@@ -1225,7 +1259,28 @@ const Calling = () => {
                     );
                   })()}
                   {selectedCall.data.executionId ? (
-                    <CallRecordings executionId={selectedCall.data.executionId} />
+                    <CallRecordings
+                      executionId={selectedCall.data.executionId}
+                      activeKey={activeRecordingKey}
+                      onActivate={setActiveRecordingKey}
+                      autoPlayFirst={
+                        Boolean(
+                          pendingRecordingPlayId &&
+                            selectedCall.source === "telephony" &&
+                            pendingRecordingPlayId === getUnifiedId(selectedCall)
+                        )
+                      }
+                      onAutoPlayDone={clearPendingRecordingPlay}
+                    />
+                  ) : (selectedCall.data as CallRecord).recordingUrl ? (
+                    <InlineRecordingPlayer
+                      recordingUrl={(selectedCall.data as CallRecord).recordingUrl!}
+                      playerKey={`telephony-detail-${getUnifiedId(selectedCall)}`}
+                      activeKey={activeRecordingKey}
+                      onActivate={setActiveRecordingKey}
+                      variant="button"
+                      audioClassName="w-full max-w-full"
+                    />
                   ) : null}
                   <CallAnnotations
                     record={selectedCall.data as CallRecord}
@@ -1325,15 +1380,14 @@ const Calling = () => {
                   </div>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {(selectedCall.data as ChatCall).recordingUrl && (
-                      <a
-                        href={(selectedCall.data as ChatCall).recordingUrl!}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="ti-btn ti-btn-success-full !py-1.5 !px-3 !text-[0.8125rem] inline-flex items-center"
-                      >
-                        <i className="ri-play-line me-1" />
-                        Play Recording
-                      </a>
+                      <InlineRecordingPlayer
+                        recordingUrl={(selectedCall.data as ChatCall).recordingUrl!}
+                        playerKey={`in_app-detail-${getUnifiedId(selectedCall)}`}
+                        activeKey={activeRecordingKey}
+                        onActivate={setActiveRecordingKey}
+                        variant="button"
+                        audioClassName="w-full max-w-full"
+                      />
                     )}
                     <Link
                       href={
