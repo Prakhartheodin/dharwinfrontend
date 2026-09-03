@@ -27,6 +27,8 @@ import { useModalBehavior } from '@/shared/hooks/useModalBehavior'
 import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
+import { confirmCompensationChange } from './confirm-compensation-change'
+import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
 import { formatJoiningDateDisplay, joiningDatePresent } from '@/shared/lib/ats/joining-date-display'
@@ -152,6 +154,7 @@ interface FilterState {
 }
 
 const OffersPlacement = () => {
+  const { confirm, confirmDialog } = useConfirm()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("ats.offers")
@@ -451,12 +454,24 @@ const OffersPlacement = () => {
       alert('Missing offer id. Close and reopen the offer letter from the list.')
       return
     }
+    /**
+     * Same gate as the standalone letter page — this modal edits job type too, so without it the
+     * user would only discover the restriction from a rejected save. `letterModalOffer` comes from
+     * getOfferById, so it carries compensationGate.
+     */
+    const { proceed, ack: compensationAck } = await confirmCompensationChange({
+      gate: letterModalOffer.compensationGate,
+      changing: !!letterModalOffer.jobType && letterForm.jobType !== letterModalOffer.jobType,
+      confirm,
+    })
+    if (!proceed) return
+
     setLetterBusy(true)
     try {
-      const updated = await saveOfferLetter(
-        id,
-        buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as UpdateOfferPayload
-      )
+      const updated = await saveOfferLetter(id, {
+        ...(buildOfferLetterUpdatePayload(letterForm, letterModalOffer) as UpdateOfferPayload),
+        ...(compensationAck ? { compensationChangeAck: true } : {}),
+      })
       setLetterModalOffer(updated)
       setLetterShareMessage('Offer letter saved. You can share it with the candidate.')
       refreshOffers()
@@ -1073,6 +1088,7 @@ const OffersPlacement = () => {
   /** Toolbar: match `ats/jobs` — `!py-1 !px-2 !text-[0.75rem]`, never bare `ti-btn-sm` (fixed 28×28 in theme). */
   return (
     <Fragment>
+      {confirmDialog}
       <Seo title="Offers & Placement" />
       <div className={`offers-page-shell mt-5 grid grid-cols-12 gap-6 min-w-0 sm:mt-6 ${offersStyles.listShell}`}>
         <div className="col-span-12 h-full min-h-0 min-w-0 flex flex-col">

@@ -20,6 +20,7 @@ import {
 } from "@/shared/lib/api/offers";
 import { buildCreateOfferPayloadFromLetterForm } from "../../build-create-offer-payload";
 import { buildOfferLetterUpdatePayload } from "../../build-offer-letter-update-payload";
+import { confirmCompensationChange } from "../../confirm-compensation-change";
 import { detectEligibilityPreset } from "../../offer-letter-generator-data";
 import { combinedJobPostingDocText, resolveOfferLetterRolesHtml, resolveOfferLetterTrainingHtml } from "../../job-posting-doc";
 import { roleResponsibilitiesLinesToHtml } from "@/shared/lib/ats/jobDescriptionHtml";
@@ -161,42 +162,12 @@ export default function NewOfferLetterPage() {
        * drives the employee badge, list filters, headcount and exports. The server enforces this;
        * the dialog exists so the user is told before the save fails rather than after.
        */
-      const compensationChanging =
-        !!linkedOffer.jobType && letterForm.jobType !== linkedOffer.jobType;
-      let compensationAck = false;
-
-      if (compensationChanging) {
-        const gate = linkedOffer.compensationGate;
-
-        if (gate && !gate.allowed) {
-          await confirm({
-            title: gate.reason === "joined" ? "Already an employee" : "Placement is not active",
-            message:
-              gate.reason === "joined"
-                ? "This candidate has already joined. Compensation is part of their employee record now — change it from Employee → Edit, where it will be logged against your name."
-                : `This placement is ${String(gate.stage ?? "").toLowerCase()}${
-                    gate.actorName ? `, by ${gate.actorName}` : ""
-                  }. Restore it to Pending before changing compensation.`,
-            confirmLabel: "Close",
-            hideCancel: true,
-          });
-          return;
-        }
-
-        if (gate?.confirm) {
-          const ok = await confirm({
-            title: "Change compensation after the offer stage?",
-            message: `This candidate is already in ${
-              gate.stage === "Onboarding" ? "onboarding" : "pre-boarding"
-            }. Changing the job type also updates their employee record, and is recorded in the audit trail with your name.`,
-            confirmLabel: "Change compensation",
-            cancelLabel: "Keep current",
-            tone: "danger",
-          });
-          if (!ok) return;
-          compensationAck = true;
-        }
-      }
+      const { proceed, ack: compensationAck } = await confirmCompensationChange({
+        gate: linkedOffer.compensationGate,
+        changing: !!linkedOffer.jobType && letterForm.jobType !== linkedOffer.jobType,
+        confirm,
+      });
+      if (!proceed) return;
 
       setLetterBusy(true);
       try {
