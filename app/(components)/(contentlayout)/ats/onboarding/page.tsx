@@ -61,8 +61,10 @@ const Onboarding = () => {
   }, [placements, listSearch])
 
   const getCandidateDepartment = (p: Placement) => {
+    if (p.status === 'Cancelled' || p.status === 'Deferred') return 'None'
     const c = p.candidate as { department?: string } | undefined
-    return c?.department ?? '-'
+    const dept = c?.department?.trim()
+    return dept || '-'
   }
 
   const getCandidateDesignation = (p: Placement) => {
@@ -306,12 +308,25 @@ const Onboarding = () => {
                             <td className="whitespace-nowrap align-middle px-2.5 py-2 text-[12px] sm:px-3 sm:py-2.5 sm:text-[13px]">
                               <div className="flex flex-col gap-1">
                                 {(() => {
+                                  const placementStatus = (p.status || 'Onboarding') as string
+                                  const placementColor =
+                                    placementStatus === 'Cancelled'
+                                      ? 'bg-rose-50 text-rose-800 dark:bg-rose-500/20 dark:text-rose-200'
+                                      : placementStatus === 'Deferred'
+                                        ? 'bg-violet-50 text-violet-800 dark:bg-violet-500/20 dark:text-violet-200'
+                                        : placementStatus === 'Joined'
+                                          ? 'bg-success/10 text-success'
+                                          : 'bg-amber-50 text-amber-800 dark:bg-amber-500/20 dark:text-amber-200'
                                   const pb = (p.preBoardingStatus || 'Pending') as string;
                                   const pbColor = pb === 'Completed' ? 'bg-success/10 text-success' : pb === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
                                   const bgv = ((p.backgroundVerification as { status?: string } | undefined)?.status || 'Pending') as string;
                                   const bgvColor = bgv === 'Completed' || bgv === 'Verified' ? 'bg-success/10 text-success' : bgv === 'In Progress' ? 'bg-warning/10 text-warning' : 'bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400';
                                   return (
                                     <>
+                                      <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${placementColor}`}>
+                                        <i className="ri-user-received-2-line text-[0.6rem]" aria-hidden />
+                                        {placementStatus}
+                                      </span>
                                       <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-medium ${pbColor}`}>
                                         <i className="ri-suitcase-line text-[0.6rem]" aria-hidden />
                                         {pb}

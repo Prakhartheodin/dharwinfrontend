@@ -368,7 +368,7 @@ export default function ExternalJobsPage() {
               <i className="ri-map-pin-line text-gray-400 text-xs mt-[3px] shrink-0" />
               <div className="flex flex-wrap gap-1 min-w-0">
                 <span
-                  className="inline-flex max-w-full items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[0.7rem] text-defaulttextcolor ring-1 ring-gray-200 dark:bg-white/10 dark:ring-white/10"
+                  className="inline-flex max-w-full items-center text-[0.7rem] text-defaulttextcolor dark:text-white/80"
                   title={loc}
                 >
                   <span className="truncate">{place}</span>

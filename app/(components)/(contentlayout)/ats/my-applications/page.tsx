@@ -8,7 +8,6 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { ROUTES } from "@/shared/lib/constants";
 import {
-  formatDisplayDate,
   getSelectedApplications,
   resolveCandidateLifecycle,
   type CandidateJobApplication,
@@ -126,12 +125,36 @@ export default function MyApplicationsPage() {
   const handleWithdraw = async (app: JobApplication) => {
     const id = app._id ?? app.id;
     if (!id || !WITHDRAWABLE_STATUSES.includes(app.status)) return;
+
+    const job = app.job as { title?: string; organisation?: { name?: string } } | undefined;
+    const jobTitle = job?.title?.trim() || "this role";
+    const company = job?.organisation?.name?.trim();
+
     const ok = await confirm({
-      title: "Are you sure?",
-      message: "Your application will be withdrawn from this role.",
-      confirmLabel: "Yes",
-      cancelLabel: "No",
+      title: "Withdraw this application?",
       tone: "danger",
+      confirmLabel: "Withdraw application",
+      cancelLabel: "Keep application",
+      overlayClassName: "z-[9999]",
+      message: (
+        <div className="space-y-2.5">
+          <p className="mb-0">
+            You are about to withdraw your application for{" "}
+            <span className="font-semibold text-defaulttextcolor dark:text-white">{jobTitle}</span>
+            {company ? (
+              <>
+                {" "}
+                at <span className="font-semibold text-defaulttextcolor dark:text-white">{company}</span>
+              </>
+            ) : null}
+            .
+          </p>
+          <p className="mb-0 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-amber-800 dark:text-amber-200">
+            <i className="ri-error-warning-line mt-0.5 shrink-0 text-base" aria-hidden />
+            <span>This cannot be undone. You will need to apply again if you change your mind.</span>
+          </p>
+        </div>
+      ),
     });
     if (!ok) return;
     setWithdrawingId(id);
@@ -279,7 +302,6 @@ export default function MyApplicationsPage() {
                 const isWithdrawing = withdrawingId === id;
                 const lifecycle = resolveCandidateLifecycle(app);
                 const visibleStatus = lifecycle.badge;
-                const appliedLabel = formatDisplayDate(app.appliedAt ?? app.createdAt);
 
                 return (
                   <article
@@ -302,46 +324,36 @@ export default function MyApplicationsPage() {
                         </h2>
                         <p className="text-sm text-defaulttextcolor/70 dark:text-white/60">{company}</p>
                       </div>
-                      {/* Status/date metadata group: sizes to its content and wraps below the
-                          job info on narrow screens instead of squeezing the card. */}
-                      <div className="flex flex-col items-start sm:items-end gap-2 min-w-0 sm:shrink-0">
-                        <div className="flex flex-wrap items-center sm:justify-end gap-x-3 gap-y-1 min-w-0">
-                          <ApplicationStatusBadge
-                            label={visibleStatus}
-                            testId="application-status-badge"
-                          />
-                          {appliedLabel && (
-                            <span className="text-xs text-defaulttextcolor/50 dark:text-white/45 whitespace-nowrap">
-                              {appliedLabel}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          {jobId && (
-                            <Link
-                              href={`/ats/browse-jobs/${jobId}`}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-defaultborder/50 dark:border-white/10 bg-white dark:bg-white/5 text-defaulttextcolor dark:text-white hover:bg-defaultborder/10 dark:hover:bg-white/10 transition-colors"
-                            >
-                              <i className="ri-eye-line text-[1rem]" />
-                              View
-                            </Link>
-                          )}
-                          {canWithdraw && (
-                            <button
-                              type="button"
-                              disabled={isWithdrawing}
-                              onClick={() => handleWithdraw(app)}
-                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                            >
-                              {isWithdrawing ? (
-                                <i className="ri-loader-4-line animate-spin text-[1rem]" />
-                              ) : (
-                                <i className="ri-delete-bin-line text-[1rem]" />
-                              )}
-                              {isWithdrawing ? "Withdrawing..." : "Withdraw"}
-                            </button>
-                          )}
-                        </div>
+                      {/* Badge + actions on one row: status, View, then Withdraw. */}
+                      <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 min-w-0 sm:shrink-0">
+                        <ApplicationStatusBadge
+                          label={visibleStatus}
+                          testId="application-status-badge"
+                        />
+                        {jobId && (
+                          <Link
+                            href={`/ats/browse-jobs/${jobId}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-white shadow-sm hover:bg-primary/90 hover:shadow transition-colors"
+                          >
+                            <i className="ri-eye-line text-[1rem]" />
+                            View
+                          </Link>
+                        )}
+                        {canWithdraw && (
+                          <button
+                            type="button"
+                            disabled={isWithdrawing}
+                            onClick={() => handleWithdraw(app)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {isWithdrawing ? (
+                              <i className="ri-loader-4-line animate-spin text-[1rem]" />
+                            ) : (
+                              <i className="ri-delete-bin-line text-[1rem]" />
+                            )}
+                            {isWithdrawing ? "Withdrawing..." : "Withdraw"}
+                          </button>
+                        )}
                       </div>
                     </div>
                   </article>

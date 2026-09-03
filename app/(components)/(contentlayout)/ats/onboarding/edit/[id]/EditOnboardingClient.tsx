@@ -38,6 +38,11 @@ const isValidMongoId = (id: unknown): id is string =>
 /** Placeholder roster row named for the settings screen — not a real job role. */
 const ATS_APPLIED_POSITION_SELECT_VALUE = '__ats_applied_role__'
 const ADD_DEPARTMENT_SELECT_VALUE = '__add_department__'
+const NONE_DEPARTMENT_SELECT_VALUE = '__none__'
+
+const isPlacementStatusWithoutDepartment = (
+  status: 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled'
+) => status === 'Cancelled' || status === 'Deferred'
 
 function resolveDepartmentIdFromCandidate(
   candidate: { department?: string | null; departmentId?: string | { id?: string; _id?: string } | null },
@@ -260,12 +265,15 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
           placement.status === 'Cancelled')
           ? placement.status
           : 'Onboarding'
+        const placementStatus = loadedStatus as 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled'
         setForm({
-          departmentId: resolveDepartmentIdFromCandidate(c, activeDepartments),
+          departmentId: isPlacementStatusWithoutDepartment(placementStatus)
+            ? NONE_DEPARTMENT_SELECT_VALUE
+            : resolveDepartmentIdFromCandidate(c, activeDepartments),
           positionId: nextPositionId,
           agentId: assignedId || rmId || '',
           joiningDate: joiningSlice,
-          placementStatus: loadedStatus as 'Pending' | 'Onboarding' | 'Joined' | 'Deferred' | 'Cancelled',
+          placementStatus,
           preBoardingStatusComplete: placement.preBoardingStatus === 'Completed',
         })
       } catch (err: any) {
@@ -315,11 +323,17 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
   }, [positions, form.positionId, atsAppliedJobTitle])
 
   const departmentOptionsForSelect = useMemo(() => {
-    if (form.departmentId && !departments.some((d) => d.id === form.departmentId)) {
+    if (
+      form.departmentId &&
+      form.departmentId !== NONE_DEPARTMENT_SELECT_VALUE &&
+      !departments.some((d) => d.id === form.departmentId)
+    ) {
       return [{ id: form.departmentId, name: 'Saved department', isActive: true }, ...departments]
     }
     return departments
   }, [departments, form.departmentId])
+
+  const departmentRequired = !isPlacementStatusWithoutDepartment(form.placementStatus)
 
   const sidebarRoleLabel = useMemo(() => {
     const opt = positionOptionsForSelect.find((o) => o.id === form.positionId)
@@ -372,9 +386,13 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
     setError(null)
 
     const departmentId = form.departmentId.trim()
-    if (!departmentId || !isValidMongoId(departmentId)) {
-      await showHrmsValidationToast('Department is required — pick one from the list.')
-      return
+    const departmentIdToSave =
+      !departmentId || departmentId === NONE_DEPARTMENT_SELECT_VALUE ? null : departmentId
+    if (departmentRequired) {
+      if (!departmentIdToSave || !isValidMongoId(departmentIdToSave)) {
+        await showHrmsValidationToast('Department is required — pick one from the list.')
+        return
+      }
     }
     if (!form.joiningDate || !/^\d{4}-\d{2}-\d{2}$/.test(form.joiningDate)) {
       await showHrmsValidationToast('Joining date is required — pick a valid date.')
@@ -416,7 +434,7 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
       }
 
       await updateCandidate(candidateId, {
-        departmentId,
+        departmentId: departmentIdToSave,
         designation: designationFromPosition,
         position: positionToSave || undefined,
       })
@@ -578,8 +596,18 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                             <p className="mb-3 mt-1 text-[0.7rem] leading-relaxed text-slate-600 dark:text-slate-400">
                               Candidate → Employee
                             </p>
-                            <span className="inline-flex rounded-md border border-amber-200/90 bg-amber-50 px-2.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100">
-                              Onboarding
+                            <span
+                              className={`inline-flex rounded-md border px-2.5 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide ${
+                                form.placementStatus === 'Cancelled'
+                                  ? 'border-rose-200/90 bg-rose-50 text-rose-950 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-100'
+                                  : form.placementStatus === 'Deferred'
+                                    ? 'border-violet-200/90 bg-violet-50 text-violet-950 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-100'
+                                    : form.placementStatus === 'Joined'
+                                      ? 'border-emerald-200/90 bg-emerald-50 text-emerald-950 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-100'
+                                      : 'border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100'
+                              }`}
+                            >
+                              {form.placementStatus}
                             </span>
                           </div>
                         </div>
@@ -663,19 +691,23 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                 <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2 md:gap-x-6 md:gap-y-5">
                                   <div className="flex min-h-0 min-w-0 flex-col gap-0">
                                     <label className="form-label mb-2" htmlFor="hrms-department">
-                                      Department{' '}
-                                      <span className="text-danger" aria-hidden="true">
-                                        *
-                                      </span>
+                                      Department
+                                      {departmentRequired ? (
+                                        <span className="text-danger" aria-hidden="true">
+                                          {' '}
+                                          *
+                                        </span>
+                                      ) : null}
                                     </label>
                                     <select
                                       id="hrms-department"
                                       className="form-control"
                                       value={form.departmentId}
                                       onChange={(e) => void handleDepartmentSelectChange(e.target.value)}
-                                      aria-required="true"
+                                      aria-required={departmentRequired}
                                     >
                                       <option value="">Select department…</option>
+                                      <option value={NONE_DEPARTMENT_SELECT_VALUE}>None</option>
                                       {departmentOptionsForSelect.map((d) => (
                                         <option key={d.id} value={d.id}>
                                           {d.name}
@@ -718,17 +750,21 @@ export default function EditOnboardingClient({ placementIdFromQuery }: EditOnboa
                                       id="hrms-placement-status"
                                       className="form-control"
                                       value={form.placementStatus}
-                                      onChange={(e) =>
-                                        setForm({
-                                          ...form,
-                                          placementStatus: e.target.value as
-                                            | 'Pending'
-                                            | 'Onboarding'
-                                            | 'Joined'
-                                            | 'Deferred'
-                                            | 'Cancelled',
-                                        })
-                                      }
+                                      onChange={(e) => {
+                                        const placementStatus = e.target.value as
+                                          | 'Pending'
+                                          | 'Onboarding'
+                                          | 'Joined'
+                                          | 'Deferred'
+                                          | 'Cancelled'
+                                        setForm((prev) => ({
+                                          ...prev,
+                                          placementStatus,
+                                          departmentId: isPlacementStatusWithoutDepartment(placementStatus)
+                                            ? NONE_DEPARTMENT_SELECT_VALUE
+                                            : prev.departmentId,
+                                        }))
+                                      }}
                                     >
                                       <option value="Onboarding">Onboarding (in progress)</option>
                                       <option value="Joined">Joined</option>
