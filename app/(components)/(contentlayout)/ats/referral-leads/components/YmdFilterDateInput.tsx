@@ -20,6 +20,9 @@ const IMPOSSIBLE_DATE_POPUP_TITLE = "That date does not exist";
 /** Long enough to read one sentence, short enough not to feel stuck. */
 const DATE_POPUP_TIMEOUT_MS = 3000;
 const INVALID_DATE_POPUP_TEXT = "Please input date in dd/mm/yyyy format.";
+/** Matches adjacent filter-bar `form-control` inputs (search/selects), not global react-datepicker `bodybg2`. */
+const DEFAULT_FILTER_INPUT_CLASS =
+  "form-control form-control-sm w-[150px] dark:!bg-bodybg placeholder:text-defaulttextcolor dark:placeholder:text-defaulttextcolor/70";
 
 interface YmdFilterDateInputProps {
   label: string;
@@ -196,7 +199,7 @@ export function YmdFilterDateInput({
         popperClassName={popperClassName}
         calendarClassName="filter-dp-cal"
         wrapperClassName={wrapperClassName}
-        className={`${inputClassName ?? "form-control form-control-sm w-[150px]"} ${error ? "is-invalid" : ""}`}
+        className={`${inputClassName ?? DEFAULT_FILTER_INPUT_CLASS} ${error ? "is-invalid" : ""}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={rangeError ? errorId : undefined}
       />
