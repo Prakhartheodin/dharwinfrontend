@@ -1,0 +1,122 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.avatarWrap {
+  flex-shrink: 0;
+}
+
+.avatarFrame {
+  position: relative;
+  width: fit-content;
+}
+
+.avatarOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.45);
+  color: #fff;
+  pointer-events: none;
+}
+
+.avatarSpinner {
+  font-size: 1.5rem;
+  animation: profile-photo-spin 0.9s linear infinite;
+}
+
+@keyframes profile-photo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.avatarImage {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 9999px;
+  object-fit: cover;
+  border: 2px solid rgb(209 213 219);
+}
+
+.avatarPlaceholder {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(229 231 235);
+  border: 2px solid rgb(209 213 219);
+  color: rgb(156 163 175);
+  font-size: 1.5rem;
+}
+
+.controls {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  color: rgb(107 114 128);
+}
+
+.error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: rgb(220 38 38);
+}
+
+.compactRoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.compactAvatar {
+  flex-shrink: 0;
+}
+
+.compactAvatarImage {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  object-fit: cover;
+}
+
+.compactAvatarFallback {
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--primary-rgb, 132 90 223) / 0.1);
+  color: rgb(var(--primary-rgb, 132 90 223));
+  font-size: 1.25rem;
+}
+
+.compactActions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}

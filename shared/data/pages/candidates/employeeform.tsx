@@ -26,6 +26,7 @@ import {
   SOCIAL_PLATFORMS,
   validateSocialLinkRows,
 } from "@/shared/lib/socialLinks";
+import { ProfilePhotoUploader } from "@/shared/workforce-profile";
 
 function normalizeExcelHeader(h: string) {
   return (h || "").toString().trim().toLowerCase().replace(/\s+/g, "");
@@ -551,47 +552,6 @@ export const EmployeeForm = ({
     setFormData({ ...formData, [e.target.name]: e.target.value });
     // Clear individual field error when user starts typing
     clearFieldError(e.target.name);
-  };
-
-  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      // Validate file type - only allow JPEG, JPG, PNG
-      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
-      const fileExtension = file.name.toLowerCase().split('.').pop();
-      const allowedExtensions = ['jpeg', 'jpg', 'png'];
-      
-      if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension || '')) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Invalid File Format',
-          text: 'Please select a valid image file. Only JPEG, JPG, and PNG formats are allowed.',
-          confirmButtonText: 'OK'
-        });
-        return;
-      }
-      
-      // Validate file size (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        Swal.fire({
-          icon: 'error',
-          title: 'File Too Large',
-          text: 'Please select an image smaller than 5MB',
-          confirmButtonText: 'OK'
-        });
-        return;
-      }
-      
-      setProfilePicture(file);
-      setProfilePictureRemoved(false); // Reset removed flag when new picture is selected
-      
-      // Create preview URL
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfilePicturePreview(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
   };
 
   // ------------------------------- State: Education -------------------------------
@@ -2348,46 +2308,21 @@ export const EmployeeForm = ({
             {/* Profile Picture Upload */}
             <div className="xl:col-span-12 col-span-12 mb-4">
               <label className="form-label">Profile Picture (Optional)</label>
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  {profilePicturePreview ? (
-                    <img
-                      src={profilePicturePreview}
-                      alt="Profile Preview"
-                      className="w-20 h-20 rounded-full object-cover border-2 border-gray-300"
-                    />
-                  ) : (
-                    <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
-                      <i className="ri-user-line text-2xl text-gray-400"></i>
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png"
-                    onChange={handleProfilePictureChange}
-                    className="form-control w-full !rounded-md"
-                    id="profilePicture"
-                  />
-                  <small className="text-gray-500 text-xs mt-1">
-                    Supported formats: JPG, JPEG, PNG only. Max size: 5MB
-                  </small>
-                </div>
-                {profilePicturePreview && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setProfilePicture(null);
-                      setProfilePicturePreview("");
-                      setProfilePictureRemoved(true);
-                    }}
-                    className="ti-btn ti-btn-danger ti-btn-sm"
-                  >
-                    <i className="ri-delete-bin-line"></i>
-                  </button>
-                )}
-              </div>
+              <ProfilePhotoUploader
+                variant="inline"
+                inputId="profilePicture"
+                previewUrl={profilePicturePreview}
+                onCroppedFile={(file, previewUrl) => {
+                  setProfilePicture(file);
+                  setProfilePicturePreview(previewUrl);
+                  setProfilePictureRemoved(false);
+                }}
+                onRemove={() => {
+                  setProfilePicture(null);
+                  setProfilePicturePreview("");
+                  setProfilePictureRemoved(true);
+                }}
+              />
             </div>
 
             <div className="xl:col-span-6 col-span-12">

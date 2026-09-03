@@ -7,6 +7,7 @@ import { getPhoneCountry, getPhoneValidationError } from "@/shared/lib/phoneCoun
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { importRecruitersFromExcel, downloadRecruitersTemplate } from "@/shared/lib/api/users";
 import { uploadDocument } from "@/shared/lib/api/employees";
+import { ProfilePhotoUploader } from "@/shared/workforce-profile";
 import Swal from "sweetalert2";
 import { useRouter } from "next/navigation";
 
@@ -163,24 +164,6 @@ export const RecruiterWizard = () => {
     localStorage.removeItem(DRAFT_KEY);
     setFormData({ name: "", email: "", password: "", phoneNumber: "", countryCode: "IN", education: "", domain: [], location: "", profileSummary: "" });
     Swal.fire({ icon: "success", title: "Draft cleared", timer: 1500 });
-  };
-
-  const handleProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const allowed = ["image/jpeg", "image/jpg", "image/png"];
-    if (!allowed.includes(file.type)) {
-      Swal.fire({ icon: "error", title: "Invalid format", text: "Use JPG, JPEG or PNG. Max 5MB." });
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      Swal.fire({ icon: "error", title: "File too large", text: "Max 5MB." });
-      return;
-    }
-    setProfilePicture(file);
-    const reader = new FileReader();
-    reader.onload = () => setProfilePicturePreview(reader.result as string);
-    reader.readAsDataURL(file);
   };
 
   const handleDownloadTemplate = async () => {
@@ -402,30 +385,19 @@ export const RecruiterWizard = () => {
                 {/* Profile picture */}
                 <div className="xl:col-span-12 col-span-12 mb-4">
                   <label className="form-label">Profile Picture (Optional)</label>
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      {profilePicturePreview ? (
-                        <img src={profilePicturePreview} alt="Preview" className="w-20 h-20 rounded-full object-cover border-2 border-gray-300" />
-                      ) : (
-                        <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center border-2 border-gray-300">
-                          <i className="ri-user-line text-2xl text-gray-400"></i>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <input type="file" accept=".jpg,.jpeg,.png" onChange={handleProfilePictureChange} className="form-control w-full !rounded-md" id="profilePicture" />
-                      <small className="text-gray-500 text-xs mt-1">JPG, JPEG, PNG. Max 5MB.</small>
-                    </div>
-                    {profilePicturePreview && (
-                      <button
-                        type="button"
-                        onClick={() => { setProfilePicture(null); setProfilePicturePreview(""); }}
-                        className="ti-btn ti-btn-danger ti-btn-sm"
-                      >
-                        <i className="ri-delete-bin-line"></i>
-                      </button>
-                    )}
-                  </div>
+                  <ProfilePhotoUploader
+                    variant="inline"
+                    inputId="profilePicture"
+                    previewUrl={profilePicturePreview}
+                    onCroppedFile={(file, previewUrl) => {
+                      setProfilePicture(file);
+                      setProfilePicturePreview(previewUrl);
+                    }}
+                    onRemove={() => {
+                      setProfilePicture(null);
+                      setProfilePicturePreview("");
+                    }}
+                  />
                 </div>
 
                 {/* Name */}

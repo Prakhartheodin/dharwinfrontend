@@ -113,6 +113,38 @@ describe("profile picture — wizard save path", () => {
     expect(uploadDocument).not.toHaveBeenCalled();
   });
 
+  it("shows a blob preview immediately after Apply while upload is in progress", async () => {
+    let resolveUpload!: (value: unknown) => void;
+    uploadDocument.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+    renderStep();
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      const img = screen.getByRole("img", { name: "Your profile photo" }) as HTMLImageElement;
+      expect(img.src).toContain("blob:preview");
+    });
+    expect(uploadDocument).toHaveBeenCalledTimes(1);
+    expect(useWorkforceStore.getState().personalInfo.profilePicture).toBeUndefined();
+
+    resolveUpload({
+      url: "https://cdn.example.com/me.jpg",
+      key: "uploads/me.jpg",
+      originalName: "me.jpg",
+      size: 10,
+      mimeType: "image/jpeg",
+    });
+
+    await waitFor(() => {
+      const pi = useWorkforceStore.getState().personalInfo;
+      expect(pi.profilePicture?.url).toBe("https://cdn.example.com/me.jpg");
+    });
+  });
+
   it("uploads the cropped file after Apply and stores returned metadata", async () => {
     uploadDocument.mockResolvedValue({
       url: "https://cdn.example.com/me.jpg",
@@ -137,6 +169,36 @@ describe("profile picture — wizard save path", () => {
     const uploaded = uploadDocument.mock.calls[0][0] as File;
     expect(uploaded.name).toBe("me.jpg");
     expect(uploaded.type).toBe("image/jpeg");
+  });
+
+  it("shows a loading overlay while the cropped photo uploads", async () => {
+    let resolveUpload!: (value: unknown) => void;
+    uploadDocument.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpload = resolve;
+      }),
+    );
+    renderStep();
+    pickFile();
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "Your profile photo" }).parentElement?.querySelector(".ri-loader-4-line")).toBeTruthy();
+    });
+
+    resolveUpload({
+      url: "https://cdn.example.com/me.jpg",
+      key: "uploads/me.jpg",
+      originalName: "me.jpg",
+      size: 10,
+      mimeType: "image/jpeg",
+    });
+
+    await waitFor(() => {
+      expect(useWorkforceStore.getState().personalInfo.profilePicture?.url).toBe(
+        "https://cdn.example.com/me.jpg",
+      );
+    });
   });
 
   it("does not upload when crop is cancelled", async () => {
@@ -177,6 +239,7 @@ describe("profile picture — wizard save path", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/couldn't upload/i),
     );
     expect(useWorkforceStore.getState().personalInfo.profilePicture).toBeUndefined();
+    expect(screen.queryByRole("img", { name: "Your profile photo" })).not.toBeInTheDocument();
   });
 
   it("sends profilePicture: null when the photo was removed", () => {

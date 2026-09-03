@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useId, useRef } from "react";
+import React, { useId } from "react";
 import { useWorkforceStore } from "../state/workforce.store";
-import { uploadDocument } from "@/shared/lib/api/employees";
 import { useWizardContext } from "../engine/WizardContext";
 import { getPhoneCountry } from "@/shared/lib/phoneCountries";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
@@ -13,7 +12,7 @@ import {
   getSocialLinkUrlError,
   SOCIAL_PLATFORMS,
 } from "@/shared/lib/socialLinks";
-import { AvatarCropOverlay } from "../components/AvatarCropOverlay";
+import { ProfilePhotoUploader } from "../components/ProfilePhotoUploader";
 import styles from "./personal-info-step.module.css";
 
 const VISA_TYPES = [
@@ -61,8 +60,6 @@ const SALARY_RANGES = [
 /** ids must be usable by htmlFor/aria — a raw section title has spaces and "&". */
 const slugify = (s: string): string =>
   s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-const MAX_PICTURE_BYTES = 5 * 1024 * 1024;
 
 let socialIdCounter = 0;
 const newSocialId = () => `sl-${Date.now()}-${++socialIdCounter}`;
@@ -163,15 +160,10 @@ export function PersonalInfoStep() {
   const setPersonalInfo = useWorkforceStore((s) => s.setPersonalInfo);
   const { issuesByField, mode, currentIndex, steps, submitAttempted } = useWizardContext();
   const auth = useAuth();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const fileInputId = useId();
   // Errors stay quiet until the user leaves a field (or presses Save), so an
   // untouched form doesn't open covered in red.
   const [touched, setTouched] = React.useState<Record<string, boolean>>({});
-  const [pictureError, setPictureError] = React.useState<string | null>(null);
-  const [pictureUploading, setPictureUploading] = React.useState(false);
-  const [cropFile, setCropFile] = React.useState<File | null>(null);
-  const [cropOpen, setCropOpen] = React.useState(false);
   const [showPassword, setShowPassword] = React.useState(false);
 
   const showCompanyEmail =
@@ -205,78 +197,6 @@ export function PersonalInfoStep() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setPersonalInfo({ address: { ...pi.address, [key]: e.target.value } });
 
-  const onProfilePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    setPictureError(null);
-    if (!file) return;
-
-    const allowed = ["image/jpeg", "image/jpg", "image/png"];
-    if (!allowed.includes(file.type)) {
-      e.target.value = "";
-      setPictureError("That file type isn't supported. Choose a JPG or PNG image.");
-      return;
-    }
-    if (file.size > MAX_PICTURE_BYTES) {
-      e.target.value = "";
-      const mb = (file.size / (1024 * 1024)).toFixed(1);
-      setPictureError(`That image is ${mb} MB. Choose one under 5 MB.`);
-      return;
-    }
-
-    setCropFile(file);
-    setCropOpen(true);
-  };
-
-  const closeCropEditor = () => {
-    setCropOpen(false);
-    setCropFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const onCropApply = async (croppedFile: File) => {
-    setCropOpen(false);
-    setCropFile(null);
-    setPictureUploading(true);
-    try {
-      const meta = await uploadDocument(croppedFile, croppedFile.name);
-      setPersonalInfo({
-        profilePicture: {
-          url: meta.url,
-          key: meta.key,
-          originalName: meta.originalName,
-          size: meta.size,
-          mimeType: meta.mimeType,
-        },
-        profilePictureFile: null,
-        profilePictureRemoved: false,
-      });
-    } catch {
-      setPictureError("Couldn't upload that photo. Check your connection and try again.");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } finally {
-      setPictureUploading(false);
-    }
-  };
-
-  const removeProfilePicture = () => {
-    setPersonalInfo({
-      profilePictureFile: null,
-      profilePicture: undefined,
-      profilePictureRemoved: true,
-    });
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const previewUrl = React.useMemo(() => {
-    if (pi.profilePictureFile) return URL.createObjectURL(pi.profilePictureFile);
-    return pi.profilePicture?.url ?? "";
-  }, [pi.profilePictureFile, pi.profilePicture?.url]);
-
-  useEffect(() => {
-    if (!pi.profilePictureFile) return;
-    return () => URL.revokeObjectURL(previewUrl);
-  }, [pi.profilePictureFile, previewUrl]);
-
   const addSocialLink = () =>
     setPersonalInfo({
       socialLinks: [...pi.socialLinks, { id: newSocialId(), platform: "", url: "" }],
@@ -306,12 +226,6 @@ export function PersonalInfoStep() {
 
   return (
     <div className={styles.step}>
-      <AvatarCropOverlay
-        open={cropOpen}
-        imageFile={cropFile}
-        onClose={closeCropEditor}
-        onApply={onCropApply}
-      />
       <header className={styles.stepHeader}>
         {/* Step count comes from the wizard — candidate mode has no Salary step. */}
         <p className={styles.stepEyebrow}>
@@ -329,60 +243,32 @@ export function PersonalInfoStep() {
         hint="Your name, login email, and primary phone number."
       >
         <div className={styles.identityCard}>
-          <div className={styles.avatarBlock}>
-            <div className={styles.avatarRing}>
-              {previewUrl ? (
-                <img
-                  src={previewUrl}
-                  alt="Your profile photo"
-                  className={styles.avatarImage}
-                />
-              ) : (
-                <div className={styles.avatarPlaceholder} aria-hidden="true">
-                  <i className="ri-user-line" />
-                </div>
-              )}
-            </div>
-            <input
-              ref={fileInputRef}
-              id={fileInputId}
-              type="file"
-              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-              onChange={onProfilePictureChange}
-              className={styles.hiddenFile}
-              aria-label="Upload profile picture"
-            />
-            <div className={styles.avatarActions}>
-              <button
-                type="button"
-                className={styles.uploadBtn}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={pictureUploading}
-              >
-                <i
-                  className={pictureUploading ? "ri-loader-4-line" : "ri-upload-2-line"}
-                  aria-hidden="true"
-                />
-                {pictureUploading
-                  ? "Uploading…"
-                  : previewUrl
-                    ? "Change photo"
-                    : "Upload photo"}
-              </button>
-              {previewUrl && !pictureUploading ? (
-                <button type="button" className={styles.removeBtn} onClick={removeProfilePicture}>
-                  <i className="ri-delete-bin-line" aria-hidden="true" />
-                  Remove
-                </button>
-              ) : null}
-            </div>
-            <p className={styles.avatarHint}>JPG or PNG, up to 5 MB</p>
-            {pictureError ? (
-              <p className={styles.avatarError} role="alert">
-                {pictureError}
-              </p>
-            ) : null}
-          </div>
+          <ProfilePhotoUploader
+            variant="wizard"
+            inputId={fileInputId}
+            previewUrl={pi.profilePicture?.url ?? ""}
+            uploadOnApply
+            onUploaded={(meta) =>
+              setPersonalInfo({
+                profilePicture: {
+                  url: meta.url,
+                  key: meta.key,
+                  originalName: meta.originalName,
+                  size: meta.size,
+                  mimeType: meta.mimeType,
+                },
+                profilePictureFile: null,
+                profilePictureRemoved: false,
+              })
+            }
+            onRemove={() =>
+              setPersonalInfo({
+                profilePictureFile: null,
+                profilePicture: undefined,
+                profilePictureRemoved: true,
+              })
+            }
+          />
 
           <div className={`${styles.identityFields} ${styles.gridFull}`}>
             <Field id="fullName" label="Full name" required error={fieldErr("fullName")}>

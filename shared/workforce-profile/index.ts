@@ -1,6 +1,11 @@
 export { EmployeeProfileWizard } from "./adapters/EmployeeProfileWizard";
 export type { EmployeeProfileWizardProps } from "./adapters/EmployeeProfileWizard";
 
+export { AvatarCropOverlay } from "./components/AvatarCropOverlay";
+export type { AvatarCropOverlayProps } from "./components/AvatarCropOverlay";
+export { ProfilePhotoUploader } from "./components/ProfilePhotoUploader";
+export type { ProfilePhotoMetadata, ProfilePhotoUploaderProps } from "./components/ProfilePhotoUploader";
+
 export { WorkforceWizardShell } from "./engine/WorkforceWizardShell";
 export { WizardProvider, useWizardContext } from "./engine/WizardContext";
 export type { WizardContextValue } from "./engine/WizardContext";

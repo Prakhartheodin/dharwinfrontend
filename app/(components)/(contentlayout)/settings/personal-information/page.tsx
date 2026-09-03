@@ -8,7 +8,6 @@ import { ROUTES } from "@/shared/lib/constants";
 import * as authApi from "@/shared/lib/api/auth";
 import * as usersApi from "@/shared/lib/api/users";
 import {
-  uploadDocument,
   uploadDocuments,
   getDocumentDownloadUrl,
   getSalarySlipDownloadUrl,
@@ -16,7 +15,7 @@ import {
 } from "@/shared/lib/api/candidates";
 import type { NotificationPreferences } from "@/shared/lib/api/users";
 import { useHasEmployeeRole } from "@/shared/hooks/use-has-employee-role";
-import { EmployeeProfileWizard } from "@/shared/workforce-profile";
+import { EmployeeProfileWizard, ProfilePhotoUploader } from "@/shared/workforce-profile";
 import { resolveSelfServiceWizardTarget } from "@/shared/lib/personal-info-wizard";
 import { PhoneCountrySelect } from "@/shared/components/PhoneCountrySelect";
 import { NotificationPreferencesEditor } from "@/shared/components/NotificationPreferencesEditor";
@@ -290,6 +289,7 @@ export default function PersonalInformationPage() {
     sessions,
     checkAuth,
     refreshUser,
+    applyUser,
     isAdministrator,
     isPlatformSuperUser,
     roleNames,
@@ -323,7 +323,8 @@ export default function PersonalInformationPage() {
   const [extractingFromDoc, setExtractingFromDoc] = useState(false);
   const [avatarUploadLoading, setAvatarUploadLoading] = useState(false);
   const [avatarRemoveLoading, setAvatarRemoveLoading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [pendingAvatarPreview, setPendingAvatarPreview] = useState<string | null>(null);
+  const [avatarUploaderBusy, setAvatarUploaderBusy] = useState(false);
 
   const [phoneNumber, setPhoneNumber] = useState("");
   const [countryCode, setCountryCode] = useState<string>(DEFAULT_PHONE_COUNTRY);
@@ -1001,30 +1002,32 @@ export default function PersonalInformationPage() {
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    e.target.value = "";
-    const allowed = ["image/jpeg", "image/jpg", "image/png"];
-    if (!allowed.includes(file.type)) {
-      await showProfileSaveToast("error", "Invalid file", "Please upload a JPEG or PNG image (max 5 MB).");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      await showProfileSaveToast("error", "Image too large", "Image must be smaller than 5 MB.");
-      return;
-    }
+  const handleAvatarUploaded = async (result: {
+    url: string;
+    key: string;
+    originalName: string;
+    size: number;
+    mimeType: string;
+  }) => {
+    if (!user) return;
     setAvatarUploadLoading(true);
     try {
-      const result = await uploadDocument(file);
-      const profilePicture = { url: result.url, key: result.key, originalName: result.originalName, size: result.size, mimeType: result.mimeType };
+      const profilePicture = {
+        url: result.url,
+        key: result.key,
+        originalName: result.originalName,
+        size: result.size,
+        mimeType: result.mimeType,
+      };
       if (candidate && (hasEmployeeProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture });
         setCandidate(res.candidate);
+        applyUser(res.user);
       } else {
-        await authApi.updateMyProfile({ profilePicture });
+        const updatedUser = await authApi.updateMyProfile({ profilePicture });
+        applyUser(updatedUser);
       }
-      await refreshUser();
+      setPendingAvatarPreview(null);
       await Swal.fire({
         icon: "success",
         title: "Photo updated",
@@ -1036,6 +1039,7 @@ export default function PersonalInformationPage() {
         timerProgressBar: true,
       });
     } catch (err) {
+      setPendingAvatarPreview(null);
       const msg = extractApiErrorMessage(err);
       await showProfileSaveToast(
         "error",
@@ -1054,10 +1058,12 @@ export default function PersonalInformationPage() {
       if (candidate && (hasEmployeeProfile || !hasAdminPrivileges)) {
         const res = await authApi.updateMeWithCandidate({ profilePicture: null });
         setCandidate(res.candidate);
+        applyUser(res.user);
       } else {
-        await authApi.updateMyProfile({ profilePicture: null });
+        const updatedUser = await authApi.updateMyProfile({ profilePicture: null });
+        applyUser(updatedUser);
       }
-      await refreshUser();
+      setPendingAvatarPreview(null);
       await Swal.fire({
         icon: "success",
         title: "Photo removed",
@@ -1187,14 +1193,26 @@ export default function PersonalInformationPage() {
         <div className="box overflow-hidden">
           <div className="box-body !p-0">
             <div className="flex flex-wrap items-center gap-4 px-4 py-4">
-              <div className="shrink-0">
-                {user?.profilePicture?.url ? (
-                  <img src={user.profilePicture.url} alt="" className="w-14 h-14 rounded-full object-cover ring-2 ring-defaultborder dark:ring-white/10" />
+              <div className="shrink-0 relative">
+                {pendingAvatarPreview || user?.profilePicture?.url ? (
+                  <img
+                    src={pendingAvatarPreview ?? user?.profilePicture?.url}
+                    alt=""
+                    className="w-14 h-14 rounded-full object-cover ring-2 ring-defaultborder dark:ring-white/10"
+                  />
                 ) : (
                   <span className="w-14 h-14 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-[1.3rem]">
                     {(user?.name ?? user?.email ?? "?").charAt(0).toUpperCase()}
                   </span>
                 )}
+                {avatarUploaderBusy || avatarUploadLoading || avatarRemoveLoading ? (
+                  <div
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 text-white pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    <i className="ri-loader-4-line text-xl animate-spin" />
+                  </div>
+                ) : null}
               </div>
               <div className="flex-1 min-w-0">
                 <h6 className="font-semibold text-[0.9375rem] mb-0 leading-tight">{user?.name ?? user?.email ?? "—"}</h6>
@@ -1209,17 +1227,18 @@ export default function PersonalInformationPage() {
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/jpg,image/png" className="hidden" onChange={handleAvatarUpload} aria-label="Upload profile picture" />
-                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={avatarUploadLoading || avatarRemoveLoading || !user} className="ti-btn ti-btn-sm ti-btn-primary !w-auto !h-auto whitespace-nowrap inline-flex items-center">
-                  {avatarUploadLoading ? "Uploading…" : <><i className="ri-camera-line me-1 align-middle inline-block" />Photo</>}
-                </button>
-                {user?.profilePicture?.url && (
-                  <button type="button" onClick={handleAvatarRemove} disabled={avatarUploadLoading || avatarRemoveLoading} className="ti-btn ti-btn-sm ti-btn-soft-danger !w-auto !h-auto whitespace-nowrap">
-                    {avatarRemoveLoading ? "Removing…" : "Remove"}
-                  </button>
-                )}
-              </div>
+              <ProfilePhotoUploader
+                variant="compact"
+                showPreview={false}
+                previewUrl={user?.profilePicture?.url ?? ""}
+                disabled={!user || avatarUploadLoading || avatarRemoveLoading}
+                uploadOnApply
+                uploadSavingLabel="Saving to profile…"
+                onPreviewChange={setPendingAvatarPreview}
+                onUploadingChange={setAvatarUploaderBusy}
+                onUploaded={handleAvatarUploaded}
+                onRemove={handleAvatarRemove}
+              />
             </div>
           </div>
         </div>

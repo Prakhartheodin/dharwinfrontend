@@ -45,6 +45,8 @@ interface AuthContextValue {
   checkAuth: () => Promise<void>;
   /** Refresh only user/impersonation/sessions from getMe (e.g. after profile update). Does not re-fetch permissions. */
   refreshUser: () => Promise<void>;
+  /** Apply user from a PATCH response without an extra GET /auth/me. */
+  applyUser: (user: User) => void;
   startImpersonation: (
     userId: string,
     targetUserName?: string,
@@ -229,6 +231,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Do not clear user on getMe failure here; caller may retry or use checkAuth
     }
+  }, []);
+
+  const applyUser = useCallback((next: User) => {
+    setUser(next);
   }, []);
 
   useEffect(() => {
@@ -476,6 +482,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       checkAuth,
       refreshUser,
+      applyUser,
       startImpersonation,
       stopImpersonation: stopImpersonationAction,
     }),
@@ -497,6 +504,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
       checkAuth,
       refreshUser,
+      applyUser,
       startImpersonation,
       stopImpersonationAction,
     ]
