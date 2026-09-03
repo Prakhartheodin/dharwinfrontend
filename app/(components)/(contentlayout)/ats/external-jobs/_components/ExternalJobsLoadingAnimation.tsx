@@ -59,11 +59,11 @@ export function ExternalJobsTableLoader({ title, hint }: TableLoaderProps) {
           </span>
         </div>
 
-        <p className="font-Montserrat mt-8 text-center text-[0.65rem] font-bold uppercase tracking-[0.28em] text-textmuted dark:text-white/42">
+        <p className="font-Montserrat mt-8 text-center text-[0.65rem] font-bold uppercase tracking-[0.28em] text-textmuted dark:text-white/45">
           {title}
         </p>
         {hint ? (
-          <p className="mt-2 max-w-sm text-center text-sm leading-relaxed text-textmuted/95 dark:text-white/48">
+          <p className="mt-2 max-w-sm text-center text-sm leading-relaxed text-textmuted/95 dark:text-white/50">
             {hint}
           </p>
         ) : null}

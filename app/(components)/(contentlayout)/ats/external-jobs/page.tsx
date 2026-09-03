@@ -236,10 +236,39 @@ export default function ExternalJobsPage() {
         } else {
           setRateLimitError(msg || "Search failed.");
         }
-        setSearchResults([]);
+        // Keep whatever was on screen. Filter changes search on their own now, so a
+        // stray 429 from one extra toggle must not wipe the results the user has.
       })
       .finally(() => setSearchLoading(false));
   };
+
+  // Selects and the remote toggle apply themselves; the two text fields still need
+  // Enter or the Search button, because a debounced live search would spend the
+  // backend's 5-requests-per-minute budget (externalJob.service checkRateLimit) on
+  // a single typed word. A change made during the cooldown is not dropped -- the
+  // effect re-runs as searchCooldown ticks and fires once it reaches 0.
+  const autoFilterKey = `${filters.source}|${filters.date_posted}|${filters.remote ?? ""}`;
+  const autoAppliedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== "search") return;
+    // First render only records the starting filters -- landing on the page must not
+    // fire a search by itself; the empty state asks for one.
+    if (autoAppliedRef.current === null) {
+      autoAppliedRef.current = autoFilterKey;
+      return;
+    }
+    if (autoAppliedRef.current === autoFilterKey) return;
+    if (searchLoading || searchCooldown > 0) return;
+    // Source also rewrites date_posted when the new source doesn't support the
+    // current window; the delay coalesces that pair into one request.
+    const t = setTimeout(() => {
+      autoAppliedRef.current = autoFilterKey;
+      handleSearch();
+    }, 250);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFilterKey, activeTab, searchLoading, searchCooldown]);
 
   const handleLoadMore = () => {
     const nextOffset = searchOffset + SEARCH_BATCH_SIZE;
@@ -330,32 +359,26 @@ export default function ExternalJobsPage() {
         Cell: ({ row }: any) => {
           const loc: string | undefined = row.original.location;
           if (!loc) return <span className="text-gray-400">—</span>;
-          const parts = loc
-            .split(/;|•/)
-            .map((p) => p.trim())
-            .filter(Boolean);
-          const MAX_VISIBLE = 2;
-          const visible = parts.slice(0, MAX_VISIBLE);
-          const hidden = parts.slice(MAX_VISIBLE);
+          // The feed lists every site of one posting; the backend already condenses
+          // that to "City, State, Country +6 more" (mapRowToJob). Split the tail off
+          // so the count reads as its own chip instead of running into the city.
+          const [, place = loc, extra] = loc.match(/^(.*?)\s*(\+\d+\s+more)$/) || [];
           return (
             <div className="flex items-start gap-1.5 max-w-[18rem]">
               <i className="ri-map-pin-line text-gray-400 text-xs mt-[3px] shrink-0" />
               <div className="flex flex-wrap gap-1 min-w-0">
-                {visible.map((p, i) => (
-                  <span
-                    key={`${p}-${i}`}
-                    className="inline-flex max-w-full items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[0.7rem] text-gray-700 ring-1 ring-gray-200 dark:bg-white/8 dark:text-white/70 dark:ring-white/10"
-                    title={p}
-                  >
-                    <span className="truncate">{p}</span>
-                  </span>
-                ))}
-                {hidden.length > 0 && (
+                <span
+                  className="inline-flex max-w-full items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[0.7rem] text-defaulttextcolor ring-1 ring-gray-200 dark:bg-white/10 dark:ring-white/10"
+                  title={loc}
+                >
+                  <span className="truncate">{place}</span>
+                </span>
+                {extra && (
                   <span
                     className="inline-flex items-center rounded-md bg-primary/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-primary ring-1 ring-primary/20 cursor-help"
-                    title={hidden.join('\n')}
+                    title={loc}
                   >
-                    +{hidden.length} more
+                    {extra}
                   </span>
                 )}
               </div>
@@ -436,7 +459,7 @@ export default function ExternalJobsPage() {
                 className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm transition-all active:scale-95 ${
                   saved
                     ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25 hover:bg-amber-600"
-                    : "bg-gray-100 text-gray-500 hover:bg-primary/10 hover:text-primary dark:bg-white/8 dark:text-white/50 dark:hover:bg-primary/15 dark:hover:text-primary"
+                    : "bg-gray-100 text-gray-500 hover:bg-primary/10 hover:text-primary dark:bg-white/10 dark:text-white/70 dark:hover:bg-primary/15 dark:hover:text-primary"
                 }`}
               >
                 <i className={`${saved ? "ri-bookmark-fill" : "ri-bookmark-line"} ${saving ? "animate-pulse" : ""}`} aria-hidden />
@@ -447,7 +470,7 @@ export default function ExternalJobsPage() {
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Open listing"
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500 transition-all hover:bg-sky-50 hover:text-sky-600 active:scale-95 dark:bg-white/8 dark:text-white/50 dark:hover:bg-sky-500/10 dark:hover:text-sky-400"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500 transition-all hover:bg-sky-50 hover:text-sky-600 active:scale-95 dark:bg-white/10 dark:text-white/70 dark:hover:bg-sky-500/10 dark:hover:text-sky-400"
                   onClick={(e) => e.stopPropagation()}
                   aria-label="Open listing"
                 >
@@ -581,9 +604,9 @@ export default function ExternalJobsPage() {
         <div className="grid grid-cols-12 gap-6">
           <div className="col-span-12 flex flex-col">
             <div className="box custom-box flex min-h-[28rem] flex-col overflow-hidden rounded-2xl border border-defaultborder/70 bg-white/90 shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)] ring-1 ring-black/[0.04] backdrop-blur-[2px] dark:bg-bodybg/95 dark:ring-white/10 sm:h-[calc(100dvh-9rem)] lg:h-[calc(100dvh-8rem)]">
-              <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/12 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+              <div className="box-header flex flex-col gap-4 overflow-visible border-b border-defaultborder/80 bg-gradient-to-br from-primary/[0.07] via-transparent to-amber-500/[0.03] px-5 py-5 dark:from-primary/10 dark:to-transparent sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                 <div className="flex min-w-0 flex-1 items-start gap-3">
-                  <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/12 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
+                  <span className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-inner ring-1 ring-primary/20 dark:bg-primary/20">
                     <i className="ri-global-line text-xl" aria-hidden />
                   </span>
                   <div className="min-w-0 space-y-1">
@@ -872,7 +895,7 @@ export default function ExternalJobsPage() {
                     <ExternalJobsTableLoader title="Loading saved contacts" hint="Fetching your HR shortlist." />
                   ) : savedContacts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
-                      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
                         <i className="ri-contacts-line text-2xl" aria-hidden />
                       </span>
                       <div className="max-w-md space-y-1">
@@ -1003,7 +1026,7 @@ export default function ExternalJobsPage() {
                         <i className="ri-cursor-line text-[0.6rem]" aria-hidden />
                         Click any row to preview
                       </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/50 bg-white/70 px-2.5 py-1 text-[0.68rem] font-medium text-textmuted dark:border-white/8 dark:bg-white/[0.03] dark:text-white/40">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-defaultborder/50 bg-white/70 px-2.5 py-1 text-[0.68rem] font-medium text-textmuted dark:border-white/10 dark:bg-white/[0.03] dark:text-white/40">
                         <i className="ri-bookmark-line text-[0.6rem]" aria-hidden />
                         Bookmark icon saves without opening
                       </span>
@@ -1064,7 +1087,7 @@ export default function ExternalJobsPage() {
                           <tr>
                             <td colSpan={columns.length} className="!border-0 !p-0 align-top">
                               <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
-                                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
                                   <i
                                     className={`text-2xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
                                     aria-hidden
@@ -1120,7 +1143,7 @@ export default function ExternalJobsPage() {
                     <div className="md:hidden flex flex-col gap-3 p-3">
                       {page.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
-                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20">
+                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
                             <i
                               className={`text-xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
                               aria-hidden
@@ -1187,7 +1210,7 @@ export default function ExternalJobsPage() {
                                     className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-sm transition-all active:scale-95 ${
                                       saved
                                         ? "bg-amber-500 text-white shadow-sm shadow-amber-500/25 hover:bg-amber-600"
-                                        : "bg-gray-100 text-gray-500 hover:bg-primary/10 hover:text-primary dark:bg-white/8 dark:text-white/50"
+                                        : "bg-gray-100 text-gray-500 hover:bg-primary/10 hover:text-primary dark:bg-white/10 dark:text-white/70"
                                     }`}
                                   >
                                     <i className={`${saved ? "ri-bookmark-fill" : "ri-bookmark-line"} ${saving ? "animate-pulse" : ""}`} aria-hidden />
@@ -1200,7 +1223,7 @@ export default function ExternalJobsPage() {
                                       title="Open listing"
                                       onClick={(e) => e.stopPropagation()}
                                       aria-label="Open listing"
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500 transition-all hover:bg-sky-50 hover:text-sky-600 active:scale-95 dark:bg-white/8 dark:text-white/50"
+                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gray-100 text-sm text-gray-500 transition-all hover:bg-sky-50 hover:text-sky-600 active:scale-95 dark:bg-white/10 dark:text-white/70"
                                     >
                                       <i className="ri-external-link-line" aria-hidden />
                                     </a>
@@ -1219,7 +1242,7 @@ export default function ExternalJobsPage() {
                                   {job.source === "active-jobs-db" ? "Active Jobs" : "LinkedIn"}
                                 </span>
                                 {job.jobType && (
-                                  <span className="rounded-full bg-gray-100 px-2 py-[2px] text-[0.62rem] font-medium text-gray-700 ring-1 ring-gray-200/80 dark:bg-white/8 dark:text-white/65 dark:ring-white/10">
+                                  <span className="rounded-full bg-gray-100 px-2 py-[2px] text-[0.62rem] font-medium text-gray-700 ring-1 ring-gray-200/80 dark:bg-white/10 dark:text-white/65 dark:ring-white/10">
                                     {job.jobType}
                                   </span>
                                 )}
