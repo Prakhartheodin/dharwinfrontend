@@ -8,9 +8,17 @@ import {
   updateWeekOffCalendar,
   getStudentWeekOff,
   importWeekOffBulk,
+  exportWeekOffExcel,
   WEEK_OFF_DAYS,
   type ImportWeekOffEntry,
 } from "@/shared/lib/api/students";
+import {
+  getAlreadyAssignedMessage,
+  getNoOpUpdateMessage,
+  isDayAlreadyOnAllSelected,
+  isWeekOffNoOp,
+  buildWeekOffExportFilename,
+} from "@/shared/lib/week-off-utils";
 import {
   buildMergedAssignPeopleOptions,
   filterAssignPersonSelectOption,
@@ -25,6 +33,7 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { SopAssignChecklistNotice, useSopPreselectStudents } from "@/shared/hooks/use-sop-assign-deeplink";
 import { dispatchSopStripRefresh } from "@/shared/lib/sop-strip-preferences";
 import { usePmReactSelectStyles } from "@/shared/hooks/usePmReactSelectStyles";
+import WeekOffDayPicker from "@/shared/components/WeekOffDayPicker";
 
 const Select = dynamic(() => import("react-select"), { ssr: false });
 
@@ -74,8 +83,12 @@ export default function SettingsAttendanceWeekOffPage() {
   const [error, setError] = useState<string | null>(null);
   const [studentWeekOffs, setStudentWeekOffs] = useState<Record<string, WeekOffData>>({});
   const [hasUserSelectedDays, setHasUserSelectedDays] = useState(false);
+  const [exportFilterDays, setExportFilterDays] = useState<string[]>([]);
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const [importingExcel, setImportingExcel] = useState(false);
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const exportModalRef = useRef<HTMLDivElement>(null);
 
   const fetchPeople = useCallback(async () => {
     if (!canAccess) {
@@ -195,12 +208,52 @@ export default function SettingsAttendanceWeekOffPage() {
     setHasUserSelectedDays(false);
   };
 
-  const toggleDay = (day: string) => {
+  const toggleDay = async (day: string) => {
+    const isRemoving = selectedDays.includes(day);
+    if (!isRemoving && selectedPeople.length > 0 && Object.keys(studentWeekOffs).length > 0) {
+      if (isDayAlreadyOnAllSelected(day, studentWeekOffs, selectedPeople)) {
+        await Swal.fire({
+          icon: "info",
+          title: "Already assigned",
+          text: getAlreadyAssignedMessage(day),
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+    }
     setHasUserSelectedDays(true);
     setSelectedDays((prev) =>
+      isRemoving ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  const toggleExportFilterDay = (day: string) => {
+    setExportFilterDays((prev) =>
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
     );
   };
+
+  const selectAllExportFilterDays = () => setExportFilterDays([...WEEK_OFF_DAYS]);
+  const clearAllExportFilterDays = () => setExportFilterDays([]);
+
+  const openExportModal = () => setExportModalOpen(true);
+  const closeExportModal = () => {
+    if (!exportingExcel) setExportModalOpen(false);
+  };
+
+  useEffect(() => {
+    if (!exportModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !exportingExcel) setExportModalOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    exportModalRef.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [exportModalOpen, exportingExcel]);
 
   const selectAllDays = () => {
     setHasUserSelectedDays(true);
@@ -236,6 +289,16 @@ export default function SettingsAttendanceWeekOffPage() {
         setUpdating(false);
         return;
       }
+      if (isWeekOffNoOp(selectedDays, studentWeekOffs, selectedPeople)) {
+        await Swal.fire({
+          icon: "info",
+          title: "No changes",
+          text: getNoOpUpdateMessage(),
+          confirmButtonText: "OK",
+        });
+        setUpdating(false);
+        return;
+      }
       const tasks: Promise<unknown>[] = [];
       if (studentRows.length) {
         tasks.push(updateWeekOffCalendar(studentRows.map((r) => r.value), selectedDays));
@@ -262,6 +325,45 @@ export default function SettingsAttendanceWeekOffPage() {
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
       setUpdating(false);
+    }
+  };
+
+  const handleExportWeekOff = async () => {
+    if (exportFilterDays.length === 0) return;
+    setExportingExcel(true);
+    setError(null);
+    try {
+      const { blob, rowCount } = await exportWeekOffExcel(exportFilterDays);
+      if (rowCount === 0) {
+        await Swal.fire({
+          icon: "info",
+          title: "No matching records",
+          text: "No people have the selected week-off days. Try different days or check assignments.",
+          confirmButtonText: "OK",
+        });
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = buildWeekOffExportFilename(exportFilterDays);
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportModalOpen(false);
+      await Swal.fire({
+        icon: "success",
+        title: "Export complete",
+        text: `Downloaded ${rowCount} record${rowCount === 1 ? "" : "s"}.`,
+        confirmButtonText: "OK",
+      });
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data
+          ?.message ?? (err as { message?: string })?.message ?? "Failed to export week-off data";
+      setError(msg);
+      await Swal.fire({ icon: "error", title: "Export failed", text: msg, confirmButtonText: "OK" });
+    } finally {
+      setExportingExcel(false);
     }
   };
 
@@ -440,7 +542,15 @@ export default function SettingsAttendanceWeekOffPage() {
                 </p>
               </div>
             </div>
-            <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+            <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+              <button
+                type="button"
+                onClick={openExportModal}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-slate-100 dark:hover:bg-white/10 sm:w-auto"
+              >
+                <i className="ri-file-excel-2-line text-base" />
+                Export Excel
+              </button>
               <button
                 type="button"
                 onClick={downloadTemplate}
@@ -548,54 +658,23 @@ export default function SettingsAttendanceWeekOffPage() {
               )}
             </div>
 
-            <div>
-              <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <label className="block text-sm font-semibold text-defaulttextcolor">Select Week-Off Days</label>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={selectAllDays}
-                    className="text-sm font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    Select All
-                  </button>
-                  <span className="text-defaulttextcolor/40">·</span>
-                  <button
-                    type="button"
-                    onClick={clearAllDays}
-                    className="text-sm font-medium text-defaulttextcolor/80 hover:text-defaulttextcolor transition-colors"
-                  >
-                    Clear All
-                  </button>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
-                {WEEK_OFF_DAYS.map((day) => (
-                  <label
-                    key={day}
-                    className={`flex cursor-pointer items-center gap-2 rounded-xl border p-3 transition-all duration-200 ${
-                      selectedDays.includes(day)
-                        ? "border-primary bg-primary/10 dark:bg-primary/15 ring-1 ring-primary/20"
-                        : "border-defaultborder/80 bg-white dark:bg-white/5 hover:border-primary/50 hover:bg-black/5 dark:hover:bg-white/10"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedDays.includes(day)}
-                      onChange={() => toggleDay(day)}
-                      className="w-4 h-4 rounded border-defaultborder text-primary focus:ring-primary focus:ring-2 focus:ring-primary/20"
-                    />
-                    <span className={`text-sm font-medium ${selectedDays.includes(day) ? "text-primary" : "text-defaulttextcolor"}`}>
-                      {day}
-                    </span>
-                  </label>
-                ))}
-              </div>
-              {selectedDays.length > 0 && (
-                <p className="mt-3 text-sm text-defaulttextcolor/70">
-                  <strong>Selected:</strong> {selectedDays.join(", ")}
-                </p>
-              )}
+            <div className="rounded-xl border border-defaultborder/60 bg-white p-5 dark:border-defaultborder/50 dark:bg-white/[0.02]">
+              <h3 className="mb-1 text-sm font-semibold text-defaulttextcolor dark:text-white">
+                Assign week-off days
+              </h3>
+              <p className="mb-4 text-xs text-defaulttextcolor/60 dark:text-white/50">
+                Choose days to apply to the selected people above
+              </p>
+              <WeekOffDayPicker
+                selectedDays={selectedDays}
+                onToggleDay={toggleDay}
+                onSelectAll={selectAllDays}
+                onClearAll={clearAllDays}
+                showBulkActions
+                showSummary
+                legend="Select week-off days to assign"
+                summaryId="week-off-selected-summary"
+              />
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -686,6 +765,78 @@ export default function SettingsAttendanceWeekOffPage() {
             </div>
           </div>
         </section>
+
+        {exportModalOpen && (
+          <div className="fixed inset-0 z-[1060] flex items-center justify-center p-4" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50 dark:bg-black/70"
+              aria-label="Close export dialog"
+              onClick={closeExportModal}
+              disabled={exportingExcel}
+            />
+            <div
+              ref={exportModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="week-off-export-modal-title"
+              tabIndex={-1}
+              className="relative z-10 w-full max-w-lg rounded-2xl border border-defaultborder/70 bg-white shadow-xl dark:bg-bodybg dark:shadow-none"
+            >
+              <div className="border-b border-defaultborder/50 px-6 py-4">
+                <h2
+                  id="week-off-export-modal-title"
+                  className="text-lg font-semibold text-defaulttextcolor dark:text-white"
+                >
+                  Export week-off list
+                </h2>
+                <p className="mt-1 text-sm text-defaulttextcolor/60 dark:text-white/50">
+                  Select one or more days to include in the report
+                </p>
+              </div>
+              <div className="px-6 py-4">
+                <WeekOffDayPicker
+                  selectedDays={exportFilterDays}
+                  onToggleDay={toggleExportFilterDay}
+                  onSelectAll={selectAllExportFilterDays}
+                  onClearAll={clearAllExportFilterDays}
+                  showBulkActions
+                  showSummary
+                  legend="Filter export by week-off day"
+                  summaryId="week-off-export-filter-summary"
+                />
+              </div>
+              <div className="flex flex-col-reverse gap-2 border-t border-defaultborder/50 px-6 py-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeExportModal}
+                  disabled={exportingExcel}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor transition-colors hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-60 dark:hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportWeekOff}
+                  disabled={exportingExcel || exportFilterDays.length === 0}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90 hover:shadow-md disabled:pointer-events-none disabled:opacity-60"
+                >
+                  {exportingExcel ? (
+                    <>
+                      <i className="ri-loader-4-line animate-spin text-base" />
+                      Exporting…
+                    </>
+                  ) : (
+                    <>
+                      <i className="ri-file-excel-2-line text-base" />
+                      Export Excel
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );

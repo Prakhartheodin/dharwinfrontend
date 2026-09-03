@@ -1,14 +1,14 @@
-﻿import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseYmdLocal } from "@/shared/lib/leave-date-range";
 import {
-  describeDmyProblem,
+  sanitizeReferralLeadsDateInput,
   isValidYmdLocal,
   maskDmyInput,
-  sanitizeReferralLeadsDateInput,
-  getReferralLeadsDateRangeError,
+  describeDmyProblem,
   isReferralLeadsDateRangeInvalid,
+  getReferralLeadsDateRangeError,
   REFERRAL_LEADS_INVALID_DATE_RANGE_MESSAGE,
-} from "../sanitizeDateInput.util";
+} from "@/shared/lib/ymd-filter-date-input.util";
 
 describe("describeDmyProblem", () => {
   it("says nothing while the entry is still plausible", () => {

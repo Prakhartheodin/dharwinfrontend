@@ -12,6 +12,6 @@ export function rangeForPreset(preset: DatePreset): { from?: string; to?: string
   from.setHours(0, 0, 0, 0);
   // toISOString() re-projects these local Dates into UTC: local midnight in IST is
   // 18:30Z the previous day, so slice(0, 10) returned yesterday. The rest of the
-  // module (YmdFilterDateInput, sanitizeDateInput) already formats local YMD.
+  // module (YmdFilterDateInput, ymd-filter-date-input.util) already formats local YMD.
   return { from: formatYmdLocal(from), to: formatYmdLocal(to) };
 }

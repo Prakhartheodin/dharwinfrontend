@@ -77,6 +77,12 @@ import {
    and every window focus without ever being displayed. */
 import { getUnreadCount } from "@/shared/lib/api/notifications";
 import {
+  formatBadgeCount,
+  formatNotificationBellAriaLabel,
+  getBadgeColorClasses,
+  getBadgeSizeClasses,
+} from "@/shared/lib/format-badge-count";
+import {
   ATTENDANCE_PERMISSION_PREFIX,
   hasPermissionForPath,
 } from "@/shared/lib/route-permissions";
@@ -1436,14 +1442,21 @@ export default function DashboardPage() {
             {/* Notifications */}
             <Link
               href="/notifications"
+              aria-label={formatNotificationBellAriaLabel(unreadCount)}
               className="relative ti-btn ti-btn-sm ti-btn-light shrink-0 inline-flex items-center justify-center"
             >
               <i className="ti ti-bell text-[1.1rem]"></i>
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -end-1 badge bg-danger text-white rounded-full text-[0.6rem] min-w-[18px] h-[18px] flex items-center justify-center">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
+              {unreadCount > 0 && (() => {
+                const badgeText = formatBadgeCount(unreadCount);
+                return (
+                  <span
+                    aria-hidden="true"
+                    className={`absolute top-0 end-0 translate-x-[20%] -translate-y-[10%] badge tabular-nums leading-none flex items-center justify-center text-[0.6rem] ${getBadgeColorClasses(unreadCount)} ${getBadgeSizeClasses(badgeText)}`}
+                  >
+                    {badgeText}
+                  </span>
+                );
+              })()}
             </Link>
           </div>
         </div>

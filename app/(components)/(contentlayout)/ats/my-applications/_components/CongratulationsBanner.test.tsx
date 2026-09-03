@@ -62,4 +62,17 @@ describe("CongratulationsBanner", () => {
     expect(banner.className).toMatch(/overflow-hidden/);
     expect(list.className).toMatch(/flex-col/);
   });
+
+  it("shows the decorative CTA and accessible heading hierarchy", () => {
+    render(<CongratulationsBanner items={oneItem} />);
+    expect(screen.getByRole("heading", { level: 2, name: /You've Been Selected!/ })).toBeTruthy();
+    expect(screen.getByLabelText("Well Done! Keep Shining")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 3, name: /Selected position$/ })).toBeTruthy();
+  });
+
+  it("uses plural heading when multiple positions are selected", () => {
+    render(<CongratulationsBanner items={twoItems} />);
+    expect(screen.getByRole("heading", { level: 3, name: /Selected positions/ })).toBeTruthy();
+    expect(screen.getByText(/positions listed here/)).toBeTruthy();
+  });
 });

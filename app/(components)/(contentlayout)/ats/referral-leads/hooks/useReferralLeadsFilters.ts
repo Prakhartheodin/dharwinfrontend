@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ReferralLeadsQueryParams } from "@/shared/lib/api/referralLeads";
 import { type DatePreset, rangeForPreset } from "../utils/dateRange.util";
-import { isReferralLeadsDateRangeInvalid } from "../utils/sanitizeDateInput.util";
+import { isReferralLeadsDateRangeInvalid } from "@/shared/lib/ymd-filter-date-input.util";
 import type { QuickStatusFilter } from "../utils/attributionScope.util";
 
 export interface ReferralLeadsFilterState {

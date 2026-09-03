@@ -16,7 +16,7 @@ import {
   enrichExternalJobContacts,
   saveHrContact,
   deleteSavedHrContact,
-  listSavedHrContacts,
+  listSavedHrContactIds,
   type ApolloContact,
 } from "@/shared/lib/api/external-jobs";
 
@@ -80,8 +80,10 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
 
   useEffect(() => {
     if (!isOpen) return;
-    listSavedHrContacts().then((res) => {
-      setSavedContactIds(new Set(res.contacts.map((c) => c.apolloId)));
+    // Ids only: this needs to know which contacts are saved, not what they contain, and
+    // the saved list is paginated now -- pulling page 1 would miss the rest.
+    listSavedHrContactIds().then((ids) => {
+      setSavedContactIds(new Set(ids));
     }).catch(() => {});
   }, [isOpen]);
 

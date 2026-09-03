@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { STATUS_META } from "@/shared/lib/ats/referral-leads-constants";
 import { SalesAgentFilterSelect } from "./SalesAgentFilterSelect";
-import { YmdFilterDateInput } from "./YmdFilterDateInput";
-import { getReferralLeadsDateRangeError } from "../utils/sanitizeDateInput.util";
+import { FILTER_BAR_PLACEHOLDER_CLASS, YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
+import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
 import type { ReferralLeadsFilterState } from "../hooks/useReferralLeadsFilters";
 import type { DatePreset } from "../utils/dateRange.util";
 import type { QuickStatusFilter } from "../utils/attributionScope.util";
@@ -70,7 +70,7 @@ export function ReferralLeadsFilters({
         <input
           id="referral-leads-search"
           type="search"
-          className="form-control form-control-sm w-full"
+          className={`form-control form-control-sm w-full text-defaulttextcolor dark:text-white ${FILTER_BAR_PLACEHOLDER_CLASS}`}
           placeholder="Name, email, job…"
           value={searchDraft}
           onChange={(e) => setSearchDraft(e.target.value)}

@@ -74,14 +74,52 @@ export async function saveExternalJob(job: ExternalJob): Promise<SavedExternalJo
   return data;
 }
 
-export async function listSavedExternalJobs(params?: {
+/** Shared by both saved lists. Blank values are dropped rather than sent as empty keys. */
+export interface SavedListParams {
   limit?: number;
   page?: number;
-}): Promise<SavedExternalJobsResponse> {
+  q?: string;
+  /** `YYYY-MM-DD` from a date input, or a full ISO timestamp. */
+  savedFrom?: string;
+  savedTo?: string;
+}
+
+export interface SavedExternalJobsParams extends SavedListParams {
+  source?: ExternalJobSource | "";
+}
+
+/** No `company`: one search box on the UI, and `q` already spans the company name. */
+export type SavedHrContactsParams = SavedListParams;
+
+/**
+ * The backend validates with no `allowUnknown`, so an empty-string filter is not merely
+ * useless -- it narrows the query to rows with a blank field. Strip anything empty here so
+ * a cleared filter box means "no filter" rather than "match nothing".
+ */
+function compactParams<T extends object>(params: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== "")
+  ) as Partial<T>;
+}
+
+export async function listSavedExternalJobs(
+  params?: SavedExternalJobsParams
+): Promise<SavedExternalJobsResponse> {
   const { data } = await apiClient.get<SavedExternalJobsResponse>("/external-jobs/saved", {
-    params,
+    params: compactParams(params ?? {}),
   });
   return data;
+}
+
+/**
+ * Every saved job's `externalId`, for the bookmark icons on the Search tab.
+ *
+ * The Saved list is paginated, so it cannot answer "is this job saved?" for a job that
+ * happens to sit on another page. This does, in one small request.
+ */
+export async function listSavedExternalJobIds(): Promise<string[]> {
+  const { data } = await apiClient.get<{ ids: string[] }>("/external-jobs/saved/ids");
+  return data.ids || [];
 }
 
 export async function unsaveExternalJob(
@@ -133,9 +171,27 @@ export async function saveHrContact(contact: ApolloContact & { companyName?: str
   return data;
 }
 
-export async function listSavedHrContacts(): Promise<{ contacts: SavedHrContact[] }> {
-  const { data } = await apiClient.get<{ contacts: SavedHrContact[] }>('/external-jobs/hr-contacts');
+export interface SavedHrContactsResponse {
+  results: SavedHrContact[];
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalResults: number;
+}
+
+export async function listSavedHrContacts(
+  params?: SavedHrContactsParams
+): Promise<SavedHrContactsResponse> {
+  const { data } = await apiClient.get<SavedHrContactsResponse>('/external-jobs/hr-contacts', {
+    params: compactParams(params ?? {}),
+  });
   return data;
+}
+
+/** Saved contact ids, so the preview panel can tick "saved" without pulling every record. */
+export async function listSavedHrContactIds(): Promise<string[]> {
+  const { data } = await apiClient.get<{ ids: string[] }>('/external-jobs/hr-contacts/ids');
+  return data.ids || [];
 }
 
 export async function deleteSavedHrContact(apolloId: string): Promise<void> {

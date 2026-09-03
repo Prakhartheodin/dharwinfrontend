@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { mapCandidateToDisplay, getCandidateRecruiterFeedback, type CandidateDocument } from '@/shared/lib/api/candidates'
 import { listUsers } from '@/shared/lib/api/users'
+import WeekOffDayPicker from '@/shared/components/WeekOffDayPicker'
 
 const AsyncSelect = dynamic(() => import('react-select/async'), { ssr: false })
 
@@ -22,8 +23,6 @@ function loadRecruiterOptions(inputValue: string, callback: (options: RecruiterO
 }
 
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
-
-const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
 const MODAL_FOOTER_BTN =
   'ti-btn !mb-0 !h-auto !w-auto !min-h-[2.75rem] !px-4 whitespace-nowrap inline-flex items-center justify-center gap-1.5'
@@ -624,15 +623,12 @@ export default function CandidateActionModals(props: CandidateActionModalsProps)
               <button type="button" className="hs-dropdown-toggle ti-modal-close-btn" data-hs-overlay="#week-off-modal" onClick={() => { setWeekOffCandidateIds([]); setWeekOffDays([]) }}><span className="sr-only">Close</span>×</button>
             </div>
             <div className="ti-modal-body">
-              <label className="form-label">Select week-off days</label>
-              <div className="flex flex-wrap gap-2">
-                {WEEK_DAYS.map((day) => (
-                  <label key={day} className="flex items-center gap-1 cursor-pointer">
-                    <input type="checkbox" className="form-check-input" checked={weekOffDays.includes(day)} onChange={() => toggleWeekOffDay(day)} />
-                    <span className="text-sm">{day}</span>
-                  </label>
-                ))}
-              </div>
+              <WeekOffDayPicker
+                variant="inline"
+                legend="Select week-off days"
+                selectedDays={weekOffDays}
+                onToggleDay={toggleWeekOffDay}
+              />
             </div>
             <div className="ti-modal-footer">
               <button type="button" className="ti-btn ti-btn-light" data-hs-overlay="#week-off-modal">Cancel</button>

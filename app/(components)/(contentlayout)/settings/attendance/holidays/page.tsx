@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   getAllHolidays,
   createHoliday,
@@ -12,6 +12,12 @@ import { getAllHolidayGroups } from "@/shared/lib/api/holiday-groups";
 import Seo from "@/shared/layout-components/seo/seo";
 import Swal from "sweetalert2";
 import { useAttendanceAdminAccess } from "@/shared/hooks/use-attendance-admin-access";
+import { useDebouncedValue } from "@/app/(components)/(contentlayout)/communication/dialer/_lib/contactSearch";
+import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
+import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
+
+/** Fixed so From can find To after its own remount; useId would change across that. */
+const HOLIDAYS_FILTER_TO_INPUT_ID = "holidays-filter-to";
 
 const pageStyles = (
   <style>{`
@@ -37,6 +43,8 @@ export default function SettingsAttendanceHolidaysPage() {
   const [formData, setFormData] = useState({ title: "", date: "", endDate: "" as string, isActive: true, group: "" });
   const [submitting, setSubmitting] = useState(false);
   const [titleFilter, setTitleFilter] = useState("");
+  const debouncedTitleFilter = useDebouncedValue(titleFilter, 300);
+  const fetchGenerationRef = useRef(0);
   const [startDateFilter, setStartDateFilter] = useState("");
   const [endDateFilter, setEndDateFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
@@ -48,6 +56,7 @@ export default function SettingsAttendanceHolidaysPage() {
   const limit = 10;
 
   const fetchHolidays = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current;
     setLoading(true);
     setError(null);
     try {
@@ -56,12 +65,13 @@ export default function SettingsAttendanceHolidaysPage() {
         limit,
         sortBy,
       };
-      if (titleFilter.trim()) params.title = titleFilter.trim();
+      if (debouncedTitleFilter.trim()) params.title = debouncedTitleFilter.trim();
       if (startDateFilter) params.startDate = startDateFilter;
       if (endDateFilter) params.endDate = endDateFilter;
       if (activeFilter !== "all") params.isActive = activeFilter === "active";
 
       const response = await getAllHolidays(params as Parameters<typeof getAllHolidays>[0]);
+      if (generation !== fetchGenerationRef.current) return;
       const data = (response as { data?: { results?: Holiday[]; totalPages?: number; totalResults?: number } }).data;
       if (data?.results) {
         setHolidays(data.results);
@@ -77,18 +87,24 @@ export default function SettingsAttendanceHolidaysPage() {
         setTotalResults(0);
       }
     } catch (err: unknown) {
+      if (generation !== fetchGenerationRef.current) return;
       const msg =
         (err as { response?: { data?: { message?: string } }; message?: string })?.response?.data
           ?.message ?? (err as { message?: string })?.message ?? "Failed to fetch holidays";
       setError(msg);
       await Swal.fire({ icon: "error", title: "Error", text: msg, confirmButtonText: "OK" });
     } finally {
-      setLoading(false);
+      if (generation === fetchGenerationRef.current) {
+        setLoading(false);
+      }
     }
-  }, [currentPage, sortBy, titleFilter, startDateFilter, endDateFilter, activeFilter]);
+  }, [currentPage, sortBy, debouncedTitleFilter, startDateFilter, endDateFilter, activeFilter]);
 
   useEffect(() => {
     if (isAdmin === true) fetchHolidays();
+    return () => {
+      fetchGenerationRef.current += 1;
+    };
   }, [isAdmin, fetchHolidays]);
 
   // Group name suggestions: include groups created in Holiday Groups, even with zero dates yet.
@@ -267,6 +283,25 @@ export default function SettingsAttendanceHolidaysPage() {
     endDateFilter !== "" ||
     activeFilter !== "all";
 
+  const dateRangeError = getReferralLeadsDateRangeError(startDateFilter, endDateFilter);
+
+  const commitStartDateFilter = (sanitized: string) => {
+    setStartDateFilter(sanitized);
+    setCurrentPage(1);
+    if (sanitized) {
+      requestAnimationFrame(() => document.getElementById(HOLIDAYS_FILTER_TO_INPUT_ID)?.focus());
+    }
+  };
+
+  const commitEndDateFilter = (sanitized: string) => {
+    setEndDateFilter(sanitized);
+    setCurrentPage(1);
+  };
+
+  const isSearchDebouncing = titleFilter.trim() !== debouncedTitleFilter.trim();
+  const isSearchBusy = isSearchDebouncing || loading;
+  const searchedTitle = debouncedTitleFilter.trim();
+
   if (isAdmin === null) {
     return (
       <>
@@ -356,7 +391,7 @@ export default function SettingsAttendanceHolidaysPage() {
             </div>
           )}
 
-          <div className="px-6 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/80 to-white dark:from-white/[0.02] dark:to-transparent">
+          <div className="px-6 py-4 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/80 to-white dark:from-white/[0.02] dark:to-transparent space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <span
@@ -387,10 +422,23 @@ export default function SettingsAttendanceHolidaysPage() {
                 </button>
               ))}
               <div className="flex-1 min-w-[200px]">
+                <label htmlFor="holidays-title-search" className="sr-only">
+                  Search by title
+                </label>
                 <div className="relative">
-                  <i className="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-base text-defaulttextcolor/40 pointer-events-none" aria-hidden />
+                  <span
+                    className="pointer-events-none absolute inset-y-0 left-0 flex w-10 items-center justify-center"
+                    aria-hidden
+                  >
+                    {isSearchBusy ? (
+                      <i className="ri-loader-4-line animate-spin text-base leading-none text-primary" />
+                    ) : (
+                      <i className="ri-search-line text-base leading-none text-defaulttextcolor/40" />
+                    )}
+                  </span>
                   <input
-                    type="text"
+                    id="holidays-title-search"
+                    type="search"
                     value={titleFilter}
                     onChange={(e) => {
                       setTitleFilter(e.target.value);
@@ -401,50 +449,60 @@ export default function SettingsAttendanceHolidaysPage() {
                   />
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  value={startDateFilter}
+            </div>
+
+            <div className="flex flex-wrap items-end gap-3">
+              <YmdFilterDateInput
+                key={`holidays-from-${startDateFilter}`}
+                label="From"
+                value={startDateFilter}
+                maxDate={endDateFilter || undefined}
+                rangeError={dateRangeError}
+                portalId="holidays-datepicker-portal-from"
+                onCommit={commitStartDateFilter}
+              />
+              <YmdFilterDateInput
+                key={`holidays-to-${endDateFilter}`}
+                label="To"
+                inputId={HOLIDAYS_FILTER_TO_INPUT_ID}
+                value={endDateFilter}
+                minDate={startDateFilter || undefined}
+                rangeError={dateRangeError}
+                portalId="holidays-datepicker-portal-to"
+                onCommit={commitEndDateFilter}
+              />
+              <div>
+                <label className="form-label text-xs" htmlFor="holidays-sort">
+                  Sort
+                </label>
+                <select
+                  id="holidays-sort"
+                  value={sortBy}
                   onChange={(e) => {
-                    setStartDateFilter(e.target.value);
+                    setSortBy(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  title="Start date"
-                />
-                <span className="text-defaulttextcolor/40 text-sm">–</span>
-                <input
-                  type="date"
-                  value={endDateFilter}
-                  onChange={(e) => {
-                    setEndDateFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-3 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                  title="End date"
-                />
-              </div>
-              <select
-                value={sortBy}
-                onChange={(e) => {
-                  setSortBy(e.target.value);
-                  setCurrentPage(1);
-                }}
-                className="rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 px-4 py-2.5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-              >
-                <option value="date:asc">Date (Oldest First)</option>
-                <option value="date:desc">Date (Newest First)</option>
-                <option value="title:asc">Title (A–Z)</option>
-                <option value="title:desc">Title (Z–A)</option>
-              </select>
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2.5 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                  className="form-select form-select-sm min-w-[180px] rounded-xl border border-defaultborder/80 bg-white dark:bg-white/5 text-sm text-defaulttextcolor focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                 >
-                  Clear Filters
-                </button>
+                  <option value="date:asc">Date (Oldest First)</option>
+                  <option value="date:desc">Date (Newest First)</option>
+                  <option value="title:asc">Title (A–Z)</option>
+                  <option value="title:desc">Title (Z–A)</option>
+                </select>
+              </div>
+              {hasActiveFilters && (
+                <div className="shrink-0">
+                  <label className="form-label text-xs select-none pointer-events-none opacity-0" aria-hidden>
+                    Reset
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="rounded-xl border border-defaultborder/80 bg-transparent px-4 py-2 text-sm font-medium text-defaulttextcolor hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -463,10 +521,14 @@ export default function SettingsAttendanceHolidaysPage() {
                 <div className="inline-flex h-24 w-24 items-center justify-center rounded-3xl bg-slate-100 dark:bg-white/10 text-defaulttextcolor/40 mb-5 ring-1 ring-defaultborder/50">
                   <i className="ri-calendar-event-line text-5xl" />
                 </div>
-                <p className="text-lg font-semibold text-defaulttextcolor dark:text-white">No holidays found</p>
+                <p className="text-lg font-semibold text-defaulttextcolor dark:text-white">
+                  {searchedTitle ? `No holidays matching "${searchedTitle}"` : "No holidays found"}
+                </p>
                 <p className="mt-2 max-w-sm text-sm text-defaulttextcolor/60 dark:text-white/60">
                   {hasActiveFilters
-                    ? "Try adjusting your filters to see more results."
+                    ? searchedTitle
+                      ? "Try a different search term or adjust your other filters."
+                      : "Try adjusting your filters to see more results."
                     : "Get started by creating your first holiday."}
                 </p>
                 {!hasActiveFilters && (

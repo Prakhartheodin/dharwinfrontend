@@ -63,6 +63,12 @@ import { canEditCandidateJoiningDate, canEditCandidateResignDate, canImpersonate
 import { hasPermission } from '@/shared/lib/permissions'
 import { ROUTES } from '@/shared/lib/constants'
 import { recommendSkillsByRole } from '@/shared/lib/api/auth'
+import {
+  getAlreadyAssignedMessage,
+  getNoOpUpdateMessage,
+  isDayAlreadyOnAllSelected,
+  isWeekOffNoOp,
+} from '@/shared/lib/week-off-utils'
 
 // Display shape used by the UI (id, name, displayPicture, phone, email, skills, education, experience, bio)
 type CandidateDisplay = ReturnType<typeof mapCandidateToDisplay>
@@ -970,6 +976,7 @@ const Candidates = () => {
   const [personalInfoDateSaving, setPersonalInfoDateSaving] = useState<'joining' | 'resign' | null>(null)
   const [weekOffCandidateIds, setWeekOffCandidateIds] = useState<string[]>([])
   const [weekOffDays, setWeekOffDays] = useState<string[]>([])
+  const [weekOffPersisted, setWeekOffPersisted] = useState<Record<string, { weekOff?: string[] }>>({})
   const [weekOffSubmitting, setWeekOffSubmitting] = useState(false)
   const [assignShiftCandidateIds, setAssignShiftCandidateIds] = useState<string[]>([])
   const [assignShiftId, setAssignShiftId] = useState('')
@@ -1661,15 +1668,42 @@ const Candidates = () => {
   const openWeekOffModal = (candidateIds: string[]) => {
     setWeekOffCandidateIds(candidateIds)
     setWeekOffDays([])
+    setWeekOffPersisted({})
     setWeekOffSubmitting(false)
     setActionError(null)
-    if (candidateIds.length === 1) {
-      getCandidateWeekOff(candidateIds[0]).then((r) => setWeekOffDays(r.weekOff ?? [])).catch(() => {})
+    if (candidateIds.length > 0) {
+      Promise.all(
+        candidateIds.map(async (id) => {
+          try {
+            const r = await getCandidateWeekOff(id)
+            return { id, weekOff: r.weekOff ?? [] }
+          } catch {
+            return { id, weekOff: [] as string[] }
+          }
+        })
+      ).then((rows) => {
+        const persisted: Record<string, { weekOff?: string[] }> = {}
+        for (const row of rows) persisted[row.id] = { weekOff: row.weekOff }
+        setWeekOffPersisted(persisted)
+        if (candidateIds.length === 1) {
+          setWeekOffDays(rows[0]?.weekOff ?? [])
+        }
+      })
     }
     queueMicrotask(() => openHsOverlay('#week-off-modal'))
   }
   const handleWeekOffSubmit = async () => {
     if (weekOffCandidateIds.length === 0 || weekOffDays.length === 0) return
+    const selectedPeople = weekOffCandidateIds.map((value) => ({ value }))
+    if (isWeekOffNoOp(weekOffDays, weekOffPersisted, selectedPeople)) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'No changes',
+        text: getNoOpUpdateMessage(),
+        confirmButtonText: 'OK',
+      })
+      return
+    }
     setWeekOffSubmitting(true)
     setActionError(null)
     try {
@@ -1677,6 +1711,7 @@ const Candidates = () => {
       setActionSuccess('Week-off updated')
       setWeekOffCandidateIds([])
       setWeekOffDays([])
+      setWeekOffPersisted({})
       setTimeout(() => document.querySelector('[data-hs-overlay="#week-off-modal"]')?.dispatchEvent(new Event('click')), 0)
       refreshCandidates(false)
       setTimeout(() => setActionSuccess(null), 3000)
@@ -1686,8 +1721,21 @@ const Candidates = () => {
       setWeekOffSubmitting(false)
     }
   }
-  const toggleWeekOffDay = (day: string) => {
-    setWeekOffDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]))
+  const toggleWeekOffDay = async (day: string) => {
+    const isRemoving = weekOffDays.includes(day)
+    if (!isRemoving && weekOffCandidateIds.length > 0 && Object.keys(weekOffPersisted).length > 0) {
+      const selectedPeople = weekOffCandidateIds.map((value) => ({ value }))
+      if (isDayAlreadyOnAllSelected(day, weekOffPersisted, selectedPeople)) {
+        await Swal.fire({
+          icon: 'info',
+          title: 'Already assigned',
+          text: getAlreadyAssignedMessage(day),
+          confirmButtonText: 'OK',
+        })
+        return
+      }
+    }
+    setWeekOffDays((prev) => (isRemoving ? prev.filter((d) => d !== day) : [...prev, day]))
   }
 
   const openAssignShiftModal = (candidateIds: string[]) => {

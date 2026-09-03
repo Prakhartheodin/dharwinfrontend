@@ -1,4 +1,4 @@
-﻿import { formatYmdLocal, parseYmdLocal } from "@/shared/lib/leave-date-range";
+import { formatYmdLocal, parseYmdLocal } from "@/shared/lib/leave-date-range";
 
 /** True when value is YYYY-MM-DD with a real calendar date (4-digit year, valid month/day). */
 export function isValidYmdLocal(value: string): boolean {
@@ -82,7 +82,7 @@ export function maskDmyInput(raw: string, previous?: string): string {
 }
 
 /**
- * Sanitize referral-lead custom date filter values into the YYYY-MM-DD the filters store.
+ * Sanitize YMD filter date values into the YYYY-MM-DD the filters store.
  * Native `<input type="date">` was abandoned here: Chromium keeps its own edit buffer
  * while focused, so ref/DOM value reverts cannot block 5+ digit years during typing.
  * Both shapes are accepted: the field displays dd/mm/yyyy, but stored values and every

@@ -11,6 +11,7 @@ import {
   type NotificationType,
 } from "@/shared/lib/api/notifications";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
+import { formatCountLocale } from "@/shared/lib/format-badge-count";
 
 const TYPE_LABELS: Record<NotificationType | "all", string> = {
   all: "All",
@@ -217,13 +218,13 @@ const Notifications = () => {
                   {unreadCount > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-primary text-white text-[0.6875rem] font-semibold px-2 py-0.5">
                       <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />
-                      {unreadCount} new
+                      {formatCountLocale(unreadCount)} new
                     </span>
                   )}
                 </div>
                 <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 ms-12">
                   {totalResults > 0
-                    ? `${totalResults} total · ${unreadCount} unread`
+                    ? `${formatCountLocale(totalResults)} total · ${formatCountLocale(unreadCount)} unread`
                     : "You're all caught up."}
                 </p>
               </div>

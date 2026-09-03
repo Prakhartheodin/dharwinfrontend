@@ -373,6 +373,17 @@ export const WEEK_OFF_DAYS = [
   "Saturday",
 ] as const;
 
+/** Short labels for week-off day pickers on narrow viewports */
+export const WEEK_OFF_DAY_ABBREV: Record<(typeof WEEK_OFF_DAYS)[number], string> = {
+  Sunday: "Sun",
+  Monday: "Mon",
+  Tuesday: "Tue",
+  Wednesday: "Wed",
+  Thursday: "Thu",
+  Friday: "Fri",
+  Saturday: "Sat",
+};
+
 export interface WeekOffUpdateResponse {
   success: boolean;
   message: string;
@@ -433,6 +444,23 @@ export async function getStudentWeekOff(studentId: string): Promise<StudentWeekO
     `/training/students/${studentId}/week-off`
   );
   return data;
+}
+
+/**
+ * Export people with the given week-off days as an .xlsx download.
+ * GET /training/students/week-off/export?days=Saturday,Sunday
+ */
+export async function exportWeekOffExcel(
+  days: string[]
+): Promise<{ blob: Blob; rowCount: number }> {
+  const res = await apiClient.get<Blob>("/training/students/week-off/export", {
+    params: { days: days.join(",") },
+    responseType: "blob",
+  });
+  const rowCount = res.headers["x-export-row-count"]
+    ? Number(res.headers["x-export-row-count"])
+    : 0;
+  return { blob: res.data, rowCount };
 }
 
 /**

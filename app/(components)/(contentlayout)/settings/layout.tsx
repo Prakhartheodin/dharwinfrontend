@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ROUTES } from "@/shared/lib/constants";
 import {
   hasAnySettingsModulePermission,
@@ -44,6 +44,10 @@ function getActiveTab(
   return null;
 }
 
+/** Visible horizontal scrollbar in light + dark; overrides global thumb/track both `black/20` in dark. */
+const SETTINGS_TABS_SCROLL_CLASS =
+  "flex min-w-0 max-w-full flex-nowrap gap-1 overflow-x-auto overscroll-x-contain pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin] [scrollbar-color:rgb(148_163_184)_rgb(241_245_249)] [&::-webkit-scrollbar]:h-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400/90 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-slate-200/80 dark:[scrollbar-color:rgb(100_116_139)_rgb(30_41_59)] dark:[&::-webkit-scrollbar-thumb]:bg-slate-500 dark:[&::-webkit-scrollbar-track]:bg-slate-800/80";
+
 export default function SettingsLayout({
   children,
 }: {
@@ -51,6 +55,7 @@ export default function SettingsLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const navRef = useRef<HTMLElement>(null);
   const { user, roleNames, isAdministrator, isPlatformSuperUser, permissions, permissionsLoaded } = useAuth();
   const activeTab = getActiveTab(pathname ?? "");
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
@@ -200,6 +205,13 @@ export default function SettingsLayout({
     permissionsLoaded,
   ]);
 
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav || !activeTab) return;
+    const activeEl = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    activeEl?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeTab, pathname]);
+
   const tabClass = (
     tab:
       | "roles"
@@ -214,7 +226,7 @@ export default function SettingsLayout({
       | "email-templates-admin"
       | "company-email"
   ) =>
-    `m-1 inline-flex shrink-0 items-center py-2 px-3 text-[0.75rem] font-medium rounded-md hover:text-primary ${
+    `m-1 inline-flex shrink-0 items-center min-h-11 py-2 px-3 text-[0.75rem] font-medium rounded-md hover:text-primary ${
       activeTab === tab
         ? "bg-primary/10 text-primary"
         : "text-defaulttextcolor dark:text-defaulttextcolor/70"
@@ -271,10 +283,11 @@ export default function SettingsLayout({
       <div className="mb-[3rem] grid min-w-0 grid-cols-12 gap-6">
         <div className="col-span-12 min-w-0 xl:col-span-12">
           <div className="box min-w-0 overflow-hidden">
-            <div className="box-header !flex !justify-start min-w-0 max-w-full overflow-x-auto">
+            <div className="box-header !flex !justify-start min-w-0 max-w-full !pb-0">
               <nav
+                ref={navRef}
                 aria-label="Settings tabs"
-                className="flex min-w-0 max-w-full flex-wrap gap-1 sm:flex-nowrap sm:overflow-x-auto sm:whitespace-nowrap"
+                className={SETTINGS_TABS_SCROLL_CLASS}
                 role="tablist"
               >
                 {showRolesTab && (

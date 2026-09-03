@@ -3,18 +3,26 @@
 import Seo from "@/shared/layout-components/seo/seo";
 import { Fragment, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useTable, useSortBy, usePagination } from "react-table";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import {
   searchExternalJobs,
   listSavedExternalJobs,
+  listSavedExternalJobIds,
   saveExternalJob,
   unsaveExternalJob,
   listSavedHrContacts,
+  listSavedHrContactIds,
   deleteSavedHrContact,
   type ExternalJob,
   type ExternalJobSource,
   type SavedExternalJob,
   type SavedHrContact,
 } from "@/shared/lib/api/external-jobs";
+import { buildPageWindow, getPaginationRange } from "@/shared/lib/pagination-items";
+// Same dd/mm/yyyy picker the referral-leads and jobs filter bars use. Imported across
+// routes exactly as ats/jobs/_components/JobsFilterPanel.tsx already does.
+import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInput";
+import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
 import ExternalJobPreviewPanel from "./_components/ExternalJobPreviewPanel";
 import {
   ExternalJobsButtonSpinner,
@@ -37,6 +45,9 @@ import {
 
 type SearchStatus = "idle" | "loading" | "success" | "error" | "empty";
 type TabLoadStatus = "idle" | "loading" | "success" | "error";
+type TabId = "search" | "saved" | "contacts";
+
+const TAB_IDS: TabId[] = ["search", "saved", "contacts"];
 
 const SOURCE_OPTIONS: { value: ExternalJobSource; label: string }[] = [
   { value: "active-jobs-db", label: "Active Jobs DB" },
@@ -71,9 +82,20 @@ const SEARCH_COOLDOWN_SEC = 5;
 /** Matches the backend cap on job_title / job_location (externalJob.validation.js). */
 const SEARCH_TERM_MAX = 200;
 const PAGE_SIZES = [10, 25, 50];
+/** Contacts render as a 2-up/3-up card grid, so page sizes divisible by both 2 and 3
+ *  fill every row. 10 leaves a one-card orphan at 3 columns. */
+const CONTACT_PAGE_SIZES = [12, 24, 48];
 /** Must match backend batch size for search `offset` steps (see /external-jobs/search). */
 const SEARCH_BATCH_SIZE = 10;
-const SAVED_LIST_LIMIT = 100;
+/** Rows per page on first load. Search paginates this client-side; the saved lists send it
+ *  to the server as `limit`, so it is also the size of each request on those tabs. */
+const DEFAULT_ROWS_PER_PAGE = 10;
+const DEFAULT_CONTACTS_PER_PAGE = 12;
+/** Long enough that typing a word is one request, short enough to feel immediate. */
+const FILTER_DEBOUNCE_MS = 400;
+
+const EMPTY_SAVED_FILTERS = { q: "", source: "" as ExternalJobSource | "", savedFrom: "", savedTo: "" };
+const EMPTY_CONTACT_FILTERS = { q: "", savedFrom: "", savedTo: "" };
 
 // timePosted ("Today", "3 days ago"...) is computed once at fetch time and stored
 // verbatim -- a job saved "Today" still reads "Today" a week later. Recompute live
@@ -130,6 +152,90 @@ function getSearchEmptyState(searchStatus: SearchStatus): {
   };
 }
 
+/**
+ * What the footer needs to know, whoever is doing the paging.
+ *
+ * Search pages a buffer it has already downloaded; Saved and Contacts ask the server for
+ * each page. The footer should not care which -- `goto` hides the difference, and `busy`
+ * exists only because a server page has latency a client page does not.
+ */
+interface ListPager {
+  /** 1-based, matching what the buttons show. */
+  page: number;
+  totalPages: number;
+  /** Rows across every page, not just the one on screen. */
+  total: number;
+  goto: (page: number) => void;
+  busy: boolean;
+  /** True when a filter is narrowing `total`, so the wording can say so. */
+  filtered: boolean;
+  noun: string;
+}
+
+/** Shared footer for all three tabs: the range on the left, page controls on the right. */
+function ListFooter({ pager, rowsPerPage }: { pager: ListPager; rowsPerPage: number }) {
+  if (pager.total === 0) return null;
+
+  const { start, end } = getPaginationRange(pager.total, pager.page, rowsPerPage);
+  const strong = "font-semibold tabular-nums text-defaulttextcolor dark:text-white/90";
+
+  return (
+    <div className="box-footer flex flex-wrap items-center justify-between gap-4 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
+      <div
+        className={`text-sm text-textmuted transition-opacity dark:text-white/55 ${pager.busy ? "opacity-50" : ""}`}
+        aria-live="polite"
+      >
+        Showing <span className={strong}>{start}</span>
+        {" – "}
+        <span className={strong}>{end}</span> of <span className={strong}>{pager.total}</span>{" "}
+        {pager.filtered ? `matching ${pager.noun}` : pager.noun}
+      </div>
+      {pager.totalPages > 1 && (
+        <nav aria-label="Page navigation" className="ms-auto flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => pager.goto(pager.page - 1)}
+            disabled={pager.page <= 1 || pager.busy}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
+            aria-label="Previous page"
+          >
+            <i className="ri-arrow-left-s-line" aria-hidden />
+          </button>
+          {buildPageWindow(pager.page, pager.totalPages, 5).map((pageNum) => {
+            const isActive = pageNum === pager.page;
+            return (
+              <button
+                key={pageNum}
+                type="button"
+                onClick={() => pager.goto(pageNum)}
+                disabled={pager.busy}
+                className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg px-1.5 text-xs font-semibold tabular-nums transition-all disabled:cursor-not-allowed ${
+                  isActive
+                    ? "bg-primary text-white shadow-sm shadow-primary/30"
+                    : "border border-defaultborder/60 bg-white text-textmuted hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
+                }`}
+                aria-label={`Page ${pageNum}`}
+                aria-current={isActive ? "page" : undefined}
+              >
+                {pageNum}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => pager.goto(pager.page + 1)}
+            disabled={pager.page >= pager.totalPages || pager.busy}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
+            aria-label="Next page"
+          >
+            <i className="ri-arrow-right-s-line" aria-hidden />
+          </button>
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function TabLoadErrorPanel({
   title,
   error,
@@ -166,12 +272,40 @@ function TabLoadErrorPanel({
 }
 
 export default function ExternalJobsPage() {
-  const [activeTab, setActiveTab] = useState<"search" | "saved" | "contacts">("search");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  // Tab lives in the URL so refresh, back/forward, bookmarks and shared links all land
+  // where the user was. An unknown ?tab= falls back to Search rather than rendering blank.
+  const requestedTab = searchParams.get("tab") as TabId | null;
+  const activeTab: TabId = requestedTab && TAB_IDS.includes(requestedTab) ? requestedTab : "search";
+  const setActiveTab = useCallback(
+    (tab: TabId) => {
+      // Search is the default, so it stays a bare URL rather than ?tab=search.
+      router.replace(tab === "search" ? pathname : `${pathname}?tab=${tab}`, { scroll: false });
+    },
+    [router, pathname]
+  );
+
   const [searchResults, setSearchResults] = useState<ExternalJob[]>([]);
   const [savedJobs, setSavedJobs] = useState<SavedExternalJob[]>([]);
-  const [, setSavedPage] = useState(1);
+  const [savedPage, setSavedPage] = useState(1);
+  const [savedTotalPages, setSavedTotalPages] = useState(0);
   const [savedTotal, setSavedTotal] = useState(0);
+  const [savedFilters, setSavedFilters] = useState(EMPTY_SAVED_FILTERS);
+  // Bookmark state for the Search tab. Its own request, not derived from the saved page:
+  // the page shows 10-50 rows, but a job on any page must still render as saved.
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  // Two page sizes rather than one snapped between tabs: the table and the card grid want
+  // different numbers, and a shared value would keep rewriting itself on every tab change.
+  const [tableRowsPerPage, setTableRowsPerPage] = useState(DEFAULT_ROWS_PER_PAGE);
+  const [contactsPerPage, setContactsPerPage] = useState(DEFAULT_CONTACTS_PER_PAGE);
   const [savedContacts, setSavedContacts] = useState<SavedHrContact[]>([]);
+  const [contactsPage, setContactsPage] = useState(1);
+  const [contactsTotalPages, setContactsTotalPages] = useState(0);
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactFilters, setContactFilters] = useState(EMPTY_CONTACT_FILTERS);
   const [savedContactsLoading, setSavedContactsLoading] = useState(false);
   const [deletingContactId, setDeletingContactId] = useState<string | null>(null);
   const [contactCopyFeedback, setContactCopyFeedback] = useState<string | null>(null);
@@ -221,7 +355,7 @@ export default function ExternalJobsPage() {
     setLoadMoreError(null);
     setActiveTab("search");
     setMirrorFetchRun(true);
-  }, []);
+  }, [setActiveTab]);
 
   useEffect(() => {
     if (!mirrorFetchRun) return;
@@ -239,29 +373,92 @@ export default function ExternalJobsPage() {
   const [searchOffset, setSearchOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
 
-  const savedIds = useMemo(() => new Set(savedJobs.map((j) => j.externalId)), [savedJobs]);
+  const rowsPerPage = activeTab === "contacts" ? contactsPerPage : tableRowsPerPage;
+  const rowsOptions = activeTab === "contacts" ? CONTACT_PAGE_SIZES : PAGE_SIZES;
+  const setRowsPerPage = activeTab === "contacts" ? setContactsPerPage : setTableRowsPerPage;
 
-  const loadSavedJobs = useCallback((page: number = 1) => {
-    setSavedLoading(true);
-    setSavedLoadStatus("loading");
-    setSavedLoadError(null);
-    listSavedExternalJobs({ page, limit: SAVED_LIST_LIMIT })
-      .then((res) => {
-        setSavedJobs(res.results || []);
-        setSavedTotal(res.totalResults || 0);
-        setSavedPage(res.page || 1);
-        setSavedLoadStatus("success");
-      })
-      .catch((err) => {
-        setSavedLoadError(mapExternalJobListError(err, "saved jobs"));
-        setSavedLoadStatus("error");
-      })
-      .finally(() => setSavedLoading(false));
+  // Debounced separately from the controls so typing does not fire a request per keystroke.
+  // Same inline shape the other filtered lists in this app use (organization/directory,
+  // training/attendance, ats/employees).
+  const [debouncedSavedFilters, setDebouncedSavedFilters] = useState(EMPTY_SAVED_FILTERS);
+  const [debouncedContactFilters, setDebouncedContactFilters] = useState(EMPTY_CONTACT_FILTERS);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSavedFilters(savedFilters), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [savedFilters]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedContactFilters(contactFilters), FILTER_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [contactFilters]);
+
+  // Same rule and wording as the referral-leads bar; the picker renders it under the field.
+  const savedDateRangeError = getReferralLeadsDateRangeError(
+    savedFilters.savedFrom,
+    savedFilters.savedTo
+  );
+  const contactDateRangeError = getReferralLeadsDateRangeError(
+    contactFilters.savedFrom,
+    contactFilters.savedTo
+  );
+
+  const savedFilterKey = `${debouncedSavedFilters.q}|${debouncedSavedFilters.source}|${debouncedSavedFilters.savedFrom}|${debouncedSavedFilters.savedTo}`;
+  const contactFilterKey = `${debouncedContactFilters.q}|${debouncedContactFilters.savedFrom}|${debouncedContactFilters.savedTo}`;
+  const savedFiltersActive = savedFilterKey !== "|||";
+  const contactFiltersActive = contactFilterKey !== "||";
+
+  /** Refresh bookmark state. Cheap enough to run on mount and after every save/unsave. */
+  const loadSavedIds = useCallback(() => {
+    listSavedExternalJobIds()
+      .then((ids) => setSavedIds(new Set(ids)))
+      .catch(() => {
+        // Bookmarks degrade to "not saved"; the list itself surfaces its own errors.
+      });
   }, []);
 
   useEffect(() => {
-    if (activeTab === "saved") loadSavedJobs(1);
-  }, [activeTab, loadSavedJobs]);
+    loadSavedIds();
+  }, [loadSavedIds]);
+
+  const loadSavedJobs = useCallback(
+    (page: number = 1) => {
+      setSavedLoading(true);
+      setSavedLoadStatus("loading");
+      setSavedLoadError(null);
+      listSavedExternalJobs({ page, limit: rowsPerPage, ...debouncedSavedFilters })
+        .then((res) => {
+          setSavedJobs(res.results || []);
+          setSavedTotal(res.totalResults || 0);
+          setSavedTotalPages(res.totalPages || 0);
+          setSavedPage(res.page || 1);
+          setSavedLoadStatus("success");
+        })
+        .catch((err) => {
+          setSavedLoadError(mapExternalJobListError(err, "saved jobs"));
+          setSavedLoadStatus("error");
+        })
+        .finally(() => setSavedLoading(false));
+    },
+    [rowsPerPage, debouncedSavedFilters]
+  );
+
+  // A changed filter or page size invalidates the current page number -- page 7 of the old
+  // result set is meaningless in the new one, and usually empty.
+  const savedResetKey = `${savedFilterKey}|${rowsPerPage}`;
+  const savedResetRef = useRef(savedResetKey);
+  useEffect(() => {
+    if (savedResetRef.current === savedResetKey) return;
+    savedResetRef.current = savedResetKey;
+    setSavedPage(1);
+  }, [savedResetKey]);
+
+  useEffect(() => {
+    // Fires on tab entry, on a page click, and whenever loadSavedJobs changes identity
+    // because the filters or page size did. The reset effect above has already put the
+    // page back to 1 by then, so the two never race to fetch different pages.
+    if (activeTab === "saved") loadSavedJobs(savedPage);
+  }, [activeTab, loadSavedJobs, savedPage]);
 
   // Mirror the manual run just kicked off into the Search tab as it progresses --
   // startedAt-gated (not a "have we seen running yet" flag) so it's still correct
@@ -277,35 +474,53 @@ export default function ExternalJobsPage() {
     if (lastRun.status !== "running") {
       setSearchStatus(mirroredJobs.length === 0 ? "empty" : "success");
       setMirrorFetchRun(false);
-      loadSavedJobs(1); // fetched jobs are already saved -- refresh so their bookmark icons show filled
+      loadSavedIds(); // fetched jobs are already saved -- refresh so their bookmarks fill in
     }
-  }, [mirrorFetchRun, autoFetchStatus, loadSavedJobs]);
+  }, [mirrorFetchRun, autoFetchStatus, loadSavedIds]);
 
-  const loadSavedContacts = useCallback(() => {
-    setSavedContactsLoading(true);
-    setContactsLoadStatus("loading");
-    setContactsLoadError(null);
-    listSavedHrContacts()
-      .then((res) => {
-        setSavedContacts(res.contacts || []);
-        setContactsLoadStatus("success");
-      })
-      .catch((err) => {
-        setContactsLoadError(mapExternalJobListError(err, "saved contacts"));
-        setContactsLoadStatus("error");
-      })
-      .finally(() => setSavedContactsLoading(false));
-  }, []);
+  const loadSavedContacts = useCallback(
+    (page: number = 1) => {
+      setSavedContactsLoading(true);
+      setContactsLoadStatus("loading");
+      setContactsLoadError(null);
+      listSavedHrContacts({ page, limit: rowsPerPage, ...debouncedContactFilters })
+        .then((res) => {
+          setSavedContacts(res.results || []);
+          setContactsTotal(res.totalResults || 0);
+          setContactsTotalPages(res.totalPages || 0);
+          setContactsPage(res.page || 1);
+          setContactsLoadStatus("success");
+        })
+        .catch((err) => {
+          setContactsLoadError(mapExternalJobListError(err, "saved contacts"));
+          setContactsLoadStatus("error");
+        })
+        .finally(() => setSavedContactsLoading(false));
+    },
+    [rowsPerPage, debouncedContactFilters]
+  );
+
+  const contactsResetKey = `${contactFilterKey}|${rowsPerPage}`;
+  const contactsResetRef = useRef(contactsResetKey);
+  useEffect(() => {
+    if (contactsResetRef.current === contactsResetKey) return;
+    contactsResetRef.current = contactsResetKey;
+    setContactsPage(1);
+  }, [contactsResetKey]);
 
   useEffect(() => {
-    if (activeTab === "contacts") loadSavedContacts();
-  }, [activeTab, loadSavedContacts]);
+    if (activeTab === "contacts") loadSavedContacts(contactsPage);
+  }, [activeTab, loadSavedContacts, contactsPage]);
 
   const handleDeleteContact = async (apolloId: string) => {
     setDeletingContactId(apolloId);
     try {
       await deleteSavedHrContact(apolloId);
-      setSavedContacts((prev) => prev.filter((c) => c.apolloId !== apolloId));
+      // Removing the only row on a page would otherwise leave an empty grid on a page
+      // that no longer exists, so step back one page when that was the last card.
+      const wasLastOnPage = savedContacts.length === 1 && contactsPage > 1;
+      if (wasLastOnPage) setContactsPage((p) => p - 1);
+      else loadSavedContacts(contactsPage);
     } catch {
       // ignore
     } finally {
@@ -406,10 +621,14 @@ export default function ExternalJobsPage() {
     setSavingId(job.externalId);
     try {
       await saveExternalJob(job);
-      setSavedJobs((prev) => [...prev, { ...job, savedAt: new Date().toISOString() }]);
+      // Fill the bookmark immediately, then reconcile with the server. The saved list
+      // itself is a server page now, so it is refetched rather than appended to.
+      setSavedIds((prev) => new Set(prev).add(job.externalId));
+      if (activeTab === "saved") loadSavedJobs(savedPage);
       setBrowseListedHint(true);
     } catch (err: any) {
       setBannerError(mapExternalJobSearchError(err, false));
+      loadSavedIds();
     } finally {
       setSavingId(null);
     }
@@ -419,10 +638,21 @@ export default function ExternalJobsPage() {
     setSavingId(externalId);
     try {
       await unsaveExternalJob(externalId, source);
-      setSavedJobs((prev) => prev.filter((j) => j.externalId !== externalId));
+      setSavedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(externalId);
+        return next;
+      });
       if (previewJob?.externalId === externalId) setPreviewJob(null);
+      if (activeTab === "saved") {
+        // Unsaving the only row on a page leaves an empty table on a page that is now out
+        // of range, so step back rather than refetching the page that just disappeared.
+        const wasLastOnPage = savedJobs.length === 1 && savedPage > 1;
+        if (wasLastOnPage) setSavedPage((p) => p - 1);
+        else loadSavedJobs(savedPage);
+      }
     } catch {
-      // ignore
+      loadSavedIds();
     } finally {
       setSavingId(null);
     }
@@ -435,6 +665,30 @@ export default function ExternalJobsPage() {
   const closePreview = () => {
     setPreviewJob(null);
   };
+
+  /**
+   * "Nothing saved yet" and "your filters matched nothing" need different words and a
+   * different way out. Defined once because the table renders an empty state twice -- the
+   * desktop rows and the mobile cards, which had drifted to different wording.
+   */
+  const savedEmptyState = useMemo(
+    () =>
+      savedFiltersActive
+        ? {
+            icon: "ri-filter-off-line",
+            title: "No saved jobs match",
+            description:
+              "Nothing on your shortlist matches these filters. Clear them to see everything you have saved.",
+            showSearchCta: false,
+          }
+        : {
+            icon: "ri-bookmark-line",
+            title: "No saved jobs",
+            description: "Save roles from the search tab to build a shortlist here.",
+            showSearchCta: false,
+          },
+    [savedFiltersActive]
+  );
 
   const displayData = useMemo(
     () => (activeTab === "search" ? searchResults : activeTab === "saved" ? savedJobs : []),
@@ -661,6 +915,55 @@ export default function ExternalJobsPage() {
   } = tableInstance as any;
 
   const totalPages = pageOptions.length;
+
+  // The Rows control is one setting shared by all three tabs. On Search it resizes the
+  // client page over the buffer already loaded; on Saved and Contacts it is the server
+  // `limit`, so the table must render whatever one server page contains, in one go.
+  useEffect(() => {
+    setPageSize?.(rowsPerPage);
+  }, [rowsPerPage, setPageSize]);
+
+  const pager: ListPager = useMemo(() => {
+    if (activeTab === "saved") {
+      return {
+        page: savedPage,
+        totalPages: savedTotalPages,
+        total: savedTotal,
+        goto: setSavedPage,
+        busy: savedLoading,
+        filtered: savedFiltersActive,
+        noun: "saved jobs",
+      };
+    }
+    if (activeTab === "contacts") {
+      return {
+        page: contactsPage,
+        totalPages: contactsTotalPages,
+        total: contactsTotal,
+        goto: setContactsPage,
+        busy: savedContactsLoading,
+        filtered: contactFiltersActive,
+        noun: "saved contacts",
+      };
+    }
+    // Search holds every row it has fetched in memory, so its paging stays client-side --
+    // "Load more from API" is what reaches the feed for more.
+    return {
+      page: pageIndex + 1,
+      totalPages,
+      total: searchResults.length,
+      goto: (page: number) => gotoPage?.(page - 1),
+      busy: false,
+      filtered: false,
+      noun: "results",
+    };
+  }, [
+    activeTab,
+    savedPage, savedTotalPages, savedTotal, savedLoading, savedFiltersActive,
+    contactsPage, contactsTotalPages, contactsTotal, savedContactsLoading, contactFiltersActive,
+    pageIndex, totalPages, searchResults.length, gotoPage,
+  ]);
+
   const prevTabRef = useRef(activeTab);
 
   useEffect(() => {
@@ -714,7 +1017,9 @@ export default function ExternalJobsPage() {
               {
                 icon: "ri-bookmark-fill",
                 label: "Saved jobs",
-                value: savedTotal || savedJobs.length,
+                // Every saved job, not the current page and not the filtered subset -- a
+                // headline stat that moves when you type in a filter box is a lie.
+                value: savedIds.size,
                 accent: "bg-amber-500/10 text-amber-700 ring-amber-500/20 dark:bg-amber-500/15 dark:text-amber-300",
                 bar: "bg-amber-500",
               },
@@ -783,7 +1088,9 @@ export default function ExternalJobsPage() {
                       >
                         {activeTab === "search" && searchShownBadge
                           ? searchShownBadge.primary
-                          : `${activeTab === "contacts" ? savedContacts.length : displayData.length} shown`}
+                          : `${
+                              activeTab === "contacts" ? contactsTotal : savedTotal
+                            } ${activeTab === "contacts" ? "contacts" : "saved"}`}
                         {activeTab === "search" && searchShownBadge?.failed && (
                           <span className="inline-flex items-center rounded-full bg-danger/15 px-1.5 py-0.5 text-[0.58rem] font-bold uppercase tracking-wide text-danger">
                             Search failed
@@ -838,11 +1145,11 @@ export default function ExternalJobsPage() {
                     <select
                       id="external-jobs-page-size"
                       className="form-select !m-0 !h-auto !w-auto !min-w-[6.75rem] !rounded-lg !border-defaultborder/80 !py-1.5 !ps-3 !pe-10 !text-[0.75rem] !leading-normal shadow-sm dark:!border-white/15"
-                      value={pageSize}
-                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      value={rowsPerPage}
+                      onChange={(e) => setRowsPerPage(Number(e.target.value))}
                       aria-label="Rows per page"
                     >
-                      {PAGE_SIZES.map((size) => (
+                      {rowsOptions.map((size) => (
                         <option key={size} value={size}>
                           {size}
                         </option>
@@ -881,13 +1188,13 @@ export default function ExternalJobsPage() {
                     >
                       <i className="ri-bookmark-line text-xs" aria-hidden />
                       Saved
-                      {(savedTotal || savedJobs.length) > 0 && (
+                      {savedIds.size > 0 && (
                         <span
                           className={`inline-flex min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[0.6rem] font-bold tabular-nums ${
                             activeTab === "saved" ? "bg-primary/15 text-primary dark:bg-white/20 dark:text-white" : "bg-primary/10 text-primary dark:bg-white/10 dark:text-white/70"
                           }`}
                         >
-                          {savedTotal || savedJobs.length}
+                          {savedIds.size}
                         </span>
                       )}
                     </button>
@@ -904,13 +1211,13 @@ export default function ExternalJobsPage() {
                     >
                       <i className="ri-contacts-line text-xs" aria-hidden />
                       Contacts
-                      {savedContacts.length > 0 && (
+                      {contactsTotal > 0 && (
                         <span
                           className={`inline-flex min-w-[1.2rem] items-center justify-center rounded-full px-1 text-[0.6rem] font-bold tabular-nums ${
                             activeTab === "contacts" ? "bg-primary/15 text-primary dark:bg-white/20 dark:text-white" : "bg-primary/10 text-primary dark:bg-white/10 dark:text-white/70"
                           }`}
                         >
-                          {savedContacts.length}
+                          {contactsTotal}
                         </span>
                       )}
                     </button>
@@ -1076,8 +1383,132 @@ export default function ExternalJobsPage() {
               </div>
             )}
 
+            {/* Saved filters: applied server-side and debounced (see loadSavedJobs). */}
+            {activeTab === "saved" && (
+              <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white/50 to-transparent px-5 py-4 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
+                <div className="flex flex-wrap items-end gap-2.5">
+                  <div className="min-w-[12rem] flex-1 sm:max-w-[20rem]">
+                    <label htmlFor="saved-jobs-q" className="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40">Search</label>
+                    <div className="relative">
+                      <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-[0.85rem] text-textmuted/70 dark:text-white/30" aria-hidden />
+                      <input
+                        id="saved-jobs-q"
+                        type="search"
+                        className="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !ps-8 !pe-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10"
+                        placeholder="Title or company"
+                        maxLength={SEARCH_TERM_MAX}
+                        value={savedFilters.q}
+                        onChange={(e) => setSavedFilters((f) => ({ ...f, q: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-w-[10rem] sm:max-w-[13rem]">
+                    <label htmlFor="saved-jobs-source" className="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40">Source</label>
+                    <select
+                      id="saved-jobs-source"
+                      className="form-select !m-0 !h-auto !w-full !rounded-xl !border-defaultborder/80 !py-[0.45rem] !ps-3 !pe-10 !text-[0.8125rem] !shadow-none dark:!border-white/15"
+                      value={savedFilters.source}
+                      onChange={(e) => setSavedFilters((f) => ({ ...f, source: e.target.value as ExternalJobSource | "" }))}
+                    >
+                      <option value="">All sources</option>
+                      {SOURCE_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <YmdFilterDateInput
+                    label="Saved from"
+                    inputId="saved-jobs-from"
+                    portalId="saved-jobs-datepicker-portal-from"
+                    value={savedFilters.savedFrom}
+                    maxDate={savedFilters.savedTo || undefined}
+                    rangeError={savedDateRangeError}
+                    inputClassName="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !px-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10 dark:!bg-bodybg w-[9.5rem]"
+                    labelClassName="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40"
+                    onCommit={(v) => setSavedFilters((f) => ({ ...f, savedFrom: v }))}
+                  />
+                  <YmdFilterDateInput
+                    label="Saved to"
+                    inputId="saved-jobs-to"
+                    portalId="saved-jobs-datepicker-portal-to"
+                    value={savedFilters.savedTo}
+                    minDate={savedFilters.savedFrom || undefined}
+                    rangeError={savedDateRangeError}
+                    inputClassName="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !px-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10 dark:!bg-bodybg w-[9.5rem]"
+                    labelClassName="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40"
+                    onCommit={(v) => setSavedFilters((f) => ({ ...f, savedTo: v }))}
+                  />
+
+                  {savedFiltersActive && (
+                    <button type="button" className="inline-flex items-center gap-1.5 rounded-xl border border-defaultborder/70 bg-white px-3 py-[0.45rem] text-[0.75rem] font-semibold text-textmuted transition-colors hover:border-primary/30 hover:text-primary dark:border-white/15 dark:bg-transparent dark:text-white/60 dark:hover:text-white" onClick={() => setSavedFilters(EMPTY_SAVED_FILTERS)}>
+                      <i className="ri-filter-off-line text-xs" aria-hidden />
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Contact filters: one search box -- `q` spans name, title, email and company. */}
+            {activeTab === "contacts" && (
+              <div className="border-b border-defaultborder/60 bg-gradient-to-r from-slate-50/90 via-white/50 to-transparent px-5 py-4 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
+                <div className="flex flex-wrap items-end gap-2.5">
+                  <div className="min-w-[12rem] flex-1 sm:max-w-[20rem]">
+                    <label htmlFor="saved-contacts-q" className="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40">Search</label>
+                    <div className="relative">
+                      <i className="ri-search-line pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-[0.85rem] text-textmuted/70 dark:text-white/30" aria-hidden />
+                      <input
+                        id="saved-contacts-q"
+                        type="search"
+                        className="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !ps-8 !pe-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10"
+                        placeholder="Name, title, email or company"
+                        maxLength={SEARCH_TERM_MAX}
+                        value={contactFilters.q}
+                        onChange={(e) => setContactFilters((f) => ({ ...f, q: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <YmdFilterDateInput
+                    label="Saved from"
+                    inputId="saved-contacts-from"
+                    portalId="saved-contacts-datepicker-portal-from"
+                    value={contactFilters.savedFrom}
+                    maxDate={contactFilters.savedTo || undefined}
+                    rangeError={contactDateRangeError}
+                    inputClassName="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !px-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10 dark:!bg-bodybg w-[9.5rem]"
+                    labelClassName="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40"
+                    onCommit={(v) => setContactFilters((f) => ({ ...f, savedFrom: v }))}
+                  />
+                  <YmdFilterDateInput
+                    label="Saved to"
+                    inputId="saved-contacts-to"
+                    portalId="saved-contacts-datepicker-portal-to"
+                    value={contactFilters.savedTo}
+                    minDate={contactFilters.savedFrom || undefined}
+                    rangeError={contactDateRangeError}
+                    inputClassName="form-control !rounded-xl !border-defaultborder/80 !py-[0.45rem] !px-3 !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10 dark:!bg-bodybg w-[9.5rem]"
+                    labelClassName="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40"
+                    onCommit={(v) => setContactFilters((f) => ({ ...f, savedTo: v }))}
+                  />
+
+                  {contactFiltersActive && (
+                    <button type="button" className="inline-flex items-center gap-1.5 rounded-xl border border-defaultborder/70 bg-white px-3 py-[0.45rem] text-[0.75rem] font-semibold text-textmuted transition-colors hover:border-primary/30 hover:text-primary dark:border-white/15 dark:bg-transparent dark:text-white/60 dark:hover:text-white" onClick={() => setContactFilters(EMPTY_CONTACT_FILTERS)}>
+                      <i className="ri-filter-off-line text-xs" aria-hidden />
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="box-body !p-0 flex-1 flex flex-col overflow-hidden">
               {activeTab === "contacts" ? (
+                <>
                 <div className="flex-1 overflow-y-auto px-5 py-5">
                   {contactCopyFeedback && (
                     <div className="mb-3 inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3.5 py-2 text-xs font-medium text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300">
@@ -1091,18 +1522,25 @@ export default function ExternalJobsPage() {
                     <TabLoadErrorPanel
                       title="Couldn't load saved contacts"
                       error={contactsLoadError}
-                      onRetry={loadSavedContacts}
+                      onRetry={() => loadSavedContacts(contactsPage)}
                       retrying={savedContactsLoading}
                     />
                   ) : savedContacts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
                       <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                        <i className="ri-contacts-line text-2xl" aria-hidden />
+                        <i
+                          className={`${contactFiltersActive ? "ri-filter-off-line" : "ri-contacts-line"} text-2xl`}
+                          aria-hidden
+                        />
                       </span>
                       <div className="max-w-md space-y-1">
-                        <p className="text-base font-semibold text-defaulttextcolor dark:text-white">No saved contacts</p>
+                        <p className="text-base font-semibold text-defaulttextcolor dark:text-white">
+                          {contactFiltersActive ? "No contacts match" : "No saved contacts"}
+                        </p>
                         <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
-                          Open a job preview and click "Find HR Contact" to enrich and save HR contacts here.
+                          {contactFiltersActive
+                            ? "No saved contact matches these filters. Clear them to see your whole shortlist."
+                            : 'Open a job preview and click "Find HR Contact" to enrich and save HR contacts here.'}
                         </p>
                       </div>
                     </div>
@@ -1118,7 +1556,7 @@ export default function ExternalJobsPage() {
                             <button
                               type="button"
                               disabled={savedContactsLoading}
-                              onClick={loadSavedContacts}
+                              onClick={() => loadSavedContacts(contactsPage)}
                               className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:opacity-60"
                             >
                               <i className={`ri-refresh-line text-xs ${savedContactsLoading ? "animate-spin" : ""}`} aria-hidden />
@@ -1230,6 +1668,8 @@ export default function ExternalJobsPage() {
                     </>
                   )}
                 </div>
+                <ListFooter pager={pager} rowsPerPage={rowsPerPage} />
+                </>
               ) : activeTab === "saved" && savedLoading && savedJobs.length === 0 && savedLoadStatus !== "error" ? (
                 <ExternalJobsTableLoader
                   title="Restoring your shortlist"
@@ -1239,7 +1679,7 @@ export default function ExternalJobsPage() {
                 <TabLoadErrorPanel
                   title="Couldn't load saved jobs"
                   error={savedLoadError}
-                  onRetry={() => loadSavedJobs(1)}
+                  onRetry={() => loadSavedJobs(savedPage)}
                   retrying={savedLoading}
                 />
               ) : activeTab === "search" && searchLoading && searchResults.length === 0 && searchStatus === "loading" ? (
@@ -1259,7 +1699,7 @@ export default function ExternalJobsPage() {
                         <button
                           type="button"
                           disabled={savedLoading}
-                          onClick={() => loadSavedJobs(1)}
+                          onClick={() => loadSavedJobs(savedPage)}
                           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:opacity-60"
                         >
                           <i className={`ri-refresh-line text-xs ${savedLoading ? "animate-spin" : ""}`} aria-hidden />
@@ -1360,12 +1800,7 @@ export default function ExternalJobsPage() {
                                   const emptyState =
                                     activeTab === "search"
                                       ? getSearchEmptyState(searchStatus)
-                                      : {
-                                          icon: "ri-bookmark-line",
-                                          title: "No saved jobs",
-                                          description: "Save roles from the search tab to build a shortlist here.",
-                                          showSearchCta: false,
-                                        };
+                                      : savedEmptyState;
                                   return (
                                     <>
                                       <span
@@ -1436,12 +1871,7 @@ export default function ExternalJobsPage() {
                             const emptyState =
                               activeTab === "search"
                                 ? getSearchEmptyState(searchStatus)
-                                : {
-                                    icon: "ri-bookmark-line",
-                                    title: "No saved jobs",
-                                    description: "Save roles from search to build a shortlist.",
-                                    showSearchCta: false,
-                                  };
+                                : savedEmptyState;
                             return (
                               <>
                                 <span
@@ -1643,76 +2073,7 @@ export default function ExternalJobsPage() {
                     </div>
                   )}
 
-                  {displayData.length > 0 && (
-                    <div className="box-footer flex flex-wrap items-center justify-between gap-4 border-t border-defaultborder/60 !bg-defaultbackground/60 px-4 py-3.5 dark:!bg-white/[0.03]">
-                      <div className="text-sm text-textmuted dark:text-white/55">
-                        <span className="block sm:inline">
-                          Showing{" "}
-                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
-                            {Math.min(pageIndex * pageSize + 1, displayData.length)}
-                          </span>
-                          {" – "}
-                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">
-                            {Math.min((pageIndex + 1) * pageSize, displayData.length)}
-                          </span>{" "}
-                          of{" "}
-                          <span className="font-semibold tabular-nums text-defaulttextcolor dark:text-white/90">{displayData.length}</span>{" "}
-                          in this table
-                        </span>
-                        {activeTab === "saved" && savedTotal > savedJobs.length ? (
-                          <span className="mt-1 block text-xs text-amber-800/90 dark:text-amber-200/90 sm:mt-0 sm:ms-2 sm:inline">
-                            · Showing first {savedJobs.length} of {savedTotal} saved
-                          </span>
-                        ) : null}
-                      </div>
-                      {totalPages > 1 && (
-                        <nav aria-label="Page navigation" className="ms-auto flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => previousPage()}
-                            disabled={!canPreviousPage}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
-                            aria-label="Previous page"
-                          >
-                            <i className="ri-arrow-left-s-line" aria-hidden />
-                          </button>
-                          {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
-                            let pageNum: number;
-                            if (totalPages <= 5) pageNum = i;
-                            else if (pageIndex < 3) pageNum = i;
-                            else if (pageIndex > totalPages - 4) pageNum = totalPages - 5 + i;
-                            else pageNum = pageIndex - 2 + i;
-                            const isActive = pageIndex === pageNum;
-                            return (
-                              <button
-                                key={pageNum}
-                                type="button"
-                                onClick={() => (tableInstance as any).gotoPage(pageNum)}
-                                className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg px-1.5 text-xs font-semibold tabular-nums transition-all ${
-                                  isActive
-                                    ? "bg-primary text-white shadow-sm shadow-primary/30"
-                                    : "border border-defaultborder/60 bg-white text-textmuted hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
-                                }`}
-                                aria-label={`Page ${pageNum + 1}`}
-                                aria-current={isActive ? "page" : undefined}
-                              >
-                                {pageNum + 1}
-                              </button>
-                            );
-                          })}
-                          <button
-                            type="button"
-                            onClick={() => nextPage()}
-                            disabled={!canNextPage}
-                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-defaultborder/60 bg-white text-xs text-textmuted transition-all hover:border-primary/30 hover:bg-primary/[0.06] hover:text-primary disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:bg-white/[0.04] dark:text-white/40 dark:hover:border-primary/25 dark:hover:bg-primary/10 dark:hover:text-primary"
-                            aria-label="Next page"
-                          >
-                            <i className="ri-arrow-right-s-line" aria-hidden />
-                          </button>
-                        </nav>
-                      )}
-                    </div>
-                  )}
+                  <ListFooter pager={pager} rowsPerPage={rowsPerPage} />
                 </>
               )}
             </div>

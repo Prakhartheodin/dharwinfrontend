@@ -12,6 +12,14 @@ import { isPublicLayoutPath } from '@/shared/lib/public-layout-paths';
 import { usePathname } from 'next/navigation';
 import { type Notification } from '@/shared/lib/api/notifications';
 import { notifTypeToIcon, notifTypeToColor } from '@/shared/lib/notification-utils';
+import {
+  formatBadgeCount,
+  formatCountLocale,
+  formatNotificationBellAriaLabel,
+  getBadgeColorClasses,
+  getBadgePingClasses,
+  getBadgeSizeClasses,
+} from '@/shared/lib/format-badge-count';
 import { useNotificationContext } from '@/shared/contexts/NotificationContext';
 import { hasPermission } from '@/shared/lib/permissions';
 import { useRouter } from 'next/navigation';
@@ -537,6 +545,7 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   type="button"
                   aria-expanded={isNotificationMenuOpen}
                   aria-haspopup="menu"
+                  aria-label={formatNotificationBellAriaLabel(unreadCount)}
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
@@ -546,15 +555,24 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                   className="relative ti-dropdown-toggle !border-0 flex-shrink-0 !rounded-full !shadow-none align-middle text-xs inline-flex min-h-[2.75rem] min-w-[2.75rem] items-center justify-center !p-0 touch-manipulation"
                 >
                   <i className={`bx bx-bell header-link-icon text-[1.125rem]${bellRinging ? ' animate-bell-ring' : ''}`}></i>
-                  {unreadCount > 0 && (
-                  <span className="flex absolute h-5 w-5 -top-[0.25rem] end-0  -me-[0.6rem]">
-                    <span
-                      className="animate-slow-ping absolute inline-flex -top-[2px] -start-[2px] h-full w-full rounded-full bg-secondary/40 opacity-75"></span>
-                    <span
-                      className="relative inline-flex justify-center items-center rounded-full  h-[14.7px] w-[14px] bg-secondary text-[0.625rem] text-white"
-                      id="notification-icon-badge">{unreadCount}</span>
-                  </span>
-                  )}
+                  {unreadCount > 0 && (() => {
+                    const badgeText = formatBadgeCount(unreadCount);
+                    const pingClasses = getBadgePingClasses(unreadCount);
+                    return (
+                      <span className="pointer-events-none absolute top-0 end-0 translate-x-[20%] -translate-y-[10%]">
+                        {pingClasses && (
+                          <span className={pingClasses} aria-hidden="true" />
+                        )}
+                        <span
+                          aria-hidden="true"
+                          className={`relative inline-flex items-center justify-center text-[0.625rem] tabular-nums leading-none ${getBadgeColorClasses(unreadCount)} ${getBadgeSizeClasses(badgeText)}`}
+                          id="notification-icon-badge"
+                        >
+                          {badgeText}
+                        </span>
+                      </span>
+                    );
+                  })()}
                 </button>
                 <div
                   role="menu"
@@ -579,8 +597,8 @@ const Header = ({ local_varaiable, ThemeChanger }: any) => {
                           Mark all read
                         </button>
                       )}
-                      <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-secondary/10 text-secondary"
-                        id="notifiation-data">{`${unreadCount} Unread`}</span>
+                      <span className="text-[0.75em] py-[0.25rem/2] px-[0.45rem] font-[600] rounded-sm bg-danger/10 text-danger"
+                        id="notifiation-data">{`${formatCountLocale(unreadCount)} Unread`}</span>
                     </div>
                   </div>
                   <div className="dropdown-divider shrink-0"></div>

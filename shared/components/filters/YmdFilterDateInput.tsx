@@ -8,7 +8,7 @@ import {
   describeDmyProblem,
   maskDmyInput,
   sanitizeReferralLeadsDateInput,
-} from "../utils/sanitizeDateInput.util";
+} from "@/shared/lib/ymd-filter-date-input.util";
 
 const DatePicker = dynamic(() => import("react-datepicker").then((mod) => mod.default), { ssr: false });
 
@@ -20,9 +20,12 @@ const IMPOSSIBLE_DATE_POPUP_TITLE = "That date does not exist";
 /** Long enough to read one sentence, short enough not to feel stuck. */
 const DATE_POPUP_TIMEOUT_MS = 3000;
 const INVALID_DATE_POPUP_TEXT = "Please input date in dd/mm/yyyy format.";
+/** Overrides global `.form-control { placeholder:opacity-40 }` so filter placeholders stay readable. */
+export const FILTER_BAR_PLACEHOLDER_CLASS =
+  "placeholder:!opacity-100 placeholder:text-defaulttextcolor/60 dark:placeholder:text-white/70";
+
 /** Matches adjacent filter-bar `form-control` inputs (search/selects), not global react-datepicker `bodybg2`. */
-const DEFAULT_FILTER_INPUT_CLASS =
-  "form-control form-control-sm w-[150px] dark:!bg-bodybg placeholder:text-defaulttextcolor dark:placeholder:text-defaulttextcolor/70";
+const DEFAULT_FILTER_INPUT_CLASS = "form-control form-control-sm w-[150px] dark:!bg-bodybg";
 
 interface YmdFilterDateInputProps {
   label: string;
@@ -39,6 +42,8 @@ interface YmdFilterDateInputProps {
   popperClassName?: string;
   inputClassName?: string;
   wrapperClassName?: string;
+  /** Override the label styling for a bar whose other labels do not use `form-label`. */
+  labelClassName?: string;
 }
 
 function toPickerDate(ymd: string | undefined): Date | undefined {
@@ -60,6 +65,7 @@ export function YmdFilterDateInput({
   popperClassName = "!z-[60]",
   inputClassName,
   wrapperClassName,
+  labelClassName,
 }: YmdFilterDateInputProps) {
   const generatedId = useId();
   const inputId = inputIdProp ?? generatedId;
@@ -163,7 +169,7 @@ export function YmdFilterDateInput({
 
   return (
     <div className={wrapperClassName}>
-      <label htmlFor={inputId} className={hideLabel ? "sr-only" : "form-label text-xs"}>
+      <label htmlFor={inputId} className={hideLabel ? "sr-only" : labelClassName ?? "form-label text-xs"}>
         {label}
       </label>
       <DatePicker
@@ -192,14 +198,14 @@ export function YmdFilterDateInput({
         // portal makes the viewport the boundary, so collision handling works.
         // Per-field node: From and To sharing one portal id would have them mount and
         // unmount the same element if both are ever open at once.
-        portalId={portalId ?? `referral-leads-datepicker-portal-${label.toLowerCase()}`}
+        portalId={portalId ?? `ymd-filter-datepicker-portal-${label.toLowerCase()}`}
         // floating-ui defaults to `bottom` (centred): a ~280px calendar under a 150px
         // input overhangs ~65px each side. Anchor its start edge to the input instead.
         popperPlacement="bottom-start"
         popperClassName={popperClassName}
         calendarClassName="filter-dp-cal"
         wrapperClassName={wrapperClassName}
-        className={`${inputClassName ?? DEFAULT_FILTER_INPUT_CLASS} ${error ? "is-invalid" : ""}`}
+        className={`${inputClassName ?? DEFAULT_FILTER_INPUT_CLASS} ${FILTER_BAR_PLACEHOLDER_CLASS} text-defaulttextcolor dark:text-white ${error ? "is-invalid" : ""}`}
         aria-invalid={error ? true : undefined}
         aria-describedby={rangeError ? errorId : undefined}
       />
