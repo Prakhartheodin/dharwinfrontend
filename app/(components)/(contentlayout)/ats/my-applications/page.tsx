@@ -8,38 +8,53 @@ import { useAuth } from "@/shared/contexts/auth-context";
 import { useNotificationContext } from "@/shared/contexts/NotificationContext";
 import { ROUTES } from "@/shared/lib/constants";
 import {
-  candidateBadgeTone,
   formatDisplayDate,
   getSelectedApplications,
   resolveCandidateLifecycle,
-  type CandidateBadgeTone,
   type CandidateJobApplication,
 } from "@/shared/lib/ats/candidateSelection";
 import DocumentsActionCard from "./_components/DocumentsActionCard";
 import CongratulationsBanner from "./_components/CongratulationsBanner";
+import ApplicationStatusBadge, { splitBadgeLabel } from "./_components/ApplicationStatusBadge";
 import { useConfirm } from "@/shared/components/ui/useConfirm";
 import { usePmRefetchOnFocus } from "@/shared/hooks/usePmRefetchOnFocus";
 
 const WITHDRAWABLE_STATUSES: JobApplicationStatus[] = ["Applied", "Screening"];
 
-type BadgeStyle = { bg: string; text: string; border: string };
+/**
+ * One page of applications is fetched and then filtered/paged in the browser.
+ *
+ * Ceiling: a candidate with more than this sees only their newest FETCH_LIMIT; the page says so
+ * rather than silently truncating. Upgrade path is server-side lifecycle paging, which needs the
+ * backend to resolve Offer/Placement *before* it paginates (today it resolves after).
+ */
+const FETCH_LIMIT = 100;
 
-/** Tone fallback for lifecycle labels that are not raw application statuses. */
-const TONE_STYLE: Record<CandidateBadgeTone, BadgeStyle> = {
-  success: { bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
-  neutral: { bg: "bg-slate-500/10", text: "text-slate-700 dark:text-slate-300", border: "border-slate-500/20" },
-  negative: { bg: "bg-rose-500/10", text: "text-rose-700 dark:text-rose-400", border: "border-rose-500/20" },
-};
+/**
+ * The dropdown speaks the badge's vocabulary, not the database's.
+ *
+ * `JobApplication.status` is a stored field; the badge is derived after the query from
+ * Offer/Placement/interview state (backend `resolveCandidateLifecycle`). A status query therefore
+ * cannot express "Pre-boarding", and worse, disagrees: an offer-stage rejection keeps
+ * status "Offered" while the badge reads "Rejected · Offer". Matching the rendered badge is the
+ * only way the filter and the list cannot contradict each other.
+ *
+ * `heads` are matched against the badge's leading label — "Rejected · Offer" matches "Rejected".
+ */
+const STATUS_FILTERS: { value: string; label: string; heads: string[] }[] = [
+  { value: "applied", label: "Applied", heads: ["Applied"] },
+  { value: "screening", label: "Screening", heads: ["Screening"] },
+  { value: "shortlisted", label: "Shortlisted", heads: ["Shortlisted"] },
+  { value: "interview", label: "Interview", heads: ["Interview"] },
+  { value: "offer", label: "Offer", heads: ["Offer", "Offered"] },
+  { value: "preboarding", label: "Pre-boarding", heads: ["Pre-boarding"] },
+  { value: "onboarding", label: "Onboarding", heads: ["Onboarding"] },
+  { value: "hired", label: "Hired", heads: ["Hired"] },
+  { value: "deferred", label: "Deferred", heads: ["Deferred"] },
+  { value: "rejected", label: "Rejected", heads: ["Rejected"] },
+];
 
-const STATUS_STYLE: Record<string, BadgeStyle> = {
-  Applied: { bg: "bg-amber-500/10", text: "text-amber-700 dark:text-amber-400", border: "border-amber-500/20" },
-  Screening: { bg: "bg-sky-500/10", text: "text-sky-700 dark:text-sky-400", border: "border-sky-500/20" },
-  Interview: { bg: "bg-violet-500/10", text: "text-violet-700 dark:text-violet-400", border: "border-violet-500/20" },
-  Offered: { bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
-  Offer: { bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-400", border: "border-emerald-500/20" },
-  Hired: { bg: "bg-emerald-600/15", text: "text-emerald-800 dark:text-emerald-300 font-semibold", border: "border-emerald-500/30" },
-  Rejected: { bg: "bg-rose-500/10", text: "text-rose-700 dark:text-rose-400", border: "border-rose-500/20" },
-};
+const FILTER_HEADS = new Map(STATUS_FILTERS.map((f) => [f.value, new Set(f.heads)]));
 
 export default function MyApplicationsPage() {
   const { user } = useAuth();
@@ -47,24 +62,31 @@ export default function MyApplicationsPage() {
   const { confirm, confirmDialog } = useConfirm();
   const [applications, setApplications] = useState<CandidateJobApplication[]>([]);
   const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<JobApplicationStatus | "">("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [totalOnServer, setTotalOnServer] = useState(0);
   const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const pageSize = 10;
 
   const load = useCallback((opts?: { background?: boolean }) => {
     if (!opts?.background) setLoading(true);
-    return getMyApplications({
-      limit: 100,
-      page: 1,
-      status: statusFilter || undefined,
-    })
-      .then((res) => setApplications((res.results ?? []) as CandidateJobApplication[]))
-      .catch(() => setApplications([]))
+    setError(null);
+    return getMyApplications({ limit: FETCH_LIMIT, page: 1 })
+      .then((res) => {
+        const results = (res.results ?? []) as CandidateJobApplication[];
+        setApplications(results);
+        setTotalOnServer(res.totalResults ?? results.length);
+      })
+      .catch(() => {
+        setApplications([]);
+        setTotalOnServer(0);
+        setError("We couldn't load your applications. Check your connection and try again.");
+      })
       .finally(() => {
         if (!opts?.background) setLoading(false);
       });
-  }, [statusFilter]);
+  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -93,6 +115,14 @@ export default function MyApplicationsPage() {
     [applications],
   );
 
+  const visibleApplications = useMemo(() => {
+    const heads = FILTER_HEADS.get(statusFilter);
+    if (!heads) return applications;
+    return applications.filter((app) =>
+      heads.has(splitBadgeLabel(resolveCandidateLifecycle(app).badge)[0]),
+    );
+  }, [applications, statusFilter]);
+
   const handleWithdraw = async (app: JobApplication) => {
     const id = app._id ?? app.id;
     if (!id || !WITHDRAWABLE_STATUSES.includes(app.status)) return;
@@ -105,19 +135,22 @@ export default function MyApplicationsPage() {
     });
     if (!ok) return;
     setWithdrawingId(id);
+    setError(null);
     try {
       await withdrawMyApplication(id);
       setApplications((prev) => prev.filter((a) => (a._id ?? a.id) !== id));
     } catch {
-      // silent
+      setError("We couldn't withdraw that application. Please try again.");
     } finally {
       setWithdrawingId(null);
     }
   };
 
-  const totalItems = applications.length;
+  const totalItems = visibleApplications.length;
   const totalPages = Math.ceil(totalItems / pageSize);
-  const pagedData = applications.slice(page * pageSize, (page + 1) * pageSize);
+  const safePage = Math.min(page, Math.max(0, totalPages - 1));
+  const pagedData = visibleApplications.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const truncated = totalOnServer > applications.length;
 
   if (!user) {
     return (
@@ -155,20 +188,20 @@ export default function MyApplicationsPage() {
           </div>
           <div className="flex items-center gap-3">
             <select
+              aria-label="Filter applications by status"
               className="form-select !w-auto !min-w-[9rem] !rounded-lg !border-defaultborder/60 dark:!border-white/10 !bg-white dark:!bg-white/5 !py-2 !text-sm"
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as JobApplicationStatus | "");
+                setStatusFilter(e.target.value);
                 setPage(0);
               }}
             >
               <option value="">All statuses</option>
-              <option value="Applied">Applied</option>
-              <option value="Screening">Screening</option>
-              <option value="Interview">Interview</option>
-              <option value="Offered">Offered</option>
-              <option value="Hired">Hired</option>
-              <option value="Rejected">Rejected</option>
+              {STATUS_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>
+                  {f.label}
+                </option>
+              ))}
             </select>
             <Link
               href="/ats/browse-jobs"
@@ -180,9 +213,31 @@ export default function MyApplicationsPage() {
           </div>
         </div>
 
+        {error && (
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300"
+          >
+            <i className="ri-error-warning-line mt-px text-base" aria-hidden />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {!loading && truncated && (
+          <p
+            data-testid="truncated-notice"
+            className="mb-4 text-sm text-defaulttextcolor/60 dark:text-white/50"
+          >
+            Showing your {applications.length} most recent applications of {totalOnServer}.
+          </p>
+        )}
+
         {!loading && selectedApplications.length > 0 && (
           <CongratulationsBanner items={selectedApplications} />
         )}
+
+        {/* Document requests are account-wide, not per application — render once. */}
+        <DocumentsActionCard />
 
         {/* Content */}
         {loading ? (
@@ -192,7 +247,7 @@ export default function MyApplicationsPage() {
               <span className="text-sm text-defaulttextcolor/60 dark:text-white/50">Loading applications...</span>
             </div>
           </div>
-        ) : applications.length === 0 ? (
+        ) : visibleApplications.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-defaultborder/50 dark:border-white/10 bg-defaultborder/5 dark:bg-white/5 py-16 text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-defaultborder/20 dark:bg-white/10 flex items-center justify-center">
               <i className="ri-inbox-line text-3xl text-defaulttextcolor/40 dark:text-white/30" />
@@ -224,8 +279,6 @@ export default function MyApplicationsPage() {
                 const isWithdrawing = withdrawingId === id;
                 const lifecycle = resolveCandidateLifecycle(app);
                 const visibleStatus = lifecycle.badge;
-                const statusStyle =
-                  STATUS_STYLE[visibleStatus] ?? TONE_STYLE[candidateBadgeTone(lifecycle.stage)];
                 const appliedLabel = formatDisplayDate(app.appliedAt ?? app.createdAt);
 
                 return (
@@ -253,13 +306,10 @@ export default function MyApplicationsPage() {
                           job info on narrow screens instead of squeezing the card. */}
                       <div className="flex flex-col items-start sm:items-end gap-2 min-w-0 sm:shrink-0">
                         <div className="flex flex-wrap items-center sm:justify-end gap-x-3 gap-y-1 min-w-0">
-                          <span
-                            data-testid="application-status-badge"
-                            title={visibleStatus}
-                            className={`inline-flex w-fit max-w-full items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}
-                          >
-                            {visibleStatus}
-                          </span>
+                          <ApplicationStatusBadge
+                            label={visibleStatus}
+                            testId="application-status-badge"
+                          />
                           {appliedLabel && (
                             <span className="text-xs text-defaulttextcolor/50 dark:text-white/45 whitespace-nowrap">
                               {appliedLabel}
@@ -294,8 +344,6 @@ export default function MyApplicationsPage() {
                         </div>
                       </div>
                     </div>
-                    <DocumentsActionCard inline />
-
                   </article>
                 );
               })}
@@ -305,14 +353,14 @@ export default function MyApplicationsPage() {
             {totalPages > 1 && (
               <div className="flex flex-wrap items-center justify-between gap-4 mt-6 pt-6 border-t border-defaultborder/50 dark:border-white/10">
                 <p className="text-sm text-defaulttextcolor/60 dark:text-white/50">
-                  Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, totalItems)} of {totalItems}
+                  Showing {safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, totalItems)} of {totalItems}
                 </p>
                 <nav aria-label="Pagination" className="flex items-center gap-1">
                   <button
                     type="button"
                     className="px-3 py-1.5 rounded-lg text-sm font-medium text-defaulttextcolor dark:text-white/80 hover:bg-defaultborder/20 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    disabled={page === 0}
-                    onClick={() => setPage((p) => Math.max(0, p - 1))}
+                    disabled={safePage === 0}
+                    onClick={() => setPage(Math.max(0, safePage - 1))}
                   >
                     Prev
                   </button>
@@ -320,8 +368,10 @@ export default function MyApplicationsPage() {
                     <button
                       key={i}
                       type="button"
+                      aria-label={`Page ${i + 1}`}
+                      aria-current={safePage === i ? "page" : undefined}
                       className={`min-w-[2rem] px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        page === i
+                        safePage === i
                           ? "bg-primary text-white"
                           : "text-defaulttextcolor dark:text-white/80 hover:bg-defaultborder/20 dark:hover:bg-white/10"
                       }`}
@@ -333,8 +383,8 @@ export default function MyApplicationsPage() {
                   <button
                     type="button"
                     className="px-3 py-1.5 rounded-lg text-sm font-medium text-defaulttextcolor dark:text-white/80 hover:bg-defaultborder/20 dark:hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    disabled={page >= totalPages - 1}
-                    onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                    disabled={safePage >= totalPages - 1}
+                    onClick={() => setPage(Math.min(totalPages - 1, safePage + 1))}
                   >
                     Next
                   </button>

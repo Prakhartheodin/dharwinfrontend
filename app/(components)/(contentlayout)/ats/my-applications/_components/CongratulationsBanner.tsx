@@ -5,6 +5,7 @@ import {
   formatDisplayDate,
   type SelectedApplicationItem,
 } from "@/shared/lib/ats/candidateSelection";
+import ApplicationStatusBadge from "./ApplicationStatusBadge";
 
 export default function CongratulationsBanner({ items }: { items: SelectedApplicationItem[] }) {
   if (items.length === 0) return null;
@@ -56,9 +57,7 @@ export default function CongratulationsBanner({ items }: { items: SelectedApplic
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20">
-                      {item.selectionStatus}
-                    </span>
+                    <ApplicationStatusBadge label={item.selectionStatus} />
                     {dateLabel && (
                       <span className="text-xs text-defaulttextcolor/50 dark:text-white/45 whitespace-nowrap">
                         {dateLabel}

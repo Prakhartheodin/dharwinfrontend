@@ -7,6 +7,12 @@ import React, { Fragment, useState, useEffect } from "react";
 import { readBrowseJobsListBackHref } from "@/shared/lib/ats/browseJobsListQuery";
 import { getPublicJobById, browseApplyToJob, isExternalJob, type PublicJob } from "@/shared/lib/api/jobs";
 import { getMyApplications, withdrawMyApplication, type JobApplication } from "@/shared/lib/api/jobApplications";
+import {
+  candidateBadgeTone,
+  resolveCandidateLifecycle,
+  type CandidateBadgeTone,
+  type CandidateJobApplication,
+} from "@/shared/lib/ats/candidateSelection";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { PublicJobApplyModal } from "@/shared/components/ats/PublicJobApplyModal";
 import { formatSalaryRange, mapExperienceLevel } from "@/shared/lib/ats/jobMappers";
@@ -18,6 +24,30 @@ import { readStoredJobReferralRef, rememberJobReferralRef } from "@/shared/lib/j
 import { useConfirm } from "@/shared/components/ui/useConfirm";
 
 const WITHDRAWABLE_STATUSES = ["Applied", "Screening"];
+
+/**
+ * The rail panel speaks the same lifecycle vocabulary as My Applications. Reading
+ * `application.status` here showed a different label for the same application ("Rejected" vs
+ * "Rejected · Offer") and painted every outcome amber with a double-tick, so a rejection wore
+ * success semantics. Tones are in this page's own stone/teal palette rather than the app pill's.
+ */
+const APPLICATION_TONE: Record<CandidateBadgeTone, { panel: string; icon: string }> = {
+  success: {
+    panel:
+      "border-emerald-200/80 bg-emerald-50/90 text-emerald-900 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-200",
+    icon: "ri-check-double-line",
+  },
+  neutral: {
+    panel:
+      "border-stone-200/80 bg-stone-50/90 text-stone-700 dark:border-white/10 dark:bg-white/[0.04] dark:text-stone-300",
+    icon: "ri-time-line",
+  },
+  negative: {
+    panel:
+      "border-rose-200/80 bg-rose-50/90 text-rose-900 dark:border-rose-500/25 dark:bg-rose-500/10 dark:text-rose-200",
+    icon: "ri-close-circle-line",
+  },
+};
 
 function GlanceRow({ icon, label, children }: { icon: string; label: string; children: React.ReactNode }) {
   return (
@@ -225,12 +255,21 @@ export default function BrowseJobDetailsPage() {
         </div>
       ) : existingApplication ? (
         <>
-          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
-            <span className="flex items-center gap-2">
-              <i className="ri-check-double-line text-lg shrink-0" aria-hidden />
-              {existingApplication.status}
-            </span>
-          </div>
+          {(() => {
+            const lifecycle = resolveCandidateLifecycle(existingApplication as CandidateJobApplication);
+            const tone = APPLICATION_TONE[candidateBadgeTone(lifecycle.stage)];
+            return (
+              <div className={`rounded-xl border px-4 py-3 ${tone.panel}`}>
+                <p className="mb-1 text-[0.65rem] font-bold uppercase tracking-[0.14em] opacity-70">
+                  Your application
+                </p>
+                <span className="flex items-center gap-2 text-sm font-semibold">
+                  <i className={`${tone.icon} text-lg shrink-0`} aria-hidden />
+                  {lifecycle.badge}
+                </span>
+              </div>
+            );
+          })()}
           {canWithdraw && (
             <button
               type="button"

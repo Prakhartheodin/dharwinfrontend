@@ -142,6 +142,12 @@ export async function deleteJobApplication(id: string): Promise<void> {
 }
 
 export interface MyApplicationsListParams {
+  /**
+   * Filters the stored `JobApplication.status` server-side. This does NOT match the badge a
+   * candidate sees: `candidateVisibleStatus` is derived from Offer/Placement AFTER the query, so
+   * an offer-stage rejection keeps status "Offered" while its badge reads "Rejected · Offer".
+   * Filter on the resolved lifecycle instead — see `resolveCandidateLifecycle`.
+   */
   status?: JobApplicationStatus;
   sortBy?: string;
   limit?: number;

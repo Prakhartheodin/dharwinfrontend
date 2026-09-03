@@ -11,6 +11,7 @@ import {
 } from "@/shared/lib/api/companyPhoneNumbers";
 import { useAuth } from "@/shared/contexts/auth-context";
 import { hasPermission } from "@/shared/lib/permissions";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
 import pipelineStyles from "../../../ats/ats-pipeline-list.module.css";
 
 function formatDisplayName(raw: string): string {
@@ -48,6 +49,7 @@ function axiosMessage(e: unknown, fallback: string): string {
 export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { reloadToken?: number }) {
   const auth = useAuth();
   const canManage = hasPermission(auth, "manage_company_number");
+  const { confirm, confirmDialog } = useConfirm();
 
   const [users, setUsers] = useState<CompanyPhoneUserAssignmentRow[]>([]);
   const [numbers, setNumbers] = useState<CompanyPhoneNumberOption[]>([]);
@@ -140,15 +142,59 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
   );
 
   /**
-   * Assignment saves on change — there is no confirm step. `savingId` drives the spinner
-   * AND blocks a second request for the same row, and the draft only ever moves to the
-   * server's answer: on failure it snaps back to the last confirmed value, so the roster
-   * never shows an assignment the backend rejected.
+   * Assignment saves on change. The only confirm step is a reassignment — taking a number
+   * off a user who already holds it, which silently kills their dialer. `savingId` drives
+   * the spinner AND blocks a second request for the same row, and the draft only ever
+   * moves to the server's answer: on failure it snaps back to the last confirmed value,
+   * so the roster never shows an assignment the backend rejected.
    */
   const saveRow = async (userId: string, draft: string) => {
     if (!canManage || savingId === userId) return;
     const confirmed = users.find((u) => u.userId === userId)?.companyPhoneNumberId || "";
+    // Optimistic first so the cancel path is a real state change — a controlled <select>
+    // does not snap back on its own when the handler leaves state untouched.
     setDraftByUserId((prev) => ({ ...prev, [userId]: draft }));
+
+    const target = draft ? numbers.find((n) => n._id === draft) : undefined;
+    const holderId = target?.assignedToUserId;
+    if (target && holderId && holderId !== userId) {
+      const holder = formatDisplayName(
+        users.find((u) => u.userId === holderId)?.fullName || "another user",
+      );
+      const recipient = formatDisplayName(
+        users.find((u) => u.userId === userId)?.fullName || "this user",
+      );
+      const strong = "font-semibold text-defaulttextcolor dark:text-white";
+      const ok = await confirm({
+        title: "Reassign this number?",
+        tone: "danger",
+        confirmLabel: "Reassign number",
+        cancelLabel: "Keep as is",
+        message: (
+          <div className="space-y-2.5">
+            <p className="mb-0">
+              <span className={`font-mono ${strong}`}>{formatPhoneDisplay(target.phoneNumber)}</span>{" "}
+              is currently allocated to <span className={strong}>{holder}</span>.
+            </p>
+            <p className="mb-0">
+              Assign it to <span className={strong}>{recipient}</span> instead?
+            </p>
+            <p className="mb-0 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2 text-amber-800 dark:text-amber-200">
+              <i className="ri-phone-off-line mt-0.5 shrink-0 text-base" aria-hidden />
+              <span>
+                {holder} will no longer be able to use calling in the dialer until another number is
+                assigned to them.
+              </span>
+            </p>
+          </div>
+        ),
+      });
+      if (!ok) {
+        setDraftByUserId((prev) => ({ ...prev, [userId]: confirmed }));
+        return;
+      }
+    }
+
     setSavingId(userId);
     setError("");
     try {
@@ -156,21 +202,33 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
         userId,
         companyPhoneNumberId: draft || null,
       });
+      // A reassignment moves the number off whoever held it. The server already did that,
+      // so drop it from the old holder's row here too — otherwise the roster shows one
+      // number on two users until the next refresh.
+      const displaced = res.companyPhoneNumberId
+        ? users.find((u) => u.userId !== userId && u.companyPhoneNumberId === res.companyPhoneNumberId)
+            ?.userId
+        : undefined;
       setUsers((prev) =>
-        prev.map((u) =>
-          u.userId === userId
-            ? {
-                ...u,
-                companyPhoneNumberId: res.companyPhoneNumberId,
-                companyPhoneNumber: res.companyPhoneNumber || "",
-              }
-            : u,
-        ),
+        prev.map((u) => {
+          if (u.userId === userId) {
+            return {
+              ...u,
+              companyPhoneNumberId: res.companyPhoneNumberId,
+              companyPhoneNumber: res.companyPhoneNumber || "",
+            };
+          }
+          if (u.userId === displaced) {
+            return { ...u, companyPhoneNumberId: null, companyPhoneNumber: "" };
+          }
+          return u;
+        }),
       );
-      setDraftByUserId((prev) => ({
-        ...prev,
-        [userId]: res.companyPhoneNumberId || "",
-      }));
+      setDraftByUserId((prev) => {
+        const next = { ...prev, [userId]: res.companyPhoneNumberId || "" };
+        if (displaced) next[displaced] = "";
+        return next;
+      });
       setNumbers((prev) =>
         prev.map((n) => {
           if (n._id === res.companyPhoneNumberId) return { ...n, assignedToUserId: userId };
@@ -194,6 +252,7 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
 
   return (
     <div className="min-w-0 space-y-4 overflow-x-hidden">
+      {confirmDialog}
       <div className="rounded-2xl border border-defaultborder/70 bg-white/60 p-4 shadow-sm backdrop-blur-sm dark:border-white/10 dark:bg-white/[0.03] sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
@@ -361,7 +420,7 @@ export default function CompanyWorkNumberAssignmentPanel({ reloadToken = 0 }: { 
                         )}
                       </td>
                       {canManage ? (
-                        // Status only — the dropdown saves itself, so there is nothing to confirm.
+                        // Status only — the dropdown saves itself (a reassignment confirms first).
                         <td className="px-3 py-2.5 text-center align-middle">
                           {savingId === row.userId ? (
                             <i

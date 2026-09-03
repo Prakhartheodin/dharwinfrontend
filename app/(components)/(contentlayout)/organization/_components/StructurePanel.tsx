@@ -48,6 +48,11 @@ type ChecklistItem = {
   gap?: number;
   why: string;
   cta?: ChecklistCta;
+  /** Remix glyph for the Action required row. */
+  icon?: string;
+  /** Names the outstanding problem. The checklist states the goal ("All departments
+   *  linked"), which reads as satisfied when listed under a heading of open work. */
+  actionLabel?: string;
 };
 
 const CHECKLIST_FOCUS =
@@ -56,6 +61,11 @@ const CHECKLIST_ROW_CLASS = "flex min-h-11 min-w-0 w-full items-center gap-2 tex
 
 function ChecklistCtaButton({ cta, variant }: { cta: ChecklistCta; variant: "primary" | "icon" }) {
   const isIcon = variant === "icon";
+  // Filled, not tinted. `ti-btn-light` is `bg-light` -- the neutral *surface* token -- so on
+  // a surface-coloured row the button matched its own background (1.04:1 light, 1.25:1 dark)
+  // and vanished. No tinted variant of this purple clears 4.5:1 for 12px text either
+  // (3.66:1 on the dark row); white on filled primary is 4.66:1 and, because the button
+  // carries its own background, it cannot drift when a surface token changes.
   const cls = isIcon
     ? `inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-md text-primary shrink-0 ${CHECKLIST_FOCUS}`
     : `ti-btn ti-btn-primary-full !py-1.5 !px-3 !text-[0.75rem] inline-flex cursor-pointer items-center gap-1 whitespace-nowrap !mb-0 shrink-0 ${CHECKLIST_FOCUS}`;
@@ -115,6 +125,9 @@ function SetupChecklist({ items }: { items: ChecklistItem[] }) {
   const pct = total ? Math.round((doneCount / total) * 100) : 0;
   const allDone = total > 0 && doneCount === total;
   const nextItem = items.find((i) => !i.done && i.cta);
+  // Every item lands in exactly one of these two, so nothing can be dropped from the card.
+  const doneItems = items.filter((i) => i.done);
+  const todoItems = items.filter((i) => !i.done);
 
   const [hidden, setHidden] = useState(false);
   useEffect(() => {
@@ -173,26 +186,75 @@ function SetupChecklist({ items }: { items: ChecklistItem[] }) {
 
       {nextItem ? (
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/[0.05] px-3 py-2">
-          <span className="text-[0.8125rem] text-defaulttextcolor/80">
-            <span className="font-semibold text-defaulttextcolor">Next:</span> {nextItem.label}
-            {nextItem.gap ? <span className="text-defaulttextcolor/60"> · {nextItem.gap} remaining</span> : null}
+          <span className="flex min-w-0 items-center gap-2 text-[0.8125rem] text-defaulttextcolor/80">
+            {/* A flag, not a sparkle: this is the next milestone in a manual setup, and a
+                sparkle reads as "generated for you". Tinted rather than a filled tile, so the
+                one filled primary shape in the row stays the button you are meant to press. */}
+            <i className="ri-flag-line shrink-0 leading-none text-primary/70" aria-hidden />
+            <span className="min-w-0">
+              <span className="font-semibold text-defaulttextcolor">Next:</span> {nextItem.label}
+              {nextItem.gap ? <span className="text-defaulttextcolor/60"> · {nextItem.gap} remaining</span> : null}
+            </span>
           </span>
           {nextItem.cta ? <ChecklistCtaButton cta={nextItem.cta} variant="primary" /> : null}
         </div>
       ) : null}
 
-      <ul className="mb-0 grid items-center gap-2 sm:grid-cols-2">
-        {items.map((item) => {
-          const whyTitle = `${item.label}. ${item.why}`;
-          return (
+      {doneItems.length > 0 ? (
+        <ul className="mb-0 grid items-center gap-2 sm:grid-cols-2">
+          {doneItems.map((item) => (
             <li key={item.key} className="flex min-h-11 min-w-0 items-center">
               <div className={CHECKLIST_ROW_CLASS}>
-                <ChecklistRowBody item={item} title={whyTitle} />
+                <ChecklistRowBody item={item} title={`${item.label}. ${item.why}`} />
               </div>
             </li>
-          );
-        })}
-      </ul>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* Outstanding work is pulled out of the two-column grid: mixed in among ticked rows
+          it reads as more of the same, and its counts and actions had nowhere to sit. */}
+      {todoItems.length > 0 ? (
+        <>
+          <h6 className="mb-2 mt-4 text-[0.75rem] font-semibold uppercase tracking-[0.04em] text-defaulttextcolor/55">
+            Action required
+          </h6>
+          <ul className="mb-0 grid gap-2">
+            {todoItems.map((item) => (
+              <li
+                key={item.key}
+                className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-defaultborder/60 bg-light/40 px-3 py-2 dark:bg-white/[0.03]"
+                title={`${item.label}. ${item.why}`}
+              >
+                <i
+                  className="ri-checkbox-blank-circle-line shrink-0 leading-none text-defaulttextcolor/45"
+                  aria-hidden
+                />
+                <span className="sr-only">To do:</span>
+                <span
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-primary/10 text-primary"
+                  aria-hidden
+                >
+                  <i className={`${item.icon ?? "ri-focus-3-line"} leading-none`} />
+                </span>
+                {/* flex-1 with min-w-0 lets the label truncate so the button never gets
+                    pushed off the card; flex-wrap drops it to its own line before that. */}
+                <span className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="min-w-0 truncate text-[0.8125rem] text-defaulttextcolor">
+                    {item.actionLabel ?? item.label}
+                  </span>
+                  {item.gap ? (
+                    <span className="shrink-0 rounded-full bg-warning/15 px-1.5 py-0.5 text-[0.6875rem] font-semibold tabular-nums text-warning dark:bg-warning/25">
+                      {item.gap}
+                    </span>
+                  ) : null}
+                </span>
+                {item.cta ? <ChecklistCtaButton cta={item.cta} variant="primary" /> : null}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
 
       {allDone ? (
         <div className="mt-3 text-end">
@@ -480,6 +542,7 @@ export default function StructurePanel() {
     ? [
         {
           key: "ceo",
+          icon: "ri-user-star-line",
           label: "Create CEO node",
           done: coverage.checklist.hasCeo,
           why: "The CEO is the single root of the hierarchy.",
@@ -487,6 +550,7 @@ export default function StructurePanel() {
         },
         {
           key: "managers",
+          icon: "ri-team-line",
           label: "Add manager chain",
           done: coverage.checklist.hasManagers,
           why: "Managers report to the CEO and own teams.",
@@ -494,6 +558,7 @@ export default function StructurePanel() {
         },
         {
           key: "supervisors",
+          icon: "ri-user-follow-line",
           label: "Add supervisors",
           done: coverage.checklist.hasSupervisors,
           why: "Supervisors sit under managers and lead departments.",
@@ -501,6 +566,7 @@ export default function StructurePanel() {
         },
         {
           key: "deptNodes",
+          icon: "ri-node-tree",
           label: "Link department nodes",
           done: coverage.checklist.hasDepartmentNodes,
           why: "Department nodes place employees on the chart.",
@@ -508,6 +574,8 @@ export default function StructurePanel() {
         },
         {
           key: "allLinked",
+          icon: "ri-building-line",
+          actionLabel: "Unlinked departments",
           label: "All departments linked",
           done: coverage.checklist.allDepartmentsLinked,
           gap: coverage.departmentsWithoutNode,
@@ -516,6 +584,8 @@ export default function StructurePanel() {
         },
         {
           key: "heads",
+          icon: "ri-user-settings-line",
+          actionLabel: "Units without a head",
           label: "Assign leadership heads",
           done: coverage.checklist.allLeadershipHeadsAssigned,
           gap: coverage.unitsMissingHead,
@@ -524,6 +594,8 @@ export default function StructurePanel() {
         },
         {
           key: "unassigned",
+          icon: "ri-user-line",
+          actionLabel: "Unassigned employees",
           label: "No unassigned employees",
           done: coverage.checklist.noUnassignedEmployees,
           gap: coverage.unassignedEmployees,

@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import type { JobApplication } from "@/shared/lib/api/jobApplications";
 import type { Notification } from "@/shared/lib/api/notifications";
 import * as jobApplicationsApi from "@/shared/lib/api/jobApplications";
@@ -317,7 +317,9 @@ describe("MyApplicationsPage stage-aware badges", () => {
     render(<MyApplicationsPage />);
     const badge = await screen.findByTestId("application-status-badge");
     expect(badge.className).toContain("w-fit");
-    expect(badge.className).toContain("max-w-full");
+    // globals.scss zeroes padding (!important) on every non-form element with `max-w-full`;
+    // the pill must not carry it or it renders as a border hugging the text.
+    expect(badge.className).not.toContain("max-w-full");
     expect(badge.className).not.toMatch(/\bw-\d/);
     // Full stage text stays readable — no truncation of the rejection stage.
     expect(badge).toHaveTextContent("Rejected \u00b7 Pre-boarding");
@@ -338,5 +340,101 @@ describe("MyApplicationsPage stage-aware badges", () => {
     render(<MyApplicationsPage />);
     await screen.findByTestId("application-status-badge");
     expect(screen.getByRole("link", { name: /View/ })).toBeInTheDocument();
+  });
+});
+
+describe("MyApplicationsPage status filter", () => {
+  function row(overrides: Partial<JobApplication> & Record<string, unknown>): JobApplication {
+    return {
+      _id: "app-1",
+      status: "Offered",
+      job: { _id: "job-1", title: "Role", organisation: { name: "Co" } },
+      candidate: { fullName: "Candidate" },
+      ...overrides,
+    } as JobApplication;
+  }
+
+  /**
+   * Regression: the filter used to hit the server on `JobApplication.status`, while the badge is
+   * derived from Offer/Placement after the query. An offer-stage rejection keeps status "Offered",
+   * so filtering "Rejected" could not return the row whose badge reads "Rejected · Offer".
+   */
+  it("filters on the badge the candidate can actually see, not the raw application status", async () => {
+    vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [
+        row({
+          _id: "a1",
+          status: "Offered",
+          candidateLifecycleStage: "rejected",
+          rejectionStage: "offer",
+          candidateVisibleStatus: "Rejected · Offer",
+          job: { _id: "j1", title: "Rejected Role", organisation: { name: "Co A" } },
+        }),
+        row({
+          _id: "a2",
+          status: "Offered",
+          candidateLifecycleStage: "offer",
+          candidateVisibleStatus: "Offer",
+          job: { _id: "j2", title: "Live Role", organisation: { name: "Co B" } },
+        }),
+      ],
+    } as never);
+    render(<MyApplicationsPage />);
+    await screen.findByText("Rejected Role");
+
+    fireEvent.change(screen.getByLabelText(/Filter applications by status/i), {
+      target: { value: "rejected" },
+    });
+
+    await waitFor(() => expect(screen.queryByText("Live Role")).toBeNull());
+    expect(screen.getByText("Rejected Role")).toBeInTheDocument();
+  });
+
+  it("offers only states the badge can display", async () => {
+    render(<MyApplicationsPage />);
+    const select = await screen.findByLabelText(/Filter applications by status/i);
+    const labels = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
+    expect(labels).toEqual([
+      "All statuses",
+      "Applied",
+      "Screening",
+      "Shortlisted",
+      "Interview",
+      "Offer",
+      "Pre-boarding",
+      "Onboarding",
+      "Hired",
+      "Deferred",
+      "Rejected",
+    ]);
+  });
+
+  it("filtering does not re-query the server", async () => {
+    const spy = vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [row({ candidateLifecycleStage: "offer", candidateVisibleStatus: "Offer" })],
+    } as never);
+    render(<MyApplicationsPage />);
+    await screen.findByTestId("application-status-badge");
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][0]).not.toHaveProperty("status");
+
+    fireEvent.change(screen.getByLabelText(/Filter applications by status/i), {
+      target: { value: "hired" },
+    });
+    await waitFor(() => expect(screen.queryByTestId("application-status-badge")).toBeNull());
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Regression: totalItems read `applications.length` (the fetched slice), so a candidate with
+   * more applications than the page fetches saw a wrong count and silently lost rows.
+   */
+  it("warns when the server holds more applications than were fetched", async () => {
+    vi.spyOn(jobApplicationsApi, "getMyApplications").mockResolvedValue({
+      results: [row({ candidateLifecycleStage: "offer", candidateVisibleStatus: "Offer" })],
+      totalResults: 137,
+    } as never);
+    render(<MyApplicationsPage />);
+    expect(await screen.findByTestId("truncated-notice")).toHaveTextContent("137");
   });
 });

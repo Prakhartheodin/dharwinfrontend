@@ -11,11 +11,9 @@ import {
 
 interface Props {
   refreshKey?: number
-  /** When true, render inside an application card (no top-of-page margins). */
-  inline?: boolean
 }
 
-const DocumentsActionCard: React.FC<Props> = ({ refreshKey, inline }) => {
+const DocumentsActionCard: React.FC<Props> = ({ refreshKey }) => {
   const [loading, setLoading] = useState(true)
   const [requests, setRequests] = useState<DocumentRequest[]>([])
   const [rejected, setRejected] = useState<RejectedDocument[]>([])
@@ -82,13 +80,11 @@ const DocumentsActionCard: React.FC<Props> = ({ refreshKey, inline }) => {
   if (requests.length === 0 && rejected.length === 0 && approved.length === 0) return null
 
   const hasActionItems = requests.length > 0 || rejected.length > 0
-  const outerSpacing = inline ? 'border-t border-defaultborder/40 dark:border-white/10' : ''
-  const cardMargin = inline ? 'mt-0' : 'mb-6'
 
   return (
-    <div className={`${outerSpacing} ${inline ? 'px-5 py-4 space-y-4 bg-defaultborder/5 dark:bg-white/[0.02]' : ''}`}>
+    <div>
     {hasActionItems && (
-    <div className={`${cardMargin} rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/80 to-white shadow-sm dark:border-amber-900/40 dark:from-amber-950/30 dark:to-bodybg`}>
+    <div className="mb-6 rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-50/80 to-white shadow-sm dark:border-amber-900/40 dark:from-amber-950/30 dark:to-bodybg">
       <div className="flex items-start gap-3 border-b border-amber-200/60 px-5 py-4 dark:border-amber-900/30">
         <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200" aria-hidden>
           <i className="ri-file-warning-line text-lg" />
@@ -238,7 +234,7 @@ const DocumentsActionCard: React.FC<Props> = ({ refreshKey, inline }) => {
     )}
 
     {approved.length > 0 && (
-      <div className={`${cardMargin} rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/70 to-white shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/30 dark:to-bodybg`}>
+      <div className="mb-6 rounded-xl border border-emerald-200/70 bg-gradient-to-br from-emerald-50/70 to-white shadow-sm dark:border-emerald-900/40 dark:from-emerald-950/30 dark:to-bodybg">
         <div className="flex items-start gap-3 border-b border-emerald-200/60 px-5 py-4 dark:border-emerald-900/30">
           <span className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200" aria-hidden>
             <i className="ri-shield-check-line text-lg" />
