@@ -11,6 +11,10 @@ import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import type { TrainingModule } from '@/shared/lib/api/training-modules'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { hasPermission } from '@/shared/lib/permissions'
+import {
+  dedupeSearchResultsByNormalizedName,
+  normalizedSearchIncludes,
+} from '@/shared/lib/training/normalize-search-term'
 
 export default function PositionsTab() {
   const auth = useAuth()
@@ -215,14 +219,15 @@ export default function PositionsTab() {
     }`
 
   const filtered = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
+    const q = searchQuery.trim()
     if (!q) return positions
-    return positions.filter(
+    const matched = positions.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.assignedEmployees ?? []).some((e) => e.name.toLowerCase().includes(q)) ||
-        (p.assignedModules ?? []).some((m) => m.name.toLowerCase().includes(q))
+        normalizedSearchIncludes(p.name, q) ||
+        (p.assignedEmployees ?? []).some((e) => normalizedSearchIncludes(e.name, q)) ||
+        (p.assignedModules ?? []).some((m) => normalizedSearchIncludes(m.name, q))
     )
+    return dedupeSearchResultsByNormalizedName(matched, q, (p) => p.name)
   }, [positions, searchQuery])
 
   const sorted = useMemo(() => {

@@ -2,10 +2,12 @@
 
 import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useState, useMemo, useEffect } from "react"
+import React, { Fragment, useState, useEffect } from "react"
 import Link from "next/link"
 import type { Course } from "@/shared/data/training/courses-data"
 import { listTrainingModules, type TrainingModule } from "@/shared/lib/api/training-modules"
+import CourseCatalogToolbar from "@/shared/components/course-catalog-toolbar"
+import type { CourseCatalogSortBy } from "@/shared/components/course-catalog-sort-dropdown"
 
 /**
  * A module assigned to N categories renders under EVERY category — not only
@@ -42,14 +44,40 @@ function mapModuleToCourse(m: TrainingModule): CurriculumCourse {
 }
 
 const COURSES_PER_PAGE = 6
-const PAGE_FETCH_SIZE = 100
+
+/**
+ * Map curriculum sort chips to GET /training/modules `sortBy`.
+ */
+function curriculumSortParam(sortBy: string): string {
+  if (sortBy === "title") return "moduleName:asc"
+  if (sortBy === "title-desc") return "moduleName:desc"
+  return "createdAt:desc"
+}
+
+/**
+ * Compact pager indices for large catalogs.
+ */
+function pageWindow(current: number, total: number, span = 7): number[] {
+  if (total <= 0) return []
+  if (total <= span) return Array.from({ length: total }, (_, i) => i + 1)
+  const half = Math.floor(span / 2)
+  let start = Math.max(1, current - half)
+  const end = Math.min(total, start + span - 1)
+  start = Math.max(1, end - span + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
 
 const TrainingCurriculum = () => {
   const [courses, setCourses] = useState<CurriculumCourse[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+  const [instructors, setInstructors] = useState<string[]>([])
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [apiLoading, setApiLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [scheduleDismissed, setScheduleDismissed] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
   const [progressFilter, setProgressFilter] = useState("")
   const [instructorFilter, setInstructorFilter] = useState("")
@@ -59,39 +87,49 @@ const TrainingCurriculum = () => {
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
 
   useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => window.clearTimeout(t)
+  }, [searchQuery])
+
+  useEffect(() => {
     let cancelled = false
     setApiLoading(true)
     setLoadError(null)
     ;(async () => {
       try {
-        // Fetch every assigned page so client-side category bucketing is not
-        // truncated by the server page size — the prior implementation read
-        // only page 1 and dropped every module beyond that into 0-counts.
+        if (progressFilter === "completed" || progressFilter === "in-progress") {
+          if (cancelled) return
+          setCourses([])
+          setTotalResults(0)
+          setTotalPages(1)
+          return
+        }
         const first = await listTrainingModules({
-          limit: PAGE_FETCH_SIZE,
+          limit: COURSES_PER_PAGE,
+          page: currentPage,
           status: "published",
           mine: true,
-          sortBy: "createdAt:desc",
+          sortBy: curriculumSortParam(sortBy),
+          ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+          ...(categoryFilter ? { category: categoryFilter } : {}),
+          ...(instructorFilter ? { instructor: instructorFilter } : {}),
         })
-        const all: TrainingModule[] = [...(first.results ?? [])]
-        for (let page = 2; page <= (first.totalPages ?? 1); page += 1) {
-          const next = await listTrainingModules({
-            limit: PAGE_FETCH_SIZE,
-            status: "published",
-            mine: true,
-            sortBy: "createdAt:desc",
-            page,
-          })
-          all.push(...(next.results ?? []))
-        }
         if (cancelled) return
-        setCourses(all.map(mapModuleToCourse))
+        setCourses((first.results ?? []).map(mapModuleToCourse))
+        setTotalResults(first.totalResults ?? 0)
+        setTotalPages(Math.max(1, first.totalPages || 1))
+        setCategories(first.facets?.categories ?? [])
+        setInstructors(first.facets?.instructors ?? [])
+        if ((first.totalPages ?? 1) > 0 && currentPage > (first.totalPages ?? 1)) {
+          setCurrentPage(1)
+        }
       } catch (err) {
         if (cancelled) return
         const message =
           err instanceof Error ? err.message : "Failed to load your modules."
         setLoadError(message)
         setCourses([])
+        setTotalResults(0)
       } finally {
         if (!cancelled) setApiLoading(false)
       }
@@ -99,63 +137,18 @@ const TrainingCurriculum = () => {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [
+    currentPage,
+    sortBy,
+    debouncedSearch,
+    categoryFilter,
+    instructorFilter,
+    progressFilter,
+  ])
 
-  const categories = useMemo(() => {
-    // Aggregate every assigned category across every module — multi-category
-    // modules participate in every bucket.
-    const map = new Map<string, string>()
-    for (const c of courses) {
-      for (const cat of c.categories) {
-        if (cat?.id && cat?.name) map.set(cat.id, cat.name)
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => a.localeCompare(b))
-  }, [courses])
-  const instructors = useMemo(() => {
-    const set = new Set(courses.map((c) => c.instructor))
-    return Array.from(set)
-  }, [courses])
-
-  const filteredCourses = useMemo(() => {
-    let list = [...courses]
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) ||
-          c.instructor.toLowerCase().includes(q)
-      )
-    }
-    if (categoryFilter) {
-      // Match any of the module's assigned categories, not just `categories[0]`.
-      list = list.filter((c) => c.categories.some((cat) => cat.name === categoryFilter))
-    }
-    if (instructorFilter)
-      list = list.filter((c) => c.instructor === instructorFilter)
-    if (progressFilter === "completed")
-      list = list.filter((c) => c.progress === 100)
-    if (progressFilter === "in-progress")
-      list = list.filter((c) => c.progress > 0 && c.progress < 100)
-    if (progressFilter === "not-started") list = list.filter((c) => c.progress === 0)
-    if (sortBy === "recent")
-      list = [...list].sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-    if (sortBy === "title") list = [...list].sort((a, b) => a.title.localeCompare(b.title))
-    return list
-  }, [courses, searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
-
-  const totalPages = Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE))
-  useEffect(() => {
-    // Filter/sort changes shrink the page count → clamp page back into range so
-    // the grid never disappears under a stale `currentPage`.
-    if (currentPage > totalPages) setCurrentPage(1)
-  }, [totalPages, currentPage])
-  const paginatedCourses = useMemo(() => {
-    const start = (currentPage - 1) * COURSES_PER_PAGE
-    return filteredCourses.slice(start, start + COURSES_PER_PAGE)
-  }, [filteredCourses, currentPage])
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() || categoryFilter || instructorFilter || progressFilter
+  )
 
   return (
     <Fragment>
@@ -164,6 +157,11 @@ const TrainingCurriculum = () => {
         currentpage="Modules"
         activepage="Training Management"
         mainpage="Training Curriculum"
+        subtitle={
+          apiLoading
+            ? undefined
+            : `${totalResults} module${totalResults !== 1 ? "s" : ""}`
+        }
       />
 
       {/* Motivational cards */}
@@ -238,122 +236,40 @@ const TrainingCurriculum = () => {
       </>
 
       {/* Filters, module count, and search */}
-      <div className="flex flex-wrap items-center gap-4 mb-5">
-          <span className="text-[0.875rem] font-semibold text-defaulttextcolor dark:text-white">
-            {filteredCourses.length} module{filteredCourses.length !== 1 ? "s" : ""}
-          </span>
-          {/* Categories filter button */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setOpenFilter(openFilter === "category" ? null : "category")}
-              className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white hover:bg-[#ebebeb] dark:hover:bg-white/15 transition-colors"
-            >
-              {categoryFilter || "Categories"}
-              <i className="ti ti-chevron-down text-[0.875rem] text-[#6a6f73] dark:text-white/60" />
-            </button>
-            {openFilter === "category" && (
-              <>
-                <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-                <div className="absolute left-0 top-full mt-1 z-[101] min-w-[180px] rounded-lg border border-[#e0e0e0] dark:border-white/10 bg-white dark:bg-[#1c1d1f] shadow-lg py-1">
-                  <button type="button" onClick={() => { setCategoryFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#6a6f73] dark:text-white/70 hover:bg-[#f5f5f5] dark:hover:bg-white/10">
-                    All categories
-                  </button>
-                  {categories.map((cat) => (
-                    <button key={cat} type="button" onClick={() => { setCategoryFilter(cat); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          {/* Progress filter button */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setOpenFilter(openFilter === "progress" ? null : "progress")}
-              className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white hover:bg-[#ebebeb] dark:hover:bg-white/15 transition-colors"
-            >
-              {progressFilter === "not-started" ? "Not started" : progressFilter === "in-progress" ? "In progress" : progressFilter === "completed" ? "Completed" : "Progress"}
-              <i className="ti ti-chevron-down text-[0.875rem] text-[#6a6f73] dark:text-white/60" />
-            </button>
-            {openFilter === "progress" && (
-              <>
-                <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-                <div className="absolute left-0 top-full mt-1 z-[101] min-w-[160px] rounded-lg border border-[#e0e0e0] dark:border-white/10 bg-white dark:bg-[#1c1d1f] shadow-lg py-1">
-                  <button type="button" onClick={() => { setProgressFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#6a6f73] dark:text-white/70 hover:bg-[#f5f5f5] dark:hover:bg-white/10">All</button>
-                  <button type="button" onClick={() => { setProgressFilter("not-started"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">Not started</button>
-                  <button type="button" onClick={() => { setProgressFilter("in-progress"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">In progress</button>
-                  <button type="button" onClick={() => { setProgressFilter("completed"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">Completed</button>
-                </div>
-              </>
-            )}
-          </div>
-          {/* Instructor filter button */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setOpenFilter(openFilter === "instructor" ? null : "instructor")}
-              className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white hover:bg-[#ebebeb] dark:hover:bg-white/15 transition-colors"
-            >
-              {instructorFilter || "Instructor"}
-              <i className="ti ti-chevron-down text-[0.875rem] text-[#6a6f73] dark:text-white/60" />
-            </button>
-            {openFilter === "instructor" && (
-              <>
-                <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-                <div className="absolute left-0 top-full mt-1 z-[101] min-w-[180px] max-h-[280px] overflow-y-auto rounded-lg border border-[#e0e0e0] dark:border-white/10 bg-white dark:bg-[#1c1d1f] shadow-lg py-1">
-                  <button type="button" onClick={() => { setInstructorFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#6a6f73] dark:text-white/70 hover:bg-[#f5f5f5] dark:hover:bg-white/10">All instructors</button>
-                  {instructors.map((inst) => (
-                    <button key={inst} type="button" onClick={() => { setInstructorFilter(inst); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">
-                      {inst}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="flex-1 min-w-[200px] max-w-sm ms-auto flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="Search my modules"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 min-w-0 rounded-lg border border-[#e0e0e0] dark:border-white/20 bg-white dark:bg-white/5 px-3 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white placeholder:text-[#6a6f73] dark:placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
-            <button
-              type="button"
-              className="flex items-center justify-center w-10 h-[2.25rem] shrink-0 rounded-lg bg-primary text-white hover:bg-primary/90 transition-colors"
-              aria-label="Search modules"
-            >
-              <i className="ti ti-search text-[1rem]" />
-            </button>
-          </div>
-          <div className="relative shrink-0">
-            <button
-              type="button"
-              onClick={() => setOpenSortDropdown(!openSortDropdown)}
-              className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white hover:bg-[#ebebeb] dark:hover:bg-white/15 transition-colors"
-            >
-              {sortBy === "recent" ? "Recently Accessed" : "Title A-Z"}
-              <i className="ti ti-chevron-down text-[0.875rem] text-[#6a6f73] dark:text-white/60" />
-            </button>
-            {openSortDropdown && (
-              <>
-                <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenSortDropdown(false)} />
-                <div className="absolute right-0 top-full mt-1 z-[101] min-w-[180px] rounded-lg border border-[#e0e0e0] dark:border-white/10 bg-white dark:bg-[#1c1d1f] shadow-lg py-1">
-                  <button type="button" onClick={() => { setSortBy("recent"); setOpenSortDropdown(false); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">
-                    Recently Accessed
-                  </button>
-                  <button type="button" onClick={() => { setSortBy("title"); setOpenSortDropdown(false); }} className="block w-full text-left px-4 py-2 text-[0.875rem] text-[#1c1d1f] dark:text-white hover:bg-[#f5f5f5] dark:hover:bg-white/10">
-                    Title A-Z
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+      <CourseCatalogToolbar
+        searchQuery={searchQuery}
+        searchPlaceholder="Search my modules"
+        onSearchQueryChange={(value) => {
+          setSearchQuery(value)
+          setCurrentPage(1)
+        }}
+        categories={categories}
+        categoryFilter={categoryFilter}
+        onCategoryFilterChange={(value) => {
+          setCategoryFilter(value)
+          setCurrentPage(1)
+        }}
+        progressFilter={progressFilter}
+        onProgressFilterChange={(value) => {
+          setProgressFilter(value)
+          setCurrentPage(1)
+        }}
+        instructors={instructors}
+        instructorFilter={instructorFilter}
+        onInstructorFilterChange={(value) => {
+          setInstructorFilter(value)
+          setCurrentPage(1)
+        }}
+        sortBy={sortBy}
+        openSortDropdown={openSortDropdown}
+        onOpenSortChange={setOpenSortDropdown}
+        onSortChange={(next: CourseCatalogSortBy) => {
+          setSortBy(next)
+          setCurrentPage(1)
+        }}
+        openFilter={openFilter}
+        onOpenFilterChange={setOpenFilter}
+      />
 
       {/* Module grid */}
       {apiLoading ? (
@@ -362,13 +278,15 @@ const TrainingCurriculum = () => {
         </div>
       ) : loadError ? (
         <div className="text-center py-10 text-danger">{loadError}</div>
-      ) : filteredCourses.length === 0 ? (
+      ) : courses.length === 0 ? (
         <div className="text-center py-10 text-[#6a6f73] dark:text-white/50">
-          No modules assigned to your account yet.
+          {hasActiveFilters
+            ? "No modules match your filters."
+            : "No modules assigned to your account yet."}
         </div>
       ) : (
         <section className="grid grid-cols-12 gap-4 xl:gap-6 mb-6">
-          {paginatedCourses.map((course) => (
+          {courses.map((course) => (
             <CourseCard key={course.id} course={course} />
           ))}
         </section>
@@ -386,7 +304,7 @@ const TrainingCurriculum = () => {
           >
             <i className="ti ti-chevron-left"></i>
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          {pageWindow(currentPage, totalPages).map((page) => (
             <button
               key={page}
               type="button"
@@ -424,7 +342,7 @@ function CourseCard({ course }: { course: CurriculumCourse }) {
         href={`/training/curriculum/${course.id}/`}
         className="block no-underline"
       >
-        <div className="bg-bodybg dark:bg-white/5 border border-defaultborder dark:border-white/10 h-full rounded-lg overflow-hidden shadow-sm transition-all duration-200 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/20 hover:border-primary/30 hover:-translate-y-0.5">
+        <div className="h-full overflow-hidden rounded-lg border border-solid border-defaultborder/70 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-defaultborder/20 dark:bg-bodybg2">
           <div className="p-0">
             <div className="relative w-full aspect-[40/22] bg-defaultborder/20 dark:bg-white/5 overflow-hidden">
               <img

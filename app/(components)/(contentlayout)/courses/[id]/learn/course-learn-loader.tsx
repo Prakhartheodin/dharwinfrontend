@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { getMyStudent, getStudentCourse, mapStudentCourseDetailToCourse } from "@/shared/lib/api/student-courses";
+import { getMyStudent, getStudentCourse, peekMyStudentId, mapStudentCourseDetailToCourse } from "@/shared/lib/api/student-courses";
 import CourseLearnClient from "./course-learn-client";
 import Seo from "@/shared/layout-components/seo/seo";
 import type { Course } from "@/shared/data/training/courses-data";
@@ -14,20 +14,39 @@ function isValidModuleId(id: string): boolean {
   return /^[0-9a-fA-F]{24}$/.test(trimmed);
 }
 
+/** Layout placeholder shown while student + course load. */
+function CourseLearnSkeleton() {
+  return (
+    <div className="min-h-[70vh] animate-pulse" aria-busy="true" aria-label="Loading course">
+      <div className="h-14 border-b border-[#d1d7dc] dark:border-white/10 px-6 flex items-center gap-3">
+        <div className="h-4 w-24 rounded bg-[#e4e8eb] dark:bg-white/10" />
+        <div className="h-4 flex-1 max-w-md rounded bg-[#e4e8eb] dark:bg-white/10" />
+      </div>
+      <div className="flex flex-col lg:flex-row">
+        <div className="flex-1">
+          <div className="aspect-video bg-[#1c1d1f]" />
+          <div className="p-6 space-y-3">
+            <div className="h-4 w-40 rounded bg-[#e4e8eb] dark:bg-white/10" />
+            <div className="h-4 w-full rounded bg-[#e4e8eb] dark:bg-white/10" />
+            <div className="h-4 w-2/3 rounded bg-[#e4e8eb] dark:bg-white/10" />
+          </div>
+        </div>
+        <div className="hidden lg:block w-80 border-l border-[#d1d7dc] dark:border-white/10 p-4 space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-10 rounded bg-[#e4e8eb] dark:bg-white/10" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
   const [course, setCourse] = useState<Course | null>(null);
   const [studentId, setStudentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const loadCourse = React.useCallback(async () => {
-    const id = (moduleId ?? "").trim();
-    if (!id || !isValidModuleId(id) || !studentId) return;
-    const detail = await getStudentCourse(studentId, id);
-    const mapped = mapStudentCourseDetailToCourse(detail) as Course;
-    setCourse(mapped);
-  }, [moduleId, studentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -42,13 +61,15 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
       setError(null);
       setNotFound(false);
       try {
-        const student = await getMyStudent();
+        const studentPromise = getMyStudent();
+        const cachedId = peekMyStudentId();
+        const coursePromise = cachedId
+          ? getStudentCourse(cachedId, id)
+          : studentPromise.then((student) => getStudentCourse(student.id, id));
+        const [student, detail] = await Promise.all([studentPromise, coursePromise]);
         if (cancelled) return;
         setStudentId(student.id);
-        const detail = await getStudentCourse(student.id, id);
-        if (cancelled) return;
-        const mapped = mapStudentCourseDetailToCourse(detail) as Course;
-        setCourse(mapped);
+        setCourse(mapStudentCourseDetailToCourse(detail) as Course);
       } catch (e: unknown) {
         if (cancelled) return;
         const err = e as { response?: { status?: number } };
@@ -61,7 +82,7 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
         if (!cancelled) setLoading(false);
       }
     };
-    load();
+    void load();
     return () => { cancelled = true; };
   }, [moduleId]);
 
@@ -69,9 +90,7 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
     return (
       <>
         <Seo title="Loading..." />
-        <div className="flex justify-center py-12">
-          <div className="ti-btn ti-btn-primary ti-btn-loading">Loading...</div>
-        </div>
+        <CourseLearnSkeleton />
       </>
     );
   }
@@ -107,7 +126,6 @@ export default function CourseLearnLoader({ moduleId }: { moduleId: string }) {
       course={course}
       studentId={studentId}
       moduleId={moduleId}
-      onProgressUpdate={loadCourse}
     />
   );
 }

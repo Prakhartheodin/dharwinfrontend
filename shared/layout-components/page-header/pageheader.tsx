@@ -7,6 +7,11 @@ const Pageheader = (props:any) => {
          <div className="block justify-between page-header md:flex">
                     <div>
                         <h3 className="!text-defaulttextcolor dark:!text-defaulttextcolor/70 dark:text-white dark:hover:text-white text-[1.125rem] font-semibold">{props.currentpage}</h3>
+                        {props.subtitle ? (
+                          <p className="mt-1 mb-0 text-[0.8125rem] font-medium text-[#6a6f73] dark:text-white/50">
+                            {props.subtitle}
+                          </p>
+                        ) : null}
                     </div>
                     <ol className="flex items-center whitespace-nowrap min-w-0">
                         <li className="text-[0.813rem] ps-[0.5rem]">

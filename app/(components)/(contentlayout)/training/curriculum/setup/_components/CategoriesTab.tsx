@@ -13,6 +13,7 @@ import * as mentorsApi from '@/shared/lib/api/mentors'
 import type { Mentor } from '@/shared/lib/api/mentors'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { hasPermission } from '@/shared/lib/permissions'
+import { dedupeSearchResultsByNormalizedName } from '@/shared/lib/training/normalize-search-term'
 
 interface CategoryRow extends Category {
   categoryName: string
@@ -137,7 +138,11 @@ export default function CategoriesTab() {
         moduleCount: typeof cat.moduleCount === 'number' ? cat.moduleCount : 0,
       }))
 
-      setCategories(formattedCategories)
+      const q = searchQuery.trim()
+      const visible = q
+        ? dedupeSearchResultsByNormalizedName(formattedCategories, q, (c) => c.name)
+        : formattedCategories
+      setCategories(visible)
       setTotalResults(response.totalResults)
       setTotalPages(response.totalPages)
     } catch (err) {

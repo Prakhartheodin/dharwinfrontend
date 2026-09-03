@@ -2,7 +2,7 @@
 
 import Pageheader from "@/shared/layout-components/page-header/pageheader"
 import Seo from "@/shared/layout-components/seo/seo"
-import React, { Fragment, useState, useMemo, useEffect } from "react"
+import React, { Fragment, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useAuth } from "@/shared/contexts/auth-context"
 import {
@@ -16,9 +16,33 @@ import {
   COURSE_THUMBNAIL_PLACEHOLDER,
   type StudentCourseListItem,
 } from "@/shared/lib/api/student-courses"
+import CourseCatalogToolbar from "@/shared/components/course-catalog-toolbar"
+import type { CourseCatalogSortBy } from "@/shared/components/course-catalog-sort-dropdown"
 
 const COURSES_PER_PAGE = 9
 const PLACEHOLDER_IMAGE = COURSE_THUMBNAIL_PLACEHOLDER
+
+/**
+ * Map catalog sort chips to student-courses `sortBy` query values.
+ */
+function catalogSortParam(sortBy: string): string {
+  if (sortBy === "title") return "title"
+  if (sortBy === "title-desc") return "title-desc"
+  return "recent"
+}
+
+/**
+ * Compact pager indices so 1000 courses do not render 112 buttons.
+ */
+function pageWindow(current: number, total: number, span = 7): number[] {
+  if (total <= 0) return []
+  if (total <= span) return Array.from({ length: total }, (_, i) => i + 1)
+  const half = Math.floor(span / 2)
+  let start = Math.max(1, current - half)
+  const end = Math.min(total, start + span - 1)
+  start = Math.max(1, end - span + 1)
+  return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+}
 
 export type CourseCardItem = {
   id: string
@@ -38,6 +62,7 @@ export default function CandidateCoursesPage() {
     hasPermissionForPath(userPermissions, COURSES_PERMISSION_PREFIX)
 
   const [searchQuery, setSearchQuery] = useState("")
+  const [debouncedSearch, setDebouncedSearch] = useState("")
   const [categoryFilter, setCategoryFilter] = useState("")
   const [progressFilter, setProgressFilter] = useState("")
   const [instructorFilter, setInstructorFilter] = useState("")
@@ -45,12 +70,21 @@ export default function CandidateCoursesPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [openFilter, setOpenFilter] = useState<"category" | "progress" | "instructor" | null>(null)
   const [openSortDropdown, setOpenSortDropdown] = useState(false)
-  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  // const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   const [courses, setCourses] = useState<CourseCardItem[]>([])
+  const [categories, setCategories] = useState<string[]>([])
+  const [instructors, setInstructors] = useState<string[]>([])
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [noStudent, setNoStudent] = useState(false)
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchQuery), 300)
+    return () => window.clearTimeout(t)
+  }, [searchQuery])
 
   useEffect(() => {
     if (!permissionsLoaded) return
@@ -67,7 +101,21 @@ export default function CandidateCoursesPage() {
       try {
         const student = await getMyStudent()
         if (cancelled) return
-        const res = await listStudentCourses(student.id, { limit: 200 })
+        const progress =
+          progressFilter === "completed" ||
+          progressFilter === "in-progress" ||
+          progressFilter === "not-started"
+            ? progressFilter
+            : undefined
+        const res = await listStudentCourses(student.id, {
+          page: currentPage,
+          limit: COURSES_PER_PAGE,
+          sortBy: catalogSortParam(sortBy),
+          ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+          ...(categoryFilter ? { category: categoryFilter } : {}),
+          ...(instructorFilter ? { instructor: instructorFilter } : {}),
+          ...(progress ? { progress } : {}),
+        })
         if (cancelled) return
         const mapped = res.results.map((item: StudentCourseListItem) => {
           const c = mapStudentCourseToCard(item)
@@ -78,15 +126,24 @@ export default function CandidateCoursesPage() {
           } as CourseCardItem
         })
         setCourses(mapped)
+        setTotalResults(res.totalResults ?? 0)
+        setTotalPages(Math.max(1, res.totalPages || 1))
+        setCategories(res.facets?.categories ?? [])
+        setInstructors(res.facets?.instructors ?? [])
+        if ((res.totalPages ?? 1) > 0 && currentPage > (res.totalPages ?? 1)) {
+          setCurrentPage(1)
+        }
       } catch (e: unknown) {
         if (cancelled) return
         const err = e as { response?: { status?: number } }
         if (err.response?.status === 404) {
           setNoStudent(true)
           setCourses([])
+          setTotalResults(0)
         } else {
           setError(err instanceof Error ? err.message : "Failed to load courses")
           setCourses([])
+          setTotalResults(0)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -94,7 +151,20 @@ export default function CandidateCoursesPage() {
     }
     load()
     return () => { cancelled = true }
-  }, [permissionsLoaded, hasCoursesPermission])
+  }, [
+    permissionsLoaded,
+    hasCoursesPermission,
+    currentPage,
+    sortBy,
+    debouncedSearch,
+    categoryFilter,
+    instructorFilter,
+    progressFilter,
+  ])
+
+  const hasActiveFilters = Boolean(
+    searchQuery.trim() || categoryFilter || instructorFilter || progressFilter
+  )
 
   if (!permissionsLoaded) {
     return (
@@ -123,41 +193,6 @@ export default function CandidateCoursesPage() {
     )
   }
 
-  const categories = useMemo(() => {
-    const set = new Set(courses.map((c) => c.category).filter(Boolean))
-    return Array.from(set) as string[]
-  }, [courses])
-  const instructors = useMemo(() => {
-    const set = new Set(courses.map((c) => c.instructor))
-    return Array.from(set)
-  }, [courses])
-
-  const filteredCourses = useMemo(() => {
-    let list = [...courses]
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase()
-      list = list.filter(
-        (c) =>
-          c.title.toLowerCase().includes(q) ||
-          c.instructor.toLowerCase().includes(q)
-      )
-    }
-    if (categoryFilter) list = list.filter((c) => c.category === categoryFilter)
-    if (instructorFilter) list = list.filter((c) => c.instructor === instructorFilter)
-    if (progressFilter === "completed") list = list.filter((c) => c.progress === 100)
-    if (progressFilter === "in-progress") list = list.filter((c) => c.progress > 0 && c.progress < 100)
-    if (progressFilter === "not-started") list = list.filter((c) => c.progress === 0)
-    if (sortBy === "recent") list = [...list].reverse()
-    if (sortBy === "title") list = [...list].sort((a, b) => a.title.localeCompare(b.title))
-    return list
-  }, [courses, searchQuery, categoryFilter, instructorFilter, progressFilter, sortBy])
-
-  const totalPages = Math.max(1, Math.ceil(filteredCourses.length / COURSES_PER_PAGE))
-  const paginatedCourses = useMemo(() => {
-    const start = (currentPage - 1) * COURSES_PER_PAGE
-    return filteredCourses.slice(start, start + COURSES_PER_PAGE)
-  }, [filteredCourses, currentPage])
-
   return (
     <Fragment>
       <Seo title="My Courses" />
@@ -165,110 +200,48 @@ export default function CandidateCoursesPage() {
         currentpage="My Courses"
         activepage="Courses"
         mainpage="My Courses"
+        subtitle={
+          loading
+            ? undefined
+            : `${totalResults} course${totalResults !== 1 ? "s" : ""}`
+        }
       />
 
-      {/* Filters, count, search - Udemy-style */}
-      <div className="flex flex-wrap items-center gap-4 mb-5">
-        <span className="text-[0.875rem] font-semibold text-defaulttextcolor dark:text-white">
-          {filteredCourses.length} course{filteredCourses.length !== 1 ? "s" : ""}
-        </span>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenFilter(openFilter === "category" ? null : "category")}
-            className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white hover:bg-[#ebebeb] dark:hover:bg-white/15"
-          >
-            {categoryFilter || "Categories"}
-            <i className="ti ti-chevron-down text-[0.875rem] text-[#6a6f73] dark:text-white/60" />
-          </button>
-          {openFilter === "category" && (
-            <>
-              <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-              <div className="absolute left-0 top-full mt-1 z-[101] min-w-[180px] rounded-lg border border-defaultborder bg-bodybg dark:bg-[#1c1d1f] shadow-lg py-1">
-                <button type="button" onClick={() => { setCategoryFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">All categories</button>
-                {categories.map((cat) => (
-                  <button key={cat} type="button" onClick={() => { setCategoryFilter(cat); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] hover:bg-black/5 dark:hover:bg-white/10">{cat}</button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenFilter(openFilter === "progress" ? null : "progress")}
-            className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white"
-          >
-            {progressFilter === "not-started" ? "Not started" : progressFilter === "in-progress" ? "In progress" : progressFilter === "completed" ? "Completed" : "Progress"}
-            <i className="ti ti-chevron-down text-[0.875rem]" />
-          </button>
-          {openFilter === "progress" && (
-            <>
-              <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-              <div className="absolute left-0 top-full mt-1 z-[101] min-w-[160px] rounded-lg border border-defaultborder bg-bodybg dark:bg-[#1c1d1f] shadow-lg py-1">
-                <button type="button" onClick={() => { setProgressFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">All</button>
-                <button type="button" onClick={() => { setProgressFilter("not-started"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">Not started</button>
-                <button type="button" onClick={() => { setProgressFilter("in-progress"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">In progress</button>
-                <button type="button" onClick={() => { setProgressFilter("completed"); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">Completed</button>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenFilter(openFilter === "instructor" ? null : "instructor")}
-            className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium text-[#1c1d1f] dark:text-white"
-          >
-            {instructorFilter || "Instructor"}
-            <i className="ti ti-chevron-down text-[0.875rem]" /> 
-          </button>
-          {openFilter === "instructor" && (
-            <>
-              <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenFilter(null)} />
-              <div className="absolute left-0 top-full mt-1 z-[101] min-w-[180px] max-h-[280px] overflow-y-auto rounded-lg border border-defaultborder bg-bodybg dark:bg-[#1c1d1f] shadow-lg py-1">
-                <button type="button" onClick={() => { setInstructorFilter(""); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">All instructors</button>
-                {instructors.map((inst) => (
-                  <button key={inst} type="button" onClick={() => { setInstructorFilter(inst); setOpenFilter(null); }} className="block w-full text-left px-4 py-2 text-[0.875rem] hover:bg-black/5 dark:hover:bg-white/10">{inst}</button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-sm ms-auto">
-          <div className="flex items-center rounded-lg border border-defaultborder dark:border-white/15 bg-bodybg dark:bg-white/5 focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30 transition-colors overflow-hidden">
-            <input
-              type="text"
-              placeholder="Search my courses"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 min-w-0 bg-transparent border-0 px-3 py-2 text-[0.875rem] text-defaulttextcolor focus:outline-none focus:ring-0"
-            />
-            <button type="button" className="flex items-center justify-center w-10 h-[2.25rem] shrink-0 bg-primary text-white" aria-label="Search">
-              <i className="ti ti-search text-[1rem]" />
-            </button>
-          </div>
-        </div>
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setOpenSortDropdown(!openSortDropdown)}
-            className="inline-flex items-center gap-2 rounded-full bg-[#f5f5f5] dark:bg-white/10 border border-[#e0e0e0] dark:border-white/20 px-4 py-2 text-[0.875rem] font-medium"
-          >
-            {sortBy === "recent" ? "Recently Accessed" : "Title A-Z"}
-            <i className="ti ti-chevron-down text-[0.875rem]" />
-          </button>
-          {openSortDropdown && (
-            <>
-              <div className="fixed inset-0 z-[100]" aria-hidden onClick={() => setOpenSortDropdown(false)} />
-              <div className="absolute right-0 top-full mt-1 z-[101] min-w-[180px] rounded-lg border border-defaultborder bg-bodybg dark:bg-[#1c1d1f] shadow-lg py-1">
-                <button type="button" onClick={() => { setSortBy("recent"); setOpenSortDropdown(false); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">Recently Accessed</button>
-                <button type="button" onClick={() => { setSortBy("title"); setOpenSortDropdown(false); }} className="block w-full text-left px-4 py-2 text-[0.875rem]">Title A-Z</button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+      {/* Search + filters */}
+      <CourseCatalogToolbar
+        searchQuery={searchQuery}
+        searchPlaceholder="Search my courses"
+        onSearchQueryChange={(value) => {
+          setSearchQuery(value)
+          setCurrentPage(1)
+        }}
+        categories={categories}
+        categoryFilter={categoryFilter}
+        onCategoryFilterChange={(value) => {
+          setCategoryFilter(value)
+          setCurrentPage(1)
+        }}
+        progressFilter={progressFilter}
+        onProgressFilterChange={(value) => {
+          setProgressFilter(value)
+          setCurrentPage(1)
+        }}
+        instructors={instructors}
+        instructorFilter={instructorFilter}
+        onInstructorFilterChange={(value) => {
+          setInstructorFilter(value)
+          setCurrentPage(1)
+        }}
+        sortBy={sortBy}
+        openSortDropdown={openSortDropdown}
+        onOpenSortChange={setOpenSortDropdown}
+        onSortChange={(next: CourseCatalogSortBy) => {
+          setSortBy(next)
+          setCurrentPage(1)
+        }}
+        openFilter={openFilter}
+        onOpenFilterChange={setOpenFilter}
+      />
 
       {loading && (
         <div className="flex justify-center py-12">
@@ -285,24 +258,24 @@ export default function CandidateCoursesPage() {
           You don&apos;t have a student profile yet. Contact your administrator to get access to courses.
         </div>
       )}
-      {!loading && !error && !noStudent && filteredCourses.length === 0 && (
+      {!loading && !error && !noStudent && courses.length === 0 && (
         <div className="rounded-lg border border-defaultborder bg-bodybg dark:bg-white/5 px-4 py-10 text-center mb-6">
           <p className="text-[#6a6f73] dark:text-white/60 text-[0.9375rem] mb-1">
-            {courses.length === 0
-              ? "No courses assigned yet. Contact your administrator to get access to courses."
-              : "No courses match your filters. Try changing filters or search."}
+            {hasActiveFilters
+              ? "No courses match your filters. Try changing filters or search."
+              : "No courses assigned yet. Contact your administrator to get access to courses."}
           </p>
         </div>
       )}
-      {!loading && !error && !noStudent && filteredCourses.length > 0 && (
+      {!loading && !error && !noStudent && courses.length > 0 && (
       <section className="grid grid-cols-12 gap-4 xl:gap-6 mb-6">
-        {paginatedCourses.map((course) => (
+        {courses.map((course) => (
           <CourseCard
             key={course.id}
             course={course}
-            menuOpen={menuOpenId === course.id}
-            onMenuToggle={() => setMenuOpenId(menuOpenId === course.id ? null : course.id)}
-            onMenuClose={() => setMenuOpenId(null)}
+            // menuOpen={menuOpenId === course.id}
+            // onMenuToggle={() => setMenuOpenId(menuOpenId === course.id ? null : course.id)}
+            // onMenuClose={() => setMenuOpenId(null)}
           />
         ))}
       </section>
@@ -313,7 +286,7 @@ export default function CandidateCoursesPage() {
           <button type="button" onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1} className="ti-btn ti-btn-sm ti-btn-outline-secondary !min-w-[2rem]">
             <i className="ti ti-chevron-left" />
           </button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+          {pageWindow(currentPage, totalPages).map((page) => (
             <button key={page} type="button" onClick={() => setCurrentPage(page)} className={`ti-btn ti-btn-sm !min-w-[2rem] ${currentPage === page ? "ti-btn-primary" : "ti-btn-outline-secondary"}`}>{page}</button>
           ))}
           <button type="button" onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="ti-btn ti-btn-sm ti-btn-outline-secondary !min-w-[2rem]">
@@ -332,14 +305,14 @@ function isValidCourseId(id: string): boolean {
 
 function CourseCard({
   course,
-  menuOpen,
-  onMenuToggle,
-  onMenuClose,
+  // menuOpen,
+  // onMenuToggle,
+  // onMenuClose,
 }: {
   course: CourseCardItem
-  menuOpen: boolean
-  onMenuToggle: () => void
-  onMenuClose: () => void
+  // menuOpen: boolean
+  // onMenuToggle: () => void
+  // onMenuClose: () => void
 }) {
   const router = useRouter()
   const [thumbnailSrc, setThumbnailSrc] = useState(course.thumbnail || PLACEHOLDER_IMAGE)
@@ -361,7 +334,7 @@ function CourseCard({
         tabIndex={0}
         onClick={openCourse}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (canNavigate) router.push(detailHref); else router.push("/courses/"); } }}
-        className="bg-bodybg dark:bg-white/5 border border-defaultborder dark:border-white/10 h-full rounded-lg overflow-hidden shadow-sm hover:shadow-lg hover:border-primary/30 hover:-translate-y-0.5 transition-all cursor-pointer"
+        className="h-full overflow-hidden rounded-lg border border-solid border-defaultborder/70 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md dark:border-defaultborder/20 dark:bg-bodybg2 cursor-pointer"
       >
         <div className="relative w-full aspect-[40/22] bg-defaultborder/20 overflow-hidden">
           <img
@@ -379,6 +352,7 @@ function CourseCard({
             </span>
           </div>
         </div>
+        {/* Course options (dots) menu — hidden for now
         <div className="absolute top-2 end-2 z-20">
           <button
             type="button"
@@ -398,6 +372,7 @@ function CourseCard({
             </>
           )}
         </div>
+        */}
         <div className="p-4">
           <h3 className="text-[0.9375rem] font-bold mb-1 text-defaulttextcolor dark:text-white line-clamp-2">{course.title}</h3>
           <p className="text-[0.8125rem] text-[#6a6f73] dark:text-white/50 mb-3">{course.instructor}</p>

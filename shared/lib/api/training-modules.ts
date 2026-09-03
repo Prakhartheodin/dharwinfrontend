@@ -52,8 +52,8 @@ export interface PlaylistItem {
   quizData?: QuizDataShape;
   testLinkOrReference?: string;
   difficulty?: "easy" | "medium" | "hard";
-  essay?: { questions: { questionText: string; expectedAnswer?: string }[] };
-  essayData?: { questions: { questionText: string; expectedAnswer?: string }[] };
+  essay?: { passPercentage?: number; questions: { questionText: string; expectedAnswer?: string; maxMarks?: number }[] };
+  essayData?: { passPercentage?: number; questions: { questionText: string; expectedAnswer?: string; maxMarks?: number }[] };
   sectionTitle?: string;
   sectionIndex?: number;
 }
@@ -94,11 +94,13 @@ export interface TrainingModulesListResponse {
   limit: number;
   totalPages: number;
   totalResults: number;
+  facets?: { categories: string[]; instructors: string[] };
 }
 
 export interface ListTrainingModulesParams {
   search?: string;
   category?: string;
+  instructor?: string;
   status?: "draft" | "published" | "archived";
   /** Restrict to modules the current user is assigned to (as student or mentor). */
   mine?: boolean;
@@ -225,26 +227,17 @@ export async function addMentorToTrainingModule(moduleId: string, mentorId: stri
   return updateTrainingModule(moduleId, { mentorsAssigned: Array.from(set) });
 }
 
-function appendIdArray(formData: FormData, field: string, values?: string[]): void {
-  if (!values?.length) return;
-  values.forEach((value) => formData.append(`${field}[]`, value));
-}
-
 /**
- * Multipart PATCH: empty roster must send JSON "[]" or the backend never receives `students` / `mentorsAssigned`
- * and keeps the previous list. Omit the field entirely when `values` is undefined (partial update).
+ * Multipart: always send a JSON array so Joi never sees a lone string as invalid.
+ * Omit entirely when `values` is undefined (partial PATCH).
  */
-function appendIdArrayField(
+function appendJsonIdArray(
   formData: FormData,
-  field: "students" | "mentorsAssigned",
+  field: "students" | "mentorsAssigned" | "categories" | "positions",
   values: string[] | undefined
 ): void {
   if (values === undefined) return;
-  if (values.length === 0) {
-    formData.append(field, "[]");
-    return;
-  }
-  appendIdArray(formData, field, values);
+  formData.append(field, JSON.stringify(Array.isArray(values) ? values : []));
 }
 
 function appendFileUploadMeta(
@@ -331,11 +324,16 @@ function appendPlaylistToFormData(
       }
       case "essay": {
         const essayData = item.essayData ?? item.essay;
+        if (essayData?.passPercentage != null) {
+          formData.append(`${base}[essayData][passPercentage]`, String(essayData.passPercentage));
+        }
         if (essayData?.questions?.length) {
           essayData.questions.forEach((q, qIdx) => {
             formData.append(`${base}[essayData][questions][${qIdx}][questionText]`, q.questionText ?? "");
             if (q.expectedAnswer != null)
               formData.append(`${base}[essayData][questions][${qIdx}][expectedAnswer]`, q.expectedAnswer);
+            if (q.maxMarks != null)
+              formData.append(`${base}[essayData][questions][${qIdx}][maxMarks]`, String(q.maxMarks));
           });
         }
         break;
@@ -357,10 +355,10 @@ export async function createTrainingModule(
   formData.append("moduleName", payload.moduleName);
   formData.append("shortDescription", payload.shortDescription);
   formData.append("status", payload.status ?? "draft");
-  appendIdArray(formData, "categories", payload.categories);
-  appendIdArray(formData, "positions", payload.positions);
-  appendIdArrayField(formData, "students", payload.students);
-  appendIdArrayField(formData, "mentorsAssigned", payload.mentorsAssigned);
+  appendJsonIdArray(formData, "categories", payload.categories ?? []);
+  appendJsonIdArray(formData, "positions", payload.positions ?? []);
+  appendJsonIdArray(formData, "students", payload.students ?? []);
+  appendJsonIdArray(formData, "mentorsAssigned", payload.mentorsAssigned ?? []);
 
   if (payload.coverImage) {
     formData.append("coverImage", payload.coverImage);
@@ -395,21 +393,13 @@ export async function updateTrainingModule(
     formData.append("shortDescription", payload.shortDescription);
   if (payload.status != null) formData.append("status", payload.status);
   if (payload.categories !== undefined) {
-    if (payload.categories.length === 0) {
-      formData.append("categories", "[]");
-    } else {
-      appendIdArray(formData, "categories", payload.categories);
-    }
+    appendJsonIdArray(formData, "categories", payload.categories);
   }
   if (payload.positions !== undefined) {
-    if (payload.positions.length === 0) {
-      formData.append("positions", "[]");
-    } else {
-      appendIdArray(formData, "positions", payload.positions);
-    }
+    appendJsonIdArray(formData, "positions", payload.positions);
   }
-  appendIdArrayField(formData, "students", payload.students);
-  appendIdArrayField(formData, "mentorsAssigned", payload.mentorsAssigned);
+  appendJsonIdArray(formData, "students", payload.students);
+  appendJsonIdArray(formData, "mentorsAssigned", payload.mentorsAssigned);
 
   if (payload.coverImage) {
     formData.append("coverImage", payload.coverImage);
@@ -665,7 +655,8 @@ export interface GenerateFromTitleEvent {
  * Generate full module from title + config – POST /v1/training/modules/generate-from-title (SSE).
  */
 export async function* generateModuleFromTitle(
-  params: GenerateFromTitleParams
+  params: GenerateFromTitleParams,
+  signal?: AbortSignal
 ): AsyncGenerator<GenerateFromTitleEvent> {
   const baseURL =
     process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "/api/v1" : "");
@@ -674,6 +665,7 @@ export async function* generateModuleFromTitle(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
+    signal,
     body: JSON.stringify({
       moduleName: params.moduleName,
       shortDescription: params.shortDescription ?? "",
@@ -780,7 +772,8 @@ export async function saveModuleWithVideoAssignments(
  * Returns an async iterable of SSE events. Uses credentials: include for auth (cookies).
  */
 export async function* generateModuleWithAI(
-  params: GenerateWithAIParams
+  params: GenerateWithAIParams,
+  signal?: AbortSignal
 ): AsyncGenerator<GenerateWithAIEvent> {
   const baseURL =
     process.env.NEXT_PUBLIC_API_URL || (typeof window !== "undefined" ? "/api/v1" : "");
@@ -789,6 +782,7 @@ export async function* generateModuleWithAI(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
+    signal,
     body: JSON.stringify(params),
   });
   if (!res.ok) {

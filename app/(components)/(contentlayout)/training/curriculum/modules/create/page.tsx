@@ -8,7 +8,7 @@ import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import TiptapEditor from '@/shared/data/forms/form-editors/tiptapeditor'
 import Swal from 'sweetalert2'
-import { AxiosError } from 'axios'
+import { mapTrainingModuleError } from '@/shared/lib/training/map-training-module-error'
 import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import * as categoriesApi from '@/shared/lib/api/categories'
 import * as studentsApi from '@/shared/lib/api/students'
@@ -17,6 +17,7 @@ import * as positionsApi from '@/shared/lib/api/positions'
 import * as blogApi from '@/shared/lib/api/blog'
 import type { BlogSuggestionEdit } from '@/shared/lib/api/blog'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
+import PlaylistItemMetaFields from '../_components/PlaylistItemMetaFields'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
 
@@ -119,7 +120,8 @@ type PlaylistItem = {
   pdfMeta?: trainingModulesApi.FileUpload
   quizData?: QuizQuestion[]
   difficulty?: 'easy' | 'medium' | 'hard'
-  essayQuestions?: { id: string; questionText: string; expectedAnswer?: string }[]
+  essayQuestions?: { id: string; questionText: string; expectedAnswer?: string; maxMarks?: number }[]
+  essayPassPercentage?: number
   sectionTitle?: string
   sectionIndex?: number
 }
@@ -542,12 +544,15 @@ const CreateModule = () => {
         formItem.type = 'essay'
         const questions = apiItem.essay?.questions ?? apiItem.essayData?.questions ?? []
         formItem.essayQuestions = questions.map(
-          (q: { questionText?: string; expectedAnswer?: string }, qi: number) => ({
+          (q: { questionText?: string; expectedAnswer?: string; maxMarks?: number }, qi: number) => ({
             id: `eq-${backendId ?? 'essay'}-${qi}`,
             questionText: q.questionText ?? '',
             expectedAnswer: q.expectedAnswer ?? '',
+            maxMarks: q.maxMarks ?? 100,
           })
         )
+        const passPct = apiItem.essay?.passPercentage ?? apiItem.essayData?.passPercentage
+        if (passPct != null) formItem.essayPassPercentage = passPct
         break
       }
       default:
@@ -1309,6 +1314,7 @@ const CreateModule = () => {
       id: `eq-${itemId}-${Date.now()}`,
       questionText: '',
       expectedAnswer: '',
+      maxMarks: 100,
     }
     handlePlaylistItemChange(itemId, 'essayQuestions', [...prev, newQ])
   }
@@ -1331,6 +1337,34 @@ const CreateModule = () => {
       'essayQuestions',
       item.essayQuestions.map((q) => (q.id === qId ? { ...q, expectedAnswer } : q)),
     )
+  }
+
+  /**
+   * Update maxMarks for a Q&A question (defaults to 100 when invalid).
+   */
+  const handleEssayMaxMarksChange = (itemId: string, qId: string, raw: string) => {
+    const item = formData.playlist.find((p) => p.id === itemId)
+    if (!item?.essayQuestions) return
+    const parsed = Number(raw)
+    const maxMarks = Number.isFinite(parsed) && parsed >= 1 ? parsed : 100
+    handlePlaylistItemChange(
+      itemId,
+      'essayQuestions',
+      item.essayQuestions.map((q) => (q.id === qId ? { ...q, maxMarks } : q)),
+    )
+  }
+
+  /**
+   * Optional pass percentage for this Q&A item; empty clears the threshold.
+   */
+  const handleEssayPassPercentageChange = (itemId: string, raw: string) => {
+    if (raw.trim() === '') {
+      handlePlaylistItemChange(itemId, 'essayPassPercentage', undefined)
+      return
+    }
+    const parsed = Number(raw)
+    if (!Number.isFinite(parsed)) return
+    handlePlaylistItemChange(itemId, 'essayPassPercentage', Math.min(100, Math.max(0, parsed)))
   }
 
   const handleRemoveEssayQuestion = (itemId: string, qId: string) => {
@@ -1679,9 +1713,11 @@ const CreateModule = () => {
           }
           case 'essay':
             playlistItem.essayData = {
+              passPercentage: item.essayPassPercentage,
               questions: (item.essayQuestions ?? []).map((q) => ({
                 questionText: q.questionText,
                 expectedAnswer: q.expectedAnswer?.trim() || undefined,
+                maxMarks: q.maxMarks && q.maxMarks >= 1 ? q.maxMarks : 100,
               })),
             }
             break
@@ -1707,10 +1743,10 @@ const CreateModule = () => {
       const payload: trainingModulesApi.UpdateTrainingModulePayload = {
         moduleName: formData.name,
         shortDescription: formData.shortDescription,
-        categories: formData.categoryIds,
-        positions: formData.positionIds,
-        students: formData.studentIds,
-        mentorsAssigned: formData.mentorIds,
+        categories: Array.isArray(formData.categoryIds) ? formData.categoryIds : [],
+        positions: Array.isArray(formData.positionIds) ? formData.positionIds : [],
+        students: Array.isArray(formData.studentIds) ? formData.studentIds : [],
+        mentorsAssigned: Array.isArray(formData.mentorIds) ? formData.mentorIds : [],
         status,
         coverImage: coverImageFile ?? undefined,
         playlist: playlistItems,
@@ -1742,12 +1778,8 @@ const CreateModule = () => {
       router.push('/training/curriculum/modules')
     } catch (err) {
       console.error(`Error ${isEditMode ? 'updating' : 'creating'} module:`, err)
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : err instanceof Error
-          ? err.message
-          : `Failed to ${isEditMode ? 'update' : 'create'} module. Please try again.`
+      const fallback = `Failed to ${isEditMode ? 'update' : 'create'} module. Please try again.`
+      const msg = mapTrainingModuleError(err, fallback)
       
       await Swal.fire({
         icon: 'error',
@@ -2152,9 +2184,9 @@ const CreateModule = () => {
                         <div
                           key={item.id}
                           data-playlist-item-id={item.id}
-                          className="border border-defaultborder rounded-md p-4 bg-white/60 dark:bg-black/20"
+                          className="border border-defaultborder rounded-lg p-4 md:p-6 bg-white/70 dark:bg-black/20 shadow-sm"
                         >
-                          <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center justify-between mb-4 gap-3">
                             <div className="flex items-center gap-2 min-w-0">
                               <span
                                 className="playlist-drag-handle cursor-grab active:cursor-grabbing p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 shrink-0 touch-none"
@@ -2205,82 +2237,28 @@ const CreateModule = () => {
                             </button>
                           </div>
 
-                          <div className="grid grid-cols-12 gap-4">
-                            <div className="xl:col-span-3 md:col-span-4 col-span-12">
-                              <label className="form-label" htmlFor={`playlist-type-${item.id}`}>
-                                Content Type
-                              </label>
-                              <select
-                                id={`playlist-type-${item.id}`}
-                                className="form-control"
-                                value={item.type}
-                                onChange={(e) =>
-                                  handlePlaylistItemChange(
-                                    item.id,
-                                    'type',
-                                    e.target.value as PlaylistItemType,
-                                  )
-                                }
-                              >
-                                <option value="video">Upload Video</option>
-                                <option value="youtube">YouTube Link</option>
-                                <option value="pdf">PDF / Document</option>
-                                <option value="blog">Blog</option>
-                                <option value="quiz">Quiz</option>
-                                <option value="essay">Q&A</option>
-                              </select>
-                            </div>
-                            <div className="xl:col-span-4 md:col-span-6 col-span-12">
-                              <label className="form-label" htmlFor={`playlist-title-${item.id}`}>
-                                Title
-                              </label>
-                              <input
-                                id={`playlist-title-${item.id}`}
-                                type="text"
-                                className="form-control"
-                                placeholder="Lesson title"
-                                value={item.title}
-                                onChange={(e) =>
-                                  handlePlaylistItemChange(item.id, 'title', e.target.value)
-                                }
-                              />
-                            </div>
-                            <div className="xl:col-span-2 md:col-span-4 col-span-12">
-                              <label className="form-label" htmlFor={`playlist-duration-${item.id}`}>
-                                Duration (min)
-                              </label>
-                              <input
-                                id={`playlist-duration-${item.id}`}
-                                type="text"
-                                className="form-control"
-                                placeholder="e.g. 10"
-                                value={item.duration || ''}
-                                onChange={(e) =>
-                                  handlePlaylistItemChange(item.id, 'duration', e.target.value)
-                                }
-                              />
-                            </div>
-                            {item.type === 'quiz' && (
-                              <div className="xl:col-span-3 md:col-span-4 col-span-12">
-                                <label className="form-label">Difficulty</label>
-                                <select
-                                  className="form-control"
-                                  value={item.difficulty || 'medium'}
-                                  onChange={(e) =>
-                                    handlePlaylistItemChange(
-                                      item.id,
-                                      'difficulty',
-                                      e.target.value as 'easy' | 'medium' | 'hard'
-                                    )
-                                  }
-                                >
-                                  <option value="easy">Easy</option>
-                                  <option value="medium">Medium</option>
-                                  <option value="hard">Hard</option>
-                                </select>
-                              </div>
-                            )}
-                          </div>
+                          <PlaylistItemMetaFields
+                            itemId={item.id}
+                            type={item.type}
+                            title={item.title}
+                            duration={item.duration}
+                            difficulty={item.difficulty}
+                            onChange={(field, value) => {
+                              if (field === 'type') {
+                                handlePlaylistItemChange(item.id, 'type', value as PlaylistItemType)
+                                return
+                              }
+                              if (field === 'difficulty') {
+                                handlePlaylistItemChange(
+                                  item.id,
+                                  'difficulty',
+                                  value as 'easy' | 'medium' | 'hard',
+                                )
+                                return
+                              }
+                              handlePlaylistItemChange(item.id, field, value)
+                            }}
+                          />
 
                           {/* Type-specific content */}
                           {item.type === 'video' && (
@@ -2689,6 +2667,21 @@ const CreateModule = () => {
                             <div className="mt-4 space-y-3">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <label className="form-label mb-0">Q&A Questions</label>
+                                <div className="flex items-center gap-2">
+                                  <label className="form-label mb-0 text-[0.75rem] text-[#6a6f73] whitespace-nowrap" htmlFor={`essay-pass-${item.id}`}>
+                                    Pass % (optional)
+                                  </label>
+                                  <input
+                                    id={`essay-pass-${item.id}`}
+                                    type="number"
+                                    min={0}
+                                    max={100}
+                                    className="form-control w-24"
+                                    placeholder="—"
+                                    value={item.essayPassPercentage ?? ''}
+                                    onChange={(e) => handleEssayPassPercentageChange(item.id, e.target.value)}
+                                  />
+                                </div>
                                 <div className="flex gap-2">
                                   <button
                                     type="button"
@@ -2752,6 +2745,19 @@ const CreateModule = () => {
                                       onChange={(e) =>
                                         handleEssayExpectedAnswerChange(item.id, q.id, e.target.value)
                                       }
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="form-label text-[0.75rem] text-[#6a6f73] dark:text-white/60" htmlFor={`essay-marks-${q.id}`}>
+                                      Marks
+                                    </label>
+                                    <input
+                                      id={`essay-marks-${q.id}`}
+                                      type="number"
+                                      min={1}
+                                      className="form-control w-28"
+                                      value={q.maxMarks ?? 100}
+                                      onChange={(e) => handleEssayMaxMarksChange(item.id, q.id, e.target.value)}
                                     />
                                   </div>
                                 </div>

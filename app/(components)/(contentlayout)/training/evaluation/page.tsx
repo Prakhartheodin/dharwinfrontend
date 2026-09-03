@@ -982,6 +982,9 @@ const Evaluation = () => {
         evaluations={evaluations}
         onOpenProfile={handleViewStudentProfile}
         profileOpening={viewingProfileId !== null && viewingProfileId === selectedStudent?.id}
+        onEssayGraded={() => {
+          void fetchData(page, listPageSize, activeSortId || undefined, activeSortDesc)
+        }}
         onClose={() => {
           const el = document.querySelector('#student-preview-panel')
           if (el) (window as Window & { HSOverlay?: { close: (el: Element) => void } }).HSOverlay?.close(el)

@@ -19,6 +19,7 @@ export interface EvaluationRow {
   quizTries: number;
   essayScore: number | null;
   essayTries: number;
+  essayPending?: number;
   certificateIssued: boolean;
   positionId: string | null;
   positionName: string | null;
@@ -132,4 +133,86 @@ export async function downloadEvaluationExport(params: EvaluationExportParams = 
   a.download = `training-evaluation-export-${dateStamp}.xlsx`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+export interface TrainerEssayAttemptPayload {
+  attemptId: string;
+  essay: {
+    playlistItemId: string;
+    title: string;
+    passPercentage?: number;
+    questions: Array<{
+      questionText: string;
+      expectedAnswer?: string;
+      studentAnswer: string;
+      score?: number;
+      maxMarks?: number;
+      optional?: boolean;
+      feedback?: string;
+    }>;
+  };
+  attempt: {
+    attemptId?: string;
+    attemptNumber: number;
+    score?: {
+      percentage: number;
+      obtainedMarks?: number;
+      maxMarks?: number;
+    };
+    obtainedMarks?: number;
+    maxMarks?: number;
+    submittedAt: string;
+    status: string;
+    passed?: boolean | null;
+    passPercentage?: number;
+    feedback?: string;
+  };
+}
+
+export interface TrainerEssayItem {
+  playlistItemId: string;
+  title: string;
+  passPercentage?: number;
+  questionCount: number;
+  pending: boolean;
+  attempts: TrainerEssayAttemptPayload[];
+}
+
+export interface TrainerEssayAttemptsResponse {
+  moduleId: string;
+  moduleName?: string;
+  studentId: string;
+  items: TrainerEssayItem[];
+}
+
+export interface GradeEssayAttemptBody {
+  answers: Array<{ questionIndex: number; score: number; feedback?: string }>;
+  feedback?: string;
+}
+
+/**
+ * GET trainer Q&A attempts for a student on a course.
+ */
+export async function getStudentEssayAttempts(
+  studentId: string,
+  moduleId: string
+): Promise<TrainerEssayAttemptsResponse> {
+  const { data } = await apiClient.get<TrainerEssayAttemptsResponse>(
+    `/training/evaluation/students/${studentId}/courses/${moduleId}/essay-attempts`
+  );
+  return data;
+}
+
+/**
+ * PATCH trainer marks on a Q&A attempt.
+ */
+export async function gradeEssayAttempt(
+  attemptId: string,
+  body: GradeEssayAttemptBody
+): Promise<TrainerEssayAttemptPayload> {
+  const { data } = await apiClient.patch<TrainerEssayAttemptPayload>(
+    `/training/evaluation/essay-attempts/${attemptId}`,
+    body
+  );
+  return data;
 }

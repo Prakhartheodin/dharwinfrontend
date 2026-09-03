@@ -27,6 +27,29 @@ export function atRiskLabel(reason: string | null | undefined): string {
   return "At risk";
 }
 
+/**
+ * Essay line for Evaluation preview: `72% (2 tries)` or `— · 1 awaiting`.
+ */
+export function formatEssayEvalLine(row: {
+  essayScore: number | null;
+  essayTries: number;
+  essayPending?: number;
+}): string {
+  const tries = row.essayTries ?? 0;
+  const pending = row.essayPending ?? 0;
+  const tryLabel = tries === 1 ? "try" : "tries";
+  const parts: string[] = [];
+  if (row.essayScore != null) {
+    parts.push(`${row.essayScore}%${tries > 0 ? ` (${tries} ${tryLabel})` : ""}`);
+  } else if (tries > 0 && pending === 0) {
+    parts.push(`— (${tries} ${tryLabel})`);
+  } else {
+    parts.push("—");
+  }
+  if (pending > 0) parts.push(`${pending} awaiting`);
+  return parts.join(" · ");
+}
+
 export function formatShortDate(value: string | null | undefined): string {
   if (!value) return "—";
   const d = new Date(value);

@@ -3,10 +3,9 @@
 import Seo from '@/shared/layout-components/seo/seo'
 import dynamic from 'next/dynamic'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import React, { Fragment, useMemo, useState, useEffect, useCallback, useRef } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import React, { Fragment, Suspense, useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import Swal from 'sweetalert2'
-import { AxiosError } from 'axios'
 import * as trainingModulesApi from '@/shared/lib/api/training-modules'
 import * as categoriesApi from '@/shared/lib/api/categories'
 import type { TrainingModule as ApiTrainingModule, PlaylistItem } from '@/shared/lib/api/training-modules'
@@ -14,10 +13,26 @@ import type { Category as ApiCategory } from '@/shared/lib/api/categories'
 import type { MultiValue } from 'react-select'
 import { sanitizeRichHtml } from '@/shared/lib/sanitize-html'
 import { usePmReactSelectStyles } from '@/shared/hooks/usePmReactSelectStyles'
+import { mapTrainingModuleError } from '@/shared/lib/training/map-training-module-error'
+import {
+  countModulesByLifecycle,
+  groupTrainingModulesIntoFolders,
+} from '@/shared/lib/training/group-modules-into-folders'
+import { type ModuleLifecycleStatus } from './_components/ModuleStatusBadge'
+import { ModulesFolderList } from './_components/ModulesFolderList'
+import { ModulesListEmptyState } from './_components/ModulesListEmptyState'
+import { ModulesListToolbar } from './_components/ModulesListToolbar'
+import {
+  modulesListStatusSearchString,
+  parseModulesListStatus,
+} from './_lib/parseModulesListStatus'
+import {
+  ADMIN_MODULES_PAGE_LIMIT,
+  collectRemainingPages,
+} from './_lib/fetchPagedResults'
+import { filterModulesByLocalSearch } from './_lib/filterModulesByLocalSearch'
 
 const Select = dynamic(() => import('react-select'), { ssr: false })
-
-const UNCATEGORIZED_FOLDER_ID = '__uncategorized__'
 
 type CategorySelectOption = { value: string; label: string }
 
@@ -52,8 +67,9 @@ function AssignFoldersModal({
     try {
       await onSave(selected.map((o) => o.value))
       onClose()
-    } catch {
-      /* parent shows error */
+    } catch (err) {
+      console.error('Failed to save folder assignment', err)
+      /* parent also shows error via Swal */
     } finally {
       setSaving(false)
     }
@@ -332,20 +348,6 @@ function SummaryBadges({ summary }: { summary: ModuleSummary }) {
       ))}
     </div>
   )
-}
-
-type ModuleLifecycleStatus = 'draft' | 'published' | 'archived'
-
-interface TrainingModuleCardProps {
-  module: ApiTrainingModule
-  onDelete: (moduleId: string) => void
-  onView: (moduleId: string) => void
-  onClone: (moduleId: string) => void
-  onAssignFolders: (moduleId: string) => void
-  onSetStatus: (moduleId: string, status: ModuleLifecycleStatus) => void
-  statusUpdatingId: string | null
-  selected?: boolean
-  onToggleSelect?: (moduleId: string) => void
 }
 
 interface ModuleDetailModalProps {
@@ -652,301 +654,12 @@ function ModuleDetailModal({ open, moduleData, loading, error, onClose }: Module
   )
 }
 
-function TrainingModuleCard({
-  module: m,
-  onDelete,
-  onView,
-  onClone,
-  onAssignFolders,
-  onSetStatus,
-  statusUpdatingId,
-  selected,
-  onToggleSelect,
-}: TrainingModuleCardProps) {
-  const summary = calculateSummary(m.playlist || [])
-  const coverImageUrl = m.coverImage?.url || '/assets/images/media/team-covers/1.jpg'
-  const dropdownRef = useRef<HTMLDivElement>(null)
-
-  const handleDelete = async () => {
-    const result = await Swal.fire({
-      title: 'Delete Module?',
-      text: `Are you sure you want to delete "${m.moduleName}"? This action cannot be undone.`,
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: '#d33',
-      cancelButtonColor: '#3085d6',
-      confirmButtonText: 'Yes, delete it',
-      cancelButtonText: 'Cancel',
-    })
-
-    if (result.isConfirmed) {
-      onDelete(m.id)
-    }
-  }
-
-  const toggleDropdown = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    if (!dropdownRef.current) return
-    
-    const menu = dropdownRef.current.querySelector('.hs-dropdown-menu') as HTMLElement
-    const button = dropdownRef.current.querySelector('button') as HTMLElement
-    if (!menu || !button) return
-
-    const isHidden = menu.classList.contains('hidden')
-    
-    // Close all other dropdowns
-    document.querySelectorAll('.hs-dropdown-menu').forEach((otherMenu) => {
-      if (otherMenu !== menu) {
-        const otherMenuEl = otherMenu as HTMLElement
-        otherMenuEl.classList.add('hidden')
-        otherMenuEl.style.cssText = 'opacity: 0 !important; pointer-events: none !important; display: none !important;'
-        const otherButton = otherMenuEl.closest('.hs-dropdown')?.querySelector('button')
-        if (otherButton) {
-          otherButton.setAttribute('aria-expanded', 'false')
-        }
-      }
-    })
-    
-    // Toggle current dropdown
-    if (isHidden) {
-      menu.classList.remove('hidden')
-      menu.style.cssText = 'opacity: 1 !important; pointer-events: auto !important; display: block !important;'
-      button.setAttribute('aria-expanded', 'true')
-    } else {
-      menu.classList.add('hidden')
-      menu.style.cssText = 'opacity: 0 !important; pointer-events: none !important; display: none !important;'
-      button.setAttribute('aria-expanded', 'false')
-    }
-  }
-
-  const closeDropdown = () => {
-    if (!dropdownRef.current) return
-    const menu = dropdownRef.current.querySelector('.hs-dropdown-menu') as HTMLElement
-    const button = dropdownRef.current.querySelector('button') as HTMLElement
-    if (menu) {
-      menu.classList.add('hidden')
-      menu.style.cssText = 'opacity: 0 !important; pointer-events: none !important; display: none !important;'
-    }
-    if (button) {
-      button.setAttribute('aria-expanded', 'false')
-    }
-  }
-
-  const handleView = () => {
-    closeDropdown()
-    onView(m.id)
-  }
-
-  const statusBusy = statusUpdatingId === m.id
-  const currentStatus = (['draft', 'published', 'archived'] as const).includes(m.status as ModuleLifecycleStatus)
-    ? (m.status as ModuleLifecycleStatus)
-    : 'draft'
-
-  const handleSetStatus = (next: ModuleLifecycleStatus) => {
-    if (statusBusy) return
-    closeDropdown()
-    onSetStatus(m.id, next)
-  }
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        const menu = dropdownRef.current.querySelector('.hs-dropdown-menu') as HTMLElement
-        const button = dropdownRef.current.querySelector('button') as HTMLElement
-        if (menu) {
-          menu.classList.add('hidden')
-          menu.style.cssText = 'opacity: 0 !important; pointer-events: none !important; display: none !important;'
-          if (button) {
-            button.setAttribute('aria-expanded', 'false')
-          }
-        }
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
-
-  return (
-    <div className="box custom-box overflow-visible">
-      <div className="relative h-36 overflow-hidden bg-defaultborder rounded-t-md">
-        <img
-          src={coverImageUrl}
-          alt={m.moduleName}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src = '/assets/images/media/team-covers/1.jpg'
-          }}
-        />
-        {onToggleSelect && (
-          <label
-            className="absolute top-2 left-2 flex items-center justify-center w-6 h-6 rounded bg-white/90 dark:bg-black/60 border border-defaultborder cursor-pointer shadow-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="checkbox"
-              className="form-check-input !m-0 !w-4 !h-4 cursor-pointer"
-              checked={!!selected}
-              onChange={() => onToggleSelect(m.id)}
-            />
-          </label>
-        )}
-        <span className={`absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium ${
-          m.status === 'published' 
-            ? 'bg-success/20 text-success' 
-            : m.status === 'draft'
-            ? 'bg-warning/20 text-warning'
-            : 'bg-danger/20 text-danger'
-        }`}>
-          {m.status}
-        </span>
-      </div>
-      <div className="box-header items-center !flex pt-3 gap-2 overflow-visible">
-        <div className="flex-1 min-w-0 overflow-hidden">
-          <button
-            type="button"
-            onClick={handleView}
-            className="font-semibold text-[.875rem] block w-full text-start hover:text-primary truncate"
-            title={m.moduleName}
-          >
-            {m.moduleName}
-          </button>
-          <span className="text-[#8c9097] dark:text-white/50 block text-[0.75rem]">
-            <strong className="text-defaulttextcolor">{m.students?.length || 0}</strong> students enrolled
-          </span>
-        </div>
-        <div className="hs-dropdown ti-dropdown shrink-0" ref={dropdownRef}>
-          <button
-            type="button"
-            id={`dropdown-menu-${m.id}`}
-            className="ti-btn ti-btn-sm ti-btn-light !mb-0"
-            aria-expanded="false"
-            onClick={toggleDropdown}
-          >
-            <i className="fe fe-more-vertical" />
-          </button>
-          <ul 
-            className="hs-dropdown-menu ti-dropdown-menu hidden absolute right-0 top-full mt-1 z-[100] min-w-[160px] bg-bodybg border border-defaultborder rounded-md shadow-lg"
-            aria-labelledby={`dropdown-menu-${m.id}`}
-          >
-            <li>
-              <button type="button" className="ti-dropdown-item w-full text-left" onClick={handleView}>
-                <i className="ri-eye-line align-middle me-1 inline-flex" /> View
-              </button>
-            </li>
-            <li>
-              <Link className="ti-dropdown-item" href={`/training/curriculum/modules/edit?id=${m.id}`}>
-                <i className="ri-edit-line align-middle me-1 inline-flex" /> Edit
-              </Link>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left"
-                onClick={() => { closeDropdown(); onClone(m.id); }}
-              >
-                <i className="ri-file-copy-line me-1 align-middle inline-flex" /> Clone
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
-                disabled={statusBusy || currentStatus === 'published'}
-                onClick={() => handleSetStatus('published')}
-              >
-                <i className="ri-send-plane-2-line me-1 align-middle inline-flex" /> Publish
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
-                disabled={statusBusy || currentStatus === 'draft'}
-                onClick={() => handleSetStatus('draft')}
-              >
-                <i className="ri-file-edit-line me-1 align-middle inline-flex" /> Draft
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left disabled:opacity-50 disabled:pointer-events-none"
-                disabled={statusBusy || currentStatus === 'archived'}
-                onClick={() => handleSetStatus('archived')}
-              >
-                <i className="ri-archive-2-line me-1 align-middle inline-flex" /> Archive
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left"
-                onClick={() => {
-                  closeDropdown()
-                  onAssignFolders(m.id)
-                }}
-              >
-                <i className="ri-folder-transfer-line me-1 align-middle inline-flex" /> Move to folder(s)
-              </button>
-            </li>
-            <li>
-              <button
-                type="button"
-                className="ti-dropdown-item w-full text-left"
-                onClick={handleDelete}
-              >
-                <i className="ri-delete-bin-line me-1 align-middle inline-flex" /> Delete
-              </button>
-            </li>
-          </ul>
-        </div>
-      </div>
-      <div className="box-body py-2">
-        <SummaryBadges summary={summary} />
-        <p className="text-[#8c9097] dark:text-white/50 text-[0.8125rem] mb-3 line-clamp-2">
-          {m.shortDescription}
-        </p>
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <div className="font-semibold mb-1 text-[0.75rem]">Mentors :</div>
-            <div className="avatar-list-stacked">
-              {m.mentorsAssigned && m.mentorsAssigned.length > 0 ? (
-                m.mentorsAssigned.slice(0, 3).map((mentor) => (
-                  <span key={mentor.id} className="avatar avatar-sm avatar-rounded">
-                    <span className="avatar-initial bg-primary text-white text-xs">
-                      {mentor.user?.name?.charAt(0) || 'M'}
-                    </span>
-                  </span>
-                ))
-              ) : (
-                <span className="text-xs text-[#8c9097] dark:text-white/50">No mentors assigned</span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-interface TrainingFolderRow {
-  id: string
-  name: string
-  modules: ApiTrainingModule[]
-  isUncategorized?: boolean
-}
-
 const TrainingModules = () => {
-  const { menuPortalTarget: selectMenuPortalTarget, styles: selectMenuLayerStyles } =
-    usePmReactSelectStyles()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const statusFilter = parseModulesListStatus(searchParams.get('status'))
   const [search, setSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [sortValue, setSortValue] = useState(SORT_OPTIONS[0])
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
@@ -954,10 +667,6 @@ const TrainingModules = () => {
   const [categories, setCategories] = useState<ApiCategory[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
-  // Folder grouping happens client-side so the fetch must cover every module
-  // the admin can see — otherwise a category whose modules sit beyond the
-  // first page renders "0 modules" while the cards live on page 2.
-  const [pageSize] = useState(200)
   const [detailModalOpen, setDetailModalOpen] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
@@ -996,39 +705,68 @@ const TrainingModules = () => {
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
 
   const fetchRequestIdRef = useRef(0)
+  const searchRequestIdRef = useRef(0)
+  const allModulesRef = useRef<ApiTrainingModule[]>([])
+  const catalogCompleteRef = useRef(false)
+  const searchRef = useRef(search)
+  searchRef.current = search
+  const truncatedSearchTimerRef = useRef<number | null>(null)
+
+  /**
+   * Cancels a pending truncated-catalog server search (Enter flush / unmount).
+   */
+  const clearTruncatedSearchTimer = useCallback(() => {
+    if (truncatedSearchTimerRef.current == null) return
+    window.clearTimeout(truncatedSearchTimerRef.current)
+    truncatedSearchTimerRef.current = null
+  }, [])
+
+  /**
+   * Filters a cached catalog with a known query (avoids waiting on React state flush).
+   */
+  const applyCatalogFilter = useCallback((catalog: ApiTrainingModule[], query: string) => {
+    const q = query.trim()
+    setModules(q ? filterModulesByLocalSearch(catalog, q) : catalog)
+  }, [])
+
+  /**
+   * Applies the live search string to a cached unfiltered catalog without a network round-trip.
+   */
+  const applyVisibleModules = useCallback((catalog: ApiTrainingModule[]) => {
+    applyCatalogFilter(catalog, searchRef.current)
+  }, [applyCatalogFilter])
+
+  /**
+   * Loads the unfiltered catalog (parallel remaining pages). Search/sort stay client-side when complete.
+   */
   const fetchModules = useCallback(async () => {
     const requestId = ++fetchRequestIdRef.current
-    setLoading(true)
+    searchRequestIdRef.current += 1
+    const isFirstPaint = allModulesRef.current.length === 0
+    if (isFirstPaint) setLoading(true)
     try {
       const params: trainingModulesApi.ListTrainingModulesParams = {
-        page: currentPage,
-        limit: pageSize,
-        sortBy: sortValue?.value,
-        ...(debouncedSearch.trim() && { search: debouncedSearch.trim() }),
+        page: 1,
+        limit: ADMIN_MODULES_PAGE_LIMIT,
       }
 
       const response = await trainingModulesApi.listTrainingModules(params)
       if (requestId !== fetchRequestIdRef.current) return
-      const collected: ApiTrainingModule[] = [...(response.results ?? [])]
-      // Walk remaining pages so folder grouping (client-side) always sees the
-      // full module set instead of a single page slice.
-      for (let p = (response.page ?? 1) + 1; p <= (response.totalPages ?? 1); p += 1) {
-        if (requestId !== fetchRequestIdRef.current) return
-        const next = await trainingModulesApi.listTrainingModules({ ...params, page: p })
-        if (requestId !== fetchRequestIdRef.current) return
-        collected.push(...(next.results ?? []))
-      }
-      setModules(collected)
-      // We now fetch every page in one pass, so there is exactly one logical
-      // page to show — hide the paginator footer.
+      const collected = await collectRemainingPages(
+        response,
+        (page) => trainingModulesApi.listTrainingModules({ ...params, page }),
+        () => requestId !== fetchRequestIdRef.current
+      )
+      if (requestId !== fetchRequestIdRef.current) return
+      const totalResults = response.totalResults ?? collected.length
+      catalogCompleteRef.current = collected.length >= totalResults
+      allModulesRef.current = collected
+      applyVisibleModules(collected)
       setTotalPages(1)
     } catch (err) {
       if (requestId !== fetchRequestIdRef.current) return
       console.error('Error fetching modules:', err)
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : 'Failed to load modules.'
+      const msg = mapTrainingModuleError(err, 'Failed to load modules.')
       await Swal.fire({
         icon: 'error',
         title: 'Failed to load modules',
@@ -1039,11 +777,51 @@ const TrainingModules = () => {
         showConfirmButton: false,
         timerProgressBar: true,
       })
+      allModulesRef.current = []
+      catalogCompleteRef.current = false
       setModules([])
     } finally {
       if (requestId === fetchRequestIdRef.current) setLoading(false)
     }
-  }, [currentPage, pageSize, sortValue, debouncedSearch])
+  }, [applyVisibleModules])
+
+  /**
+   * Server search only when the local catalog was truncated at MAX_CATALOG_RESULTS.
+   */
+  const fetchSearchFromApi = useCallback(async (q: string) => {
+    const requestId = ++searchRequestIdRef.current
+    try {
+      const params: trainingModulesApi.ListTrainingModulesParams = {
+        page: 1,
+        limit: ADMIN_MODULES_PAGE_LIMIT,
+        search: q,
+      }
+      const response = await trainingModulesApi.listTrainingModules(params)
+      if (requestId !== searchRequestIdRef.current) return
+      const collected = await collectRemainingPages(
+        response,
+        (page) => trainingModulesApi.listTrainingModules({ ...params, page }),
+        () => requestId !== searchRequestIdRef.current
+      )
+      if (requestId !== searchRequestIdRef.current) return
+      setModules(collected)
+      setTotalPages(1)
+    } catch (err) {
+      if (requestId !== searchRequestIdRef.current) return
+      console.error('Error searching modules:', err)
+      const msg = mapTrainingModuleError(err, 'Failed to search modules.')
+      await Swal.fire({
+        icon: 'error',
+        title: 'Search failed',
+        text: msg,
+        toast: true,
+        position: 'top-end',
+        timer: 4000,
+        showConfirmButton: false,
+        timerProgressBar: true,
+      })
+    }
+  }, [])
 
   const handleBulkStatus = useCallback(async (status: ModuleLifecycleStatus) => {
     if (selectedIds.size === 0) return
@@ -1136,15 +914,12 @@ const TrainingModules = () => {
 
   const fetchCategories = useCallback(async () => {
     try {
-      // Walk every page so tenants with > 100 folders never silently lose any —
-      // the prior 100-row cap left modules under those missing folders falling
-      // into "Uncategorized" even though they had assignments.
-      const first = await categoriesApi.listCategories({ limit: 200 })
-      const all = [...(first.results ?? [])]
-      for (let p = 2; p <= (first.totalPages ?? 1); p += 1) {
-        const next = await categoriesApi.listCategories({ limit: 200, page: p })
-        all.push(...(next.results ?? []))
-      }
+      const first = await categoriesApi.listCategories({ limit: 200, page: 1 })
+      const all = await collectRemainingPages(
+        first,
+        (page) => categoriesApi.listCategories({ limit: 200, page }),
+        () => false
+      )
       setCategories(all)
     } catch (err) {
       console.error('Error fetching categories:', err)
@@ -1155,27 +930,84 @@ const TrainingModules = () => {
     fetchCategories()
   }, [fetchCategories])
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  /**
+   * Filters the cached catalog on every keystroke. Truncated catalogs still debounce the API.
+   * Opens folders while searching so matches are not hidden behind collapse.
+   */
+  const handleSearchInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const value = e.target.value
+      setSearch(value)
+      setCurrentPage(1)
+      applyCatalogFilter(allModulesRef.current, value)
+      if (value.trim()) setCollapsedCategoryIds(new Set())
+    },
+    [applyCatalogFilter],
+  )
+
+  /**
+   * Enter flushes server search immediately when the local catalog was truncated.
+   */
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== 'Enter') return
+      e.preventDefault()
+      setCurrentPage(1)
+      const q = search.trim()
+      if (catalogCompleteRef.current || !q) {
+        applyCatalogFilter(allModulesRef.current, search)
+        return
+      }
+      if (allModulesRef.current.length === 0) return
+      clearTruncatedSearchTimer()
+      void fetchSearchFromApi(q)
+    },
+    [search, applyCatalogFilter, fetchSearchFromApi, clearTruncatedSearchTimer],
+  )
 
   useEffect(() => {
     fetchModules()
   }, [fetchModules])
 
-  const router = useRouter()
+  useEffect(() => {
+    if (catalogCompleteRef.current) return
+    const q = search.trim()
+    if (!q) {
+      clearTruncatedSearchTimer()
+      return
+    }
+    if (allModulesRef.current.length === 0) return
+    clearTruncatedSearchTimer()
+    truncatedSearchTimerRef.current = window.setTimeout(() => {
+      truncatedSearchTimerRef.current = null
+      void fetchSearchFromApi(q)
+    }, 300)
+    return () => clearTruncatedSearchTimer()
+  }, [search, fetchSearchFromApi, clearTruncatedSearchTimer])
 
-  const handleClone = async (moduleId: string) => {
+  const handleStatusFilterChange = useCallback(
+    (next: ReturnType<typeof parseModulesListStatus>) => {
+      router.replace(`${pathname}${modulesListStatusSearchString(searchParams, next)}`, {
+        scroll: false,
+      })
+    },
+    [pathname, router, searchParams],
+  )
+
+  useEffect(() => {
+    setCollapsedCategoryIds(new Set())
+  }, [statusFilter])
+
+  const handleClone = useCallback(async (moduleId: string) => {
     try {
       const cloned = await trainingModulesApi.cloneModule(moduleId)
       await Swal.fire('Cloned!', 'Module cloned as draft.', 'success')
       router.push(`/training/curriculum/modules/edit?id=${cloned.id}`)
     } catch (err) {
-      const msg = err instanceof AxiosError && err.response?.data?.message ? String(err.response.data.message) : 'Failed to clone module.'
+      const msg = mapTrainingModuleError(err, 'Failed to clone module.')
       await Swal.fire({ icon: 'error', title: 'Clone failed', text: msg, toast: true, position: 'top-end', timer: 4000, showConfirmButton: false })
     }
-  }
+  }, [router])
 
   const handleSetModuleStatus = useCallback(
     async (moduleId: string, status: ModuleLifecycleStatus) => {
@@ -1197,10 +1029,7 @@ const TrainingModules = () => {
         })
         fetchModules()
       } catch (err) {
-        const msg =
-          err instanceof AxiosError && err.response?.data?.message
-            ? String(err.response.data.message)
-            : 'Failed to update module status.'
+        const msg = mapTrainingModuleError(err, 'Failed to update module status.')
         await Swal.fire({
           icon: 'error',
           title: 'Update failed',
@@ -1218,7 +1047,7 @@ const TrainingModules = () => {
     [fetchModules],
   )
 
-  const handleDelete = async (moduleId: string) => {
+  const handleDelete = useCallback(async (moduleId: string) => {
     try {
       await trainingModulesApi.deleteTrainingModule(moduleId)
       await Swal.fire({
@@ -1233,10 +1062,7 @@ const TrainingModules = () => {
       })
       fetchModules()
     } catch (err) {
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : 'Failed to delete module.'
+      const msg = mapTrainingModuleError(err, 'Failed to delete module.')
       await Swal.fire({
         icon: 'error',
         title: 'Delete failed',
@@ -1245,10 +1071,9 @@ const TrainingModules = () => {
         position: 'top-end',
         timer: 4000,
         showConfirmButton: false,
-        timerProgressBar: true,
       })
     }
-  }
+  }, [fetchModules])
 
   const handleView = useCallback(async (moduleId: string) => {
     setDetailModalOpen(true)
@@ -1261,12 +1086,7 @@ const TrainingModules = () => {
       setSelectedModuleDetail(moduleData)
     } catch (err) {
       console.error('Error fetching module detail:', err)
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : err instanceof Error
-            ? err.message
-            : 'Failed to load module details.'
+      const msg = mapTrainingModuleError(err, 'Failed to load module details.')
       setDetailError(msg)
     } finally {
       setDetailLoading(false)
@@ -1277,14 +1097,18 @@ const TrainingModules = () => {
     setDetailModalOpen(false)
   }, [])
 
-  const toggleCategory = (categoryId: string) => {
+  const toggleCategory = useCallback((categoryId: string) => {
     setCollapsedCategoryIds((prev) => {
       const next = new Set(prev)
       if (next.has(categoryId)) next.delete(categoryId)
       else next.add(categoryId)
       return next
     })
-  }
+  }, [])
+
+  const handleAssignFolders = useCallback((id: string) => {
+    setAssignFoldersModuleId(id)
+  }, [])
 
   const categorySelectOptions = useMemo<CategorySelectOption[]>(
     () => categories.map((c) => ({ value: c.id, label: c.name })),
@@ -1294,45 +1118,46 @@ const TrainingModules = () => {
   const assignFoldersModule =
     assignFoldersModuleId != null ? modules.find((m) => m.id === assignFoldersModuleId) ?? null : null
 
-  // One row per folder (category), plus optional "Uncategorized" for modules with no folder
-  const folderRows = useMemo((): TrainingFolderRow[] => {
-    const sortModules = (a: ApiTrainingModule, b: ApiTrainingModule) => {
-      switch (sortValue?.value) {
-        case 'moduleName:desc':
-          return b.moduleName.localeCompare(a.moduleName)
-        case 'moduleName:asc':
-          return a.moduleName.localeCompare(b.moduleName)
-        case 'createdAt:desc':
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        case 'createdAt:asc':
-          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        default:
-          return 0
-      }
+  const lifecycleCounts = useMemo(
+    () =>
+      countModulesByLifecycle(
+        allModulesRef.current.length > 0 ? allModulesRef.current : modules,
+      ),
+    [modules],
+  )
+
+  const folderRows = useMemo(
+    () =>
+      groupTrainingModulesIntoFolders(
+        modules,
+        categories,
+        sortValue,
+        search.trim().length > 0,
+        {
+          statusFilter,
+          includeEmptyDrafts: false,
+          includeArchivedOnAll: false,
+          includeEmptyCategories: false,
+        },
+      ),
+    [modules, categories, sortValue, search, statusFilter],
+  )
+
+  const showFolderHeaders = statusFilter === 'all' || statusFilter === 'published'
+  const folderIds = useMemo(() => folderRows.map((f) => f.id), [folderRows])
+  const allCollapsed =
+    folderIds.length > 0 && folderIds.every((id) => collapsedCategoryIds.has(id))
+
+  /**
+   * Expand all when every folder is collapsed; otherwise collapse all (partial counts as expanded).
+   */
+  const toggleAllFolders = useCallback(() => {
+    if (allCollapsed) {
+      setCollapsedCategoryIds(new Set())
+      return
     }
-    const sortedCats = [...categories].sort((a, b) => a.name.localeCompare(b.name))
-    const isSearching = debouncedSearch.trim().length > 0
-    let rows: TrainingFolderRow[] = sortedCats.map((cat) => ({
-      id: cat.id,
-      name: cat.name,
-      modules: modules
-        .filter((m) => m.categories?.some((c) => c.id === cat.id))
-        .sort(sortModules),
-    }))
-    // While searching, drop empty folders so the result set is not visually swamped by
-    // every category showing zero matches (which read like "search did nothing").
-    if (isSearching) rows = rows.filter((r) => r.modules.length > 0)
-    const uncategorized = modules.filter((m) => !m.categories?.length).sort(sortModules)
-    if (uncategorized.length > 0) {
-      rows.push({
-        id: UNCATEGORIZED_FOLDER_ID,
-        name: 'Uncategorized',
-        modules: uncategorized,
-        isUncategorized: true,
-      })
-    }
-    return rows
-  }, [modules, categories, sortValue, debouncedSearch])
+    setCollapsedCategoryIds(new Set(folderIds))
+  }, [allCollapsed, folderIds])
 
   const handleCreateFolder = async () => {
     const name = newFolderName.trim()
@@ -1354,10 +1179,7 @@ const TrainingModules = () => {
         timerProgressBar: true,
       })
     } catch (err) {
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : 'Failed to create folder.'
+      const msg = mapTrainingModuleError(err, 'Failed to create folder.')
       await Swal.fire({
         icon: 'error',
         title: 'Could not create folder',
@@ -1388,10 +1210,7 @@ const TrainingModules = () => {
       })
       fetchModules()
     } catch (err) {
-      const msg =
-        err instanceof AxiosError && err.response?.data?.message
-          ? String(err.response.data.message)
-          : 'Failed to update folders.'
+      const msg = mapTrainingModuleError(err, 'Failed to update folders.')
       await Swal.fire({
         icon: 'error',
         title: 'Update failed',
@@ -1423,305 +1242,145 @@ const TrainingModules = () => {
       <Seo title="Training Modules" />
       <div className="mt-5 grid grid-cols-12 gap-6 sm:mt-6">
         <div className="xl:col-span-12 col-span-12">
-          <div className="box custom-box">
-            <div className="box-body p-4">
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div className="flex flex-wrap gap-1 newproject">
-                  <Link
-                    href="/training/curriculum/modules/create"
-                    className="ti-btn ti-btn-primary-full me-2 !mb-0"
-                  >
-                    <i className="ri-add-line me-1 font-semibold align-middle" />
-                    New Module
-                  </Link>
-                  <Link
-                    href="/training/curriculum/modules/create-with-ai"
-                    className="ti-btn ti-btn-success-full me-2 !mb-0"
-                  >
-                    <i className="ri-magic-line me-1 font-semibold align-middle" />
-                    Create with AI
-                  </Link>
-                  <button
-                    type="button"
-                    className="ti-btn ti-btn-light me-2 !mb-0"
-                    onClick={() => {
-                      setNewFolderName('')
-                      setNewFolderOpen(true)
-                    }}
-                  >
-                    <i className="ri-folder-add-line me-1 font-semibold align-middle" />
-                    New folder
-                  </button>
-                  <Link
-                    href="/training/curriculum/categories"
-                    className="ti-btn ti-btn-light me-2 !mb-0"
-                  >
-                    <i className="ri-settings-3-line me-1 font-semibold align-middle" />
-                    Manage folders
-                  </Link>
-                  <Select
-                    value={sortValue}
-                    onChange={(v) => {
-                      const option = v as { value: string; label: string } | null
-                      if (option) setSortValue(option)
-                    }}
-                    options={SORT_OPTIONS}
-                    className="!w-40"
-                    menuPlacement="auto"
-                    classNamePrefix="Select2"
-                    placeholder="Sort By"
-                    menuPortalTarget={selectMenuPortalTarget}
-                    styles={selectMenuLayerStyles}
-                  />
-                </div>
-                <div className="flex" role="search">
-                  <input
-                    className="form-control me-2"
-                    type="search"
-                    placeholder="Search modules"
-                    aria-label="Search"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value)
-                      setCurrentPage(1)
-                    }}
-                  />
-                  <button className="ti-btn ti-btn-light !mb-0" type="button">
-                    Search
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ModulesListToolbar
+            search={search}
+            onSearchChange={handleSearchInputChange}
+            onSearchKeyDown={handleSearchKeyDown}
+            sortValue={sortValue}
+            sortOptions={SORT_OPTIONS}
+            onSortChange={setSortValue}
+            statusFilter={statusFilter}
+            lifecycleCounts={lifecycleCounts}
+            hrefForStatus={(id) =>
+              `${pathname}${modulesListStatusSearchString(searchParams, id)}`
+            }
+            onStatusChange={handleStatusFilterChange}
+            showFolderHeaders={showFolderHeaders}
+            allCollapsed={allCollapsed}
+            folderCount={folderIds.length}
+            onToggleAll={toggleAllFolders}
+            onNewFolder={() => {
+              setNewFolderName('')
+              setNewFolderOpen(true)
+            }}
+          />
         </div>
       </div> 
 
       {selectedIds.size > 0 && (
         <div
-          className="sticky top-0 z-[60] mb-5"
-          style={{
-            background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%)',
-            borderRadius: '0.75rem',
-            boxShadow: '0 8px 32px rgba(79, 70, 229, 0.3), 0 2px 8px rgba(0,0,0,0.1)',
-          }}
+          className="sticky top-0 z-[60] mb-5 rounded-xl border border-primary bg-primary text-white px-4 py-3"
+          role="region"
+          aria-label="Bulk module actions"
         >
-          <div className="px-5 py-3.5">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              {/* Left: selection info */}
-              <div className="flex items-center gap-3">
-                <div
-                  className="flex items-center justify-center rounded-lg font-bold text-indigo-700 text-[0.9375rem]"
-                  style={{
-                    width: '2.25rem',
-                    height: '2.25rem',
-                    background: 'rgba(255,255,255,0.92)',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-                  }}
-                >
-                  {selectedIds.size}
-                </div>
-                <div>
-                  <span className="text-white font-semibold text-[0.9375rem] leading-tight block">
-                    {selectedIds.size === 1 ? '1 module' : `${selectedIds.size} modules`} selected
-                  </span>
-                  <button
-                    type="button"
-                    className="text-white/70 hover:text-white text-[0.75rem] underline underline-offset-2 transition-colors leading-tight"
-                    onClick={clearSelection}
-                  >
-                    Clear selection
-                  </button>
-                </div>
-              </div>
-
-              {/* Right: actions */}
-              <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center justify-center w-9 h-9 rounded-lg bg-white text-primary text-sm font-semibold tabular-nums">
+                {selectedIds.size}
+              </span>
+              <div>
+                <span className="font-semibold text-[0.875rem] leading-tight block">
+                  {selectedIds.size === 1 ? '1 module' : `${selectedIds.size} modules`} selected
+                </span>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
-                  style={{
-                    background: 'rgba(255,255,255,0.18)',
-                    color: '#fff',
-                    backdropFilter: 'blur(4px)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-                  disabled={bulkBusy}
-                  onClick={() => handleBulkStatus('published')}
+                  className="text-white/80 hover:text-white text-[0.75rem] underline underline-offset-2 transition-colors duration-200 leading-tight bg-transparent border-0 p-0"
+                  onClick={clearSelection}
                 >
-                  <i className="ri-send-plane-2-line text-[0.875rem]" />
-                  Publish
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
-                  style={{
-                    background: 'rgba(255,255,255,0.18)',
-                    color: '#fff',
-                    backdropFilter: 'blur(4px)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-                  disabled={bulkBusy}
-                  onClick={() => handleBulkStatus('draft')}
-                >
-                  <i className="ri-file-edit-line text-[0.875rem]" />
-                  Draft
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
-                  style={{
-                    background: 'rgba(255,255,255,0.18)',
-                    color: '#fff',
-                    backdropFilter: 'blur(4px)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-                  disabled={bulkBusy}
-                  onClick={() => handleBulkStatus('archived')}
-                >
-                  <i className="ri-archive-2-line text-[0.875rem]" />
-                  Archive
-                </button>
-
-                <div className="w-px h-6 mx-1" style={{ background: 'rgba(255,255,255,0.25)' }} />
-
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
-                  style={{
-                    background: 'rgba(255,255,255,0.18)',
-                    color: '#fff',
-                    backdropFilter: 'blur(4px)',
-                    border: '1px solid rgba(255,255,255,0.2)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)' }}
-                  disabled={bulkBusy}
-                  onClick={() => setBulkFolderOpen(true)}
-                >
-                  <i className="ri-folder-transfer-line text-[0.875rem]" />
-                  Move to folder
-                </button>
-
-                <div className="w-px h-6 mx-1" style={{ background: 'rgba(255,255,255,0.25)' }} />
-
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[0.8125rem] font-medium transition-all disabled:opacity-40"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.85)',
-                    color: '#fff',
-                    border: '1px solid rgba(239, 68, 68, 0.5)',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 1)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.85)' }}
-                  disabled={bulkBusy}
-                  onClick={handleBulkDelete}
-                >
-                  <i className="ri-delete-bin-line text-[0.875rem]" />
-                  Delete
+                  Clear selection
                 </button>
               </div>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm !mb-0 !bg-white/15 !text-white !border !border-white/25 hover:!bg-white/25 min-h-9"
+                disabled={bulkBusy}
+                onClick={() => handleBulkStatus('published')}
+              >
+                <i className="ri-send-plane-2-line me-1 align-middle" aria-hidden />
+                Publish
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm !mb-0 !bg-white/15 !text-white !border !border-white/25 hover:!bg-white/25 min-h-9"
+                disabled={bulkBusy}
+                onClick={() => handleBulkStatus('draft')}
+              >
+                <i className="ri-file-edit-line me-1 align-middle" aria-hidden />
+                Draft
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm !mb-0 !bg-white/15 !text-white !border !border-white/25 hover:!bg-white/25 min-h-9"
+                disabled={bulkBusy}
+                onClick={() => handleBulkStatus('archived')}
+              >
+                <i className="ri-archive-2-line me-1 align-middle" aria-hidden />
+                Archive
+              </button>
+              <span className="w-px h-6 bg-white/25 mx-0.5" aria-hidden />
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm !mb-0 !bg-white/15 !text-white !border !border-white/25 hover:!bg-white/25 min-h-9"
+                disabled={bulkBusy}
+                onClick={() => setBulkFolderOpen(true)}
+              >
+                <i className="ri-folder-transfer-line me-1 align-middle" aria-hidden />
+                Move
+              </button>
+              <button
+                type="button"
+                className="ti-btn ti-btn-sm ti-btn-danger-full !mb-0 min-h-9"
+                disabled={bulkBusy}
+                onClick={handleBulkDelete}
+              >
+                <i className="ri-delete-bin-line me-1 align-middle" aria-hidden />
+                Delete
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="box custom-box text-center py-12">
-          <p className="text-[#8c9097] dark:text-white/50 mb-0">Loading modules...</p>
-        </div>
-      ) : debouncedSearch.trim() && modules.length === 0 ? (
-        <div className="box custom-box text-center py-12">
-          <p className="text-[#8c9097] dark:text-white/50 mb-0">No modules match your search.</p>
-        </div>
-      ) : !debouncedSearch.trim() && modules.length === 0 && categories.length === 0 ? (
-        <div className="box custom-box text-center py-12">
-          <p className="text-[#8c9097] dark:text-white/50 mb-0">
-            No modules yet. Create a folder (optional) and add your first module to get started.
-          </p>
-        </div>
-      ) : (
-        folderRows.map((folder) => {
-          const isCollapsed = collapsedCategoryIds.has(folder.id)
-          const allInFolderSelected = folder.modules.length > 0 && folder.modules.every((m) => selectedIds.has(m.id))
-          return (
-            <div key={folder.id} className="mb-6">
-              <div className="flex items-center gap-2">
-                {folder.modules.length > 0 && (
-                  <label
-                    className="flex items-center justify-center w-6 h-6 cursor-pointer shrink-0"
-                    title={allInFolderSelected ? 'Deselect all in folder' : 'Select all in folder'}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      className="form-check-input !m-0 !w-4 !h-4 cursor-pointer"
-                      checked={allInFolderSelected}
-                      onChange={() => selectAllInFolder(folder.modules)}
-                    />
-                  </label>
-                )}
-                <button
-                  type="button"
-                  onClick={() => toggleCategory(folder.id)}
-                  className="flex items-center gap-2 flex-1 text-left py-2 px-1 rounded hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                  aria-expanded={!isCollapsed}
-                >
-                  <i
-                    className={`text-defaulttextcolor text-lg ${isCollapsed ? 'ri-add-line' : 'ri-subtract-line'}`}
-                    aria-hidden
-                  />
-                  <i
-                    className={`text-lg ${folder.isUncategorized ? 'ri-inbox-line text-[#8c9097]' : 'ri-folder-2-line text-primary'}`}
-                    aria-hidden
-                  />
-                  <h2 className="text-lg font-semibold text-defaulttextcolor">{folder.name}</h2>
-                  <span className="text-[#8c9097] dark:text-white/50 text-sm ml-1">
-                    ({folder.modules.length} module{folder.modules.length !== 1 ? 's' : ''})
-                  </span>
-                </button>
-              </div>
-              {!isCollapsed && (
-                <>
-                  {folder.modules.length === 0 ? (
-                    <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 mt-2 ms-8 mb-0">
-                      {folder.isUncategorized
-                        ? 'All modules are assigned to a folder.'
-                        : 'No modules in this folder yet. Use “Move to folder(s)” on a module or assign folders when editing.'}
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-12 gap-x-6 gap-y-6 mt-2">
-                      {folder.modules.map((m) => (
-                        <div
-                          key={m.id ?? (m as unknown as { _id?: string })._id ?? m.moduleName}
-                          className="xxl:col-span-3 xl:col-span-4 md:col-span-6 col-span-12"
-                        >
-                          <TrainingModuleCard
-                            module={m}
-                            onDelete={handleDelete}
-                            onView={handleView}
-                            onClone={handleClone}
-                            onAssignFolders={(id) => setAssignFoldersModuleId(id)}
-                            onSetStatus={handleSetModuleStatus}
-                            statusUpdatingId={statusUpdatingId}
-                            selected={selectedIds.has(m.id)}
-                            onToggleSelect={toggleSelect}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
+        <div className="space-y-2 px-1" aria-busy="true" aria-label="Loading modules">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 min-h-16 px-3 py-2 rounded-xl border border-defaultborder"
+            >
+              <span className="w-4 h-4 rounded bg-black/10 dark:bg-white/10 shrink-0" />
+              <span className="w-10 h-10 rounded-lg bg-black/10 dark:bg-white/10 shrink-0" />
+              <span className="flex-1 h-4 rounded bg-black/10 dark:bg-white/10 max-w-xs" />
             </div>
-          )
-        })
+          ))}
+        </div>
+      ) : search.trim() && modules.length === 0 ? (
+        <p className="text-[0.8125rem] text-[#8c9097] dark:text-white/50 py-6 mb-0 text-center">
+          No modules match your search.
+        </p>
+      ) : folderRows.length === 0 ? (
+        <ModulesListEmptyState
+          statusFilter={statusFilter}
+          archivedCount={lifecycleCounts.archived}
+        />
+      ) : (
+        <ModulesFolderList
+          folderRows={folderRows}
+          collapsedCategoryIds={collapsedCategoryIds}
+          selectedIds={selectedIds}
+          statusUpdatingId={statusUpdatingId}
+          showFolderHeaders={showFolderHeaders}
+          onToggleCategory={toggleCategory}
+          onSelectAllInFolder={selectAllInFolder}
+          onDelete={handleDelete}
+          onView={handleView}
+          onClone={handleClone}
+          onAssignFolders={handleAssignFolders}
+          onSetStatus={handleSetModuleStatus}
+          onToggleSelect={toggleSelect}
+        />
       )}
 
       {totalPages > 1 && (
@@ -1801,4 +1460,16 @@ const TrainingModules = () => {
   )
 }
 
-export default TrainingModules
+export default function TrainingModulesPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="box custom-box text-center py-12 mt-5">
+          <p className="text-[#8c9097] dark:text-white/50 mb-0">Loading modules...</p>
+        </div>
+      }
+    >
+      <TrainingModules />
+    </Suspense>
+  )
+}

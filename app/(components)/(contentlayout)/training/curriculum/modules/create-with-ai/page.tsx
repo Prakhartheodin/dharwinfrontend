@@ -70,6 +70,7 @@ export default function CreateModuleWithAIPage() {
   const [extractingPdf, setExtractingPdf] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
   const pdfInputRef = useRef<HTMLInputElement>(null)
+  const generateAbortRef = useRef<AbortController | null>(null)
   const [videoLinks, setVideoLinks] = useState<string[]>([""])
   const [videosFromDocument, setVideosFromDocument] = useState<
     { title: string; duration: number; youtubeUrl: string }[]
@@ -230,6 +231,22 @@ export default function CreateModuleWithAIPage() {
     if (pdfInputRef.current) pdfInputRef.current.value = ""
   }
 
+  /**
+   * Abort any in-flight generate SSE and return a new signal.
+   */
+  const nextGenerateSignal = () => {
+    generateAbortRef.current?.abort()
+    const ac = new AbortController()
+    generateAbortRef.current = ac
+    return ac.signal
+  }
+
+  useEffect(() => {
+    return () => {
+      generateAbortRef.current?.abort()
+    }
+  }, [])
+
   useEffect(() => {
     if (!pdfText.trim() || pdfText.trim().length < 100) return
     const timer = setTimeout(async () => {
@@ -238,8 +255,8 @@ export default function CreateModuleWithAIPage() {
         const { moduleName, shortDescription } = await trainingModulesApi.suggestTopicDescription(pdfText)
         if (moduleName) setTopic((prev) => (prev ? prev : moduleName))
         if (shortDescription) setDescription((prev) => (prev ? prev : shortDescription))
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("Topic suggestion failed", err)
       } finally {
         setSuggestingTopic(false)
       }
@@ -255,27 +272,30 @@ export default function CreateModuleWithAIPage() {
       videoTitlesCache[id] || videosFromDocument.find((v) => getYoutubeVideoId(v.youtubeUrl) === id)?.title
     const needsFetch = ids.filter((id) => !getTitle(id))
     if (needsFetch.length === 0) return
-    let cancelled = false
+    const ac = new AbortController()
     const fetchTitles = async () => {
       const next: Record<string, string> = { ...videoTitlesCache }
-      for (const id of needsFetch) {
-        if (cancelled) break
-        try {
-          const res = await fetch(
-            `https://noembed.com/embed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`
-          )
-          const data = await res.json()
-          if (data?.title) next[id] = data.title
-        } catch {
-          next[id] = ""
-        }
-        await new Promise((r) => setTimeout(r, 200))
-      }
-      if (!cancelled) setVideoTitlesCache(next)
+      await Promise.all(
+        needsFetch.map(async (id) => {
+          try {
+            const res = await fetch(
+              `https://noembed.com/embed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}`,
+              { signal: ac.signal }
+            )
+            const data = await res.json()
+            next[id] = data?.title ? data.title : ""
+          } catch (err) {
+            if (ac.signal.aborted) return
+            console.warn("YouTube title lookup failed", id, err)
+            next[id] = ""
+          }
+        })
+      )
+      if (!ac.signal.aborted) setVideoTitlesCache(next)
     }
     fetchTitles()
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [videoLinks, videosFromDocument, videoTitlesCache])
 
@@ -342,7 +362,7 @@ export default function CreateModuleWithAIPage() {
         numEssays: effectiveNumEssays,
         questionsPerEssay,
         videoLanguage: videoLanguage || "en",
-      })) {
+      }, nextGenerateSignal())) {
         if (ev.step === "error") {
           setError(ev.message ?? "Generation failed")
           setSteps((prev) =>
@@ -367,6 +387,7 @@ export default function CreateModuleWithAIPage() {
         router.push(`/training/curriculum/modules/edit?id=${completedModuleId}`)
       }
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       const errMsg = err instanceof Error ? err.message : "Generation failed"
       setError(errMsg)
       setSteps((prev) =>
@@ -434,7 +455,7 @@ export default function CreateModuleWithAIPage() {
 
     try {
       let completedModuleId: string | null = null
-      for await (const ev of trainingModulesApi.generateModuleWithAI(params)) {
+      for await (const ev of trainingModulesApi.generateModuleWithAI(params, nextGenerateSignal())) {
         if (ev.step === "error") {
           setError(ev.message ?? "Generation failed")
           setSteps((prev) =>
@@ -466,6 +487,7 @@ export default function CreateModuleWithAIPage() {
         router.push(`/training/curriculum/modules/edit?id=${completedModuleId}`)
       }
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       const errMsg = err instanceof Error ? err.message : "Generation failed"
       setError(errMsg)
       setSteps((prev) =>

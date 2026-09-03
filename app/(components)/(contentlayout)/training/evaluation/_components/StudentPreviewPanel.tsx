@@ -7,13 +7,17 @@ import {
   EVAL_BTN_ICON_CLOSE,
   EVAL_BTN_LIGHT,
   EVAL_BTN_OUTLINE_PRIMARY,
+  EVAL_BTN_OUTLINE_SECONDARY,
 } from './evaluation-buttons'
 import {
   getCourseDisplayStatus,
   statusBadgeClass,
   atRiskLabel,
   formatShortDate,
+  formatEssayEvalLine,
 } from './evaluation-utils'
+import { openHsOverlay } from './evaluation-overlay'
+import GradeEssayPanel, { GRADE_ESSAY_OVERLAY_ID } from './GradeEssayPanel'
 
 export interface StudentPreviewPanelProps {
   studentId: string | null
@@ -22,8 +26,12 @@ export interface StudentPreviewPanelProps {
   onClose: () => void
   onOpenProfile?: (studentId: string) => void
   profileOpening?: boolean
+  onEssayGraded?: () => void
 }
 
+/**
+ * Off-canvas student preview with course rows and Grade Q&A entry.
+ */
 const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
   studentId,
   studentName,
@@ -31,7 +39,15 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
   onClose,
   onOpenProfile,
   profileOpening = false,
+  onEssayGraded,
 }) => {
+  const [gradeTarget, setGradeTarget] = React.useState<{ moduleId: string; courseName: string } | null>(null)
+
+  React.useEffect(() => {
+    if (!gradeTarget) return
+    const timer = window.setTimeout(() => openHsOverlay(`#${GRADE_ESSAY_OVERLAY_ID}`), 0)
+    return () => window.clearTimeout(timer)
+  }, [gradeTarget])
   const studentCourses = useMemo(() => {
     if (!studentId) return []
     return evaluations.filter((e) => e.studentId === studentId)
@@ -61,6 +77,7 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
   }, [studentCourses])
 
   return (
+    <>
     <div
       id="student-preview-panel"
       className="hs-overlay hidden ti-offcanvas ti-offcanvas-right !z-[105] !max-w-[50rem] lg:!max-w-[60rem]"
@@ -216,11 +233,21 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
                             {' '}({row.quizTries ?? 0} tries)
                           </dd>
                         </div>
-                        <div>
+                        <div className="sm:col-span-2 flex flex-wrap items-center gap-2">
                           <dt className="inline">Essay: </dt>
-                          <dd className="inline text-defaulttextcolor tabular-nums">
-                            {row.essayScore != null ? `${row.essayScore}%` : '—'}
+                          <dd className="inline text-defaulttextcolor tabular-nums mb-0">
+                            {formatEssayEvalLine(row)}
                           </dd>
+                          {row.courseId && studentId && (
+                            <button
+                              type="button"
+                              className={EVAL_BTN_OUTLINE_SECONDARY}
+                              onClick={() => setGradeTarget({ moduleId: row.courseId as string, courseName: row.courseName })}
+                              aria-label={`Grade Q&A for ${row.courseName}`}
+                            >
+                              Grade Q&A
+                            </button>
+                          )}
                         </div>
                       </dl>
                     </div>
@@ -246,6 +273,15 @@ const StudentPreviewPanel: React.FC<StudentPreviewPanelProps> = ({
         )}
       </div>
     </div>
+    <GradeEssayPanel
+      studentId={studentId}
+      studentName={studentName}
+      moduleId={gradeTarget?.moduleId ?? null}
+      courseName={gradeTarget?.courseName ?? ''}
+      onClose={() => setGradeTarget(null)}
+      onSaved={onEssayGraded}
+    />
+    </>
   )
 }
 
