@@ -2039,7 +2039,19 @@ export const EmployeeForm = ({
           : {}),
         ...((!(isEdit && initialData?.compensationLocked) || isCompensationAdmin) &&
         formData.compensationType
-          ? { compensationType: formData.compensationType }
+          ? {
+              compensationType: formData.compensationType,
+              // This form PATCHes its whole body on every save, so carrying compensationType
+              // says nothing about intent. Flag an override only when the admin actually moved
+              // this field — otherwise a form loaded before an offer was accepted reverts the
+              // offer-derived snapshot on an unrelated save. Edit-only: the create and
+              // self-profile endpoints do not accept this key.
+              ...(isEdit &&
+              isCompensationAdmin &&
+              formData.compensationType !== (initialData?.compensationType || "")
+                ? { compensationOverride: true }
+                : {}),
+            }
           : {}),
         supervisorName: formData.supervisorName,
         supervisorContact: (formData.supervisorContact || "").replace(/\D/g, ""),

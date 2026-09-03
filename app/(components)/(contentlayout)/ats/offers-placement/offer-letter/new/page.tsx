@@ -3,6 +3,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Seo from "@/shared/layout-components/seo/seo";
+import { useConfirm } from "@/shared/components/ui/useConfirm";
 import {
   OfferLetterGeneratorWorkspace,
   createEmptyOfferLetterForm,
@@ -47,6 +48,7 @@ export default function NewOfferLetterPage() {
   const searchParams = useSearchParams();
   const offerIdParam = searchParams.get("offerId");
 
+  const { confirm, confirmDialog } = useConfirm();
   const [letterForm, setLetterForm] = useState(() => createEmptyOfferLetterForm());
   const [linkedOffer, setLinkedOffer] = useState<Offer | null>(null);
   const [letterBusy, setLetterBusy] = useState(false);
@@ -153,9 +155,55 @@ export default function NewOfferLetterPage() {
         alert("This offer has no id. Go back to Offers & Placement and open the letter from the list.");
         return;
       }
+
+      /**
+       * Compensation stops being a draft term once the candidate is past the offer stage — it then
+       * drives the employee badge, list filters, headcount and exports. The server enforces this;
+       * the dialog exists so the user is told before the save fails rather than after.
+       */
+      const compensationChanging =
+        !!linkedOffer.jobType && letterForm.jobType !== linkedOffer.jobType;
+      let compensationAck = false;
+
+      if (compensationChanging) {
+        const gate = linkedOffer.compensationGate;
+
+        if (gate && !gate.allowed) {
+          await confirm({
+            title: gate.reason === "joined" ? "Already an employee" : "Placement is not active",
+            message:
+              gate.reason === "joined"
+                ? "This candidate has already joined. Compensation is part of their employee record now — change it from Employee → Edit, where it will be logged against your name."
+                : `This placement is ${String(gate.stage ?? "").toLowerCase()}${
+                    gate.actorName ? `, by ${gate.actorName}` : ""
+                  }. Restore it to Pending before changing compensation.`,
+            confirmLabel: "Close",
+            hideCancel: true,
+          });
+          return;
+        }
+
+        if (gate?.confirm) {
+          const ok = await confirm({
+            title: "Change compensation after the offer stage?",
+            message: `This candidate is already in ${
+              gate.stage === "Onboarding" ? "onboarding" : "pre-boarding"
+            }. Changing the job type also updates their employee record, and is recorded in the audit trail with your name.`,
+            confirmLabel: "Change compensation",
+            cancelLabel: "Keep current",
+            tone: "danger",
+          });
+          if (!ok) return;
+          compensationAck = true;
+        }
+      }
+
       setLetterBusy(true);
       try {
-        const updated = await saveOfferLetter(id, buildOfferLetterUpdatePayload(letterForm, linkedOffer));
+        const updated = await saveOfferLetter(id, {
+          ...buildOfferLetterUpdatePayload(letterForm, linkedOffer),
+          ...(compensationAck ? { compensationChangeAck: true } : {}),
+        });
         setLinkedOffer(updated);
         const newId = getOfferRecordId(updated);
         if (newId && (!offerIdParam || offerIdParam !== newId)) {
@@ -192,7 +240,7 @@ export default function NewOfferLetterPage() {
     } finally {
       setLetterBusy(false);
     }
-  }, [letterForm, linkedOffer, offerIdParam, router]);
+  }, [letterForm, linkedOffer, offerIdParam, router, confirm]);
 
   const standaloneLetterJobPostingDoc = useMemo(
     () => combinedJobPostingDocText(linkedOffer?.job) ?? null,
@@ -215,6 +263,7 @@ export default function NewOfferLetterPage() {
 
   return (
     <Fragment>
+      {confirmDialog}
       <Seo fullDocumentTitle="Offer Letter" />
       <div className="offer-letter-page-shell w-full min-w-0 max-w-full min-h-[32rem] h-[calc(100dvh-5.5rem)] max-h-[calc(100dvh-3rem)] overflow-hidden [&>div]:h-full [&>div]:min-h-0 [&>div]:min-w-0">
         <OfferLetterGeneratorWorkspace

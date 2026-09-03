@@ -32,6 +32,8 @@ export interface CtcBreakdown {
 export interface Offer {
   _id: string;
   id?: string;
+  /** Present on GET /offers/:id only — the list endpoint does not compute it. */
+  compensationGate?: OfferCompensationGate;
   offerCode: string;
   jobApplication: string;
   job: {
@@ -171,8 +173,26 @@ export async function createOffer(payload: CreateOfferPayload): Promise<Offer> {
   return data;
 }
 
+/** How far past the offer stage the candidate is — decides whether compensation is still editable. */
+export interface OfferCompensationGate {
+  allowed: boolean;
+  /** Editable, but the user must confirm first (placement is live: pre-boarding or onboarding). */
+  confirm: boolean;
+  reason: "no-placement" | "live" | "offramp" | "joined" | "unknown-stage";
+  stage: string | null;
+  /** When the placement was cancelled or deferred, if that is why it is blocked. */
+  at: string | null;
+  actorName: string | null;
+}
+
 export interface UpdateOfferPayload {
   status?: OfferStatus;
+  /**
+   * Explicit acknowledgement that this candidate is already past the offer stage. The server
+   * requires it before a compensation change lands on a live placement, because the letter form
+   * PATCHes its whole body and a stale one could otherwise revert the snapshot silently.
+   */
+  compensationChangeAck?: boolean;
   ctcBreakdown?: CtcBreakdown;
   joiningDate?: string | null;
   offerValidityDate?: string | null;
