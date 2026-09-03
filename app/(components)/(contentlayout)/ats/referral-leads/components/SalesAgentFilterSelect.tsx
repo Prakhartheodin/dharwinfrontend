@@ -92,7 +92,10 @@ export function SalesAgentFilterSelect({ value, unassigned, onChange }: SalesAge
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        <span className={value || unassigned ? "" : "text-slate-400"}>{triggerLabel}</span>
+        {/* No placeholder-grey here: the sibling filters are native selects whose "All …"
+            option renders in the control's own colour, and muting only this one made it the
+            odd control out. Inheriting .form-select keeps both themes in step for free. */}
+        <span>{triggerLabel}</span>
       </button>
 
       {open && (
