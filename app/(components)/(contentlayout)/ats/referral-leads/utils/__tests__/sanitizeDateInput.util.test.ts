@@ -1,12 +1,87 @@
 ﻿import { describe, expect, it } from "vitest";
 import { parseYmdLocal } from "@/shared/lib/leave-date-range";
 import {
+  describeDmyProblem,
   isValidYmdLocal,
+  maskDmyInput,
   sanitizeReferralLeadsDateInput,
   getReferralLeadsDateRangeError,
   isReferralLeadsDateRangeInvalid,
   REFERRAL_LEADS_INVALID_DATE_RANGE_MESSAGE,
 } from "../sanitizeDateInput.util";
+
+describe("describeDmyProblem", () => {
+  it("says nothing while the entry is still plausible", () => {
+    expect(describeDmyProblem("")).toBeNull();
+    expect(describeDmyProblem("3")).toBeNull();
+    expect(describeDmyProblem("31")).toBeNull();
+    expect(describeDmyProblem("31/12")).toBeNull();
+    expect(describeDmyProblem("31/12/2026")).toBeNull();
+  });
+
+  it("rejects a day no month can have", () => {
+    expect(describeDmyProblem("35")).toContain("31");
+    expect(describeDmyProblem("99/")).toContain("31");
+    expect(describeDmyProblem("00")).toContain("01");
+  });
+
+  it("rejects an impossible month", () => {
+    expect(describeDmyProblem("10/13")).toContain("12");
+    expect(describeDmyProblem("10/00")).toContain("01");
+  });
+
+  it("names the month that is too short, as soon as the month is typed", () => {
+    expect(describeDmyProblem("31/04")).toBe("April has only 30 days.");
+    expect(describeDmyProblem("31/06")).toBe("June has only 30 days.");
+    expect(describeDmyProblem("31/09")).toBe("September has only 30 days.");
+    expect(describeDmyProblem("31/11")).toBe("November has only 30 days.");
+  });
+
+  it("holds February at 29 until the year decides it", () => {
+    // 29/02 may still be valid -- do not reject it before the year is known.
+    expect(describeDmyProblem("29/02")).toBeNull();
+    expect(describeDmyProblem("30/02")).toBe("February has at most 29 days.");
+    expect(describeDmyProblem("31/02")).toBe("February has at most 29 days.");
+  });
+
+  it("resolves February against the leap year once the year is complete", () => {
+    expect(describeDmyProblem("29/02/2024")).toBeNull();
+    expect(describeDmyProblem("29/02/2000")).toBeNull();
+    expect(describeDmyProblem("29/02/2025")).toBe("February 2025 has only 28 days.");
+    expect(describeDmyProblem("29/02/1900")).toBe("February 1900 has only 28 days.");
+  });
+
+  it("reports the day before the month when both are wrong", () => {
+    expect(describeDmyProblem("45/13")).toContain("31");
+  });
+});
+
+describe("maskDmyInput", () => {
+  it("adds the separator as soon as the day and the month are complete", () => {
+    expect(maskDmyInput("2")).toBe("2");
+    expect(maskDmyInput("25")).toBe("25/");
+    expect(maskDmyInput("250")).toBe("25/0");
+    expect(maskDmyInput("2505")).toBe("25/05/");
+    expect(maskDmyInput("25052")).toBe("25/05/2");
+    expect(maskDmyInput("25052026")).toBe("25/05/2026");
+  });
+
+  it("keeps an already separated value stable and ignores junk", () => {
+    expect(maskDmyInput("25/05/2026")).toBe("25/05/2026");
+    expect(maskDmyInput("2a5b")).toBe("25/");
+    expect(maskDmyInput("")).toBe("");
+  });
+
+  it("lets a trailing separator be deleted instead of springing back", () => {
+    // "25/" backspaced to "25" must stay "25", or the slash is undeletable.
+    expect(maskDmyInput("25", "25/")).toBe("25");
+    expect(maskDmyInput("25/05", "25/05/")).toBe("25/05");
+  });
+
+  it("never grows past dd/mm/yyyy", () => {
+    expect(maskDmyInput("250520261")).toBe("25/05/2026");
+  });
+});
 
 describe("isValidYmdLocal", () => {
   it("accepts real calendar dates with a 4-digit year", () => {
@@ -57,6 +132,18 @@ describe("sanitizeReferralLeadsDateInput", () => {
   it("rejects invalid month/day values", () => {
     expect(sanitizeReferralLeadsDateInput("2026-02-31")).toBeNull();
     expect(sanitizeReferralLeadsDateInput("2026-13-10")).toBeNull();
+  });
+
+  it("accepts the dd/mm/yyyy the field now displays and returns YYYY-MM-DD", () => {
+    expect(sanitizeReferralLeadsDateInput("15/01/2026")).toBe("2026-01-15");
+    expect(sanitizeReferralLeadsDateInput(" 31/12/1999 ")).toBe("1999-12-31");
+  });
+
+  it("rejects impossible dd/mm/yyyy dates", () => {
+    expect(sanitizeReferralLeadsDateInput("31/02/2026")).toBeNull();
+    expect(sanitizeReferralLeadsDateInput("10/13/2026")).toBeNull();
+    expect(sanitizeReferralLeadsDateInput("1/1/2026")).toBeNull();
+    expect(sanitizeReferralLeadsDateInput("15/01/20265")).toBeNull();
   });
 
   it("aligns with parseYmdLocal acceptance rules", () => {

@@ -9,6 +9,9 @@ import type { ReferralLeadsFilterState } from "../hooks/useReferralLeadsFilters"
 import type { DatePreset } from "../utils/dateRange.util";
 import type { QuickStatusFilter } from "../utils/attributionScope.util";
 
+/** Fixed so From can find To after its own remount; useId would change across that. */
+const CUSTOM_TO_INPUT_ID = "referral-leads-custom-to";
+
 interface ReferralLeadsFiltersProps {
   filters: ReferralLeadsFilterState;
   setFilter: <K extends keyof ReferralLeadsFilterState>(key: K, value: ReferralLeadsFilterState[K]) => void;
@@ -47,6 +50,12 @@ export function ReferralLeadsFilters({
   const commitCustomDate = (key: "customFrom" | "customTo", sanitized: string) => {
     setFilter(key, sanitized);
     if (sanitized) setFilter("datePreset", "all");
+    // A filled From should hand over to To rather than make the user aim at it. The From
+    // field is keyed on its own value, so it remounts on this commit -- wait a frame or the
+    // focus lands on the element that is about to be torn down.
+    if (key === "customFrom" && sanitized) {
+      requestAnimationFrame(() => document.getElementById(CUSTOM_TO_INPUT_ID)?.focus());
+    }
   };
 
   const dateRangeError = getReferralLeadsDateRangeError(filters.customFrom, filters.customTo);
@@ -167,6 +176,7 @@ export function ReferralLeadsFilters({
       <YmdFilterDateInput
         key={`custom-to-${filters.datePreset}-${filters.customTo}`}
         label="To"
+        inputId={CUSTOM_TO_INPUT_ID}
         value={filters.customTo}
         minDate={filters.customFrom || undefined}
         rangeError={dateRangeError}
