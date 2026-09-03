@@ -28,6 +28,7 @@ import ConfirmDiscardDialog from '@/shared/components/ConfirmDiscardDialog'
 import { detectEligibilityPreset } from './offer-letter-generator-data'
 import { buildOfferLetterUpdatePayload } from './build-offer-letter-update-payload'
 import { confirmCompensationChange } from './confirm-compensation-change'
+import { deleteOffersInBulk } from './delete-offers-in-bulk'
 import { useConfirm } from '@/shared/components/ui/useConfirm'
 import { getPlacementStatusActorSummary } from '@/shared/lib/ats/placementActorText'
 import { JoiningDateTableCell } from '@/shared/components/ats/JoiningDateTableCell'
@@ -556,14 +557,19 @@ const OffersPlacement = () => {
 
   const handleDeleteSelected = async () => {
     if (selectedRows.size === 0) return
-    if (!confirm(`Delete ${selectedRows.size} selected offer(s)?`)) return
-    for (const id of selectedRows) {
-      try {
-        await deleteOffer(id)
-      } catch { /* skip */ }
-    }
-    setSelectedRows(new Set())
+    const attempted = selectedRows.size
+    if (!confirm(`Delete ${attempted} selected offer(s)?`)) return
+
+    const failed = await deleteOffersInBulk(selectedRows, deleteOffer)
+    // Failures stay selected so they can be retried. Clearing the whole selection would hide the
+    // failure entirely — the surviving rows would look like rows that were never picked.
+    setSelectedRows(new Set(failed))
     refreshOffers()
+    if (failed.length) {
+      alert(
+        `${failed.length} of ${attempted} offer(s) could not be deleted. They are still selected, so you can try again.`
+      )
+    }
   }
 
   // Handle individual row checkbox
