@@ -7,6 +7,12 @@ import {
   JOB_DESCRIPTION_PROSE_CLASS,
 } from "@/shared/lib/ats/jobDescriptionHtml";
 import {
+  EXTERNAL_JOB_SALARY_EMPTY,
+  formatExternalJobSalary,
+  formatExternalJobType,
+  hasExternalJobSalary,
+} from "@/shared/lib/ats/externalJobDisplay";
+import {
   enrichExternalJobContacts,
   saveHrContact,
   deleteSavedHrContact,
@@ -131,18 +137,27 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
   const avatarBg = job?.company ? companyAvatarColor(job.company) : "bg-primary";
   const avatarInitial = job?.company ? job.company.trim()[0].toUpperCase() : "?";
 
-  const salaryStr = job
-    ? job.salaryMin != null || job.salaryMax != null
-      ? [job.salaryMin, job.salaryMax]
-          .filter((n) => n != null)
-          .map((n) => (job.salaryCurrency ? `${job.salaryCurrency} ` : "") + n?.toLocaleString())
-          .join(" – ")
-      : null
-    : null;
+  const salaryStr = job ? formatExternalJobSalary(job) : null;
+  const jobTypeLabel = job ? formatExternalJobType(job.jobType) : null;
 
   const quickFacts = job ? [
-    salaryStr && { icon: "ri-money-dollar-circle-line", label: "Salary", value: salaryStr, chip: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20" },
-    job.jobType && { icon: "ri-suitcase-line", label: "Type", value: job.jobType, chip: "bg-primary/[0.07] text-primary ring-primary/20" },
+    {
+      icon: "ri-money-dollar-circle-line",
+      label: "Salary",
+      value: salaryStr || EXTERNAL_JOB_SALARY_EMPTY,
+      chip: hasExternalJobSalary(job)
+        ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20"
+        : "bg-gray-50 text-gray-500 ring-gray-200 dark:bg-white/[0.04] dark:text-white/35 dark:ring-white/10",
+      tabular: hasExternalJobSalary(job),
+    },
+    {
+      icon: "ri-suitcase-line",
+      label: "Type",
+      value: jobTypeLabel || formatExternalJobType(null),
+      chip: job.jobType
+        ? "bg-primary/[0.07] text-primary ring-primary/20"
+        : "bg-gray-50 text-gray-500 ring-gray-200 dark:bg-white/[0.04] dark:text-white/35 dark:ring-white/10",
+    },
     job.experienceLevel && { icon: "ri-bar-chart-line", label: "Level", value: job.experienceLevel, chip: "bg-violet-50 text-violet-700 ring-violet-200 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20" },
     (job.timePosted || job.postedAt) && {
       icon: "ri-calendar-line",
@@ -150,7 +165,7 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
       value: job.timePosted || (job.postedAt ? new Date(job.postedAt).toLocaleDateString() : ""),
       chip: "bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
     },
-  ].filter(Boolean) as { icon: string; label: string; value: string; chip: string }[] : [];
+  ].filter(Boolean) as { icon: string; label: string; value: string; chip: string; tabular?: boolean }[] : [];
 
   const listingCta = job?.source === "linkedin-job-search-api" || job?.source === "linkedin-jobs-api"
     ? { label: "View on LinkedIn", icon: "ri-linkedin-box-fill" }
@@ -234,9 +249,13 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
                         <i className={`${job.source === "linkedin-job-search-api" || job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.6rem]`} aria-hidden />
                         {sourceLabel}
                       </span>
-                      {job.jobType && (
+                      {job.jobType ? (
                         <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-[3px] text-[0.68rem] font-medium text-gray-700 ring-1 ring-gray-200/80 dark:bg-white/10 dark:text-white/65 dark:ring-white/10">
                           {job.jobType}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-gray-50 px-2.5 py-[3px] text-[0.68rem] font-medium text-gray-500 ring-1 ring-gray-200/80 dark:bg-white/[0.04] dark:text-white/35 dark:ring-white/10">
+                          {formatExternalJobType(null)}
                         </span>
                       )}
                       {job.isRemote && (
@@ -255,7 +274,7 @@ const ExternalJobPreviewPanel: React.FC<ExternalJobPreviewPanelProps> = ({
                     {quickFacts.map((f) => (
                       <div
                         key={f.label}
-                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[0.72rem] font-semibold ring-1 ${f.chip}`}
+                        className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[0.72rem] font-semibold ring-1 ${f.chip}${f.tabular ? " tabular-nums" : ""}`}
                       >
                         <i className={`${f.icon} text-[0.65rem] opacity-80`} aria-hidden />
                         {f.value}

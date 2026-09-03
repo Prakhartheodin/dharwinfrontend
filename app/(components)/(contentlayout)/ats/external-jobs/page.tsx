@@ -22,6 +22,21 @@ import {
 } from "./_components/ExternalJobsLoadingAnimation";
 import AutoFetchModal from "./_components/AutoFetchModal";
 import { getAutoFetchConfig, type AutoFetchConfig } from "@/shared/lib/api/external-jobs-autofetch";
+import {
+  mapExternalJobListError,
+  mapExternalJobLoadError,
+  mapExternalJobSearchError,
+  type ExternalJobUserError,
+} from "@/shared/lib/api/external-jobs-errors";
+import {
+  EXTERNAL_JOB_SALARY_EMPTY,
+  formatExternalJobSalary,
+  formatExternalJobType,
+  hasExternalJobSalary,
+} from "@/shared/lib/ats/externalJobDisplay";
+
+type SearchStatus = "idle" | "loading" | "success" | "error" | "empty";
+type TabLoadStatus = "idle" | "loading" | "success" | "error";
 
 const SOURCE_OPTIONS: { value: ExternalJobSource; label: string }[] = [
   { value: "active-jobs-db", label: "Active Jobs DB" },
@@ -44,6 +59,13 @@ const POSTED_VALUES_BY_SOURCE: Record<ExternalJobSource, string[]> = {
 };
 /** Widest window every source supports -- where a narrower source lands on switch. */
 const POSTED_FALLBACK = "7d";
+
+const WORK_ARRANGEMENT_OPTIONS: { value: "" | "remote_ok" | "remote_solely" | "remote_both"; label: string }[] = [
+  { value: "", label: "All work arrangements" },
+  { value: "remote_ok", label: "Remote-friendly" },
+  { value: "remote_solely", label: "Fully remote only" },
+  { value: "remote_both", label: "Any remote" },
+];
 
 const SEARCH_COOLDOWN_SEC = 5;
 /** Matches the backend cap on job_title / job_location (externalJob.validation.js). */
@@ -71,12 +93,76 @@ function formatPostedAgo(postedAt?: string | null, fallback?: string | null): st
 }
 
 function formatSalary(job: ExternalJob): string {
-  if (job.salaryMin != null && job.salaryMax != null) {
-    return `${job.salaryCurrency || ""} ${job.salaryMin.toLocaleString()} – ${job.salaryMax.toLocaleString()}`.trim();
+  return formatExternalJobSalary(job);
+}
+
+function formatJobType(jobType?: string | null): string {
+  return formatExternalJobType(jobType);
+}
+
+function getSearchEmptyState(searchStatus: SearchStatus): {
+  icon: string;
+  title: string;
+  description: string;
+  showSearchCta: boolean;
+} {
+  if (searchStatus === "empty") {
+    return {
+      icon: "ri-file-search-line",
+      title: "No jobs matched",
+      description: "Try broadening your keywords, location, posted range, or work arrangement.",
+      showSearchCta: false,
+    };
   }
-  if (job.salaryMin != null) return `${job.salaryCurrency || ""} ${job.salaryMin.toLocaleString()}`.trim();
-  if (job.salaryMax != null) return `${job.salaryCurrency || ""} ${job.salaryMax.toLocaleString()}`.trim();
-  return "—";
+  if (searchStatus === "error") {
+    return {
+      icon: "ri-error-warning-line",
+      title: "Search couldn't complete",
+      description: "Something went wrong with the external feed. Retry or adjust your filters.",
+      showSearchCta: true,
+    };
+  }
+  return {
+    icon: "ri-search-line",
+    title: "Run search",
+    description: "Set title or location, then search external feeds.",
+    showSearchCta: true,
+  };
+}
+
+function TabLoadErrorPanel({
+  title,
+  error,
+  onRetry,
+  retrying,
+}: {
+  title: string;
+  error: ExternalJobUserError;
+  onRetry: () => void;
+  retrying: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+      <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-danger/10 text-danger ring-1 ring-danger/20">
+        <i className="ri-error-warning-line text-2xl" aria-hidden />
+      </span>
+      <div className="max-w-md space-y-1">
+        <p className="text-base font-semibold text-defaulttextcolor dark:text-white">{title}</p>
+        <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">{error.message}</p>
+      </div>
+      {error.canRetry && (
+        <button
+          type="button"
+          disabled={retrying}
+          onClick={onRetry}
+          className="inline-flex items-center gap-2 rounded-xl border border-danger/25 bg-danger/10 px-5 py-2 text-sm font-semibold text-danger transition-all hover:bg-danger/15 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <i className={`ri-refresh-line text-xs ${retrying ? "animate-spin" : ""}`} aria-hidden />
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function ExternalJobsPage() {
@@ -92,7 +178,13 @@ export default function ExternalJobsPage() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [savedLoading, setSavedLoading] = useState(false);
   const [searchCooldown, setSearchCooldown] = useState(0);
-  const [rateLimitError, setRateLimitError] = useState<string | null>(null);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
+  const [bannerError, setBannerError] = useState<ExternalJobUserError | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<ExternalJobUserError | null>(null);
+  const [savedLoadStatus, setSavedLoadStatus] = useState<TabLoadStatus>("idle");
+  const [savedLoadError, setSavedLoadError] = useState<ExternalJobUserError | null>(null);
+  const [contactsLoadStatus, setContactsLoadStatus] = useState<TabLoadStatus>("idle");
+  const [contactsLoadError, setContactsLoadError] = useState<ExternalJobUserError | null>(null);
   const [previewJob, setPreviewJob] = useState<ExternalJob | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [browseListedHint, setBrowseListedHint] = useState(false);
@@ -124,6 +216,9 @@ export default function ExternalJobsPage() {
     fetchStartedAtRef.current = Date.now();
     setSearchResults([]);
     setHasMore(false);
+    setSearchStatus("loading");
+    setBannerError(null);
+    setLoadMoreError(null);
     setActiveTab("search");
     setMirrorFetchRun(true);
   }, []);
@@ -139,7 +234,7 @@ export default function ExternalJobsPage() {
     job_location: "",
     source: "active-jobs-db" as ExternalJobSource,
     date_posted: "24h",
-    remote: undefined as boolean | undefined,
+    work_arrangement: "" as "" | "remote_ok" | "remote_solely" | "remote_both",
   });
   const [searchOffset, setSearchOffset] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -148,13 +243,19 @@ export default function ExternalJobsPage() {
 
   const loadSavedJobs = useCallback((page: number = 1) => {
     setSavedLoading(true);
+    setSavedLoadStatus("loading");
+    setSavedLoadError(null);
     listSavedExternalJobs({ page, limit: SAVED_LIST_LIMIT })
       .then((res) => {
         setSavedJobs(res.results || []);
         setSavedTotal(res.totalResults || 0);
         setSavedPage(res.page || 1);
+        setSavedLoadStatus("success");
       })
-      .catch(() => setSavedJobs([]))
+      .catch((err) => {
+        setSavedLoadError(mapExternalJobListError(err, "saved jobs"));
+        setSavedLoadStatus("error");
+      })
       .finally(() => setSavedLoading(false));
   }, []);
 
@@ -171,8 +272,10 @@ export default function ExternalJobsPage() {
     const lastRun = autoFetchStatus?.lastRun;
     if (!lastRun || lastRun.trigger !== "manual") return;
     if (new Date(lastRun.startedAt).getTime() < fetchStartedAtRef.current - 2000) return;
-    setSearchResults(lastRun.fetchedJobs || []);
+    const mirroredJobs = lastRun.fetchedJobs || [];
+    setSearchResults(mirroredJobs);
     if (lastRun.status !== "running") {
+      setSearchStatus(mirroredJobs.length === 0 ? "empty" : "success");
       setMirrorFetchRun(false);
       loadSavedJobs(1); // fetched jobs are already saved -- refresh so their bookmark icons show filled
     }
@@ -180,9 +283,17 @@ export default function ExternalJobsPage() {
 
   const loadSavedContacts = useCallback(() => {
     setSavedContactsLoading(true);
+    setContactsLoadStatus("loading");
+    setContactsLoadError(null);
     listSavedHrContacts()
-      .then((res) => setSavedContacts(res.contacts || []))
-      .catch(() => setSavedContacts([]))
+      .then((res) => {
+        setSavedContacts(res.contacts || []);
+        setContactsLoadStatus("success");
+      })
+      .catch((err) => {
+        setContactsLoadError(mapExternalJobListError(err, "saved contacts"));
+        setContactsLoadStatus("error");
+      })
       .finally(() => setSavedContactsLoading(false));
   }, []);
 
@@ -220,34 +331,38 @@ export default function ExternalJobsPage() {
   }, [searchCooldown]);
 
   const handleSearch = () => {
-    setRateLimitError(null);
+    const hadStaleResults = searchResults.length > 0;
+    setBannerError(null);
+    setLoadMoreError(null);
     setSearchLoading(true);
+    setSearchStatus("loading");
     setSearchOffset(0);
     searchExternalJobs({ ...filters, offset: 0 })
       .then((res) => {
-        setSearchResults(res.jobs || []);
+        const jobs = res.jobs || [];
+        setSearchResults(jobs);
         setHasMore(res.hasMore || false);
         setSearchCooldown(SEARCH_COOLDOWN_SEC);
+        setSearchStatus(jobs.length === 0 ? "empty" : "success");
       })
       .catch((err: any) => {
-        const msg = err?.response?.data?.message || err?.message;
-        if (err?.response?.status === 429) {
-          setRateLimitError("Too many requests. Please wait a minute before searching again.");
-        } else {
-          setRateLimitError(msg || "Search failed.");
+        const mapped = mapExternalJobSearchError(err, hadStaleResults);
+        setBannerError(mapped);
+        setSearchStatus("error");
+        if (mapped.kind === "rate_limit" && mapped.retryAfterSec) {
+          setSearchCooldown(mapped.retryAfterSec);
         }
-        // Keep whatever was on screen. Filter changes search on their own now, so a
-        // stray 429 from one extra toggle must not wipe the results the user has.
+        // Keep prior rows on screen — filter auto-search and retries must not wipe stale results.
       })
       .finally(() => setSearchLoading(false));
   };
 
-  // Selects and the remote toggle apply themselves; the two text fields still need
+  // Selects apply themselves; the two text fields still need
   // Enter or the Search button, because a debounced live search would spend the
   // backend's 5-requests-per-minute budget (externalJob.service checkRateLimit) on
   // a single typed word. A change made during the cooldown is not dropped -- the
   // effect re-runs as searchCooldown ticks and fires once it reaches 0.
-  const autoFilterKey = `${filters.source}|${filters.date_posted}|${filters.remote ?? ""}`;
+  const autoFilterKey = `${filters.source}|${filters.date_posted}|${filters.work_arrangement ?? ""}`;
   const autoAppliedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -273,15 +388,16 @@ export default function ExternalJobsPage() {
   const handleLoadMore = () => {
     const nextOffset = searchOffset + SEARCH_BATCH_SIZE;
     setSearchLoading(true);
+    setLoadMoreError(null);
     searchExternalJobs({ ...filters, offset: nextOffset })
       .then((res) => {
         setSearchResults((prev) => [...prev, ...(res.jobs || [])]);
         setHasMore(res.hasMore || false);
         setSearchOffset(nextOffset);
+        setLoadMoreError(null);
       })
       .catch((err: any) => {
-        const msg = err?.response?.data?.message || err?.message || "Failed to load more jobs.";
-        setRateLimitError(msg);
+        setLoadMoreError(mapExternalJobLoadError(err));
       })
       .finally(() => setSearchLoading(false));
   };
@@ -293,7 +409,7 @@ export default function ExternalJobsPage() {
       setSavedJobs((prev) => [...prev, { ...job, savedAt: new Date().toISOString() }]);
       setBrowseListedHint(true);
     } catch (err: any) {
-      setRateLimitError(err?.response?.data?.message || err?.message || "Could not save this job.");
+      setBannerError(mapExternalJobSearchError(err, false));
     } finally {
       setSavingId(null);
     }
@@ -325,6 +441,35 @@ export default function ExternalJobsPage() {
     [activeTab, searchResults, savedJobs]
   );
   const isSaved = (job: ExternalJob) => savedIds.has(job.externalId);
+
+  const searchStaleResults =
+    activeTab === "search" &&
+    searchResults.length > 0 &&
+    (searchStatus === "error" || loadMoreError != null);
+
+  const searchShownBadge = useMemo(() => {
+    if (activeTab !== "search") return null;
+    if (searchStatus === "loading") {
+      return { primary: "Searching…", failed: false, tone: "muted" as const };
+    }
+    if (searchStatus === "error") {
+      if (searchResults.length > 0) {
+        return {
+          primary: `${searchResults.length} from last search`,
+          failed: true,
+          tone: "stale" as const,
+        };
+      }
+      return { primary: "Search failed", failed: false, tone: "error" as const };
+    }
+    if (searchStatus === "empty") {
+      return { primary: "No jobs matched", failed: false, tone: "muted" as const };
+    }
+    if (searchStatus === "success") {
+      return { primary: `${searchResults.length} shown`, failed: false, tone: "success" as const };
+    }
+    return { primary: "Run search", failed: false, tone: "idle" as const };
+  }, [activeTab, searchStatus, searchResults.length]);
 
   const remoteCount = useMemo(() => searchResults.filter((j) => j.isRemote).length, [searchResults]);
 
@@ -390,8 +535,9 @@ export default function ExternalJobsPage() {
         Header: "Type",
         accessor: "jobType",
         Cell: ({ row }: any) => {
-          const jt = row.original.jobType;
-          if (!jt) return <span className="text-gray-400">—</span>;
+          const jt = formatJobType(row.original.jobType);
+          const missing = jt === formatJobType(null);
+          if (missing) return <span className="text-gray-400">{jt}</span>;
           return (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="badge bg-gray-100 dark:bg-white/10 text-defaulttextcolor text-[0.7rem]">{jt}</span>
@@ -407,8 +553,15 @@ export default function ExternalJobsPage() {
         id: "salary",
         Cell: ({ row }: any) => {
           const s = formatSalary(row.original);
+          const missing = !hasExternalJobSalary(row.original);
           return (
-            <span className={s === "—" ? "text-gray-400" : "font-medium text-gray-800 dark:text-white"}>
+            <span
+              className={
+                missing
+                  ? "text-gray-400"
+                  : "font-medium text-gray-800 tabular-nums dark:text-white"
+              }
+            >
               {s}
             </span>
           );
@@ -615,10 +768,27 @@ export default function ExternalJobsPage() {
                         External jobs
                       </h1>
                       <span
-                        className="inline-flex items-center rounded-full border border-primary/25 bg-primary/10 px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums text-primary"
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[0.7rem] font-semibold tabular-nums ${
+                          activeTab === "search" && searchShownBadge
+                            ? searchShownBadge.tone === "success"
+                              ? "border-primary/25 bg-primary/10 text-primary"
+                              : searchShownBadge.tone === "error"
+                              ? "border-danger/30 bg-danger/10 text-danger"
+                              : searchShownBadge.tone === "stale"
+                              ? "border-warning/30 bg-warning/10 text-warning"
+                              : "border-defaultborder/60 bg-gray-100/80 text-textmuted dark:border-white/15 dark:bg-white/10 dark:text-white/55"
+                            : "border-primary/25 bg-primary/10 text-primary"
+                        }`}
                         title="Rows in the current view"
                       >
-                        {activeTab === "contacts" ? savedContacts.length : displayData.length} shown
+                        {activeTab === "search" && searchShownBadge
+                          ? searchShownBadge.primary
+                          : `${activeTab === "contacts" ? savedContacts.length : displayData.length} shown`}
+                        {activeTab === "search" && searchShownBadge?.failed && (
+                          <span className="inline-flex items-center rounded-full bg-danger/15 px-1.5 py-0.5 text-[0.58rem] font-bold uppercase tracking-wide text-danger">
+                            Search failed
+                          </span>
+                        )}
                       </span>
                     </div>
                     <p className="text-[0.7rem] font-semibold uppercase tracking-[0.14em] text-textmuted dark:text-white/45">
@@ -823,16 +993,24 @@ export default function ExternalJobsPage() {
                     </select>
                   </div>
 
-                  {/* Remote toggle */}
-                  <label className="mb-[3px] flex cursor-pointer select-none items-center gap-2 rounded-xl border border-defaultborder/60 bg-white/80 px-3 py-[0.45rem] text-[0.8rem] font-medium text-defaulttextcolor transition-colors hover:border-primary/30 hover:bg-primary/[0.04] dark:border-white/10 dark:bg-white/[0.04] dark:text-white/75 dark:hover:border-primary/30 dark:hover:bg-primary/10">
-                    <input
-                      type="checkbox"
-                      className="form-check-input !mt-0 !h-3.5 !w-3.5"
-                      checked={filters.remote === true}
-                      onChange={(e) => setFilters((f) => ({ ...f, remote: e.target.checked ? true : undefined }))}
-                    />
-                    Remote only
-                  </label>
+                  {/* Work arrangement */}
+                  <div className="min-w-[11rem]">
+                    <label className="mb-1 block text-[0.68rem] font-bold uppercase tracking-[0.11em] text-textmuted dark:text-white/40">Work arrangement</label>
+                    <select
+                      className="form-select !rounded-xl !border-defaultborder/80 !py-[0.45rem] !text-[0.8125rem] !shadow-none focus:!border-primary/60 focus:!ring-2 focus:!ring-primary/15 dark:!border-white/10"
+                      value={filters.work_arrangement}
+                      onChange={(e) =>
+                        setFilters((f) => ({
+                          ...f,
+                          work_arrangement: e.target.value as "" | "remote_ok" | "remote_solely" | "remote_both",
+                        }))
+                      }
+                    >
+                      {WORK_ARRANGEMENT_OPTIONS.map((opt) => (
+                        <option key={opt.value || "all"} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
 
                   {/* Search button */}
                   <button
@@ -859,10 +1037,13 @@ export default function ExternalJobsPage() {
                     )}
                   </button>
                 </div>
+                <p className="mt-2 text-[0.7rem] leading-relaxed text-textmuted dark:text-white/45">
+                  Up to 5 searches per minute. Source, Posted, and Work arrangement auto-apply.
+                </p>
               </div>
             )}
 
-            {rateLimitError && (
+            {bannerError && (
               <div
                 className="mx-5 mt-4 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/[0.08] p-4 text-sm text-warning shadow-sm dark:border-warning/25 dark:bg-warning/10"
                 role="alert"
@@ -870,12 +1051,25 @@ export default function ExternalJobsPage() {
                 <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-warning/15">
                   <i className="ri-error-warning-line text-lg" aria-hidden />
                 </span>
-                <span className="min-w-0 flex-1 leading-relaxed">{rateLimitError}</span>
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="leading-relaxed">{bannerError.message}</p>
+                  {bannerError.canRetry && activeTab === "search" && searchStatus === "error" && (
+                    <button
+                      type="button"
+                      disabled={searchLoading || searchCooldown > 0}
+                      onClick={handleSearch}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold text-warning transition-colors hover:bg-warning/15 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <i className="ri-refresh-line text-xs" aria-hidden />
+                      {searchCooldown > 0 ? `Retry in ${searchCooldown}s` : "Retry search"}
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-warning/60 transition-colors hover:bg-warning/10 hover:text-warning"
                   aria-label="Dismiss"
-                  onClick={() => setRateLimitError(null)}
+                  onClick={() => setBannerError(null)}
                 >
                   <i className="ri-close-line text-sm" aria-hidden />
                 </button>
@@ -891,8 +1085,15 @@ export default function ExternalJobsPage() {
                       {contactCopyFeedback}
                     </div>
                   )}
-                  {savedContactsLoading && savedContacts.length === 0 ? (
+                  {savedContactsLoading && savedContacts.length === 0 && contactsLoadStatus !== "error" ? (
                     <ExternalJobsTableLoader title="Loading saved contacts" hint="Fetching your HR shortlist." />
+                  ) : contactsLoadStatus === "error" && savedContacts.length === 0 && contactsLoadError ? (
+                    <TabLoadErrorPanel
+                      title="Couldn't load saved contacts"
+                      error={contactsLoadError}
+                      onRetry={loadSavedContacts}
+                      retrying={savedContactsLoading}
+                    />
                   ) : savedContacts.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
                       <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
@@ -906,6 +1107,26 @@ export default function ExternalJobsPage() {
                       </div>
                     </div>
                   ) : (
+                    <>
+                      {contactsLoadStatus === "error" && contactsLoadError && savedContacts.length > 0 && (
+                        <div
+                          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/[0.08] px-4 py-3 text-sm text-warning dark:border-warning/25 dark:bg-warning/10"
+                          role="alert"
+                        >
+                          <span className="min-w-0 leading-relaxed">{contactsLoadError.message}</span>
+                          {contactsLoadError.canRetry && (
+                            <button
+                              type="button"
+                              disabled={savedContactsLoading}
+                              onClick={loadSavedContacts}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:opacity-60"
+                            >
+                              <i className={`ri-refresh-line text-xs ${savedContactsLoading ? "animate-spin" : ""}`} aria-hidden />
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      )}
                     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                       {savedContacts.map((c) => (
                         <div
@@ -1006,20 +1227,68 @@ export default function ExternalJobsPage() {
                         </div>
                       ))}
                     </div>
+                    </>
                   )}
                 </div>
-              ) : activeTab === "saved" && savedLoading && savedJobs.length === 0 ? (
+              ) : activeTab === "saved" && savedLoading && savedJobs.length === 0 && savedLoadStatus !== "error" ? (
                 <ExternalJobsTableLoader
                   title="Restoring your shortlist"
                   hint="Syncing saved roles from Dharwin — almost there."
                 />
-              ) : activeTab === "search" && searchLoading && searchResults.length === 0 ? (
+              ) : activeTab === "saved" && savedLoadStatus === "error" && savedJobs.length === 0 && savedLoadError ? (
+                <TabLoadErrorPanel
+                  title="Couldn't load saved jobs"
+                  error={savedLoadError}
+                  onRetry={() => loadSavedJobs(1)}
+                  retrying={savedLoading}
+                />
+              ) : activeTab === "search" && searchLoading && searchResults.length === 0 && searchStatus === "loading" ? (
                 <ExternalJobsTableLoader
                   title="Scanning external feeds"
                   hint="Pulling live listings from the selected source. Large result sets may take a moment."
                 />
               ) : (
                 <>
+                  {activeTab === "saved" && savedLoadStatus === "error" && savedLoadError && savedJobs.length > 0 && (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning/[0.08] px-5 py-3 text-sm text-warning dark:border-warning/25 dark:bg-warning/10"
+                      role="alert"
+                    >
+                      <span className="min-w-0 leading-relaxed">{savedLoadError.message}</span>
+                      {savedLoadError.canRetry && (
+                        <button
+                          type="button"
+                          disabled={savedLoading}
+                          onClick={() => loadSavedJobs(1)}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:opacity-60"
+                        >
+                          <i className={`ri-refresh-line text-xs ${savedLoading ? "animate-spin" : ""}`} aria-hidden />
+                          Retry
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {searchStaleResults && (
+                    <div
+                      className="flex flex-wrap items-center justify-between gap-3 border-b border-warning/30 bg-warning/[0.08] px-5 py-3 text-sm text-warning dark:border-warning/25 dark:bg-warning/10"
+                      role="alert"
+                    >
+                      <span className="min-w-0 leading-relaxed">
+                        {loadMoreError?.message ??
+                          bannerError?.message ??
+                          "Couldn't complete this search — showing results from your last successful search."}
+                      </span>
+                      <button
+                        type="button"
+                        disabled={searchLoading || searchCooldown > 0}
+                        onClick={loadMoreError ? handleLoadMore : handleSearch}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <i className={`ri-refresh-line text-xs ${searchLoading ? "animate-spin" : ""}`} aria-hidden />
+                        {searchCooldown > 0 ? `Retry in ${searchCooldown}s` : "Retry"}
+                      </button>
+                    </div>
+                  )}
                   {displayData.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 border-b border-defaultborder/50 bg-gradient-to-r from-slate-50/80 to-transparent px-5 py-2.5 dark:from-white/[0.03] dark:to-transparent">
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/15 bg-primary/[0.06] px-2.5 py-1 text-[0.68rem] font-semibold text-primary dark:border-primary/20 dark:bg-primary/[0.09]">
@@ -1087,33 +1356,53 @@ export default function ExternalJobsPage() {
                           <tr>
                             <td colSpan={columns.length} className="!border-0 !p-0 align-top">
                               <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
-                                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                                  <i
-                                    className={`text-2xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
-                                    aria-hidden
-                                  />
-                                </span>
-                                <div className="max-w-md space-y-1">
-                                  <p className="text-base font-semibold text-defaulttextcolor dark:text-white">
-                                    {activeTab === "search" ? "No results yet" : "No saved jobs"}
-                                  </p>
-                                  <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
-                                    {activeTab === "search"
-                                      ? "Set title or location, then run search. External APIs may rate-limit repeated requests."
-                                      : "Save roles from the search tab to build a shortlist here."}
-                                  </p>
-                                </div>
-                                {activeTab === "search" && (
-                                  <button
-                                    type="button"
-                                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/20 transition-all hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                                    disabled={searchLoading || searchCooldown > 0}
-                                    onClick={handleSearch}
-                                  >
-                                    <i className="ri-search-line text-xs" aria-hidden />
-                                    Run search
-                                  </button>
-                                )}
+                                {(() => {
+                                  const emptyState =
+                                    activeTab === "search"
+                                      ? getSearchEmptyState(searchStatus)
+                                      : {
+                                          icon: "ri-bookmark-line",
+                                          title: "No saved jobs",
+                                          description: "Save roles from the search tab to build a shortlist here.",
+                                          showSearchCta: false,
+                                        };
+                                  return (
+                                    <>
+                                      <span
+                                        className={`flex h-14 w-14 items-center justify-center rounded-2xl ring-1 ${
+                                          emptyState.title === "Search couldn't complete"
+                                            ? "bg-danger/10 text-danger ring-danger/20"
+                                            : emptyState.title === "No jobs matched"
+                                            ? "bg-gray-100 text-textmuted ring-defaultborder/60 dark:bg-white/10 dark:text-white/50 dark:ring-white/10"
+                                            : "bg-primary/10 text-primary ring-primary/20"
+                                        }`}
+                                      >
+                                        <i className={`${emptyState.icon} text-2xl`} aria-hidden />
+                                      </span>
+                                      <div className="max-w-md space-y-1">
+                                        <p className="text-base font-semibold text-defaulttextcolor dark:text-white">
+                                          {emptyState.title}
+                                        </p>
+                                        <p className="text-sm leading-relaxed text-textmuted dark:text-white/50">
+                                          {emptyState.description}
+                                        </p>
+                                      </div>
+                                      {activeTab === "search" &&
+                                        emptyState.showSearchCta &&
+                                        bannerError?.kind !== "forbidden" && (
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white shadow-sm shadow-primary/20 transition-all hover:bg-primary/90 hover:shadow-md hover:shadow-primary/30 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                                          disabled={searchLoading || searchCooldown > 0}
+                                          onClick={handleSearch}
+                                        >
+                                          <i className="ri-search-line text-xs" aria-hidden />
+                                          {searchStatus === "error" ? "Retry search" : "Run search"}
+                                        </button>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                             </td>
                           </tr>
@@ -1143,20 +1432,50 @@ export default function ExternalJobsPage() {
                     <div className="md:hidden flex flex-col gap-3 p-3">
                       {page.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-3 px-4 py-12 text-center">
-                          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20">
-                            <i
-                              className={`text-xl ${activeTab === "search" ? "ri-inbox-archive-line" : "ri-bookmark-line"}`}
-                              aria-hidden
-                            />
-                          </span>
-                          <p className="text-sm font-semibold text-defaulttextcolor dark:text-white">
-                            {activeTab === "search" ? "No results yet" : "No saved jobs"}
-                          </p>
-                          <p className="text-xs leading-relaxed text-textmuted dark:text-white/50">
-                            {activeTab === "search"
-                              ? "Set title or location, then run search."
-                              : "Save roles from search to build a shortlist."}
-                          </p>
+                          {(() => {
+                            const emptyState =
+                              activeTab === "search"
+                                ? getSearchEmptyState(searchStatus)
+                                : {
+                                    icon: "ri-bookmark-line",
+                                    title: "No saved jobs",
+                                    description: "Save roles from search to build a shortlist.",
+                                    showSearchCta: false,
+                                  };
+                            return (
+                              <>
+                                <span
+                                  className={`flex h-12 w-12 items-center justify-center rounded-2xl ring-1 ${
+                                    emptyState.title === "Search couldn't complete"
+                                      ? "bg-danger/10 text-danger ring-danger/20"
+                                      : emptyState.title === "No jobs matched"
+                                      ? "bg-gray-100 text-textmuted ring-defaultborder/60 dark:bg-white/10 dark:text-white/50 dark:ring-white/10"
+                                      : "bg-primary/10 text-primary ring-primary/20"
+                                  }`}
+                                >
+                                  <i className={`${emptyState.icon} text-xl`} aria-hidden />
+                                </span>
+                                <p className="text-sm font-semibold text-defaulttextcolor dark:text-white">
+                                  {emptyState.title}
+                                </p>
+                                <p className="text-xs leading-relaxed text-textmuted dark:text-white/50">
+                                  {emptyState.description}
+                                </p>
+                                {activeTab === "search" &&
+                                  emptyState.showSearchCta &&
+                                  bannerError?.kind !== "forbidden" && (
+                                  <button
+                                    type="button"
+                                    className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-60"
+                                    disabled={searchLoading || searchCooldown > 0}
+                                    onClick={handleSearch}
+                                  >
+                                    {searchStatus === "error" ? "Retry search" : "Run search"}
+                                  </button>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       ) : (
                         page.map((row: any, rowIdx: number) => {
@@ -1241,9 +1560,13 @@ export default function ExternalJobsPage() {
                                   <i className={`${job.source === "linkedin-job-search-api" || job.source === "linkedin-jobs-api" ? "ri-linkedin-box-fill" : "ri-database-2-line"} text-[0.55rem]`} aria-hidden />
                                   {job.source === "active-jobs-db" ? "Active Jobs" : "LinkedIn"}
                                 </span>
-                                {job.jobType && (
+                                {job.jobType ? (
                                   <span className="rounded-full bg-gray-100 px-2 py-[2px] text-[0.62rem] font-medium text-gray-700 ring-1 ring-gray-200/80 dark:bg-white/10 dark:text-white/65 dark:ring-white/10">
                                     {job.jobType}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-gray-50 px-2 py-[2px] text-[0.62rem] font-medium text-gray-400 ring-1 ring-gray-200/60 dark:bg-white/[0.04] dark:text-white/35 dark:ring-white/10">
+                                    {formatJobType(null)}
                                   </span>
                                 )}
                                 {job.isRemote && (
@@ -1251,9 +1574,13 @@ export default function ExternalJobsPage() {
                                     Remote
                                   </span>
                                 )}
-                                {salaryStr !== "—" && (
-                                  <span className="rounded-full bg-emerald-50/80 px-2 py-[2px] text-[0.62rem] font-semibold text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
+                                {hasExternalJobSalary(job) ? (
+                                  <span className="rounded-full bg-emerald-50/80 px-2 py-[2px] text-[0.62rem] font-semibold text-emerald-700 tabular-nums ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20">
                                     {salaryStr}
+                                  </span>
+                                ) : (
+                                  <span className="rounded-full bg-gray-50 px-2 py-[2px] text-[0.62rem] font-medium text-gray-400 ring-1 ring-gray-200/60 dark:bg-white/[0.04] dark:text-white/35 dark:ring-white/10">
+                                    {EXTERNAL_JOB_SALARY_EMPTY}
                                   </span>
                                 )}
                                 {postedStr && (
@@ -1270,7 +1597,27 @@ export default function ExternalJobsPage() {
                   </div>
 
                   {activeTab === "search" && searchResults.length > 0 && hasMore && (
-                    <div className="flex items-center justify-center gap-3 border-t border-defaultborder/50 bg-gradient-to-r from-slate-50/80 via-white/40 to-transparent px-4 py-3.5 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
+                    <div className="flex flex-col items-center justify-center gap-3 border-t border-defaultborder/50 bg-gradient-to-r from-slate-50/80 via-white/40 to-transparent px-4 py-3.5 dark:from-white/[0.03] dark:via-transparent dark:to-transparent">
+                      {loadMoreError && (
+                        <div
+                          className="flex w-full max-w-xl flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/[0.08] px-4 py-3 text-sm text-warning dark:border-warning/25 dark:bg-warning/10"
+                          role="alert"
+                        >
+                          <span className="min-w-0 leading-relaxed">{loadMoreError.message}</span>
+                          {loadMoreError.canRetry && (
+                            <button
+                              type="button"
+                              disabled={searchLoading}
+                              onClick={handleLoadMore}
+                              className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1 text-[0.75rem] font-semibold transition-colors hover:bg-warning/15 disabled:opacity-60"
+                            >
+                              <i className={`ri-refresh-line text-xs ${searchLoading ? "animate-spin" : ""}`} aria-hidden />
+                              Retry
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-center gap-3">
                       <button
                         type="button"
                         disabled={searchLoading}
@@ -1292,6 +1639,7 @@ export default function ExternalJobsPage() {
                       <span className="text-[0.7rem] font-medium text-textmuted dark:text-white/30">
                         {searchResults.length} loaded · more available
                       </span>
+                      </div>
                     </div>
                   )}
 

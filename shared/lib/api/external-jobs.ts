@@ -23,11 +23,15 @@ export interface ExternalJob {
   timePosted?: string | null;
 }
 
+export type ExternalJobWorkArrangement = "" | "remote_ok" | "remote_solely" | "remote_both";
+
 export interface ExternalJobSearchFilters {
   job_title?: string;
   job_location?: string;
   offset?: number;
   date_posted?: string;
+  work_arrangement?: ExternalJobWorkArrangement;
+  /** @deprecated Prefer work_arrangement */
   remote?: boolean | string;
   source: ExternalJobSource;
 }
@@ -60,7 +64,7 @@ export async function searchExternalJobs(
     job_location: filters.job_location || "",
     offset: filters.offset ?? 0,
     date_posted: filters.date_posted || "24h",
-    remote: filters.remote,
+    ...(filters.work_arrangement ? { work_arrangement: filters.work_arrangement } : {}),
   });
   return data;
 }
