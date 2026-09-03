@@ -154,7 +154,8 @@ interface FilterState {
 }
 
 const OffersPlacement = () => {
-  const { confirm, confirmDialog } = useConfirm()
+  // Aliased: this file already uses the global window.confirm for bulk delete.
+  const { confirm: askCompensationConfirm, confirmDialog } = useConfirm()
   const router = useRouter()
   const searchParams = useSearchParams()
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions("ats.offers")
@@ -462,7 +463,7 @@ const OffersPlacement = () => {
     const { proceed, ack: compensationAck } = await confirmCompensationChange({
       gate: letterModalOffer.compensationGate,
       changing: !!letterModalOffer.jobType && letterForm.jobType !== letterModalOffer.jobType,
-      confirm,
+      confirm: askCompensationConfirm,
     })
     if (!proceed) return
 
