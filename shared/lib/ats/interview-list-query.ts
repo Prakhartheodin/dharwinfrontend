@@ -30,3 +30,25 @@ export function buildInterviewExportParams(
 
   return params
 }
+
+export type InterviewListParams = InterviewExportParams & {
+  page: number
+  limit: number
+  dateFrom?: string
+  dateTo?: string
+}
+
+/** GET /meetings — same filters as export, plus page/limit and optional scheduledAt window. */
+export function buildInterviewListParams(
+  filters: InterviewListFilterState,
+  options: { page: number; limit: number; sortBy?: string; dateFrom?: string; dateTo?: string }
+): InterviewListParams {
+  const params: InterviewListParams = {
+    ...buildInterviewExportParams(filters, { sortBy: options.sortBy }),
+    page: options.page,
+    limit: options.limit,
+  }
+  if (options.dateFrom) params.dateFrom = options.dateFrom
+  if (options.dateTo) params.dateTo = options.dateTo
+  return params
+}

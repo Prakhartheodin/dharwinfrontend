@@ -2,8 +2,9 @@
 
 import Seo from "@/shared/layout-components/seo/seo";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import React, { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import ListPagination from "@/shared/components/ListPagination";
 import { useAuth } from "@/shared/contexts/auth-context";
 import {
   listJobApplications,
@@ -27,6 +28,14 @@ import { YmdFilterDateInput } from "@/shared/components/filters/YmdFilterDateInp
 import { getReferralLeadsDateRangeError } from "@/shared/lib/ymd-filter-date-input.util";
 
 const APPLIED_TO_INPUT_ID = "applications-applied-to";
+
+/** Same default as Onboarding / Jobs / Students / Recruiters. */
+const LIST_PAGE_SIZE = 10;
+
+function parseListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ""), 10);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
 
 const FILTER_LABEL =
   "form-label text-[0.6875rem] uppercase tracking-wide text-[#8c9097] dark:text-white/50 mb-1 block";
@@ -286,10 +295,12 @@ function ApplicationRowActions({
 export default function ApplicationsPage() {
   const { user } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [rows, setRows] = useState<ApplicationWithDocs[]>([]);
   const [totalResults, setTotalResults] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [confirmReject, setConfirmReject] = useState<ApplicationWithDocs | null>(null);
@@ -303,21 +314,40 @@ export default function ApplicationsPage() {
   const [dateTo, setDateTo] = useState("");
   const [sortBy, setSortBy] = useState("createdAt:desc");
 
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => parseListPage(searchParams.get("page")));
   const [filtersExpanded, setFiltersExpanded] = useState(false);
-  const pageSize = 20;
+  const fetchGenerationRef = useRef(0);
+  const prevDebouncedSearchRef = useRef(debouncedSearch);
 
   const [jobOptions, setJobOptions] = useState<JobFilterOptionItem[]>([]);
   const [jobOptionsLoading, setJobOptionsLoading] = useState(false);
   const jobOptionsLoadedRef = useRef(false);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedSearch(search.trim());
-      setPage(1);
-    }, 350);
-    return () => clearTimeout(t);
+    const fromUrl = parseListPage(searchParams.get("page"));
+    setPage((prev) => (prev === fromUrl ? prev : fromUrl));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    const urlPage = parseListPage(params.get("page"));
+    if (urlPage === page) return;
+    if (page <= 1) params.delete("page");
+    else params.set("page", String(page));
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [page, pathname, router, searchParams]);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    if (prevDebouncedSearchRef.current === debouncedSearch) return;
+    prevDebouncedSearchRef.current = debouncedSearch;
+    setPage(1);
+  }, [debouncedSearch]);
 
   const loadJobOptions = useCallback(async () => {
     if (jobOptionsLoadedRef.current) return;
@@ -335,9 +365,10 @@ export default function ApplicationsPage() {
   }, []);
 
   const fetchApplications = useCallback(() => {
+    const generation = ++fetchGenerationRef.current;
     setLoading(true);
     const params: Parameters<typeof listJobApplications>[0] = {
-      limit: pageSize,
+      limit: LIST_PAGE_SIZE,
       page,
       sortBy,
       // Drop synthetic offer-letter placeholder applications from the recruiter dashboard.
@@ -357,12 +388,14 @@ export default function ApplicationsPage() {
 
     listJobApplications(params)
       .then((res) => {
+        if (generation !== fetchGenerationRef.current) return;
         // Backend dedupes per (job, applicant). Do not collapse the same person across jobs here.
         setRows((res.results ?? []) as ApplicationWithDocs[]);
         setTotalResults(res.totalResults ?? 0);
-        setTotalPages(res.totalPages ?? 1);
+        setTotalPages(res.totalPages ?? 0);
       })
       .catch((err) => {
+        if (generation !== fetchGenerationRef.current) return;
         // Surface failure so empty-state ≠ silent backend rejection.
         // Prior bug: excludeInternal missing from Joi validator → 400 → blank page.
         console.error("[applications:list] request failed", {
@@ -372,9 +405,11 @@ export default function ApplicationsPage() {
         });
         setRows([]);
         setTotalResults(0);
-        setTotalPages(1);
+        setTotalPages(0);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (generation === fetchGenerationRef.current) setLoading(false);
+      });
   }, [page, sortBy, debouncedSearch, statusFilter, jobFilter, departmentFilter, dateFrom, dateTo]);
 
   useEffect(() => {
@@ -438,9 +473,6 @@ export default function ApplicationsPage() {
     (departmentFilter ? 1 : 0) +
     (dateFrom ? 1 : 0) +
     (dateTo ? 1 : 0);
-
-  const showingStart = totalResults === 0 ? 0 : (page - 1) * pageSize + 1;
-  const showingEnd = Math.min(page * pageSize, totalResults);
 
   if (!user) {
     return (
@@ -673,7 +705,10 @@ export default function ApplicationsPage() {
                 <select
                   id="applications-sort-filter"
                   value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value)}
+                  onChange={(e) => {
+                    setSortBy(e.target.value);
+                    setPage(1);
+                  }}
                   className={FILTER_SELECT}
                   aria-label="Sort"
                 >
@@ -929,42 +964,17 @@ export default function ApplicationsPage() {
               </>
             )}
           </div>
-          {totalResults > 0 && (
+          {loading ? null : (
             <div className="box-footer !px-3 sm:!px-4">
-              <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
-                <div className="text-[0.75rem] text-[#8c9097] dark:text-white/60 text-center sm:text-start w-full sm:w-auto">
-                  Showing {showingStart}–{showingEnd} of {totalResults}
-                </div>
-                <nav aria-label="Pagination" className="pagination-style-4 w-full sm:w-auto">
-                  <ul className="ti-pagination mb-0 flex items-center justify-center sm:justify-end gap-1">
-                    <li className={`page-item flex-1 sm:flex-initial ${page <= 1 ? "disabled" : ""}`}>
-                      <button
-                        type="button"
-                        className="page-link w-full sm:w-auto min-h-[2.75rem] sm:min-h-0 flex items-center justify-center"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page <= 1}
-                      >
-                        Prev
-                      </button>
-                    </li>
-                    <li className="page-item">
-                      <span className="page-link !text-defaulttextcolor dark:!text-white !bg-transparent">
-                        Page {page} of {totalPages}
-                      </span>
-                    </li>
-                    <li className={`page-item flex-1 sm:flex-initial ${page >= totalPages ? "disabled" : ""}`}>
-                      <button
-                        type="button"
-                        className="page-link !text-primary w-full sm:w-auto min-h-[2.75rem] sm:min-h-0 flex items-center justify-center"
-                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                        disabled={page >= totalPages}
-                      >
-                        Next
-                      </button>
-                    </li>
-                  </ul>
-                </nav>
-              </div>
+              <ListPagination
+                page={page}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={LIST_PAGE_SIZE}
+                onPageChange={setPage}
+                ariaLabel="Applications page navigation"
+                gotoInputId="applications-goto-page"
+              />
             </div>
           )}
         </div>

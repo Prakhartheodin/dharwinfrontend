@@ -2,13 +2,14 @@
 import Seo from '@/shared/layout-components/seo/seo'
 import React, { Fragment, useMemo, useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/shared/contexts/auth-context'
 import { useFeaturePermissions } from '@/shared/hooks/use-feature-permissions'
 import { appendJoinIdentityToUrl } from '@/shared/lib/join-room-url'
-import { useTable, useSortBy, useGlobalFilter, usePagination } from 'react-table'
+import { useTable, useSortBy } from 'react-table'
 import { createMeeting, listMeetings, getMeeting, getMeetingRecordings, updateMeeting, deleteMeeting, exportInterviewsExcel, internalTransferEmployee, type Meeting, type CreateMeetingPayload, type MeetingRecording, type UpdateMeetingPayload } from '@/shared/lib/api/meetings'
-import { buildInterviewExportParams } from '@/shared/lib/ats/interview-list-query'
+import { buildInterviewExportParams, buildInterviewListParams } from '@/shared/lib/ats/interview-list-query'
+import ListPagination from '@/shared/components/ListPagination'
 import Swal from 'sweetalert2'
 import { listJobs, type Job } from '@/shared/lib/api/jobs'
 import { type CandidateListItem } from '@/shared/lib/api/candidates'
@@ -33,6 +34,29 @@ import { detectOverlap } from './interviewOverlap'
 /** When scheduling, store job id on `Meeting.jobPosition` if known — backend matches Job / JobApplication by ObjectId; title-only strings often fail exact regex match. */
 function isMongoObjectIdString(value: string | undefined): boolean {
   return typeof value === 'string' && /^[0-9a-fA-F]{24}$/.test(value.trim())
+}
+
+/** Same default as Onboarding / Jobs / Students / Recruiters / Meetings. */
+const LIST_PAGE_SIZE = 10
+/** GET /meetings Joi max. Week view walks pages within the 7-day window. */
+const WEEK_LIST_LIMIT = 100
+
+function parseListPage(raw: string | null | undefined): number {
+  const n = Number.parseInt(String(raw ?? ''), 10)
+  return Number.isInteger(n) && n >= 1 ? n : 1
+}
+
+function interviewSortToApi(sortOption: string): string {
+  return sortOption === 'date-desc' ? 'scheduledAt:desc' : 'scheduledAt:asc'
+}
+
+function weekRangeIso(weekStart: Date): { dateFrom: string; dateTo: string } {
+  const start = new Date(weekStart)
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(weekStart)
+  end.setDate(end.getDate() + 6)
+  end.setHours(23, 59, 59, 999)
+  return { dateFrom: start.toISOString(), dateTo: end.toISOString() }
 }
 
 /** Table row shape derived from Meeting API */
@@ -194,6 +218,8 @@ export default function InterviewsClient() {
   const { user: authUser, permissionsLoaded } = useAuth()
   const { canView, canCreate, canEdit, canDelete } = useFeaturePermissions('ats.interviews')
   const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const scheduleDropdownsLoadId = useRef(0)
   /** Tracks the in-flight loadScheduleDropdowns promise so concurrent callers (mount effect + prefill effect,
    *  and StrictMode dev double-mounts) share one network round-trip instead of double-fetching jobs/leads/recruiters. */
@@ -257,6 +283,12 @@ export default function InterviewsClient() {
   })
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+  const [apiPage, setApiPage] = useState(() => parseListPage(searchParams.get('page')))
+  const [pageSize, setListPageSize] = useState(LIST_PAGE_SIZE)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const fetchGenerationRef = useRef(0)
+  const weekFetchGenerationRef = useRef(0)
 
   // Search states for filter dropdowns
   const [searchCandidate, setSearchCandidate] = useState('')
@@ -295,7 +327,9 @@ export default function InterviewsClient() {
 
   // Real interviews/meetings from API
   const [meetings, setMeetings] = useState<Meeting[]>([])
+  const [weekMeetings, setWeekMeetings] = useState<Meeting[]>([])
   const [meetingsLoading, setMeetingsLoading] = useState(true)
+  const [weekMeetingsLoading, setWeekMeetingsLoading] = useState(false)
   const [meetingsError, setMeetingsError] = useState<string | null>(null)
 
   // View recordings modal
@@ -353,25 +387,68 @@ export default function InterviewsClient() {
   })
 
   const fetchMeetings = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current
     setMeetingsLoading(true)
     setMeetingsError(null)
     try {
-      // Backend caps limit at 100 (Joi max). Walk pages so orgs with >100 interviews
-      // see all of them, not just the first page. Cap 50 → 5000 interviews.
-      const aggregated: Meeting[] = []
-      for (let page = 1; page <= 50; page++) {
-        const res = await listMeetings({ limit: 100, page })
-        aggregated.push(...(res.results ?? []))
-        if (page >= (res.totalPages ?? 1)) break
-      }
-      setMeetings(aggregated)
+      const res = await listMeetings(
+        buildInterviewListParams(filters, {
+          page: apiPage,
+          limit: pageSize,
+          sortBy: interviewSortToApi(selectedSort),
+        })
+      )
+      if (generation !== fetchGenerationRef.current) return
+      setMeetings(res.results ?? [])
+      setTotalResults(res.totalResults ?? 0)
+      setTotalPages(res.totalPages ?? 0)
     } catch (err: any) {
+      if (generation !== fetchGenerationRef.current) return
       setMeetingsError(err?.response?.data?.message || err?.message || 'Failed to load interviews')
       setMeetings([])
+      setTotalResults(0)
+      setTotalPages(0)
     } finally {
-      setMeetingsLoading(false)
+      if (generation === fetchGenerationRef.current) setMeetingsLoading(false)
     }
-  }, [])
+  }, [filters, apiPage, pageSize, selectedSort])
+
+  const fetchWeekMeetings = useCallback(async () => {
+    const generation = ++weekFetchGenerationRef.current
+    setWeekMeetingsLoading(true)
+    setMeetingsError(null)
+    try {
+      const { dateFrom, dateTo } = weekRangeIso(weekStart)
+      const aggregated: Meeting[] = []
+      for (let page = 1; page <= 20; page++) {
+        const res = await listMeetings(
+          buildInterviewListParams(filters, {
+            page,
+            limit: WEEK_LIST_LIMIT,
+            sortBy: 'scheduledAt:asc',
+            dateFrom,
+            dateTo,
+          })
+        )
+        if (generation !== weekFetchGenerationRef.current) return
+        aggregated.push(...(res.results ?? []))
+        if (page >= (res.totalPages ?? 1) || !(res.results ?? []).length) break
+      }
+      if (generation !== weekFetchGenerationRef.current) return
+      setWeekMeetings(aggregated)
+    } catch (err: any) {
+      if (generation !== weekFetchGenerationRef.current) return
+      setMeetingsError(err?.response?.data?.message || err?.message || 'Failed to load interviews')
+      setWeekMeetings([])
+    } finally {
+      if (generation === weekFetchGenerationRef.current) setWeekMeetingsLoading(false)
+    }
+  }, [filters, weekStart])
+
+  const refreshMeetingsList = useCallback(async () => {
+    await fetchMeetings()
+    if (viewMode === 'week') await fetchWeekMeetings()
+  }, [fetchMeetings, fetchWeekMeetings, viewMode])
 
   const copyInterviewLink = useCallback(async (row: InterviewTableRow) => {
     const baseUrl =
@@ -678,7 +755,7 @@ export default function InterviewsClient() {
       setEditSaving(true)
       try {
         await updateMeeting(editMeetingId, payload)
-        await fetchMeetings()
+        await refreshMeetingsList()
         closeEditModal()
       } catch (err: any) {
         setEditError(err?.response?.data?.message || err?.message || 'Failed to update meeting')
@@ -706,7 +783,7 @@ export default function InterviewsClient() {
     }
 
     await runUpdate()
-  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, editEmailInvites, fetchMeetings, closeEditModal, buildOverlapMessage])
+  }, [editMeetingId, editMeeting, editJobsForCandidate, jobs, candidates, editEmailInvites, refreshMeetingsList, closeEditModal, buildOverlapMessage])
 
   const openResultModal = useCallback((row: InterviewTableRow) => {
     setResultModalInterview(row)
@@ -728,7 +805,7 @@ export default function InterviewsClient() {
     if (!row.id) return
     try {
       await internalTransferEmployee(row.id)
-      await fetchMeetings()
+      await refreshMeetingsList()
       await confirm({
         title: 'Employee transferred',
         message: (
@@ -750,7 +827,7 @@ export default function InterviewsClient() {
         hideCancel: true,
       })
     }
-  }, [confirm, fetchMeetings])
+  }, [confirm, refreshMeetingsList])
 
   const handleInternalTransfer = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -792,7 +869,7 @@ export default function InterviewsClient() {
       const results = await Promise.allSettled(ids.map((id) => deleteMeeting(id)))
       const failed = results.filter((r) => r.status === 'rejected').length
       setSelectedRows(new Set())
-      await fetchMeetings()
+      await refreshMeetingsList()
       if (failed > 0) {
         await confirm({
           title: 'Some deletions failed',
@@ -805,7 +882,7 @@ export default function InterviewsClient() {
     } finally {
       setDeletingSelected(false)
     }
-  }, [selectedRows, confirm, fetchMeetings])
+  }, [selectedRows, confirm, refreshMeetingsList])
 
   const handleSaveInterviewResult = useCallback(async () => {
     if (!resultModalInterview || !resultModalInterview.id) return
@@ -813,7 +890,7 @@ export default function InterviewsClient() {
     setResultUpdating(true)
     try {
       const updated = await updateMeeting(interview.id, { interviewResult: resultModalSelected })
-      await fetchMeetings()
+      await refreshMeetingsList()
       closeResultModal()
       if (resultModalSelected === 'selected' && updated.moveToPreboardingError) {
         const errMsg = updated.moveToPreboardingError
@@ -860,7 +937,7 @@ export default function InterviewsClient() {
     } finally {
       setResultUpdating(false)
     }
-  }, [resultModalInterview, resultModalSelected, fetchMeetings, closeResultModal, confirm, doInternalTransfer])
+  }, [resultModalInterview, resultModalSelected, refreshMeetingsList, closeResultModal, confirm, doInternalTransfer])
 
   const handleCancelMeeting = useCallback(async (row: InterviewTableRow) => {
     if (!row.id) return
@@ -874,15 +951,41 @@ export default function InterviewsClient() {
     if (!ok) return
     try {
       await updateMeeting(row.id, { status: 'cancelled' })
-      await fetchMeetings()
+      await refreshMeetingsList()
     } catch (err: any) {
       alert(err?.response?.data?.message || err?.message || 'Failed to cancel meeting')
     }
-  }, [confirm, fetchMeetings])
+  }, [confirm, refreshMeetingsList])
 
   useEffect(() => {
     fetchMeetings()
   }, [fetchMeetings])
+
+  useEffect(() => {
+    if (viewMode !== 'week') return
+    void fetchWeekMeetings()
+  }, [viewMode, fetchWeekMeetings])
+
+  useEffect(() => {
+    const fromUrl = parseListPage(searchParams.get('page'))
+    setApiPage((prev) => (prev === fromUrl ? prev : fromUrl))
+  }, [searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    const urlPage = parseListPage(params.get('page'))
+    if (urlPage === apiPage) return
+    if (apiPage <= 1) params.delete('page')
+    else params.set('page', String(apiPage))
+    const qs = params.toString()
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
+  }, [apiPage, pathname, router, searchParams])
+
+  useEffect(() => {
+    if (totalPages > 0 && apiPage > totalPages) {
+      setApiPage(totalPages)
+    }
+  }, [apiPage, totalPages])
 
   // Fetch recordings when View recordings modal is opened
   useEffect(() => {
@@ -1314,7 +1417,7 @@ export default function InterviewsClient() {
       try {
         const meeting = await createMeeting(payload)
         setCreatedMeeting(meeting)
-        fetchMeetings()
+        void refreshMeetingsList()
       } catch (err: any) {
         setFormError(err?.response?.data?.message || err?.message || 'Failed to create meeting')
       } finally {
@@ -1340,7 +1443,7 @@ export default function InterviewsClient() {
     }
 
     await runCreate()
-  }, [hosts, emailInvites, jobs, fetchMeetings, selectedAgentIds, agents, authUser, assignedAgentRecruiter, buildOverlapMessage, schedulePrefill])
+  }, [hosts, emailInvites, jobs, refreshMeetingsList, selectedAgentIds, agents, authUser, assignedAgentRecruiter, buildOverlapMessage, schedulePrefill])
 
   // Define columns
   const columns = useMemo(
@@ -1650,33 +1753,23 @@ export default function InterviewsClient() {
     return meetings.map((m) => meetingToTableRow(m, viewerTz))
   }, [meetings, mounted])
 
-  // Filter data based on filter state
-  const filteredData = useMemo(() => {
-    return tableData.filter((interview) => {
-      if (filters.candidate.length > 0 && !filters.candidate.some(candidateName =>
-        interview.candidate.name.toLowerCase().includes(candidateName.toLowerCase())
-      )) return false
-      if (filters.recruiter.length > 0 && !filters.recruiter.some(recruiterName =>
-        interview.recruiter.name.toLowerCase().includes(recruiterName.toLowerCase())
-      )) return false
-      if (filters.status.length > 0 && !filters.status.includes(interview.status)) return false
-      if (filters.type.length > 0 && !filters.type.includes(interview.type)) return false
-      return true
-    })
-  }, [tableData, filters])
+  const weekTableData = useMemo<InterviewTableRow[]>(() => {
+    const viewerTz = mounted ? getViewerTimezone() : undefined
+    return weekMeetings.map((m) => meetingToTableRow(m, viewerTz))
+  }, [weekMeetings, mounted])
 
-  const data = useMemo(() => filteredData, [filteredData])
+  const data = tableData
 
   /** POST /meetings/export uses the same filters as the filtered table (omit page/limit). */
   const exportQueryParams = useMemo(
-    () => buildInterviewExportParams(filters),
-    [filters]
+    () => buildInterviewExportParams(filters, { sortBy: interviewSortToApi(selectedSort) }),
+    [filters, selectedSort]
   )
 
   /** Download filtered interviews as an .xlsx file. */
   const handleExportInterviews = useCallback(async () => {
     setIsExcelMenuOpen(false)
-    if (filteredData.length === 0) {
+    if (totalResults === 0) {
       await Swal.fire({
         icon: 'info',
         title: 'Nothing to export',
@@ -1709,7 +1802,7 @@ export default function InterviewsClient() {
     } finally {
       setIsExcelExporting(false)
     }
-  }, [exportQueryParams, filteredData.length])
+  }, [exportQueryParams, totalResults])
 
   // Week view: 7 days from weekStart, interviews grouped by date
   const weekDays = useMemo(() => {
@@ -1731,29 +1824,48 @@ export default function InterviewsClient() {
   const interviewsByDay = useMemo(() => {
     const map: Record<string, InterviewTableRow[]> = {}
     weekDays.forEach((day) => { map[day.key] = [] })
-    data.forEach((row) => {
+    weekTableData.forEach((row) => {
       const key = row.date
       if (map[key]) map[key].push(row)
     })
     return map
-  }, [data, weekDays])
+  }, [weekTableData, weekDays])
 
   // Get unique values for dropdown filters (from real data)
   const allCandidates = useMemo(() => {
-    return [...new Set(tableData.map((i) => i.candidate.name).filter(Boolean))].filter((n) => n !== '—').sort()
-  }, [tableData])
+    return [...new Set([
+      ...filters.candidate,
+      ...tableData.map((i) => i.candidate.name),
+      ...weekTableData.map((i) => i.candidate.name),
+    ].filter(Boolean))].filter((n) => n !== '—').sort()
+  }, [tableData, weekTableData, filters.candidate])
 
   const allRecruiters = useMemo(() => {
-    return [...new Set(tableData.map((i) => i.recruiter.name).filter(Boolean))].filter((n) => n !== '—').sort()
-  }, [tableData])
+    return [...new Set([
+      ...filters.recruiter,
+      ...tableData.map((i) => i.recruiter.name),
+      ...weekTableData.map((i) => i.recruiter.name),
+    ].filter(Boolean))].filter((n) => n !== '—').sort()
+  }, [tableData, weekTableData, filters.recruiter])
 
   const allStatuses = useMemo(() => {
-    return [...new Set(tableData.map((i) => i.status).filter(Boolean))].sort()
-  }, [tableData])
+    return [...new Set([
+      ...filters.status,
+      ...tableData.map((i) => i.status),
+      ...weekTableData.map((i) => i.status),
+    ].filter(Boolean))].sort()
+  }, [tableData, weekTableData, filters.status])
 
   const allTypes = useMemo(() => {
-    return [...new Set(tableData.map((i) => i.type).filter(Boolean))].sort()
-  }, [tableData])
+    return [...new Set([
+      'Video',
+      'In-Person',
+      'Phone',
+      ...filters.type,
+      ...tableData.map((i) => i.type),
+      ...weekTableData.map((i) => i.type),
+    ].filter(Boolean))].sort()
+  }, [tableData, weekTableData, filters.type])
 
   // Filter options based on search terms
   const filteredCandidates = useMemo(() => {
@@ -1792,6 +1904,7 @@ export default function InterviewsClient() {
         : [...currentArray, value]
       return { ...prev, [key]: newArray }
     })
+    setApiPage(1)
   }
 
   const handleRemoveFilter = (key: 'candidate' | 'recruiter' | 'status' | 'type', value: string) => {
@@ -1799,6 +1912,7 @@ export default function InterviewsClient() {
       ...prev,
       [key]: prev[key].filter(item => item !== value)
     }))
+    setApiPage(1)
   }
 
   const handleResetFilters = () => {
@@ -1812,6 +1926,7 @@ export default function InterviewsClient() {
     setSearchRecruiter('')
     setSearchStatus('')
     setSearchType('')
+    setApiPage(1)
   }
 
   const hasActiveFilters = 
@@ -1830,10 +1945,13 @@ export default function InterviewsClient() {
     {
       columns: tableColumns,
       data,
-      initialState: { pageIndex: 0, pageSize: 100, sortBy: [{ id: 'interviewInfo', desc: false }] },
+      manualPagination: true,
+      manualSortBy: true,
+      autoResetPage: false,
+      autoResetSortBy: false,
+      initialState: { sortBy: [{ id: 'interviewInfo', desc: selectedSort === 'date-desc' }] },
     },
-    useSortBy,
-    usePagination
+    useSortBy
   )
 
   const {
@@ -1841,50 +1959,26 @@ export default function InterviewsClient() {
     getTableBodyProps,
     headerGroups,
     prepareRow,
-    state,
-    page,
-    nextPage,
-    previousPage,
-    canNextPage,
-    canPreviousPage,
-    pageOptions,
-    gotoPage,
-    pageCount,
-    setPageSize,
-    setSortBy,
+    rows,
   } = tableInstance
 
-  const { pageIndex, pageSize } = state
-
-  // Reset to the first page when the filtered dataset shrinks below the
-  // current page window, so applying filters/search never strands the user
-  // on a now-empty page.
-  useEffect(() => {
-    if (pageIndex > 0 && pageIndex * pageSize >= filteredData.length) {
-      gotoPage(0)
-    }
-  }, [filteredData.length, pageIndex, pageSize, gotoPage])
-
-  // Handle sort selection
-  // Sort is date-only: soonest-first (asc) or latest-first (desc).
   const handleSortChange = (sortOption: string) => {
     setSelectedSort(sortOption)
-    setSortBy([{ id: 'interviewInfo', desc: sortOption === 'date-desc' }])
+    setApiPage(1)
   }
 
-  // Handle select all checkbox - select ALL rows in filtered dataset
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set(filteredData.map((interview) => interview.id))
+      const allIds = new Set(tableData.map((interview) => interview.id))
       setSelectedRows(allIds)
     } else {
       setSelectedRows(new Set())
     }
   }
 
-  // Check if all rows in filtered dataset are selected
-  const isAllSelected = selectedRows.size === filteredData.length && filteredData.length > 0
-  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < filteredData.length
+  const isAllSelected = selectedRows.size === tableData.length && tableData.length > 0
+  const isIndeterminate = selectedRows.size > 0 && selectedRows.size < tableData.length
+  const showPagination = !meetingsLoading && !meetingsError && viewMode === 'table'
 
   if (!canView) {
     return (
@@ -1910,7 +2004,7 @@ export default function InterviewsClient() {
               <div className="box-title text-sm sm:text-base">
                 Interviews
                 <span className="badge bg-light text-default rounded-full ms-1 text-[0.7rem] sm:text-[0.75rem] align-middle">
-                  {filteredData.length}
+                  {totalResults}
                 </span>
               </div>
               <div className="flex flex-col gap-2 w-full min-w-0 max-w-full xl:flex-row xl:flex-wrap xl:items-center xl:gap-2 xl:w-auto [&_.ti-btn]:shrink-0 [&_.form-select]:shrink-0 [&_.form-control]:shrink-0">
@@ -1920,7 +2014,10 @@ export default function InterviewsClient() {
                   aria-label="Rows per page"
                   className="form-select select-show-page-size !w-auto !min-w-[6.5rem] !max-w-[8rem] !py-1.5 !ps-3 !pe-8 !text-[0.75rem]"
                   value={pageSize}
-                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  onChange={(e) => {
+                    setListPageSize(Number(e.target.value))
+                    setApiPage(1)
+                  }}
                 >
                   {[10, 25, 50, 100].map((size) => (
                     <option key={size} value={size}>
@@ -2044,7 +2141,7 @@ export default function InterviewsClient() {
               </div>
             </div>
              <div className="box-body relative z-0 !p-0 flex-1 min-w-0 max-w-full flex flex-col overflow-hidden bg-gradient-to-b from-white to-gray-50/40 dark:from-bodybg dark:to-black/20">
-              {meetingsLoading ? (
+              {meetingsLoading || (viewMode === 'week' && weekMeetingsLoading) ? (
                 <div className="flex-1 px-4 py-4">
                   <div className="rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/90 dark:bg-black/20 p-4 sm:p-5">
                     <div className="mb-4 flex items-center justify-between">
@@ -2073,7 +2170,7 @@ export default function InterviewsClient() {
                   <button
                     type="button"
                     className="ti-btn ti-btn-primary !py-2 !px-4 !text-sm"
-                    onClick={() => fetchMeetings()}
+                    onClick={() => void refreshMeetingsList()}
                   >
                     Try again
                   </button>
@@ -2204,7 +2301,7 @@ export default function InterviewsClient() {
                   ))}
                 </div>
               </div>
-              ) : filteredData.length === 0 ? (
+              ) : totalResults === 0 ? (
               <div className="flex-1 flex items-center justify-center p-6">
                 <div className="w-full max-w-xl rounded-xl border border-defaultborder/70 dark:border-defaultborder/20 bg-white/95 dark:bg-black/20 p-8 text-center shadow-sm">
                   <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -2238,7 +2335,7 @@ export default function InterviewsClient() {
               <>
               {/* Mobile card list — shown below lg; mirrors paginated react-table rows */}
               <div className="lg:hidden flex-1 w-full min-w-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-3" style={{ minHeight: 0 }}>
-                {page.map((row: any, i: number) => {
+                {rows.map((row: any, i: number) => {
                   prepareRow(row)
                   const interview = row.original
                   const statusRaw = (interview.status || '').toLowerCase()
@@ -2452,7 +2549,7 @@ export default function InterviewsClient() {
                     ))}
                   </thead>
                   <tbody {...getTableBodyProps()}>
-                    {page.map((row: any, i: number) => {
+                    {rows.map((row: any, i: number) => {
                       prepareRow(row)
                       return (
                         <tr {...row.getRowProps()} className="border-b border-gray-300 dark:border-gray-600" key={row.id || `row-${i}`}>
@@ -2477,117 +2574,17 @@ export default function InterviewsClient() {
               </>
               )}
             </div>
-            {!meetingsLoading && !meetingsError && viewMode === 'table' && (
+            {showPagination && (
             <div className="box-footer shrink-0 border-t border-defaultborder/70 dark:border-defaultborder/20 bg-gray-50/90 dark:bg-black/25 px-4 py-3">
-              <div className="flex flex-col sm:flex-row items-center flex-wrap gap-3">
-                <div className="text-sm text-center sm:text-left text-defaulttextcolor/80 dark:text-white/70 w-full sm:w-auto">
-                  Showing {data.length === 0 ? 0 : pageIndex * pageSize + 1} to {Math.min((pageIndex + 1) * pageSize, data.length)} of {data.length} entries{' '}
-                  <i className="bi bi-arrow-right ms-2 font-semibold"></i>
-                </div>
-                <div className="w-full sm:w-auto sm:ms-auto flex justify-center">
-                  <nav aria-label="Page navigation" className="w-full">
-                    <div className="m-0 inline-flex flex-nowrap items-center gap-1 rounded-lg border border-defaultborder/70 bg-white p-1 shadow-sm dark:border-defaultborder/20 dark:bg-black/20">
-                      <span className={`${!canPreviousPage ? 'opacity-50' : ''}`}>
-                        <button
-                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-defaulttextcolor transition-colors hover:bg-gray-100 disabled:cursor-not-allowed dark:text-white/80 dark:hover:bg-white/10"
-                          onClick={() => previousPage()}
-                          disabled={!canPreviousPage}
-                        >
-                          Prev
-                        </button>
-                      </span>
-                      {pageOptions.length <= 7 ? (
-                        // Show all pages if 7 or fewer
-                        pageOptions.map((page: number) => (
-                          <span key={page}>
-                            <button
-                              className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                                pageIndex === page
-                                  ? 'bg-primary text-white shadow-sm'
-                                  : 'text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10'
-                              }`}
-                              onClick={() => gotoPage(page)}
-                            >
-                              {page + 1}
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        // Show smart pagination for more pages
-                        <>
-                          {pageIndex > 2 && (
-                            <>
-                              <span>
-                                <button
-                                  className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold text-defaulttextcolor transition-colors hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
-                                  onClick={() => gotoPage(0)}
-                                >
-                                  1
-                                </button>
-                              </span>
-                              {pageIndex > 3 && (
-                                <span className="opacity-60">
-                                  <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-1.5 text-xs">...</span>
-                                </span>
-                              )}
-                            </>
-                          )}
-                          {Array.from({ length: Math.min(5, pageCount) }, (_, i) => {
-                            let pageNum
-                            if (pageIndex < 3) {
-                              pageNum = i
-                            } else if (pageIndex > pageCount - 4) {
-                              pageNum = pageCount - 5 + i
-                            } else {
-                              pageNum = pageIndex - 2 + i
-                            }
-                            return (
-                              <span key={pageNum}>
-                                <button
-                                  className={`inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                                    pageIndex === pageNum
-                                      ? 'bg-primary text-white shadow-sm'
-                                      : 'text-defaulttextcolor hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10'
-                                  }`}
-                                  onClick={() => gotoPage(pageNum)}
-                                >
-                                  {pageNum + 1}
-                                </button>
-                              </span>
-                            )
-                          })}
-                          {pageIndex < pageCount - 3 && (
-                            <>
-                              {pageIndex < pageCount - 4 && (
-                                <span className="opacity-60">
-                                  <span className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2 py-1.5 text-xs">...</span>
-                                </span>
-                              )}
-                              <span>
-                                <button
-                                  className="inline-flex min-w-[2rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-semibold text-defaulttextcolor transition-colors hover:bg-gray-100 dark:text-white/80 dark:hover:bg-white/10"
-                                  onClick={() => gotoPage(pageCount - 1)}
-                                >
-                                  {pageCount}
-                                </button>
-                              </span>
-                            </>
-                          )}
-                        </>
-                      )}
-                      <span className={`${!canNextPage ? 'opacity-50' : ''}`}>
-                        <button
-                          className="inline-flex min-w-[2.25rem] items-center justify-center rounded-md px-2.5 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:cursor-not-allowed"
-                          onClick={() => nextPage()}
-                          disabled={!canNextPage}
-                        >
-                          Next
-                        </button>
-                      </span>
-                    </div>
-                  </nav>
-                </div>
-              </div>
+              <ListPagination
+                page={apiPage}
+                totalPages={totalPages}
+                totalResults={totalResults}
+                pageSize={pageSize}
+                onPageChange={setApiPage}
+                ariaLabel="Interviews page navigation"
+                gotoInputId="interviews-goto-page"
+              />
             </div>
             )}
           </div>
