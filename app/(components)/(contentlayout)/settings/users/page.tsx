@@ -203,15 +203,24 @@ export default function SettingsUsersPage() {
     setLoading(true);
     setError("");
     try {
-      const [usersRes, rolesRes] = await Promise.all([
-        usersApi.listUsers({
-          search: searchQuery.trim() || undefined,
-          status: statusFilter || undefined,
-          limit: 500,
-        }),
+      const listParams = {
+        search: searchQuery.trim() || undefined,
+        status: statusFilter || undefined,
+        limit: 100,
+      };
+      // Backend caps limit at 100. Walk pages (max 5 → 500 users) so roleFilter
+      // still has a large client-side pool without tripping validation.
+      const [firstPage, rolesRes] = await Promise.all([
+        usersApi.listUsers({ ...listParams, page: 1 }),
         rolesApi.listRoles({ limit: 100 }),
       ]);
-      setUsers(usersRes.results ?? []);
+      const aggregated = [...(firstPage.results ?? [])];
+      const totalPages = Math.min(firstPage.totalPages ?? 1, 5);
+      for (let p = 2; p <= totalPages; p++) {
+        const pageRes = await usersApi.listUsers({ ...listParams, page: p });
+        aggregated.push(...(pageRes.results ?? []));
+      }
+      setUsers(aggregated);
       setRoles(rolesRes.results ?? []);
     } catch (err) {
       const msg =
